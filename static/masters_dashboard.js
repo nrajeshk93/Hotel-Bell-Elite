@@ -455,9 +455,16 @@
     return true;
   }
 
-  function bindInjectNavigation(inject, getReloadFn) {
+  function bindInjectNavigation(inject, getReloadFn, signal) {
     if (!inject || inject.__mdEmbedNavBound) return;
     inject.__mdEmbedNavBound = true;
+
+    var listenerOpts = signal ? { signal: signal } : undefined;
+    if (signal) {
+      signal.addEventListener('abort', function () {
+        inject.__mdEmbedNavBound = false;
+      });
+    }
 
     inject.addEventListener('click', function (e) {
       var reloadFn = getReloadFn();
@@ -471,7 +478,7 @@
       e.preventDefault();
       preserveFullscreenForEmbedNav();
       reloadFn(href);
-    });
+    }, listenerOpts);
 
     inject.addEventListener('submit', function (e) {
       var reloadFn = getReloadFn();
@@ -480,7 +487,7 @@
       if (!form || form.tagName !== 'FORM') return;
       e.preventDefault();
       submitMasterEmbedForm(form, e.submitter || null);
-    });
+    }, listenerOpts);
   }
 
   var reloadMasterEmbed = null;
@@ -571,6 +578,7 @@
     var empty = document.getElementById('md-master-modal-empty');
     if (!modal) return;
 
+    var wasOpen = modal.classList.contains('open');
     modal.classList.remove('open');
     modal.setAttribute('aria-hidden', 'true');
     modal.removeAttribute('data-md-open-id');
@@ -581,6 +589,13 @@
 
     if (opts.clearUrl !== false) {
       syncMasterOpenUrl('');
+    }
+    if (wasOpen) {
+      try {
+        document.dispatchEvent(new CustomEvent('md-master-modal-closed'));
+      } catch (err) {
+        /* ignore */
+      }
     }
   }
 
@@ -615,7 +630,6 @@
     var loading = document.getElementById('md-master-modal-loading');
     var empty = document.getElementById('md-master-modal-empty');
     var inject = getInjectHost();
-    if (inject) inject.__mdEmbedNavBound = false;
 
     reloadMasterEmbed = function (nextUrl) {
       showPanel(empty, false);
@@ -628,7 +642,7 @@
       });
     };
 
-    bindInjectNavigation(inject, function () { return reloadMasterEmbed; });
+    bindInjectNavigation(inject, function () { return reloadMasterEmbed; }, signal);
 
     modal.addEventListener('click', function (e) {
       if (e.target === modal) closeMasterModal();
@@ -674,6 +688,7 @@
     var masterModal = document.getElementById('md-master-modal');
     if (masterModal && masterModal.classList.contains('open')) {
       e.preventDefault();
+      e.stopPropagation();
       closeMasterModal();
       return;
     }
@@ -696,6 +711,13 @@
     var emptyState = document.getElementById('md-empty-state');
     var createModal = document.getElementById('md-create-modal');
     var createSubmit = document.getElementById('md-create-submit');
+
+    /* Modal works from Masters hub and from pages that only embed the dialog
+       (e.g. hotel room check-in Agency button). */
+    bindMasterModal(signal);
+    document.addEventListener('keydown', function (e) {
+      onDocumentKeydown(e, createModal);
+    }, { signal: signal });
 
     if (!grid) return;
 
@@ -786,12 +808,6 @@
       signal
     );
 
-    bindMasterModal(signal);
-
-    document.addEventListener('keydown', function (e) {
-      onDocumentKeydown(e, createModal);
-    }, { signal: signal });
-
     if (createSubmit) {
       createSubmit.addEventListener('click', function () {
         closeCreateModal(createModal);
@@ -804,6 +820,7 @@
   }
 
   global.initMastersDashboard = initMastersDashboard;
+  global.openMasterModal = openMasterModal;
   global.closeMasterModal = closeMasterModal;
 
   if (document.readyState === 'loading') {

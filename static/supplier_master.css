@@ -80,25 +80,30 @@ body.su-module #cm-category-outlet-listbox .se-filter-chip-chev{
 }
 
 body.su-module .sm-pl-table,
-body.master-module .sm-pl-table{
+body.master-module .sm-pl-table,
+#md-master-modal .sm-pl-table{
   min-width:0;
   table-layout:auto;
 }
 body.su-module .sm-pl-table td,
-body.master-module .sm-pl-table td{
+body.master-module .sm-pl-table td,
+#md-master-modal .sm-pl-table td{
   vertical-align:top;
 }
 body.su-module .sm-pl-table .sm-col-mobile,
-body.master-module .sm-pl-table .sm-col-mobile{
+body.master-module .sm-pl-table .sm-col-mobile,
+#md-master-modal .sm-pl-table .sm-col-mobile{
   white-space:nowrap;
   font-variant-numeric:tabular-nums;
 }
 body.su-module .sm-pl-table tbody tr:hover td,
-body.master-module .sm-pl-table tbody tr:hover td{
+body.master-module .sm-pl-table tbody tr:hover td,
+#md-master-modal .sm-pl-table tbody tr:hover td{
   background:#FAFBFD;
 }
 body.su-module .sm-pl-table .pl-col-actions,
-body.master-module .sm-pl-table .pl-col-actions{
+body.master-module .sm-pl-table .pl-col-actions,
+#md-master-modal .sm-pl-table .pl-col-actions{
   vertical-align:middle;
 }
 
@@ -122,7 +127,8 @@ body.master-module .sm-meta{
   line-height:1.4;
 }
 body.su-module .sm-actions,
-body.master-module .sm-actions{
+body.master-module .sm-actions,
+#md-master-modal .sm-actions{
   display:flex;
   gap:10px;
   margin-top:18px;

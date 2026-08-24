@@ -10808,7 +10808,7 @@ def hotel_room_detail_api(room_id):
                     "error": "Edit Access is required to change invoice folio charges.",
                 }
             ), 403
-        # generate_invoice is allowed without Edit Access (mint/settle flow).
+        # generate_invoice: anyone who can open the room invoice page may mint.
         # Folio edit / discount / delete still require the Edit module.
         try:
             if action == "reserve":
@@ -18373,6 +18373,169 @@ def _agency_page_render(template, **kwargs):
     return render_template(template, **kwargs)
 
 
+def _agency_has_unsettled_hotel_bills(conn, agency_name):
+    """True when hotel invoices billed to this agency still have a balance."""
+    name = str(agency_name or "").strip().lower()
+    if not name:
+        return False
+    ensure_hotel_rooms_schema(conn)
+    rows = conn.execute(
+        f"""
+        SELECT balance_amount, payload_json
+        FROM hotel_room_invoices
+        WHERE {_HOTEL_INVOICE_STAY_SOURCE_SQL}
+          AND lower(COALESCE(status, '')) != 'cancelled'
+          AND COALESCE(balance_amount, 0) > 0.009
+        """
+    ).fetchall()
+    for row in rows:
+        stay = _agency_billing_stay_from_payload(row["payload_json"])
+        inv_agency = str(
+            stay.get("agencyName") or stay.get("agency_name") or ""
+        ).strip().lower()
+        if inv_agency == name:
+            return True
+    return False
+
+
+def _agency_delete_block_reason(conn, agency):
+    """Return a user-facing reason when the agency cannot be deleted, else None."""
+    if not agency:
+        return "Agency not found."
+    try:
+        agency_id = int(agency["id"])
+    except (TypeError, ValueError, KeyError):
+        return "Agency not found."
+    agency_name = str(agency.get("name") or "").strip()
+
+    if _outstanding_hotel_credits(conn, party_id=agency_id):
+        return "Cannot delete: agency has pending credit / unsettled bills."
+    if _agency_has_unsettled_hotel_bills(conn, agency_name):
+        return "Cannot delete: agency has pending credit / unsettled bills."
+
+    from back_office_receipt import list_pending_back_office_receipts_for_agency
+
+    if list_pending_back_office_receipts_for_agency(
+        conn, agency_id=agency_id, agency_name=agency_name
+    ):
+        return "Cannot delete: agency has pending back-office receipts."
+    return None
+
+
+def _annotate_agencies_for_delete(conn, agencies):
+    """Attach can_delete / delete_block_reason for Agency Master list actions.
+
+    Uses lightweight SQL (no credit sync, no per-agency BOR queries) so embed
+    opens stay fast; delete POST still runs the full _agency_delete_block_reason.
+    """
+    ensure_hotel_invoice_credits_schema(conn)
+    ensure_hotel_rooms_schema(conn)
+
+    outstanding_ids = set()
+    outstanding_names = set()
+    name_to_id = {
+        str(a.get("name") or "").strip().lower(): int(a["id"])
+        for a in (agencies or [])
+        if a and a.get("id") is not None and str(a.get("name") or "").strip()
+    }
+    for row in conn.execute(
+        """
+        SELECT c.agency_name AS agency_name,
+               ROUND(
+                 COALESCE(c.credit_amount, 0) - COALESCE((
+                   SELECT SUM(a.amount)
+                   FROM hotel_invoice_credit_payment_allocations a
+                   WHERE a.credit_id = c.id
+                 ), 0),
+                 2
+               ) AS balance
+        FROM hotel_invoice_credits c
+        """
+    ).fetchall():
+        try:
+            balance = float(row["balance"] or 0)
+        except (TypeError, ValueError):
+            balance = 0.0
+        if balance <= 0.009:
+            continue
+        agency_name = str(row["agency_name"] or "").strip()
+        name_key = agency_name.lower()
+        if name_key:
+            outstanding_names.add(name_key)
+            agency_id = name_to_id.get(name_key)
+            if agency_id is not None:
+                outstanding_ids.add(agency_id)
+
+    unsettled_names = set()
+    for row in conn.execute(
+        f"""
+        SELECT payload_json
+        FROM hotel_room_invoices
+        WHERE {_HOTEL_INVOICE_STAY_SOURCE_SQL}
+          AND lower(COALESCE(status, '')) != 'cancelled'
+          AND COALESCE(balance_amount, 0) > 0.009
+        """
+    ).fetchall():
+        stay = _agency_billing_stay_from_payload(row["payload_json"])
+        inv_agency = str(
+            stay.get("agencyName") or stay.get("agency_name") or ""
+        ).strip().lower()
+        if inv_agency:
+            unsettled_names.add(inv_agency)
+
+    ensure_back_office_receipt_schema(conn)
+    pending_bor_ids = set()
+    pending_bor_names = set()
+    for row in conn.execute(
+        """
+        SELECT r.id, r.agency_id, r.payer_name, r.amount,
+               COALESCE((
+                 SELECT SUM(a.amount)
+                 FROM back_office_receipt_allocations a
+                 WHERE a.receipt_id = r.id
+               ), 0) AS applied
+        FROM back_office_receipts r
+        """
+    ).fetchall():
+        try:
+            remaining = round(float(row["amount"] or 0) - float(row["applied"] or 0), 2)
+        except (TypeError, ValueError):
+            remaining = 0.0
+        if remaining <= 0.009:
+            continue
+        if row["agency_id"] is not None:
+            try:
+                pending_bor_ids.add(int(row["agency_id"]))
+            except (TypeError, ValueError):
+                pass
+        payer = str(row["payer_name"] or "").strip().lower()
+        if payer:
+            pending_bor_names.add(payer)
+
+    annotated = []
+    for agency in agencies or []:
+        item = dict(agency)
+        try:
+            agency_id = int(item.get("id"))
+        except (TypeError, ValueError):
+            agency_id = None
+        agency_name = str(item.get("name") or "").strip()
+        name_key = agency_name.lower()
+        reason = None
+        if agency_id is not None and agency_id in outstanding_ids:
+            reason = "Cannot delete: agency has pending credit / unsettled bills."
+        elif name_key and (name_key in outstanding_names or name_key in unsettled_names):
+            reason = "Cannot delete: agency has pending credit / unsettled bills."
+        elif (agency_id is not None and agency_id in pending_bor_ids) or (
+            name_key and name_key in pending_bor_names
+        ):
+            reason = "Cannot delete: agency has pending back-office receipts."
+        item["delete_block_reason"] = reason
+        item["can_delete"] = reason is None
+        annotated.append(item)
+    return annotated
+
+
 @app.route("/agencies")
 def agency_master():
     user = get_current_user()
@@ -18386,7 +18549,7 @@ def agency_master():
     conn = get_db()
     try:
         ensure_agencies_schema(conn)
-        agencies = list_agencies(conn)
+        agencies = _annotate_agencies_for_delete(conn, list_agencies(conn))
         selected_agency = get_agency(conn, selected_agency_id) if selected_agency_id else None
         conn.commit()
     finally:
@@ -18541,21 +18704,37 @@ def delete_agency():
         return _permission_denied_response("You do not have access to Agency Master.")
 
     agency_id = request.form.get("agency_id", "").strip()
+    embed = is_embed_request() or str(request.form.get("embed") or request.args.get("embed") or "") == "1"
+    redirect_kwargs = {}
+    if embed:
+        redirect_kwargs["embed"] = 1
+
     if not agency_id:
         _queue_auth_notice("Agency not found.")
-        return redirect(url_for("agency_master"))
+        return redirect(url_for("agency_master", **redirect_kwargs))
 
     conn = get_db()
     try:
+        agency = get_agency(conn, agency_id)
+        if not agency:
+            _queue_auth_notice("Agency not found.")
+            return redirect(url_for("agency_master", **redirect_kwargs))
+        block_reason = _agency_delete_block_reason(conn, agency)
+        if block_reason:
+            _queue_auth_notice(block_reason)
+            fail_kwargs = dict(redirect_kwargs)
+            fail_kwargs["agency_id"] = agency_id
+            return redirect(url_for("agency_master", **fail_kwargs))
         deleted = delete_agency_record(conn, agency_id)
         if not deleted:
             _queue_auth_notice("Agency not found.")
-            return redirect(url_for("agency_master"))
+            return redirect(url_for("agency_master", **redirect_kwargs))
         conn.commit()
     finally:
         conn.close()
 
-    return redirect(url_for("agency_master", saved="deleted"))
+    redirect_kwargs["saved"] = "deleted"
+    return redirect(url_for("agency_master", **redirect_kwargs))
 
 
 def _user_can_upsert_agency_from_ops(user):

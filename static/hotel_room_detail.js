@@ -5206,7 +5206,15 @@
     var key = checkinDraftKey(root);
     if (!key) return null;
     try {
-      var raw = sessionStorage.getItem(key);
+      var raw = localStorage.getItem(key);
+      if (!raw) {
+        /* Migrate drafts saved before localStorage switch. */
+        raw = sessionStorage.getItem(key);
+        if (raw) {
+          localStorage.setItem(key, raw);
+          sessionStorage.removeItem(key);
+        }
+      }
       if (!raw) return null;
       var data = JSON.parse(raw);
       return data && typeof data === 'object' ? data : null;
@@ -5241,7 +5249,7 @@
     if (!key || !stay) return;
     var merged = mergeCheckinDraftMeta(meta, form);
     try {
-      sessionStorage.setItem(
+      localStorage.setItem(
         key,
         JSON.stringify({
           savedAt: Date.now(),
@@ -5257,6 +5265,9 @@
   function clearCheckinDraft(root) {
     var key = checkinDraftKey(root);
     if (!key) return;
+    try {
+      localStorage.removeItem(key);
+    } catch (err) {}
     try {
       sessionStorage.removeItem(key);
     } catch (err) {}
@@ -6811,6 +6822,295 @@
     });
   }
 
+  var hrdAgencyMasterAbort = null;
+
+  function buildAgencyEmbedUrl(url) {
+    try {
+      var parsed = new URL(url, window.location.origin);
+      if (parsed.origin !== window.location.origin) return url;
+      parsed.searchParams.set('embed', '1');
+      return parsed.pathname + parsed.search + parsed.hash;
+    } catch (err) {
+      if (String(url).indexOf('embed=1') !== -1) return url;
+      return url + (String(url).indexOf('?') === -1 ? '?' : '&') + 'embed=1';
+    }
+  }
+
+  function ensureAgencyMasterModalDom() {
+    var modal = document.getElementById('md-master-modal');
+    if (modal) return modal;
+    var host =
+      (pageRoot() && pageRoot().parentNode) ||
+      document.querySelector('.de-main-wrapper') ||
+      document.body;
+    modal = document.createElement('div');
+    modal.className = 'modal-backdrop md-master-modal';
+    modal.id = 'md-master-modal';
+    modal.setAttribute('aria-hidden', 'true');
+    modal.innerHTML =
+      '<div class="md-master-dialog" role="dialog" aria-modal="true" aria-labelledby="md-master-modal-title">' +
+      '<header class="md-master-dialog-hdr">' +
+      '<h2 class="md-master-dialog-title" id="md-master-modal-title">Agency Master</h2>' +
+      '<button type="button" class="md-master-modal-close" id="md-master-modal-close" aria-label="Close Agency Master">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>' +
+      '</button></header>' +
+      '<div class="md-master-dialog-body">' +
+      '<div class="md-master-modal-loading" id="md-master-modal-loading" hidden>' +
+      '<span class="md-master-modal-spinner" aria-hidden="true"></span>' +
+      '<span>Loading Agency Master…</span></div>' +
+      '<div class="md-master-modal-inject" id="md-master-modal-inject" hidden></div>' +
+      '<div class="md-master-modal-empty" id="md-master-modal-empty" hidden>' +
+      '<p class="md-master-modal-empty-title">Could not open Agency Master</p>' +
+      '<p class="md-master-modal-empty-copy">Check your access, then try again.</p>' +
+      '</div></div></div>';
+    host.appendChild(modal);
+    return modal;
+  }
+
+  function setAgencyMasterPanel(el, show) {
+    if (!el) return;
+    el.hidden = !show;
+    el.classList.toggle('is-md-panel-visible', !!show);
+  }
+
+  function closeHrdAgencyMasterModal() {
+    if (hrdAgencyMasterAbort) {
+      try {
+        hrdAgencyMasterAbort.abort();
+      } catch (err) {}
+      hrdAgencyMasterAbort = null;
+    }
+    if (typeof global.closeMasterModal === 'function') {
+      global.closeMasterModal();
+      return;
+    }
+    var modal = document.getElementById('md-master-modal');
+    if (!modal) return;
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('md-master-modal-open');
+    var inject = document.getElementById('md-master-modal-inject');
+    if (inject) inject.innerHTML = '';
+    setAgencyMasterPanel(document.getElementById('md-master-modal-loading'), false);
+    setAgencyMasterPanel(document.getElementById('md-master-modal-empty'), false);
+    setAgencyMasterPanel(inject, false);
+    try {
+      document.dispatchEvent(new CustomEvent('md-master-modal-closed'));
+    } catch (err) {}
+  }
+
+  function paintHrdAgencyMasterHtml(html) {
+    var inject = document.getElementById('md-master-modal-inject');
+    var loading = document.getElementById('md-master-modal-loading');
+    var empty = document.getElementById('md-master-modal-empty');
+    var titleEl = document.getElementById('md-master-modal-title');
+    if (!inject) return false;
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var fragment =
+      doc.querySelector('.md-master-embed') ||
+      doc.querySelector('.main-wrapper') ||
+      doc.body;
+    if (!fragment) {
+      setAgencyMasterPanel(loading, false);
+      setAgencyMasterPanel(inject, false);
+      setAgencyMasterPanel(empty, true);
+      return false;
+    }
+    inject.innerHTML = fragment === doc.body ? fragment.innerHTML : fragment.outerHTML;
+    inject.querySelectorAll('form[data-md-full-nav]').forEach(function (form) {
+      form.removeAttribute('data-md-full-nav');
+      form.setAttribute('data-md-embed-form', '1');
+    });
+    var embedRoot = inject.querySelector('[data-md-modal-title]');
+    if (titleEl && embedRoot) {
+      var nextTitle = String(embedRoot.getAttribute('data-md-modal-title') || '').trim();
+      if (nextTitle) titleEl.textContent = nextTitle;
+    }
+    inject.querySelectorAll('script').forEach(function (oldScript) {
+      var script = document.createElement('script');
+      Array.prototype.slice.call(oldScript.attributes).forEach(function (attr) {
+        script.setAttribute(attr.name, attr.value);
+      });
+      script.textContent = oldScript.textContent;
+      oldScript.parentNode.replaceChild(script, oldScript);
+    });
+    setAgencyMasterPanel(loading, false);
+    setAgencyMasterPanel(empty, false);
+    setAgencyMasterPanel(inject, true);
+    bindHrdAgencyMasterEmbedNav(inject);
+    try {
+      if (typeof global.initEpListboxes === 'function') global.initEpListboxes();
+    } catch (err) {}
+    try {
+      if (typeof global.initHbeTableScroll === 'function') global.initHbeTableScroll();
+    } catch (err) {}
+    return true;
+  }
+
+  function loadHrdAgencyMasterEmbed(url) {
+    var loading = document.getElementById('md-master-modal-loading');
+    var empty = document.getElementById('md-master-modal-empty');
+    var inject = document.getElementById('md-master-modal-inject');
+    var fetchUrl = buildAgencyEmbedUrl(url);
+    if (hrdAgencyMasterAbort) {
+      try {
+        hrdAgencyMasterAbort.abort();
+      } catch (err) {}
+    }
+    hrdAgencyMasterAbort = new AbortController();
+    setAgencyMasterPanel(empty, false);
+    setAgencyMasterPanel(inject, false);
+    setAgencyMasterPanel(loading, true);
+    if (inject) {
+      inject.innerHTML = '';
+      inject.__hrdAgencyNavBound = false;
+    }
+    return fetch(fetchUrl, {
+      credentials: 'same-origin',
+      headers: { Accept: 'text/html' },
+      signal: hrdAgencyMasterAbort.signal
+    })
+      .then(function (resp) {
+        if (!resp.ok) throw new Error('fetch failed');
+        return resp.text();
+      })
+      .then(function (html) {
+        paintHrdAgencyMasterHtml(html);
+      })
+      .catch(function (err) {
+        if (err && err.name === 'AbortError') return;
+        setAgencyMasterPanel(loading, false);
+        setAgencyMasterPanel(inject, false);
+        setAgencyMasterPanel(empty, true);
+      });
+  }
+
+  function bindHrdAgencyMasterEmbedNav(inject) {
+    if (!inject || inject.__hrdAgencyNavBound) return;
+    inject.__hrdAgencyNavBound = true;
+    inject.addEventListener('click', function (e) {
+      var link = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+      if (!link || !inject.contains(link)) return;
+      if (link.hasAttribute('download')) return;
+      if (link.target && link.target !== '_self') return;
+      if (link.hasAttribute('data-de-no-soft-nav')) return;
+      var href = link.getAttribute('href');
+      if (!href || href.charAt(0) === '#') return;
+      e.preventDefault();
+      e.stopPropagation();
+      loadHrdAgencyMasterEmbed(href);
+    });
+    inject.addEventListener('submit', function (e) {
+      var form = e.target;
+      if (!form || form.tagName !== 'FORM' || !inject.contains(form)) return;
+      e.preventDefault();
+      var action = form.getAttribute('action') || '/agencies';
+      var method = String(form.getAttribute('method') || form.method || 'get').toLowerCase();
+      if (method === 'get') {
+        try {
+          var getUrl = new URL(action, window.location.origin);
+          new FormData(form).forEach(function (value, key) {
+            if (value != null && String(value) !== '') getUrl.searchParams.set(key, value);
+          });
+          loadHrdAgencyMasterEmbed(getUrl.pathname + getUrl.search);
+        } catch (err) {
+          loadHrdAgencyMasterEmbed(action);
+        }
+        return;
+      }
+      var body;
+      try {
+        body = e.submitter ? new FormData(form, e.submitter) : new FormData(form);
+      } catch (err) {
+        body = new FormData(form);
+      }
+      if (!body.get('embed')) body.set('embed', '1');
+      var loading = document.getElementById('md-master-modal-loading');
+      var empty = document.getElementById('md-master-modal-empty');
+      setAgencyMasterPanel(empty, false);
+      setAgencyMasterPanel(inject, false);
+      setAgencyMasterPanel(loading, true);
+      if (hrdAgencyMasterAbort) {
+        try {
+          hrdAgencyMasterAbort.abort();
+        } catch (err) {}
+      }
+      hrdAgencyMasterAbort = new AbortController();
+      fetch(buildAgencyEmbedUrl(action), {
+        method: 'POST',
+        body: body,
+        credentials: 'same-origin',
+        headers: { Accept: 'text/html' },
+        redirect: 'follow',
+        signal: hrdAgencyMasterAbort.signal
+      })
+        .then(function (resp) {
+          if (!resp.ok && resp.status !== 400) throw new Error('post failed');
+          return resp.text();
+        })
+        .then(function (html) {
+          paintHrdAgencyMasterHtml(html);
+        })
+        .catch(function (err) {
+          if (err && err.name === 'AbortError') return;
+          setAgencyMasterPanel(loading, false);
+          setAgencyMasterPanel(inject, false);
+          setAgencyMasterPanel(empty, true);
+        });
+    });
+  }
+
+  function bindHrdAgencyMasterModalChrome(modal) {
+    if (!modal || modal.getAttribute('data-hrd-agency-modal-bound') === '1') return;
+    modal.setAttribute('data-hrd-agency-modal-bound', '1');
+    modal.addEventListener('click', function (e) {
+      if (e.target === modal) closeHrdAgencyMasterModal();
+    });
+    var closeBtn = document.getElementById('md-master-modal-close');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        closeHrdAgencyMasterModal();
+      });
+    }
+  }
+
+  function openAgencyMasterPopup(root, opts) {
+    opts = opts || {};
+    var masterUrl =
+      (root && root.getAttribute('data-agency-master-url')) || '/agencies';
+    if (opts.focusForm) {
+      try {
+        var parsed = new URL(masterUrl, window.location.origin);
+        parsed.searchParams.set('focus', 'form');
+        masterUrl = parsed.pathname + parsed.search;
+      } catch (err) {
+        masterUrl =
+          masterUrl + (masterUrl.indexOf('?') === -1 ? '?' : '&') + 'focus=form';
+      }
+    }
+
+    var modal = ensureAgencyMasterModalDom();
+    bindHrdAgencyMasterModalChrome(modal);
+
+    /* Prefer shared Masters helper when already loaded — do not re-init
+       (re-init closed the modal and stacked embed click listeners). */
+    if (typeof global.openMasterModal === 'function') {
+      global.openMasterModal('Agency Master', masterUrl, 'agency');
+      if (modal.classList.contains('open')) return true;
+    }
+
+    /* Self-contained fallback — never navigate away from check-in. */
+    if (typeof global.closeMasterModal !== 'function') {
+      global.closeMasterModal = closeHrdAgencyMasterModal;
+    }
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('md-master-modal-open');
+    loadHrdAgencyMasterEmbed(masterUrl);
+    return true;
+  }
+
   function bindAgencyMasterControls(root, form) {
     if (!form) return;
     bindAgencyGstInput(
@@ -6828,8 +7128,9 @@
     var btn = form.querySelector('[data-hrd-agency-master]') || $('#hrd-ci-agency-master-btn', form);
     if (!btn || btn.getAttribute('data-agency-master-bound') === '1') return;
     btn.setAttribute('data-agency-master-bound', '1');
-    btn.addEventListener('click', function () {
-      var payload = agencyMasterPayload(form);
+    btn.addEventListener('click', function (event) {
+      event.preventDefault();
+      event.stopPropagation();
       var gstError = agencyGstValidationError(form);
       if (gstError) {
         showToast(gstError, true);
@@ -6839,17 +7140,7 @@
         } catch (err) {}
         return;
       }
-      var masterUrl =
-        (root && root.getAttribute('data-agency-master-url')) || '/agencies';
-      if (!payload.name) {
-        if (typeof global.deSoftNavigate === 'function') {
-          global.deSoftNavigate(masterUrl);
-        } else {
-          window.location.href = masterUrl;
-        }
-        return;
-      }
-      syncAgencyMasterFromForm(root, form, { toast: true });
+      openAgencyMasterPopup(root);
     });
   }
 
@@ -7426,6 +7717,7 @@
     ).trim();
     if (!rid || !form || !root) return;
     var editing = !!(opts && opts.editing);
+    var preserveForm = !!(opts && opts.preserveForm);
     fetch('/hotel/api/reservations/' + encodeURIComponent(rid), {
       method: 'GET',
       credentials: 'same-origin',
@@ -7443,6 +7735,15 @@
         if (!document.body.classList.contains('hrd-checkin-open')) return;
         var res = result.data.reservation;
         var enriched = Object.assign({}, stay || {});
+        if (res.id) enriched.reservationId = String(res.id);
+        if (res.bookingId || res.id) {
+          enriched.reservationBookingId = String(res.bookingId || res.id);
+        }
+        /* In-progress draft restore: keep typed fields; only sync booking ids. */
+        if (preserveForm) {
+          syncCheckinReservationIdField(form, enriched);
+          return;
+        }
         var plan = mealPlanToRatePlan(res.mealPlan || res.meal_plan);
         if (!editing) {
           enriched = stripStayMealPlans(enriched);
@@ -7457,10 +7758,6 @@
         );
         if (amount > 0) {
           enriched.roomRate = Math.round((amount / nights) * 100) / 100;
-        }
-        if (res.id) enriched.reservationId = String(res.id);
-        if (res.bookingId || res.id) {
-          enriched.reservationBookingId = String(res.bookingId || res.id);
         }
         var notes = String(res.specialNotes || res.special_notes || '').trim();
         if (notes && !String(enriched.additionalRequests || '').trim()) {
@@ -7659,19 +7956,18 @@
 
     if (staySource) {
       var resumeDraft = readCheckinDraft(root);
-      if (editing && resumeDraft && resumeDraft.open && resumeDraft.stay) {
-        applyStayDraft(form, resumeDraft.stay);
+      /* Prefer open draft (refresh) or any new-check-in draft over reserved stay seed. */
+      if (
+        resumeDraft &&
+        resumeDraft.stay &&
+        (resumeDraft.open || !editing)
+      ) {
+        applyStayDraft(
+          form,
+          !editing ? stripStayMealPlans(resumeDraft.stay) : resumeDraft.stay
+        );
       } else {
         applyStayDraft(form, !editing ? stripStayMealPlans(staySource) : staySource);
-        var editDraft = readCheckinDraft(root);
-        if (editDraft && editDraft.open && editDraft.stay) {
-          if (editDraft.stay.checkOutTime) {
-            setFormTime(form, 'checkOutTime', editDraft.stay.checkOutTime);
-          }
-          if (editDraft.stay.checkInTime) {
-            setFormTime(form, 'checkInTime', editDraft.stay.checkInTime);
-          }
-        }
       }
       if (staySource.bookingNumber && form.bookingNumber) {
         form.bookingNumber.value = staySource.bookingNumber;
@@ -7707,6 +8003,14 @@
       }
     }
 
+    var draftForPreserve = readCheckinDraft(root);
+    /* Only skip reservation rate refresh when restoring an open draft (page refresh). */
+    var preserveForm = !!(
+      draftForPreserve &&
+      draftForPreserve.open &&
+      draftForPreserve.stay
+    );
+
     syncCheckinReservationIdField(
       form,
       staySource ||
@@ -7721,7 +8025,7 @@
         (lastRoom && lastRoom.stay && mapStatus(lastRoom.status) === 'reserved'
           ? lastRoom.stay
           : null),
-      { editing: editing }
+      { editing: editing, preserveForm: preserveForm }
     );
 
     /* New check-in: default to current time (draft/stay may leave it blank). Still editable. */
@@ -10346,6 +10650,13 @@
     }
     if (event.key === 'Escape') {
       /* Close open date picker first, then listbox, then modal. */
+      var agencyMasterModal = document.getElementById('md-master-modal');
+      if (agencyMasterModal && agencyMasterModal.classList.contains('open')) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeHrdAgencyMasterModal();
+        return;
+      }
       var idPreviewModal = document.getElementById('hrd-id-preview-modal');
       if (idPreviewModal && !idPreviewModal.hidden) {
         event.preventDefault();
@@ -10694,13 +11005,8 @@
       return;
     }
 
-    if (status === 'occupied' || status === 'dirty') {
-      if (lastRoom && lastRoom.stay) {
-        openCheckinModal(root, { edit: true });
-      }
-      return;
-    }
-
+    /* New check-in draft: only restore when the room can still accept check-in. */
+    if (status === 'occupied' || status === 'dirty') return;
     openCheckinModal(root);
   }
 
@@ -10839,6 +11145,18 @@
     document.__hotelRoomDetailUnloadBound = true;
     window.addEventListener('pagehide', flushOpenCheckinDraftOnUnload);
     window.addEventListener('beforeunload', flushOpenCheckinDraftOnUnload);
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') flushOpenCheckinDraftOnUnload();
+    });
+  }
+
+  if (!document.__hrdAgencyMasterModalBound) {
+    document.__hrdAgencyMasterModalBound = true;
+    document.addEventListener('md-master-modal-closed', function () {
+      var root = pageRoot();
+      if (!root) return;
+      refreshAgenciesFromApi(root);
+    });
   }
 
   global.initHotelRoomDetailPage = initHotelRoomDetailPage;

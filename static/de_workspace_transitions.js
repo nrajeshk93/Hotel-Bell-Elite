@@ -2977,7 +2977,7 @@
       prefetchBarPosGroup();
       /* Apply module CSS now so the first click does not wait on a cold sheet. */
       [
-        '/static/masters_dashboard.css?v=53',
+        '/static/masters_dashboard.css?v=56',
         '/static/main_dashboard.css?v=32',
         '/static/main_dashboard_analytics.css?v=15',
         '/static/hbe_kpi.css?v=13',
@@ -2989,7 +2989,7 @@
         '/static/ep_form_listbox.css?v=29',
         '/static/pos_tables.css?v=72',
         '/static/pos_invoice.css?v=66',
-        '/static/purchase_ledger.css?v=56',
+        '/static/purchase_ledger.css?v=57',
         '/static/cash_ledger.css?v=26',
         '/static/communication_hub.css?v=12',
         '/static/communication_hub_promotion.css?v=1',

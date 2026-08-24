@@ -787,6 +787,24 @@ body.su-module .pl-action-btns .act-btn.del:hover{
   background:var(--err-bg,#FEF2F2);
   color:var(--err,#DC2626);
 }
+body.su-module .pl-list-panel .sm-row-delete-form,
+body.su-module .pl-action-btns .sm-row-delete-form{
+  display:contents;
+}
+body.su-module .pl-list-panel .act-btn.is-disabled,
+body.su-module .pl-action-btns .act-btn.is-disabled,
+body.su-module .pl-list-panel .act-btn:disabled,
+body.su-module .pl-action-btns .act-btn:disabled{
+  opacity:.42;
+  cursor:not-allowed;
+}
+body.su-module .pl-list-panel .act-btn.is-disabled:hover,
+body.su-module .pl-action-btns .act-btn.is-disabled:hover,
+body.su-module .pl-list-panel .act-btn:disabled:hover,
+body.su-module .pl-action-btns .act-btn:disabled:hover{
+  background:transparent;
+  color:var(--txt3,#94A3B8);
+}
 body.su-module .pl-list-panel .act-btn[data-tip]::after,
 body.su-module .pl-action-btns .act-btn[data-tip]::after{
   content:attr(data-tip);
@@ -880,4 +898,180 @@ body.su-module #employee-master-filter-form .btn-clear{
 }
 body.su-module #employee-master-filter-form .btn-clear:hover{
   background:rgba(220,38,38,.15);
+}
+
+/* ------------------------------------------------------------------
+   Master modal embeds — same Purchase & Expense table chrome when the
+   host page is not body.su-module (e.g. hotel room detail Agency popup).
+   ------------------------------------------------------------------ */
+:is(#md-master-modal, #st-product-master-modal){
+  --txt:#0F172A;
+  --txt2:#334155;
+  --txt3:#64748B;
+  --border:#E2E8F0;
+  --border-s:#EEF2F7;
+  --acc:#2563EB;
+  --acc-bg:#EFF6FF;
+  --err:#DC2626;
+  --err-bg:#FEF2F2;
+  font-family:Inter,'Segoe UI',system-ui,sans-serif;
+  color:var(--txt);
+}
+:is(#md-master-modal, #st-product-master-modal) .pl-count{
+  font-size:12px;
+  font-weight:600;
+  color:var(--txt3);
+}
+:is(#md-master-modal, #st-product-master-modal) .pl-card-body--flush{padding:0}
+:is(#md-master-modal, #st-product-master-modal) .pl-table-wrap{overflow:auto}
+:is(#md-master-modal, #st-product-master-modal) .pl-table{
+  width:100%;
+  border-collapse:collapse;
+  font-family:Inter,'Segoe UI',system-ui,sans-serif;
+}
+:is(#md-master-modal, #st-product-master-modal) .pl-table th,
+:is(#md-master-modal, #st-product-master-modal) .pl-table td{
+  padding:12px 18px;
+  text-align:left;
+  border-bottom:1px solid var(--border-s);
+  font-size:13px;
+  line-height:1.45;
+  vertical-align:middle;
+  color:var(--txt);
+}
+:is(#md-master-modal, #st-product-master-modal) .pl-table th{
+  background:#F8FAFD;
+  color:var(--txt3);
+  font-size:10px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.5px;
+}
+:is(#md-master-modal, #st-product-master-modal) .pl-table tr:last-child td{border-bottom:0}
+:is(#md-master-modal, #st-product-master-modal) .pl-col-actions{
+  min-width:120px;
+  white-space:nowrap;
+  text-align:right;
+}
+:is(#md-master-modal, #st-product-master-modal) .pl-name{
+  font-weight:700;
+  color:var(--txt);
+}
+:is(#md-master-modal, #st-product-master-modal) .pl-list-panel .act-grp,
+:is(#md-master-modal, #st-product-master-modal) .sm-list-panel .act-grp{
+  display:inline-flex;
+  align-items:center;
+  gap:2px;
+  background:#F8FAFD;
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:3px;
+  position:relative;
+  overflow:visible;
+}
+:is(#md-master-modal, #st-product-master-modal) .pl-list-panel .act-btn,
+:is(#md-master-modal, #st-product-master-modal) .sm-list-panel .act-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:28px;
+  height:28px;
+  border-radius:6px;
+  border:none;
+  cursor:pointer;
+  background:transparent;
+  color:var(--txt3);
+  text-decoration:none;
+  transition:background .12s,color .12s;
+  position:relative;
+  flex-shrink:0;
+  padding:0;
+  appearance:none;
+  font:inherit;
+}
+:is(#md-master-modal, #st-product-master-modal) .pl-list-panel .act-btn svg,
+:is(#md-master-modal, #st-product-master-modal) .sm-list-panel .act-btn svg{
+  width:14px;
+  height:14px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:1.9;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  pointer-events:none;
+}
+:is(#md-master-modal, #st-product-master-modal) .pl-list-panel .act-btn:hover,
+:is(#md-master-modal, #st-product-master-modal) .sm-list-panel .act-btn:hover{
+  color:var(--txt);
+}
+:is(#md-master-modal, #st-product-master-modal) .pl-list-panel .act-btn.edit:hover,
+:is(#md-master-modal, #st-product-master-modal) .sm-list-panel .act-btn.edit:hover{
+  background:var(--acc-bg);
+  color:var(--acc);
+}
+:is(#md-master-modal, #st-product-master-modal) .pl-list-panel .sm-row-delete-form,
+:is(#md-master-modal, #st-product-master-modal) .sm-list-panel .sm-row-delete-form{
+  display:contents;
+}
+:is(#md-master-modal, #st-product-master-modal) .pl-list-panel .act-btn.del:hover,
+:is(#md-master-modal, #st-product-master-modal) .sm-list-panel .act-btn.del:hover{
+  background:var(--err-bg,#FEF2F2);
+  color:var(--err,#DC2626);
+}
+:is(#md-master-modal, #st-product-master-modal) .pl-list-panel .act-btn.is-disabled,
+:is(#md-master-modal, #st-product-master-modal) .sm-list-panel .act-btn.is-disabled,
+:is(#md-master-modal, #st-product-master-modal) .pl-list-panel .act-btn:disabled,
+:is(#md-master-modal, #st-product-master-modal) .sm-list-panel .act-btn:disabled{
+  opacity:.42;
+  cursor:not-allowed;
+}
+:is(#md-master-modal, #st-product-master-modal) .pl-list-panel .act-btn.is-disabled:hover,
+:is(#md-master-modal, #st-product-master-modal) .sm-list-panel .act-btn.is-disabled:hover,
+:is(#md-master-modal, #st-product-master-modal) .pl-list-panel .act-btn:disabled:hover,
+:is(#md-master-modal, #st-product-master-modal) .sm-list-panel .act-btn:disabled:hover{
+  background:transparent;
+  color:var(--txt3);
+}
+:is(#md-master-modal, #st-product-master-modal) .card-hdr{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:14px 18px;
+  border-bottom:1px solid var(--border-s);
+  gap:12px;
+  flex-wrap:wrap;
+  background:#fff;
+}
+:is(#md-master-modal, #st-product-master-modal) .card-title{
+  font-size:13px;
+  font-weight:700;
+  color:var(--txt);
+  display:flex;
+  align-items:center;
+  gap:7px;
+  font-family:Inter,'Segoe UI',system-ui,sans-serif;
+}
+:is(#md-master-modal, #st-product-master-modal) .card-title svg{
+  width:15px;
+  height:15px;
+  stroke:var(--txt3);
+  fill:none;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+:is(#md-master-modal, #st-product-master-modal) .pl-empty,
+:is(#md-master-modal, #st-product-master-modal) .sm-empty{
+  padding:28px 18px;
+  text-align:center;
+  color:var(--txt3);
+  font-size:13px;
+  line-height:1.5;
+}
+:is(#md-master-modal, #st-product-master-modal) .pl-empty strong,
+:is(#md-master-modal, #st-product-master-modal) .sm-empty strong{
+  display:block;
+  color:var(--txt);
+  font-weight:700;
+  margin-bottom:4px;
 }

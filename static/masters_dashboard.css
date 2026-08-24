@@ -1172,7 +1172,9 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
 
 /* Customer / Supplier embed lists — match Product Master / pl-table */
 .md-master-embed--customer .pl-list-panel,
-.md-master-embed--supplier .pl-list-panel {
+.md-master-embed--supplier .pl-list-panel,
+.md-master-embed--agency .pl-list-panel,
+.md-master-embed--agency .sm-list-panel {
   border: 1px solid #EEF2F7;
   border-radius: 20px;
   background: #fff;
@@ -1194,8 +1196,27 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
   min-width: 720px;
 }
 
+.md-master-embed--agency .sm-pl-table {
+  min-width: 960px;
+  table-layout: auto;
+}
+
+.md-master-embed--agency .sm-pl-table td {
+  vertical-align: top;
+}
+
+.md-master-embed--agency .sm-pl-table .sm-col-mobile {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.md-master-embed--agency .sm-pl-table .pl-col-actions {
+  vertical-align: middle;
+}
+
 .md-master-embed--customer .sm-pl-table tbody tr:hover td,
-.md-master-embed--supplier .sm-pl-table tbody tr:hover td {
+.md-master-embed--supplier .sm-pl-table tbody tr:hover td,
+.md-master-embed--agency .sm-pl-table tbody tr:hover td {
   background: #FAFBFD;
 }
 
@@ -1205,6 +1226,263 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
 
 .md-master-embed--supplier .sm-pl-table .pl-col-actions {
   vertical-align: middle;
+}
+
+/* Agency embed header — match Purchase & Expenses (title row + compact filter card) */
+#md-master-modal .md-master-embed--agency {
+  --acc: #2563EB;
+  --acc-h: #1D4ED8;
+  --acc-bg: rgba(59, 130, 246, 0.08);
+  --pl-filter-control-h: 44px;
+  --txt: #0F172A;
+  --txt2: #4A5568;
+  --txt3: #64748B;
+  --border: #E2E8F0;
+  --border-s: #EEF2F7;
+  font-family: Inter, 'Segoe UI', system-ui, sans-serif;
+  color: #111827;
+  background: #F8FAFC;
+}
+
+#md-master-modal .md-master-embed--agency > .md-master-embed-header {
+  padding: 16px 24px 0;
+  background: #F8FAFC;
+}
+
+#md-master-modal .md-master-embed--agency .su-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+  flex-wrap: nowrap;
+}
+
+#md-master-modal .md-master-embed--agency .su-header-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+#md-master-modal .md-master-embed--agency .su-header-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+#md-master-modal .md-master-embed--agency .su-page-back {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  border: 1px solid #E2E8F0;
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  flex-shrink: 0;
+  text-decoration: none;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+
+#md-master-modal .md-master-embed--agency .su-page-back:hover {
+  background: #F8FAFC;
+  border-color: #CBD5E1;
+  color: #0F172A;
+}
+
+#md-master-modal .md-master-embed--agency .su-page-back svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#md-master-modal .md-master-embed--agency .su-title h1 {
+  font-size: 34px;
+  line-height: 1.15;
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: -0.03em;
+  margin: 0;
+  font-family: Inter, 'Segoe UI', system-ui, sans-serif;
+}
+
+#md-master-modal .md-master-embed--agency .su-header-tools,
+#md-master-modal .md-master-embed--agency .md-master-embed-header-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  margin-left: auto;
+  max-width: 100%;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+#md-master-modal .md-master-embed--agency .su-header-tools .btn,
+#md-master-modal .md-master-embed--agency .md-master-embed-header-actions .btn {
+  box-sizing: border-box;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+  border-radius: 8px;
+  font: 600 13px Inter, 'Segoe UI', system-ui, sans-serif;
+  text-decoration: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+#md-master-modal .md-master-embed--agency .su-header-tools .btn-primary,
+#md-master-modal .md-master-embed--agency .md-master-embed-header-actions .btn-primary {
+  background: var(--acc);
+  border-color: var(--acc);
+  color: #fff;
+}
+
+#md-master-modal .md-master-embed--agency .su-header-tools .btn-primary:hover,
+#md-master-modal .md-master-embed--agency .md-master-embed-header-actions .btn-primary:hover {
+  background: var(--acc-h);
+  border-color: var(--acc-h);
+  color: #fff;
+}
+
+#md-master-modal .md-master-embed--agency .se-sales-header-card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 8px 24px rgba(15, 23, 42, 0.06);
+  overflow: visible;
+}
+
+#md-master-modal .md-master-embed--agency .se-sales-header-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  padding: 18px 20px 20px;
+  flex-wrap: wrap;
+}
+
+#md-master-modal .md-master-embed--agency #sm-agency-filter-form.md-master-embed-filter-form-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+/* Compact Purchase & Expense–style search (not full-bleed Menu Master chip) */
+#md-master-modal .md-master-embed--agency .pl-search-chip {
+  position: relative;
+  flex: 1 1 220px;
+  width: auto;
+  min-width: 180px;
+  max-width: 420px;
+  z-index: 2;
+}
+
+#md-master-modal .md-master-embed--agency .pl-search-chip .se-filter-chip-label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--txt2);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  text-align: left;
+}
+
+#md-master-modal .md-master-embed--agency .pl-search-chip .se-filter-chip-control {
+  width: 100%;
+  height: var(--pl-filter-control-h);
+  min-height: var(--pl-filter-control-h);
+  max-height: var(--pl-filter-control-h);
+  border-radius: 8px;
+  border: 1px solid var(--border) !important;
+  background: #fff !important;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  box-shadow: none;
+  padding: 0;
+}
+
+#md-master-modal .md-master-embed--agency .pl-search-chip .se-filter-chip-icon {
+  display: none !important;
+}
+
+#md-master-modal .md-master-embed--agency .pl-search-chip .pl-search-input,
+#md-master-modal .md-master-embed--agency .pl-search-chip input[type="search"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  appearance: none;
+  -webkit-appearance: none;
+  font: 500 13px Inter, system-ui, sans-serif;
+  color: #111827;
+  padding: 0 12px;
+  margin: 0;
+  border-radius: 0;
+}
+
+#md-master-modal .md-master-embed--agency .pl-search-chip .pl-search-input::placeholder,
+#md-master-modal .md-master-embed--agency .pl-search-chip input[type="search"]::placeholder {
+  color: #94A3B8;
+  font-weight: 500;
+}
+
+#md-master-modal .md-master-embed--agency .pl-search-chip.is-active .se-filter-chip-control,
+#md-master-modal .md-master-embed--agency .pl-search-chip .se-filter-chip-control:focus-within {
+  border-color: #93C5FD !important;
+  background: #EFF6FF !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+@media (max-width: 720px) {
+  #md-master-modal .md-master-embed--agency .su-header-top {
+    flex-direction: column;
+    gap: 16px;
+  }
+  #md-master-modal .md-master-embed--agency .su-header-tools,
+  #md-master-modal .md-master-embed--agency .md-master-embed-header-actions {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-start;
+  }
+  #md-master-modal .md-master-embed--agency .su-title h1 {
+    font-size: 28px;
+  }
+  #md-master-modal .md-master-embed--agency .pl-search-chip {
+    max-width: none;
+    flex: 1 1 100%;
+  }
 }
 
 /*

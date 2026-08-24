@@ -161,6 +161,73 @@ class AgencyMasterRouteTests(unittest.TestCase):
         self.assertIn("Bank Name", html)
         self.assertIn("IFSC Code", html)
 
+    def test_delete_agency_allowed(self):
+        created = self.client.post(
+            "/agencies/create",
+            json={"name": "EasyTrip", "gst": "", "address": ""},
+        )
+        self.assertEqual(created.status_code, 200)
+        agency_id = created.get_json()["agency"]["id"]
+
+        page = self.client.get("/agencies")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn('aria-label="Delete EasyTrip"', html)
+        self.assertIn("/agencies/delete", html)
+
+        deleted = self.client.post(
+            "/agencies/delete",
+            data={"agency_id": agency_id},
+            follow_redirects=True,
+        )
+        self.assertEqual(deleted.status_code, 200)
+        self.assertIn("Agency deleted successfully.", deleted.get_data(as_text=True))
+        conn = db_mod.get_db()
+        try:
+            self.assertIsNone(db_mod.get_agency(conn, agency_id))
+        finally:
+            conn.close()
+
+    def test_delete_agency_blocked_with_pending_credit(self):
+        created = self.client.post(
+            "/agencies/create",
+            json={"name": "CreditAgency", "gst": "", "address": ""},
+        )
+        self.assertEqual(created.status_code, 200)
+        agency_id = created.get_json()["agency"]["id"]
+
+        conn = db_mod.get_db()
+        try:
+            db_mod.ensure_hotel_invoice_credits_schema(conn)
+            conn.execute(
+                """INSERT INTO hotel_invoice_credits
+                   (invoice_number, agency_name, guest_name, room_number, credit_date, credit_amount)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                ("HBE/99-00/1", "CreditAgency", "Guest", "101", "2026-08-01", 1500.0),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        page = self.client.get("/agencies")
+        html = page.get_data(as_text=True)
+        self.assertIn("pending credit", html.lower())
+        self.assertIn("is-disabled", html)
+
+        blocked = self.client.post(
+            "/agencies/delete",
+            data={"agency_id": agency_id},
+            follow_redirects=True,
+        )
+        self.assertEqual(blocked.status_code, 200)
+        body = blocked.get_data(as_text=True).lower()
+        self.assertIn("pending credit", body)
+        conn = db_mod.get_db()
+        try:
+            self.assertIsNotNone(db_mod.get_agency(conn, agency_id))
+        finally:
+            conn.close()
+
     def test_save_agency_bank_fields(self):
         created = self.client.post(
             "/agencies/save",

@@ -3641,3 +3641,9 @@ body.hotel-rooms-module .hrd-form-grid > .hotel-date{
   }
   .hrd-modal-foot .hrd-btn{flex:1}
 }
+
+/* Agency Master overlay must sit above check-in (z-index 11000+). */
+.hotel-room-detail-module #md-master-modal.modal-backdrop,
+body.hotel-room-detail-module #md-master-modal.modal-backdrop{
+  z-index:14000;
+}

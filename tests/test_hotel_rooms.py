@@ -3465,6 +3465,8 @@ class HotelRoomsTests(unittest.TestCase):
         locked_html = locked_page.get_data(as_text=True)
         self.assertEqual(locked_page.status_code, 200)
         self.assertIn('data-can-edit="0"', locked_html)
+        self.assertIn("hri-generate", locked_html)
+        self.assertIn("Generate Room Invoice", locked_html)
         self.assertEqual(denied_update.status_code, 403)
         self.assertIn("Edit Access", (denied_update.get_json() or {}).get("error", ""))
         self.assertEqual(denied_discount.status_code, 403)
