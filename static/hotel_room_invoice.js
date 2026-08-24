@@ -18,7 +18,7 @@
   var CGST_RATE = 0.025;
   var UGST_RATE = 0.025;
   var SGST_RATE = UGST_RATE;
-  var CSS_HREF = '/static/hotel_room_invoice.css?v=9';
+  var CSS_HREF = '/static/hotel_room_invoice.css?v=10';
 
   function absoluteAssetUrl(path) {
     var raw = String(path || '').trim();
@@ -829,6 +829,21 @@
     return room;
   }
 
+  function invoiceClosingHtml() {
+    return (
+      '<div class="hri-closing">' +
+      '<div class="hri-thanks">Thank You &amp; Safe Travels!</div>' +
+      '<div class="hri-values">' +
+      '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></div>Comfortable Stay</div>' +
+      '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><polygon points="12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9"/></svg></div>Quality Service</div>' +
+      '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><path d="M5 16c0-4 3-7 7-7s7 3 7 7"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/><path d="M4 16h16v4H4z"/></svg></div>Memorable Experience</div>' +
+      '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-8 10-4.5-2.5-8-5-8-10V6l8-3 8 3z"/></svg></div>We Value You</div>' +
+      '</div>' +
+      '<div class="hri-sign"><div class="hri-sign-box"><div class="hri-sign-line"></div><div class="hri-sign-title">Authorised Signatory</div><div class="hri-sign-sub">Hotel Bell Elite</div></div></div>' +
+      '</div>'
+    );
+  }
+
   function buildHotelRoomInvoiceHtml(room, opts) {
     opts = opts || {};
     var invNo = String(opts.invoiceNumber || '').trim();
@@ -1063,7 +1078,7 @@
         : '') +
       '</div></aside></div>';
 
-    var footerHtml =
+    var totalsHtml =
       '<div class="hri-bottom">' +
       '<section class="hri-notes"><div class="hri-notes-head">' +
       iconDoc() +
@@ -1093,15 +1108,7 @@
       '<div class="hri-words">Amount in Words: <strong>' +
       escapeHtml(amountInWords(total)) +
       '</strong></div>' +
-      '</section></div>' +
-      '<div class="hri-thanks">Thank You &amp; Safe Travels!</div>' +
-      '<div class="hri-values">' +
-      '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></div>Comfortable Stay</div>' +
-      '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><polygon points="12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9"/></svg></div>Quality Service</div>' +
-      '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><path d="M5 16c0-4 3-7 7-7s7 3 7 7"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/><path d="M4 16h16v4H4z"/></svg></div>Memorable Experience</div>' +
-      '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-8 10-4.5-2.5-8-5-8-10V6l8-3 8 3z"/></svg></div>We Value You</div>' +
-      '</div>' +
-      '<div class="hri-sign"><div class="hri-sign-box"><div class="hri-sign-line"></div><div class="hri-sign-title">Authorised Signatory</div><div class="hri-sign-sub">Hotel Bell Elite</div></div></div>';
+      '</section></div>';
 
     return (
       '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
@@ -1120,6 +1127,7 @@
       '</div>' +
       '<article class="hri-sheet">' +
       cancelled.mark +
+      '<div class="hri-sheet-body">' +
       '<table class="hri-doc">' +
       '<thead>' +
       '<tr><td colspan="6" class="hri-doc-masthead">' +
@@ -1139,10 +1147,12 @@
       '</tbody>' +
       '<tfoot>' +
       '<tr><td colspan="6" class="hri-doc-foot">' +
-      footerHtml +
+      totalsHtml +
       '</td></tr>' +
       '</tfoot>' +
       '</table>' +
+      '</div>' +
+      invoiceClosingHtml() +
       '</article></body></html>'
     );
   }
@@ -1559,7 +1569,7 @@
         ? 'Restaurant and bar bills transferred to this room stay. Tax follows each POS invoice (VAT shown when applicable).'
         : 'Restaurant and bar bills transferred to this room stay. Tax follows each POS invoice.';
 
-    var footerHtml =
+    var totalsHtml =
       '<div class="hri-bottom">' +
       '<section class="hri-notes"><div class="hri-notes-head">' +
       iconDoc() +
@@ -1577,15 +1587,7 @@
       '<div class="hri-words">Amount in Words: <strong>' +
       escapeHtml(amountInWords(total)) +
       '</strong></div>' +
-      '</section></div>' +
-      '<div class="hri-thanks">Thank You &amp; Safe Travels!</div>' +
-      '<div class="hri-values">' +
-      '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></div>Comfortable Stay</div>' +
-      '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><polygon points="12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9"/></svg></div>Quality Service</div>' +
-      '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><path d="M5 16c0-4 3-7 7-7s7 3 7 7"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/><path d="M4 16h16v4H4z"/></svg></div>Memorable Experience</div>' +
-      '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-8 10-4.5-2.5-8-5-8-10V6l8-3 8 3z"/></svg></div>We Value You</div>' +
-      '</div>' +
-      '<div class="hri-sign"><div class="hri-sign-box"><div class="hri-sign-line"></div><div class="hri-sign-title">Authorised Signatory</div><div class="hri-sign-sub">Hotel Bell Elite</div></div></div>';
+      '</section></div>';
 
     return (
       '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
@@ -1604,6 +1606,7 @@
       '</div>' +
       '<article class="hri-sheet">' +
       cancelled.mark +
+      '<div class="hri-sheet-body">' +
       '<table class="hri-doc">' +
       '<thead>' +
       '<tr><td colspan="6" class="hri-doc-masthead">' +
@@ -1623,10 +1626,12 @@
       '</tbody>' +
       '<tfoot>' +
       '<tr><td colspan="6" class="hri-doc-foot">' +
-      footerHtml +
+      totalsHtml +
       '</td></tr>' +
       '</tfoot>' +
       '</table>' +
+      '</div>' +
+      invoiceClosingHtml() +
       '</article></body></html>'
     );
   }

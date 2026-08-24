@@ -55,13 +55,28 @@ html, body {
 
 .hri-sheet {
   position: relative;
+  display: flex;
+  flex-direction: column;
   width: 210mm;
   min-height: 297mm;
   margin: 18px auto 32px;
-  padding: 18mm 16mm 16mm;
+  padding: 18mm 16mm 14mm;
   background: #fff;
   box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12);
   color: var(--hri-ink);
+}
+
+.hri-sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+.hri-closing {
+  flex: 0 0 auto;
+  margin-top: auto;
+  padding-top: 18px;
+  width: 100%;
 }
 
 .hri-cancelled-watermark{
@@ -507,7 +522,7 @@ html, body {
 }
 
 .hri-thanks {
-  margin: 28px 0 10px;
+  margin: 0 0 10px;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -530,7 +545,7 @@ html, body {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 10px;
-  margin: 8px 0 22px;
+  margin: 8px 0 18px;
   text-align: center;
 }
 
@@ -596,16 +611,31 @@ html, body {
 @media print {
   html, body {
     background: #fff !important;
+    height: auto;
   }
   .hri-toolbar {
     display: none !important;
   }
   .hri-sheet {
+    display: flex;
+    flex-direction: column;
     width: auto;
-    min-height: 0;
+    /* Fill one A4 printable area when content is short so closing sits at the foot. */
+    min-height: calc(297mm - 16mm);
+    height: auto;
     margin: 0;
     padding: 0;
     box-shadow: none;
+  }
+  .hri-sheet-body {
+    flex: 1 1 auto;
+  }
+  .hri-closing {
+    flex: 0 0 auto;
+    margin-top: auto;
+    padding-top: 12px;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
   .hri-cancelled-watermark span{
     color:rgba(185,28,28,.42);
@@ -619,6 +649,7 @@ html, body {
   /* Repeat hotel masthead + column headers on every printed page. */
   .hri-doc {
     page-break-inside: auto;
+    width: 100%;
   }
   .hri-doc thead {
     display: table-header-group;
@@ -632,7 +663,10 @@ html, body {
     break-inside: avoid;
   }
   .hri-doc-foot,
-  .hri-bottom,
+  .hri-bottom {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
   .hri-thanks,
   .hri-values,
   .hri-sign {
@@ -726,12 +760,12 @@ html, body {
     font-size: 10px;
   }
   .hri-thanks {
-    margin: 12px 0 4px;
+    margin: 0 0 4px;
     font-size: 16px;
     gap: 10px;
   }
   .hri-values {
-    margin: 2px 0 10px;
+    margin: 2px 0 8px;
     gap: 6px;
   }
   .hri-value {
