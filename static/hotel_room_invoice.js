@@ -18,7 +18,7 @@
   var CGST_RATE = 0.025;
   var UGST_RATE = 0.025;
   var SGST_RATE = UGST_RATE;
-  var CSS_HREF = '/static/hotel_room_invoice.css?v=8';
+  var CSS_HREF = '/static/hotel_room_invoice.css?v=9';
 
   function absoluteAssetUrl(path) {
     var raw = String(path || '').trim();
@@ -31,6 +31,57 @@
       }
     } catch (err) {}
     return raw;
+  }
+
+  /* Production nginx caches /static/ for a long time. Invoice previews must not
+     depend on a stale stylesheet — prefer an inline copy fetched with no-store. */
+  var _invoiceCssText = '';
+  var _invoiceCssTextPromise = null;
+
+  function invoiceStylesheetHtml(cssText) {
+    if (cssText) {
+      return (
+        '<style id="hri-invoice-css">' +
+        String(cssText).replace(/<\/style/gi, '<\\/style') +
+        '</style>'
+      );
+    }
+    return (
+      '<link rel="stylesheet" href="' + absoluteAssetUrl(CSS_HREF) + '">'
+    );
+  }
+
+  function fetchInvoiceCssText() {
+    if (_invoiceCssText) return Promise.resolve(_invoiceCssText);
+    if (_invoiceCssTextPromise) return _invoiceCssTextPromise;
+    _invoiceCssTextPromise = fetch(absoluteAssetUrl(CSS_HREF), {
+      cache: 'no-store',
+      credentials: 'same-origin'
+    })
+      .then(function (resp) {
+        if (!resp.ok) throw new Error('invoice css fetch failed');
+        return resp.text();
+      })
+      .then(function (text) {
+        _invoiceCssText = String(text || '');
+        return _invoiceCssText;
+      })
+      .catch(function () {
+        _invoiceCssTextPromise = null;
+        return '';
+      });
+    return _invoiceCssTextPromise;
+  }
+
+  function withInlineInvoiceCss(html) {
+    return fetchInvoiceCssText().then(function (cssText) {
+      if (!cssText) return html;
+      var styleTag = invoiceStylesheetHtml(cssText);
+      if (/<link\s+rel=["']stylesheet["'][^>]*>/i.test(html)) {
+        return html.replace(/<link\s+rel=["']stylesheet["'][^>]*>/i, styleTag);
+      }
+      return html.replace(/<\/head>/i, styleTag + '</head>');
+    });
   }
 
   var ONES = [
@@ -1058,9 +1109,7 @@
       '<title>Invoice ' +
       escapeHtml(invoiceNo) +
       ' | Hotel Bell Elite</title>' +
-      '<link rel="stylesheet" href="' +
-      absoluteAssetUrl(CSS_HREF) +
-      '">' +
+      invoiceStylesheetHtml('') +
       '<style>.muted{color:#5b6b7c;font-weight:500}</style>' +
       '</head><body' +
       (cancelled.isCancelled ? ' class="is-cancelled"' : '') +
@@ -1164,44 +1213,59 @@
     var autoPrint = opts.autoPrint === true;
     var title = String(opts.title || 'Invoice').trim() || 'Invoice';
 
-    try {
-      var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-      var url = URL.createObjectURL(blob);
-      var blobWin = global.open(url, '_blank', 'noopener,noreferrer,width=920,height=1100');
-      if (blobWin) {
-        setTimeout(function () {
-          try {
-            blobWin.focus();
-            if (autoPrint) blobWin.print();
-          } catch (err) {}
-          setTimeout(function () {
-            URL.revokeObjectURL(url);
-          }, 60000);
-        }, 300);
-        return true;
-      }
-      URL.revokeObjectURL(url);
-    } catch (err) {}
-
-    try {
-      var win = global.open('', '_blank', 'width=920,height=1100');
-      if (win) {
-        win.document.open();
-        win.document.write(html);
-        win.document.close();
-        win.focus();
-        if (autoPrint) {
+    function present(finalHtml) {
+      try {
+        var blob = new Blob([finalHtml], { type: 'text/html;charset=utf-8' });
+        var url = URL.createObjectURL(blob);
+        var blobWin = global.open(url, '_blank', 'noopener,noreferrer,width=920,height=1100');
+        if (blobWin) {
           setTimeout(function () {
             try {
-              win.print();
+              blobWin.focus();
+              if (autoPrint) blobWin.print();
             } catch (err) {}
-          }, 350);
+            setTimeout(function () {
+              URL.revokeObjectURL(url);
+            }, 60000);
+          }, 300);
+          return true;
         }
-        return true;
-      }
-    } catch (err) {}
+        URL.revokeObjectURL(url);
+      } catch (err) {}
 
-    return openHtmlPreviewOverlay(html, title, autoPrint);
+      try {
+        var win = global.open('', '_blank', 'width=920,height=1100');
+        if (win) {
+          win.document.open();
+          win.document.write(finalHtml);
+          win.document.close();
+          win.focus();
+          if (autoPrint) {
+            setTimeout(function () {
+              try {
+                win.print();
+              } catch (err) {}
+            }, 350);
+          }
+          return true;
+        }
+      } catch (err) {}
+
+      return openHtmlPreviewOverlay(finalHtml, title, autoPrint);
+    }
+
+    /* Show immediately with linked CSS, then refresh with inlined no-store CSS
+       so production Cloudflare/nginx year-long static caches cannot pin an old look. */
+    var shown = present(html);
+    withInlineInvoiceCss(html).then(function (finalHtml) {
+      if (!finalHtml || finalHtml === html) return;
+      var frame = document.querySelector('#hri-preview-overlay .hri-preview-frame');
+      if (frame) {
+        frame.srcdoc = finalHtml;
+        return;
+      }
+    });
+    return shown;
   }
 
   function openHotelRoomInvoice(room, opts) {
@@ -1529,9 +1593,7 @@
       '<title>Tax Invoice ' +
       escapeHtml(invoiceNo) +
       ' | Hotel Bell Elite</title>' +
-      '<link rel="stylesheet" href="' +
-      absoluteAssetUrl(CSS_HREF) +
-      '">' +
+      invoiceStylesheetHtml('') +
       '<style>.muted{color:#5b6b7c;font-weight:500}</style>' +
       '</head><body' +
       (cancelled.isCancelled ? ' class="is-cancelled"' : '') +
@@ -1584,6 +1646,13 @@
       autoPrint: opts.autoPrint === true,
       title: invNo
     });
+  }
+
+  /* Warm CSS cache so the first invoice open can inline current styles quickly. */
+  if (typeof global.fetch === 'function') {
+    try {
+      fetchInvoiceCssText();
+    } catch (err) {}
   }
 
   global.buildHotelRoomInvoiceHtml = buildHotelRoomInvoiceHtml;
