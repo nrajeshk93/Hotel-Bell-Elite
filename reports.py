@@ -37,7 +37,7 @@ def report_export_filename(
     date_to=None,
     date_filter_active=None,
 ):
-    """Hotel Bell Elite {Report Title} 01 July 26 to 31 July 26.xlsx"""
+    """Hotel Bell Elite {Report Title} 01 July 26.xlsx (or … 01 July 26 to 31 July 26.xlsx)."""
     title = " ".join(str(report_title or "").split())
     payload = filters if isinstance(filters, dict) else {}
     start = date_from if date_from is not None else payload.get("date_from")
@@ -50,6 +50,8 @@ def report_export_filename(
             active = bool(start and end)
     if active and start and end:
         start_label = report_export_date_label(start)
+        if start == end:
+            return f"{REPORT_EXPORT_BRAND} {title} {start_label}.xlsx"
         end_label = report_export_date_label(end)
         return f"{REPORT_EXPORT_BRAND} {title} {start_label} to {end_label}.xlsx"
     return f"{REPORT_EXPORT_BRAND} {title}.xlsx"

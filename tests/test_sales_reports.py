@@ -215,7 +215,16 @@ class SalesReportsTests(unittest.TestCase):
                 date_to=date(2026, 4, 1),
                 date_filter_active=True,
             ),
-            "Hotel Bell Elite Sales - Restaurant & Bar 01 April 26 to 01 April 26.xlsx",
+            "Hotel Bell Elite Sales - Restaurant & Bar 01 April 26.xlsx",
+        )
+        self.assertEqual(
+            report_export_filename(
+                "Meal Plan",
+                date_from=date(2026, 8, 24),
+                date_to=date(2026, 8, 24),
+                date_filter_active=True,
+            ),
+            "Hotel Bell Elite Meal Plan 24 August 26.xlsx",
         )
         self.assertEqual(
             report_export_month_filename("Salary Payment", 2026, 8),
@@ -268,7 +277,7 @@ class SalesReportsTests(unittest.TestCase):
             html = page.get_data(as_text=True)
             self.assertIn(title, html)
             self.assertIn('id="sales-report-page"', html)
-            self.assertIn("Export Excel", html)
+            self.assertIn("Export", html)
             self.assertIn('aria-label="Back to Reports"', html)
             self.assertTrue(
                 'id="sr-table"' in html or "No invoices match these filters." in html,
@@ -1019,9 +1028,36 @@ class SalesReportsTests(unittest.TestCase):
         from openpyxl import load_workbook
 
         wb = load_workbook(BytesIO(export.data))
-        ws = wb.active
-        self.assertEqual(ws["A1"].value.startswith("Hotel Bell Elite — Meal Plan"), True)
-        headers = [ws.cell(4, col).value for col in range(1, 10)]
+        self.assertEqual(wb.sheetnames, ["Summary", "Line Items"])
+        summary = wb["Summary"]
+        details = wb["Line Items"]
+        self.assertTrue(
+            (summary["A1"].value or "").startswith("Hotel Bell Elite — Meal Plan")
+        )
+        self.assertEqual(summary["A2"].value, "Occupied rooms")
+        self.assertEqual(summary["A3"].value, "Pax")
+        self.assertEqual(summary["A4"].value, "Breakfast")
+        self.assertEqual(summary["A5"].value, "Lunch")
+        self.assertEqual(summary["A6"].value, "Dinner")
+        self.assertEqual(summary["A8"].value, "Meal Plan")
+        self.assertEqual(summary["B8"].value, "Rooms")
+        self.assertEqual(summary["A13"].value, "Total")
+        self.assertIn("A1:B1", {str(r) for r in summary.merged_cells.ranges})
+        self.assertEqual(summary["A1"].fill.fgColor.rgb, "FF315A78")
+        self.assertEqual(summary["A8"].fill.fgColor.rgb, "FF315A78")
+
+        col_a = [
+            details.cell(row, 1).value
+            for row in range(1, (details.max_row or 1) + 1)
+        ]
+        self.assertIn("Hotel Bell Elite — Meal Plan - MAP", col_a)
+        self.assertIn("Hotel Bell Elite — Meal Plan - EP", col_a)
+        map_banner = col_a.index("Hotel Bell Elite — Meal Plan - MAP")
+        ep_banner = col_a.index("Hotel Bell Elite — Meal Plan - EP")
+        self.assertLess(ep_banner, map_banner)
+        headers = [
+            details.cell(ep_banner + 2, col).value for col in range(1, 10)
+        ]
         self.assertEqual(
             headers,
             [
@@ -1036,6 +1072,8 @@ class SalesReportsTests(unittest.TestCase):
                 "Dinner",
             ],
         )
+        self.assertEqual(details.cell(ep_banner + 1, 1).fill.fgColor.rgb, "FF315A78")
+        self.assertEqual(details.cell(ep_banner + 2, 1).fill.fgColor.rgb, "FF315A78")
 
     def test_meal_plan_from_hub_preserves_back_link(self):
         page = self.client.get("/reports/sales/meal-plan?from_hub=reports")

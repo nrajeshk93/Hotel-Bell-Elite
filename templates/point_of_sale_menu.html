@@ -13,7 +13,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=55">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=31">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=47">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=48">
 <script>
 (function(){
   try{
@@ -50,7 +50,7 @@
         </div>
       </div>
       <div class="su-header-tools pos-menu-header-actions">
-        <button type="button" class="btn" id="pos-menu-export" data-pos-menu-action="export" title="Export filtered rows as CSV">Export</button>
+        <button type="button" class="btn" id="pos-menu-export" data-pos-menu-action="export" title="Export filtered rows as Excel">Export</button>
         <button type="button" class="btn" id="pos-menu-add-category" data-pos-menu-action="add-category">Add category</button>
         <button type="button" class="btn btn-primary" id="pos-menu-add-item" data-pos-menu-action="add-item">Add Menu</button>
       </div>
@@ -132,7 +132,7 @@
 
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=64"></script>
 <script src="{{ url_for('static', filename='report_datetime.js') }}?v=1"></script>
-<script src="{{ url_for('static', filename='pos_menu.js') }}?v=71"></script>
+<script src="{{ url_for('static', filename='pos_menu.js') }}?v=72"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

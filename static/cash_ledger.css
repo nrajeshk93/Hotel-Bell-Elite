@@ -20,12 +20,63 @@ body.su-module #cash-ledger-page .pl-list-panel--scroll .pl-table-wrap{
   }
 }
 
+/* Header reflows from available width (sidebar / split), not viewport alone. */
+body.su-module #cash-ledger-page > header.se-sales-header.su-header{
+  container-type:inline-size;
+  container-name:cl-header;
+}
+body.su-module #cash-ledger-page .su-header-top{
+  align-items:center;
+  gap:12px 16px;
+  flex-wrap:wrap;
+  min-width:0;
+}
+body.su-module #cash-ledger-page .su-title{
+  min-width:0;
+  overflow:hidden;
+}
+body.su-module #cash-ledger-page .su-title h1{
+  overflow-wrap:anywhere;
+}
+body.su-module #cash-ledger-page .su-header-tools.cl-header-actions{
+  flex:0 1 auto;
+  max-width:100%;
+}
+
 /* Cash Ledger — same Purchase & Expense KPI card size (do not squeeze 5-up). */
 body.su-module .cl-header-actions{
   display:flex;
   align-items:center;
   gap:10px;
   flex-wrap:wrap;
+}
+
+@container cl-header (max-width:720px){
+  body.su-module #cash-ledger-page .su-header-top{
+    flex-direction:column;
+    align-items:stretch;
+    gap:12px;
+  }
+  body.su-module #cash-ledger-page .su-header-left{
+    flex:1 1 auto;
+  }
+  body.su-module #cash-ledger-page .su-header-tools.cl-header-actions{
+    margin-left:0;
+    justify-content:flex-start;
+    width:100%;
+  }
+  body.su-module #cash-ledger-page .su-title h1{
+    font-size:28px;
+  }
+}
+@container cl-header (max-width:420px){
+  body.su-module #cash-ledger-page .su-title h1{
+    font-size:24px;
+  }
+  body.su-module #cash-ledger-page .su-header-tools.cl-header-actions .btn{
+    flex:1 1 calc(50% - 5px);
+    justify-content:center;
+  }
 }
 body.su-module .cl-type-pill{
   display:inline-flex;

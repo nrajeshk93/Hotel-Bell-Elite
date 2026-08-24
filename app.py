@@ -137,6 +137,7 @@ from db import (
     list_pos_menu_items,
     list_store_products_lite,
     normalize_pos_outlet,
+    POS_MENU_MARGIN_MODERATE_PCT,
     pos_invoice_kpis,
     pos_menu_sales_kpis,
     customer_insights_kpis,
@@ -834,6 +835,27 @@ def inject_su_page_back():
         "from_hub": "reports",
         "back_href": url_for("reports"),
         "back_label": "Back to Reports",
+    }
+
+
+def _reports_hub_nav_overrides(default_section, *, accounts_view="", payroll_view=""):
+    """Keep Report nav when a page is opened from the Reports hub."""
+    try:
+        from_hub = (request.args.get("from_hub") or "").strip().lower()
+    except RuntimeError:
+        from_hub = ""
+    if from_hub != "reports":
+        out = {"de_nav_section": default_section, "de_nav_report_view": ""}
+        if accounts_view:
+            out["de_nav_accounts_view"] = accounts_view
+        if payroll_view:
+            out["de_nav_payroll_view"] = payroll_view
+        return out
+    return {
+        "de_nav_section": "report",
+        "de_nav_report_view": "home",
+        "de_nav_accounts_view": "",
+        "de_nav_payroll_view": "",
     }
 
 
@@ -2507,6 +2529,15 @@ def _render_credit_settlement_page(mode):
         nav_hotel_view = ""
         nav_accounts_view = labels["nav_accounts_view"]
 
+    hub_nav = _reports_hub_nav_overrides(nav_section, accounts_view=nav_accounts_view)
+    nav_section = hub_nav["de_nav_section"]
+    nav_report_view = hub_nav.get("de_nav_report_view") or ""
+    if nav_section == "report":
+        nav_hotel_view = ""
+        nav_accounts_view = ""
+    else:
+        nav_accounts_view = hub_nav.get("de_nav_accounts_view") or nav_accounts_view
+
     return render_template(
         "credit_settlement_page.html",
         settlement_labels=labels,
@@ -2570,6 +2601,7 @@ def _render_credit_settlement_page(mode):
         de_nav_section=nav_section,
         de_nav_hotel_view=nav_hotel_view,
         de_nav_accounts_view=nav_accounts_view,
+        de_nav_report_view=nav_report_view,
     )
 
 
@@ -7092,10 +7124,13 @@ def _meal_plan_page():
 
 
 def _meal_plan_export():
+    """Excel download — Summary + Line Items (same chrome as Purchase & Expense Ledger)."""
     from openpyxl import Workbook
-    from openpyxl.styles import Font
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
     from io import BytesIO
+
+    from meal_plan_report import RATE_PLAN_LABELS, RATE_PLANS
 
     filters = _meal_plan_filters(request.args)
     conn = get_db()
@@ -7109,23 +7144,8 @@ def _meal_plan_export():
         conn.close()
     rows = payload["rows"]
     kpis = payload["kpis"]
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Meal Plan"
-    header_font = Font(bold=True)
     title_date = _sales_report_excel_title_date(filters)
-    ws["A1"] = f"Hotel Bell Elite — Meal Plan{title_date}"
-    ws["A1"].font = Font(bold=True, size=14)
-    ws["A2"] = "Occupied rooms"
-    ws["B2"] = int(kpis.get("occupied_rooms") or 0)
-    ws["C2"] = "Pax"
-    ws["D2"] = int(kpis.get("total_pax") or 0)
-    ws["E2"] = "Breakfast"
-    ws["F2"] = int(kpis.get("breakfast") or 0)
-    ws["G2"] = "Lunch"
-    ws["H2"] = int(kpis.get("lunch") or 0)
-    ws["I2"] = "Dinner"
-    ws["J2"] = int(kpis.get("dinner") or 0)
+
     headers = (
         "Room",
         "Guest",
@@ -7137,29 +7157,207 @@ def _meal_plan_export():
         "Lunch",
         "Dinner",
     )
-    for col, title in enumerate(headers, start=1):
-        cell = ws.cell(row=4, column=col, value=title)
-        cell.font = header_font
-    for idx, row in enumerate(rows, start=5):
-        ws.cell(row=idx, column=1, value=row.get("room_number") or "")
-        ws.cell(row=idx, column=2, value=row.get("guest_name") or "")
-        ws.cell(row=idx, column=3, value=row.get("plan_label") or row.get("plan") or "")
-        ws.cell(row=idx, column=4, value=int(row.get("adults") or 0))
-        ws.cell(row=idx, column=5, value=int(row.get("children") or 0))
-        ws.cell(row=idx, column=6, value=int(row.get("pax") or 0))
-        ws.cell(row=idx, column=7, value=int(row.get("breakfast") or 0))
-        ws.cell(row=idx, column=8, value=int(row.get("lunch") or 0))
-        ws.cell(row=idx, column=9, value=int(row.get("dinner") or 0))
-    max_col = ws.max_column or 1
-    last = ws.max_row or 1
-    for col in range(1, max_col + 1):
-        width = 14
-        for row_idx in range(1, last + 1):
-            value = ws.cell(row=row_idx, column=col).value
-            if value is None:
-                continue
-            width = max(width, min(len(str(value)) + 2, 40))
-        ws.column_dimensions[get_column_letter(col)].width = width
+    col_count = len(headers)
+    amount_cols = {4, 5, 6, 7, 8, 9}
+
+    plan_sections = []
+    for code in RATE_PLANS:
+        plan_rows = [
+            row
+            for row in rows
+            if (row.get("plan") or "").strip().upper() == code
+        ]
+        if plan_rows:
+            plan_sections.append({"label": code, "rows": plan_rows})
+    other_rows = [
+        row
+        for row in rows
+        if (row.get("plan") or "").strip().upper() not in RATE_PLANS
+    ]
+    if other_rows:
+        plan_sections.append({"label": "Other", "rows": other_rows})
+
+    wb = Workbook()
+    summary = wb.active
+    summary.title = "Summary"
+    details = wb.create_sheet("Line Items")
+
+    summary["A1"] = f"Hotel Bell Elite — Meal Plan{title_date}"
+    summary["A2"] = "Occupied rooms"
+    summary["B2"] = int(kpis.get("occupied_rooms") or 0)
+    summary["A3"] = "Pax"
+    summary["B3"] = int(kpis.get("total_pax") or 0)
+    summary["A4"] = "Breakfast"
+    summary["B4"] = int(kpis.get("breakfast") or 0)
+    summary["A5"] = "Lunch"
+    summary["B5"] = int(kpis.get("lunch") or 0)
+    summary["A6"] = "Dinner"
+    summary["B6"] = int(kpis.get("dinner") or 0)
+    summary.merge_cells("A1:B1")
+
+    plan_header_row = 8
+    summary.cell(row=plan_header_row, column=1, value="Meal Plan")
+    summary.cell(row=plan_header_row, column=2, value="Rooms")
+    plan_data_rows = []
+    row_idx = plan_header_row + 1
+    for code in RATE_PLANS:
+        rooms = int(kpis.get(f"{code.lower()}_rooms") or 0)
+        label = RATE_PLAN_LABELS.get(code, code)
+        summary.cell(row=row_idx, column=1, value=label)
+        summary.cell(row=row_idx, column=2, value=rooms)
+        plan_data_rows.append(row_idx)
+        row_idx += 1
+    plan_total_row = row_idx
+    summary.cell(row=plan_total_row, column=1, value="Total")
+    summary.cell(
+        row=plan_total_row,
+        column=2,
+        value=int(kpis.get("occupied_rooms") or 0),
+    )
+
+    def _write_meal_plan_row(target_row, entry):
+        values = (
+            entry.get("room_number") or "",
+            entry.get("guest_name") or "",
+            entry.get("plan_label") or entry.get("plan") or "",
+            int(entry.get("adults") or 0),
+            int(entry.get("children") or 0),
+            int(entry.get("pax") or 0),
+            int(entry.get("breakfast") or 0),
+            int(entry.get("lunch") or 0),
+            int(entry.get("dinner") or 0),
+        )
+        for col, value in enumerate(values, start=1):
+            details.cell(row=target_row, column=col, value=value)
+
+    banner_rows = []
+    header_rows = []
+    item_rows = []
+    row_idx = 1
+    if not plan_sections:
+        details.cell(
+            row=row_idx,
+            column=1,
+            value="Hotel Bell Elite — Meal Plan",
+        )
+        details.merge_cells(
+            start_row=row_idx,
+            start_column=1,
+            end_row=row_idx,
+            end_column=col_count,
+        )
+        banner_rows.append(row_idx)
+        row_idx += 1
+        for col, title in enumerate(headers, start=1):
+            details.cell(row=row_idx, column=col, value=title)
+        header_rows.append(row_idx)
+        row_idx += 1
+    else:
+        for i, section in enumerate(plan_sections):
+            if i > 0:
+                row_idx += 1
+            details.cell(
+                row=row_idx,
+                column=1,
+                value=f"Hotel Bell Elite — Meal Plan - {section['label']}",
+            )
+            details.merge_cells(
+                start_row=row_idx,
+                start_column=1,
+                end_row=row_idx,
+                end_column=col_count,
+            )
+            banner_rows.append(row_idx)
+            row_idx += 1
+            for col, title in enumerate(headers, start=1):
+                details.cell(row=row_idx, column=col, value=title)
+            header_rows.append(row_idx)
+            row_idx += 1
+            for entry in section.get("rows") or []:
+                _write_meal_plan_row(row_idx, entry)
+                item_rows.append(row_idx)
+                row_idx += 1
+
+    last_details = max(1, row_idx - 1)
+    header_fill = PatternFill(
+        fill_type="solid",
+        start_color="FF315A78",
+        end_color="FF315A78",
+    )
+    banner_font = Font(bold=True, size=16, color="FFFFFFFF")
+    chrome_header_font = Font(bold=True, size=11, color="FFFFFFFF")
+    summary_title_font = Font(name="Calibri", bold=True, size=16, color="FFFFFFFF")
+    summary_font = Font(name="Calibri", size=12, color="FF000000")
+    summary_bold_font = Font(name="Calibri", bold=True, size=12, color="FF000000")
+    body_font = Font(size=11, color="FF000000")
+    thin = Side(style="thin", color="FF000000")
+    grid = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    right = Alignment(horizontal="right", vertical="center", wrap_text=True)
+
+    summary_chrome_rows = {
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        plan_header_row,
+        plan_total_row,
+        *plan_data_rows,
+    }
+    for r in sorted(summary_chrome_rows):
+        for col in range(1, 3):
+            cell = summary.cell(row=r, column=col)
+            cell.border = grid
+            cell.alignment = center
+            if r == 1 or r == plan_header_row:
+                cell.fill = header_fill
+                cell.font = summary_title_font
+            elif r == plan_total_row:
+                cell.font = summary_bold_font
+            else:
+                cell.font = summary_font
+
+    for r in range(1, last_details + 1):
+        for col in range(1, col_count + 1):
+            cell = details.cell(row=r, column=col)
+            cell.border = grid
+            if r in banner_rows:
+                cell.fill = header_fill
+                cell.font = banner_font
+                cell.alignment = center
+            elif r in header_rows:
+                cell.fill = header_fill
+                cell.font = chrome_header_font
+                cell.alignment = center
+            elif r in item_rows:
+                cell.font = body_font
+                cell.alignment = right if col in amount_cols else left
+            elif col in amount_cols:
+                cell.font = body_font
+                cell.alignment = right
+
+    summary.row_dimensions[1].height = 23.2
+    for r in (2, 3, 4, 5, 6):
+        summary.row_dimensions[r].height = 17.6
+    summary.row_dimensions[plan_header_row].height = 23.2
+    for r in plan_data_rows:
+        summary.row_dimensions[r].height = 17.6
+    summary.row_dimensions[plan_total_row].height = 17.6
+    summary.column_dimensions["A"].width = 34
+    summary.column_dimensions["B"].width = 39.5
+    for r in banner_rows:
+        details.row_dimensions[r].height = 20
+    for r in header_rows:
+        details.row_dimensions[r].height = 20
+    for r in item_rows:
+        details.row_dimensions[r].height = 17
+    detail_widths = (12, 28, 28, 10, 10, 10, 12, 10, 10)
+    for col, width in enumerate(detail_widths, start=1):
+        details.column_dimensions[get_column_letter(col)].width = width
+
     fname = report_export_filename("Meal Plan", filters=filters)
     buf = BytesIO()
     wb.save(buf)
@@ -7771,36 +7969,10 @@ def sales_report_customer_insights():
     )
 
 
-@app.route(
-    "/reports/sales/customer-insights/export",
-    endpoint="sales_report_customer_insights_export",
-)
-def sales_report_customer_insights_export():
-    """Excel export for Customer Insights report."""
-    from openpyxl import Workbook
+def _write_customer_insights_excel_sheet(ws, rows, *, banner, use_calibri=False):
+    """Write one Customer Insights worksheet (ledger chrome)."""
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
-    from io import BytesIO
-
-    filters = _customer_insights_filters(request.args)
-    rows, _kpis = _customer_insights_load(filters)
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Customer Insights"
-
-    header_fill = PatternFill(
-        fill_type="solid",
-        start_color="FF315A78",
-        end_color="FF315A78",
-    )
-    title_font = Font(bold=True, size=14, color="FFFFFFFF")
-    header_font = Font(bold=True, size=11, color="FFFFFFFF")
-    body_font = Font(size=11, color="FF000000")
-    thin = Side(style="thin", color="FF000000")
-    grid = Border(left=thin, right=thin, top=thin, bottom=thin)
-    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    left = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
     def _whole_or_float(value):
         if value is None:
@@ -7810,6 +7982,25 @@ def sales_report_customer_insights_export():
             return int(num) if num == int(num) else num
         except (TypeError, ValueError):
             return value
+
+    header_fill = PatternFill(
+        fill_type="solid",
+        start_color="FF315A78",
+        end_color="FF315A78",
+    )
+    if use_calibri:
+        title_font = Font(name="Calibri", bold=True, size=14, color="FFFFFFFF")
+        header_font = Font(name="Calibri", bold=True, size=11, color="FFFFFFFF")
+        body_font = Font(name="Calibri", size=11, color="FF000000")
+    else:
+        # Match prior single-sheet Summary chrome (no explicit Calibri).
+        title_font = Font(bold=True, size=14, color="FFFFFFFF")
+        header_font = Font(bold=True, size=11, color="FFFFFFFF")
+        body_font = Font(size=11, color="FF000000")
+    thin = Side(style="thin", color="FF000000")
+    grid = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
     headers = (
         "Customer",
@@ -7822,11 +8013,11 @@ def sales_report_customer_insights_export():
         "Total",
     )
 
-    ws["A1"] = "Hotel Bell Elite — Customer Insights"
+    ws["A1"] = banner
     for col, title in enumerate(headers, start=1):
         ws.cell(row=2, column=col, value=title)
 
-    for idx, row in enumerate(rows, start=3):
+    for idx, row in enumerate(rows or [], start=3):
         values = (
             (row.get("customer_name") or "").strip(),
             row.get("mobile") or "",
@@ -7874,6 +8065,50 @@ def sales_report_customer_insights_export():
                 continue
             max_len = max(max_len, min(len(str(value)) + 2, 42))
         ws.column_dimensions[get_column_letter(col)].width = max_len
+
+
+@app.route(
+    "/reports/sales/customer-insights/export",
+    endpoint="sales_report_customer_insights_export",
+)
+def sales_report_customer_insights_export():
+    """Excel export for Customer Insights — Summary + Hotel / Restaurant / Bar."""
+    from openpyxl import Workbook
+    from io import BytesIO
+
+    filters = _customer_insights_filters(request.args)
+    rows, _kpis = _customer_insights_load(filters)
+
+    outlet_sheets = (
+        ("Hotel", "hotel"),
+        ("Restaurant", "restaurant"),
+        ("Bar", "bar"),
+    )
+    outlet_rows = {}
+    for _label, channel_key in outlet_sheets:
+        channel_filters = dict(filters)
+        channel_filters["selected_channel"] = channel_key
+        outlet_rows[channel_key], _ = _customer_insights_load(channel_filters)
+
+    wb = Workbook()
+    summary = wb.active
+    # Keep first-sheet content/chrome identical to the prior single-sheet export.
+    summary.title = "Summary"
+    _write_customer_insights_excel_sheet(
+        summary,
+        rows,
+        banner="Hotel Bell Elite — Customer Insights",
+        use_calibri=False,
+    )
+
+    for label, channel_key in outlet_sheets:
+        sheet = wb.create_sheet(label)
+        _write_customer_insights_excel_sheet(
+            sheet,
+            outlet_rows[channel_key],
+            banner=f"Hotel Bell Elite — Customer Insights - {label}",
+            use_calibri=True,
+        )
 
     fname = report_export_filename("Customer Insights", filters=filters)
     buf = BytesIO()
@@ -8055,9 +8290,24 @@ def _pos_receipt_config(outlet, user=None):
 
 def _pos_page_context(outlet, pos_view, **extra):
     outlet = normalize_pos_outlet(outlet)
+    from_hub = ""
+    try:
+        from_hub = (request.args.get("from_hub") or "").strip().lower()
+    except RuntimeError:
+        from_hub = ""
+    # Reports hub drill-in: keep Report nav open — do not jump to Restaurant/Bar POS.
+    if from_hub == "reports":
+        nav_section = "report"
+        report_view = "home"
+        nav_pos_view = ""
+    else:
+        nav_section = _pos_nav_section(outlet)
+        report_view = ""
+        nav_pos_view = pos_view
     ctx = {
-        "de_nav_section": _pos_nav_section(outlet),
-        "de_nav_pos_view": pos_view,
+        "de_nav_section": nav_section,
+        "de_nav_pos_view": nav_pos_view,
+        "de_nav_report_view": report_view,
         "pos_outlet": outlet,
         "pos_api_base": _pos_api_base(outlet),
         "pos_label": _pos_label(outlet),
@@ -10620,6 +10870,387 @@ def point_of_sale_menu():
     )
 
 
+def _menu_margin_item_status(item):
+    if (item.get("status") or "").strip().lower() == "hidden":
+        return "hidden"
+    if item.get("category_visible") is False:
+        return "hidden"
+    return "visible"
+
+
+def _menu_margin_outlet_label(outlet):
+    key = normalize_pos_outlet(outlet)
+    return "Bar" if key == POS_OUTLET_BAR else "Restaurant"
+
+
+def _build_menu_margin_export_xlsx(items):
+    """Summary + Line Items + All Items workbook matching Purchase & Expense Ledger chrome."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from io import BytesIO
+
+    def _whole_or_float(value):
+        if value is None:
+            return None
+        try:
+            num = float(value)
+            return int(num) if num == int(num) else num
+        except (TypeError, ValueError):
+            return value
+
+    rows = list(items or [])
+    total_items = len(rows)
+    cost_vals = []
+    margin_vals = []
+    low_count = 0
+    for it in rows:
+        if it.get("food_cost_pct") is not None:
+            try:
+                cost_vals.append(float(it["food_cost_pct"]))
+            except (TypeError, ValueError):
+                pass
+        band = (it.get("margin_band") or "").strip().lower()
+        if it.get("margin_pct") is not None:
+            try:
+                margin_vals.append(float(it["margin_pct"]))
+            except (TypeError, ValueError):
+                pass
+        if band == "low" or (
+            it.get("margin_pct") is not None
+            and float(it.get("margin_pct") or 0) < POS_MENU_MARGIN_MODERATE_PCT
+        ):
+            low_count += 1
+
+    avg_food_cost = (
+        round_half_up(sum(cost_vals) / len(cost_vals), 2) if cost_vals else None
+    )
+    avg_margin = (
+        round_half_up(sum(margin_vals) / len(margin_vals), 2) if margin_vals else None
+    )
+
+    cat_totals = {}
+    cat_order = []
+    for it in rows:
+        label = (it.get("category_name") or "").strip() or "Uncategorised"
+        if label not in cat_totals:
+            cat_order.append(label)
+            cat_totals[label] = 0
+        cat_totals[label] += 1
+
+    sections = []
+    for label in cat_order:
+        sections.append(
+            {
+                "label": label,
+                "rows": [
+                    it
+                    for it in rows
+                    if ((it.get("category_name") or "").strip() or "Uncategorised")
+                    == label
+                ],
+            }
+        )
+
+    headers = (
+        "Menu Item",
+        "Outlet",
+        "Category",
+        "Selling Price",
+        "Food Cost",
+        "Gross Margin",
+        "Margin %",
+        "Status",
+    )
+    col_count = len(headers)
+    amount_cols = {4, 5, 6, 7}
+
+    wb = Workbook()
+    summary = wb.active
+    summary.title = "Summary"
+    details = wb.create_sheet("Line Items")
+    all_items = wb.create_sheet("All Items")
+
+    summary["A1"] = "Hotel Bell Elite — Menu & Margin"
+    summary["A2"] = "Total Menu Items"
+    summary["B2"] = total_items
+    summary["A3"] = "Avg. Food Cost %"
+    summary["B3"] = _whole_or_float(avg_food_cost)
+    summary["A4"] = "Avg. Margin %"
+    summary["B4"] = _whole_or_float(avg_margin)
+    summary["A5"] = "Low Margin Items"
+    summary["B5"] = low_count
+    summary.merge_cells("A1:B1")
+
+    cat_header_row = 7
+    summary.cell(row=cat_header_row, column=1, value="Category")
+    summary.cell(row=cat_header_row, column=2, value="Items")
+    cat_data_rows = []
+    row_idx = cat_header_row + 1
+    for label in cat_order:
+        summary.cell(row=row_idx, column=1, value=label)
+        summary.cell(row=row_idx, column=2, value=cat_totals[label])
+        cat_data_rows.append(row_idx)
+        row_idx += 1
+    cat_total_row = row_idx
+    summary.cell(row=cat_total_row, column=1, value="Total")
+    summary.cell(row=cat_total_row, column=2, value=total_items)
+
+    def _write_item_row(sheet, target_row, entry):
+        status = _menu_margin_item_status(entry)
+        values = (
+            entry.get("name") or "",
+            _menu_margin_outlet_label(entry.get("outlet")),
+            entry.get("category_name") or "",
+            _whole_or_float(round_half_up(entry.get("rate"), 2)),
+            _whole_or_float(
+                round_half_up(entry.get("food_cost"), 2)
+                if entry.get("food_cost") is not None
+                else None
+            ),
+            _whole_or_float(
+                round_half_up(entry.get("gross_margin"), 2)
+                if entry.get("gross_margin") is not None
+                else None
+            ),
+            _whole_or_float(
+                round_half_up(entry.get("margin_pct"), 2)
+                if entry.get("margin_pct") is not None
+                else None
+            ),
+            "Hidden" if status == "hidden" else "Visible",
+        )
+        for col, value in enumerate(values, start=1):
+            sheet.cell(row=target_row, column=col, value=value)
+
+    banner_rows = []
+    header_rows = []
+    item_rows = []
+    row_idx = 1
+    if not sections:
+        details.cell(row=row_idx, column=1, value="Hotel Bell Elite — Menu & Margin")
+        details.merge_cells(
+            start_row=row_idx,
+            start_column=1,
+            end_row=row_idx,
+            end_column=col_count,
+        )
+        banner_rows.append(row_idx)
+        row_idx += 1
+        for col, title in enumerate(headers, start=1):
+            details.cell(row=row_idx, column=col, value=title)
+        header_rows.append(row_idx)
+        row_idx += 1
+    else:
+        for i, section in enumerate(sections):
+            if i > 0:
+                row_idx += 1
+            details.cell(
+                row=row_idx,
+                column=1,
+                value=f"Hotel Bell Elite — Menu & Margin - {section['label']}",
+            )
+            details.merge_cells(
+                start_row=row_idx,
+                start_column=1,
+                end_row=row_idx,
+                end_column=col_count,
+            )
+            banner_rows.append(row_idx)
+            row_idx += 1
+            for col, title in enumerate(headers, start=1):
+                details.cell(row=row_idx, column=col, value=title)
+            header_rows.append(row_idx)
+            row_idx += 1
+            for entry in section.get("rows") or []:
+                _write_item_row(details, row_idx, entry)
+                item_rows.append(row_idx)
+                row_idx += 1
+
+    last_details = max(1, row_idx - 1)
+
+    all_banner_rows = []
+    all_header_rows = []
+    all_item_rows = []
+    all_row = 1
+    all_items.cell(row=all_row, column=1, value="Hotel Bell Elite — Menu & Margin")
+    all_items.merge_cells(
+        start_row=all_row,
+        start_column=1,
+        end_row=all_row,
+        end_column=col_count,
+    )
+    all_banner_rows.append(all_row)
+    all_row += 1
+    for col, title in enumerate(headers, start=1):
+        all_items.cell(row=all_row, column=col, value=title)
+    all_header_rows.append(all_row)
+    all_row += 1
+    for entry in rows:
+        _write_item_row(all_items, all_row, entry)
+        all_item_rows.append(all_row)
+        all_row += 1
+    last_all_items = max(1, all_row - 1)
+
+    header_fill = PatternFill(
+        fill_type="solid",
+        start_color="FF315A78",
+        end_color="FF315A78",
+    )
+    banner_font = Font(bold=True, size=16, color="FFFFFFFF")
+    chrome_header_font = Font(bold=True, size=11, color="FFFFFFFF")
+    summary_title_font = Font(name="Calibri", bold=True, size=16, color="FFFFFFFF")
+    summary_font = Font(name="Calibri", size=12, color="FF000000")
+    summary_bold_font = Font(name="Calibri", bold=True, size=12, color="FF000000")
+    body_font = Font(size=11, color="FF000000")
+    thin = Side(style="thin", color="FF000000")
+    grid = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    right = Alignment(horizontal="right", vertical="center", wrap_text=True)
+
+    summary_chrome_rows = {
+        1,
+        2,
+        3,
+        4,
+        5,
+        cat_header_row,
+        cat_total_row,
+        *cat_data_rows,
+    }
+    for r in sorted(summary_chrome_rows):
+        for col in range(1, 3):
+            cell = summary.cell(row=r, column=col)
+            cell.border = grid
+            cell.alignment = center
+            if r == 1 or r == cat_header_row:
+                cell.fill = header_fill
+                cell.font = summary_title_font
+            elif r == cat_total_row:
+                cell.font = summary_bold_font
+            else:
+                cell.font = summary_font
+
+    def _style_detail_sheet(
+        sheet, last_row, sheet_banner_rows, sheet_header_rows, sheet_item_rows
+    ):
+        for r in range(1, last_row + 1):
+            for col in range(1, col_count + 1):
+                cell = sheet.cell(row=r, column=col)
+                cell.border = grid
+                if r in sheet_banner_rows:
+                    cell.fill = header_fill
+                    cell.font = banner_font
+                    cell.alignment = center
+                elif r in sheet_header_rows:
+                    cell.fill = header_fill
+                    cell.font = chrome_header_font
+                    cell.alignment = center
+                elif r in sheet_item_rows:
+                    cell.font = body_font
+                    cell.alignment = right if col in amount_cols else left
+                elif col in amount_cols:
+                    cell.font = body_font
+                    cell.alignment = right
+        for r in sheet_banner_rows:
+            sheet.row_dimensions[r].height = 20
+        for r in sheet_header_rows:
+            sheet.row_dimensions[r].height = 20
+        for r in sheet_item_rows:
+            sheet.row_dimensions[r].height = 17
+        detail_widths = (28, 12, 18, 14, 12, 14, 12, 10)
+        for col, width in enumerate(detail_widths, start=1):
+            sheet.column_dimensions[get_column_letter(col)].width = width
+
+    _style_detail_sheet(details, last_details, banner_rows, header_rows, item_rows)
+    _style_detail_sheet(
+        all_items, last_all_items, all_banner_rows, all_header_rows, all_item_rows
+    )
+
+    summary.row_dimensions[1].height = 23.2
+    for r in (2, 3, 4, 5):
+        summary.row_dimensions[r].height = 17.6
+    summary.row_dimensions[cat_header_row].height = 23.2
+    for r in cat_data_rows:
+        summary.row_dimensions[r].height = 17.6
+    summary.row_dimensions[cat_total_row].height = 17.6
+    summary.column_dimensions["A"].width = 34
+    summary.column_dimensions["B"].width = 39.5
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+@app.route("/point-of-sale/menu/export", endpoint="point_of_sale_menu_export")
+@app.route("/bar-point-of-sale/menu/export", endpoint="bar_point_of_sale_menu_export")
+def point_of_sale_menu_export():
+    """Excel export for Menu & Margin — Summary + Line Items + All Items (ledger chrome)."""
+    outlet_filter = (request.args.get("outlet") or "").strip().lower()
+    if outlet_filter in ("bar", POS_OUTLET_BAR):
+        outlets = [POS_OUTLET_BAR]
+    elif outlet_filter in ("restaurant", "resto", POS_OUTLET_RESTAURANT):
+        outlets = [POS_OUTLET_RESTAURANT]
+    else:
+        outlets = [POS_OUTLET_RESTAURANT, POS_OUTLET_BAR]
+
+    category_id = request.args.get("category_id")
+    try:
+        category_id = int(category_id) if category_id not in (None, "") else None
+    except (TypeError, ValueError):
+        category_id = None
+
+    status_filter = (request.args.get("status") or "").strip().lower()
+    if status_filter not in ("visible", "hidden"):
+        status_filter = ""
+    needle = (request.args.get("q") or "").strip().lower()
+
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        ensure_stores_schema(conn)
+        items = list_pos_menu_items(
+            conn,
+            category_id=category_id,
+            outlets=outlets,
+            include_recipe_lines=False,
+        )
+    finally:
+        conn.close()
+
+    filtered = []
+    for it in items:
+        status = _menu_margin_item_status(it)
+        if status_filter and status != status_filter:
+            continue
+        if needle:
+            hay = " ".join(
+                [
+                    str(it.get("name") or ""),
+                    str(it.get("code") or ""),
+                    str(it.get("variant") or ""),
+                    str(it.get("category_name") or ""),
+                ]
+            ).lower()
+            if needle not in hay:
+                continue
+        filtered.append(it)
+
+    buf = _build_menu_margin_export_xlsx(filtered)
+    fname = report_export_filename("Menu & Margin")
+    response = send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
 def _pos_invoice_ledger_filters(args):
     """Parse invoice ledger GET filters (shared by page + export)."""
     today = date.today()
@@ -12692,14 +13323,13 @@ def purchase_ledger():
         default_company=DEFAULT_COMPANY,
         default_location=OUTLET_HOTEL,
         today_iso=today.isoformat(),
-        de_nav_section="accounts",
-        de_nav_accounts_view="purchase_ledger",
+        **_reports_hub_nav_overrides("accounts", accounts_view="purchase_ledger"),
     )
 
 
 @app.route("/accounts/purchase-ledger/report")
 def export_purchase_ledger_report():
-    """Excel download of ledger entries — Summary + Line Items."""
+    """Excel download of ledger entries — Summary + Line Items + All Items."""
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
@@ -12805,8 +13435,11 @@ def export_purchase_ledger_report():
         "Paid",
         "Balance",
     )
+    all_headers = ("Type",) + headers
     col_count = len(headers)
+    all_col_count = len(all_headers)
     amount_cols = {10, 11, 12}
+    all_amount_cols = {11, 12, 13}
     title_date = _sales_report_excel_title_date(
         {
             "date_filter_active": date_filter_active,
@@ -12819,6 +13452,7 @@ def export_purchase_ledger_report():
     summary = wb.active
     summary.title = "Summary"
     details = wb.create_sheet("Line Items")
+    all_items = wb.create_sheet("All Items")
 
     summary["A1"] = f"Hotel Bell Elite — {PURCHASE_EXPENSE_LEDGER_NAME}{title_date}"
     summary["A2"] = "Purchase"
@@ -12843,11 +13477,11 @@ def export_purchase_ledger_report():
     summary.cell(row=pay_total_row, column=1, value="Total")
     summary.cell(row=pay_total_row, column=2, value=_whole_or_float(payment_total))
 
-    def _write_ledger_row(row_idx, entry):
+    def _ledger_row_values(entry):
         category_key = entry.get("category") or ""
         payment_key = entry.get("display_payment_type") or entry.get("payment_type") or ""
         status_key = entry.get("settlement_status") or ""
-        values = (
+        return (
             entry.get("expense_code") or "",
             entry.get("sales_date") or "",
             entry.get("description") or "",
@@ -12864,8 +13498,14 @@ def export_purchase_ledger_report():
             _whole_or_float(round_half_up(entry.get("paid_amount"), 2)),
             _whole_or_float(round_half_up(entry.get("balance"), 2)),
         )
+
+    def _write_ledger_row(sheet, target_row, entry, *, include_type=False):
+        values = _ledger_row_values(entry)
+        if include_type:
+            kind_key = entry.get("entry_kind") or LEDGER_ENTRY_KIND_EXPENSE
+            values = (LEDGER_ENTRY_KIND_LABELS.get(kind_key, kind_key),) + values
         for col, value in enumerate(values, start=1):
-            details.cell(row=row_idx, column=col, value=value)
+            sheet.cell(row=target_row, column=col, value=value)
 
     banner_rows = []
     header_rows = []
@@ -12892,11 +13532,47 @@ def export_purchase_ledger_report():
         header_rows.append(row_idx)
         row_idx += 1
         for entry in section.get("entries") or []:
-            _write_ledger_row(row_idx, entry)
+            _write_ledger_row(details, row_idx, entry)
             item_rows.append(row_idx)
             row_idx += 1
 
     last_details = max(1, row_idx - 1)
+
+    chronological_entries = sorted(
+        entries,
+        key=lambda e: (
+            str(e.get("sales_date") or ""),
+            str(e.get("expense_code") or ""),
+            int(e.get("id") or 0),
+        ),
+    )
+    all_banner_rows = []
+    all_header_rows = []
+    all_item_rows = []
+    all_row = 1
+    all_items.cell(
+        row=all_row,
+        column=1,
+        value=f"Hotel Bell Elite — {PURCHASE_EXPENSE_LEDGER_NAME}",
+    )
+    all_items.merge_cells(
+        start_row=all_row,
+        start_column=1,
+        end_row=all_row,
+        end_column=all_col_count,
+    )
+    all_banner_rows.append(all_row)
+    all_row += 1
+    for col, title in enumerate(all_headers, start=1):
+        all_items.cell(row=all_row, column=col, value=title)
+    all_header_rows.append(all_row)
+    all_row += 1
+    for entry in chronological_entries:
+        _write_ledger_row(all_items, all_row, entry, include_type=True)
+        all_item_rows.append(all_row)
+        all_row += 1
+    last_all_items = max(1, all_row - 1)
+
     header_fill = PatternFill(
         fill_type="solid",
         start_color="FF315A78",
@@ -12928,27 +13604,65 @@ def export_purchase_ledger_report():
             else:
                 cell.font = summary_font
 
-    for r in range(1, last_details + 1):
-        for col in range(1, col_count + 1):
-            cell = details.cell(row=r, column=col)
-            cell.border = grid
-            if r in banner_rows:
-                cell.fill = header_fill
-                cell.font = banner_font
-                cell.alignment = center
-            elif r in header_rows:
-                cell.fill = header_fill
-                cell.font = chrome_header_font
-                cell.alignment = center
-            elif r in item_rows:
-                cell.font = body_font
-                if col in amount_cols:
+    def _style_detail_sheet(
+        sheet,
+        last_row,
+        sheet_col_count,
+        sheet_banner_rows,
+        sheet_header_rows,
+        sheet_item_rows,
+        sheet_amount_cols,
+        sheet_widths,
+    ):
+        for r in range(1, last_row + 1):
+            for col in range(1, sheet_col_count + 1):
+                cell = sheet.cell(row=r, column=col)
+                cell.border = grid
+                if r in sheet_banner_rows:
+                    cell.fill = header_fill
+                    cell.font = banner_font
+                    cell.alignment = center
+                elif r in sheet_header_rows:
+                    cell.fill = header_fill
+                    cell.font = chrome_header_font
+                    cell.alignment = center
+                elif r in sheet_item_rows:
+                    cell.font = body_font
+                    cell.alignment = right if col in sheet_amount_cols else left
+                elif col in sheet_amount_cols:
+                    cell.font = body_font
                     cell.alignment = right
-                else:
-                    cell.alignment = left
-            elif col in amount_cols:
-                cell.font = body_font
-                cell.alignment = right
+        for r in sheet_banner_rows:
+            sheet.row_dimensions[r].height = 20
+        for r in sheet_header_rows:
+            sheet.row_dimensions[r].height = 20
+        for r in sheet_item_rows:
+            sheet.row_dimensions[r].height = 17
+        for col, width in enumerate(sheet_widths, start=1):
+            sheet.column_dimensions[get_column_letter(col)].width = width
+
+    detail_widths = (16, 12, 32, 16, 14, 22, 16, 14, 12, 12, 12, 12)
+    all_widths = (12,) + detail_widths
+    _style_detail_sheet(
+        details,
+        last_details,
+        col_count,
+        banner_rows,
+        header_rows,
+        item_rows,
+        amount_cols,
+        detail_widths,
+    )
+    _style_detail_sheet(
+        all_items,
+        last_all_items,
+        all_col_count,
+        all_banner_rows,
+        all_header_rows,
+        all_item_rows,
+        all_amount_cols,
+        all_widths,
+    )
 
     summary.row_dimensions[1].height = 23.2
     for r in (2, 3, 4):
@@ -12959,15 +13673,6 @@ def export_purchase_ledger_report():
     summary.row_dimensions[pay_total_row].height = 17.6
     summary.column_dimensions["A"].width = 34
     summary.column_dimensions["B"].width = 39.5
-    for r in banner_rows:
-        details.row_dimensions[r].height = 20
-    for r in header_rows:
-        details.row_dimensions[r].height = 20
-    for r in item_rows:
-        details.row_dimensions[r].height = 17
-    detail_widths = (16, 12, 32, 16, 14, 22, 16, 14, 12, 12, 12, 12)
-    for col, width in enumerate(detail_widths, start=1):
-        details.column_dimensions[get_column_letter(col)].width = width
 
     fname = report_export_filename(
         PURCHASE_EXPENSE_LEDGER_NAME,
@@ -13326,8 +14031,7 @@ def cash_ledger():
         cash_ledger_clear_url=url_for("cash_ledger", **clear_kwargs),
         default_company=company,
         today_iso=today.isoformat(),
-        de_nav_section="accounts",
-        de_nav_accounts_view="cash_ledger",
+        **_reports_hub_nav_overrides("accounts", accounts_view="cash_ledger"),
     )
 
 
@@ -13393,9 +14097,10 @@ def cash_ledger_transfer():
 
 @app.route("/accounts/cash-ledger/report")
 def export_cash_ledger_report():
-    """Excel download of cash ledger movements for the selected date range."""
+    """Excel download — Summary + Line Items (same chrome as Purchase & Expense Ledger)."""
     from openpyxl import Workbook
-    from openpyxl.styles import Font
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
 
     date_from, date_to, date_filter_active = _resolve_cash_ledger_date_range(request.args)
     selected_location = _normalize_cash_ledger_location(request.args.get("location"))
@@ -13410,65 +14115,243 @@ def export_cash_ledger_report():
         conn.close()
 
     totals = _cash_ledger_totals(entries)
+
+    def _whole_or_float(value):
+        if value is None:
+            return None
+        try:
+            num = float(value)
+            return int(num) if num == int(num) else num
+        except (TypeError, ValueError):
+            return value
+
+    title_date = _sales_report_excel_title_date(
+        {
+            "date_filter_active": date_filter_active,
+            "date_from": date_from,
+            "date_to": date_to,
+        }
+    )
+
+    summary_metrics = [
+        ("Actual Cash", totals["sales_total"]),
+        ("Load Cash", totals["load_total"]),
+        ("Credit Cash", totals["credit_total"]),
+        ("Back Office Receipt", totals.get("bor_total", 0)),
+        ("Expense", totals["expense_total"]),
+        ("Transfer Out", totals["transfer_total"]),
+        ("Available Cash", totals["available_total"]),
+    ]
+    type_counts = [
+        ("Actual Cash", totals["sales_count"]),
+        ("Load Cash", totals["load_count"]),
+        ("Credit Cash", totals["credit_count"]),
+        ("Back Office Receipt", totals.get("bor_count", 0)),
+        ("Expense", totals["expense_count"]),
+        ("Transfer Out", totals["transfer_count"]),
+    ]
+    type_count_rows = [
+        {"label": label, "count": count}
+        for label, count in type_counts
+        if count
+    ]
+    type_count_total = sum(item["count"] for item in type_count_rows)
+
+    type_order = (
+        CASH_LEDGER_ENTRY_SALES,
+        CASH_LEDGER_ENTRY_LOAD,
+        CASH_LEDGER_ENTRY_CREDIT,
+        CASH_LEDGER_ENTRY_BOR,
+        CASH_LEDGER_ENTRY_EXPENSE,
+        CASH_LEDGER_ENTRY_TRANSFER,
+    )
+    sections = []
+    for kind in type_order:
+        kind_rows = [e for e in entries if e.get("entry_type") == kind]
+        if kind_rows:
+            sections.append(
+                {
+                    "label": CASH_LEDGER_ENTRY_LABELS.get(kind, kind),
+                    "entries": kind_rows,
+                }
+            )
+
+    headers = (
+        "Date",
+        "Type",
+        "Detail",
+        "ID",
+        "Description",
+        "Amount",
+        "Balance",
+    )
+    col_count = len(headers)
+    amount_cols = {6, 7}
+
     wb = Workbook()
     summary = wb.active
     summary.title = "Summary"
-    header_font = Font(bold=True)
-    summary_headers = ["Metric", "Amount", "Count"]
-    for col, title in enumerate(summary_headers, start=1):
-        cell = summary.cell(row=1, column=col, value=title)
-        cell.font = header_font
-    summary_rows = [
-        ("Actual Cash", totals["sales_total"], totals["sales_count"]),
-        ("Load Cash", totals["load_total"], totals["load_count"]),
-        ("Credit Cash", totals["credit_total"], totals["credit_count"]),
-        ("Back Office Receipt", totals.get("bor_total", 0), totals.get("bor_count", 0)),
-        ("Expense", totals["expense_total"], totals["expense_count"]),
-        ("Transfer Out", totals["transfer_total"], totals["transfer_count"]),
-        ("Available Cash", totals["available_total"], len(entries)),
-        ("Location", selected_location, ""),
-        (
-            "Date From",
-            date_from.isoformat() if date_filter_active else "All",
-            "",
-        ),
-        (
-            "Date To",
-            date_to.isoformat() if date_filter_active else "All",
-            "",
-        ),
-    ]
-    for idx, (label, amount, count) in enumerate(summary_rows, start=2):
+    details = wb.create_sheet("Line Items")
+
+    summary["A1"] = f"Hotel Bell Elite — Cash Ledger{title_date}"
+    for idx, (label, amount) in enumerate(summary_metrics, start=2):
         summary.cell(row=idx, column=1, value=label)
-        summary.cell(row=idx, column=2, value=amount if isinstance(amount, (int, float)) else amount)
-        summary.cell(row=idx, column=3, value=count)
+        summary.cell(row=idx, column=2, value=_whole_or_float(amount))
+    summary.merge_cells("A1:B1")
+    available_row = 1 + len(summary_metrics)
 
-    movements = wb.create_sheet("Cash Movements")
-    headers = ["Date", "Type", "Detail", "ID", "Description", "Amount", "Balance"]
-    for col, title in enumerate(headers, start=1):
-        cell = movements.cell(row=1, column=col, value=title)
-        cell.font = header_font
-    for idx, entry in enumerate(entries, start=2):
+    type_header_row = available_row + 2
+    summary.cell(row=type_header_row, column=1, value="Movement Type")
+    summary.cell(row=type_header_row, column=2, value="Count")
+    type_data_rows = []
+    row_idx = type_header_row + 1
+    for item in type_count_rows:
+        summary.cell(row=row_idx, column=1, value=item["label"])
+        summary.cell(row=row_idx, column=2, value=item["count"])
+        type_data_rows.append(row_idx)
+        row_idx += 1
+    type_total_row = row_idx
+    summary.cell(row=type_total_row, column=1, value="Total")
+    summary.cell(row=type_total_row, column=2, value=type_count_total)
+
+    def _write_cash_row(target_row, entry):
         entry_type = entry.get("entry_type") or ""
-        movements.cell(row=idx, column=1, value=entry.get("entry_date") or "")
-        movements.cell(
-            row=idx,
-            column=2,
-            value=CASH_LEDGER_ENTRY_LABELS.get(entry_type, entry_type),
+        values = (
+            entry.get("entry_date") or "",
+            CASH_LEDGER_ENTRY_LABELS.get(entry_type, entry_type),
+            entry.get("detail") or "",
+            entry.get("expense_code") or "",
+            entry.get("description") or "",
+            _whole_or_float(round_half_up(entry.get("signed_amount"), 2)),
+            _whole_or_float(round_half_up(entry.get("running_balance"), 2)),
         )
-        movements.cell(row=idx, column=3, value=entry.get("detail") or "")
-        movements.cell(row=idx, column=4, value=entry.get("expense_code") or "")
-        movements.cell(row=idx, column=5, value=entry.get("description") or "")
-        movements.cell(row=idx, column=6, value=round_half_up(entry.get("signed_amount"), 2))
-        movements.cell(row=idx, column=7, value=round_half_up(entry.get("running_balance"), 2))
+        for col, value in enumerate(values, start=1):
+            details.cell(row=target_row, column=col, value=value)
 
-    for ws in (summary, movements):
-        for column_cells in ws.columns:
-            width = 12
-            for cell in column_cells:
-                value = "" if cell.value is None else str(cell.value)
-                width = max(width, min(len(value) + 2, 48))
-            ws.column_dimensions[column_cells[0].column_letter].width = width
+    banner_rows = []
+    header_rows = []
+    item_rows = []
+    row_idx = 1
+    if not sections:
+        details.cell(
+            row=row_idx,
+            column=1,
+            value="Hotel Bell Elite — Cash Ledger",
+        )
+        details.merge_cells(
+            start_row=row_idx,
+            start_column=1,
+            end_row=row_idx,
+            end_column=col_count,
+        )
+        banner_rows.append(row_idx)
+        row_idx += 1
+        for col, title in enumerate(headers, start=1):
+            details.cell(row=row_idx, column=col, value=title)
+        header_rows.append(row_idx)
+        row_idx += 1
+    else:
+        for i, section in enumerate(sections):
+            if i > 0:
+                row_idx += 1
+            details.cell(
+                row=row_idx,
+                column=1,
+                value=f"Hotel Bell Elite — Cash Ledger - {section['label']}",
+            )
+            details.merge_cells(
+                start_row=row_idx,
+                start_column=1,
+                end_row=row_idx,
+                end_column=col_count,
+            )
+            banner_rows.append(row_idx)
+            row_idx += 1
+            for col, title in enumerate(headers, start=1):
+                details.cell(row=row_idx, column=col, value=title)
+            header_rows.append(row_idx)
+            row_idx += 1
+            for entry in section.get("entries") or []:
+                _write_cash_row(row_idx, entry)
+                item_rows.append(row_idx)
+                row_idx += 1
+
+    last_details = max(1, row_idx - 1)
+    header_fill = PatternFill(
+        fill_type="solid",
+        start_color="FF315A78",
+        end_color="FF315A78",
+    )
+    banner_font = Font(bold=True, size=16, color="FFFFFFFF")
+    chrome_header_font = Font(bold=True, size=11, color="FFFFFFFF")
+    summary_title_font = Font(name="Calibri", bold=True, size=16, color="FFFFFFFF")
+    summary_font = Font(name="Calibri", size=12, color="FF000000")
+    summary_bold_font = Font(name="Calibri", bold=True, size=12, color="FF000000")
+    body_font = Font(size=11, color="FF000000")
+    thin = Side(style="thin", color="FF000000")
+    grid = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    right = Alignment(horizontal="right", vertical="center", wrap_text=True)
+
+    summary_kpi_rows = set(range(2, available_row + 1))
+    summary_chrome_rows = {
+        1,
+        *summary_kpi_rows,
+        type_header_row,
+        type_total_row,
+        *type_data_rows,
+    }
+    for r in sorted(summary_chrome_rows):
+        for col in range(1, 3):
+            cell = summary.cell(row=r, column=col)
+            cell.border = grid
+            cell.alignment = center
+            if r == 1 or r == type_header_row:
+                cell.fill = header_fill
+                cell.font = summary_title_font
+            elif r == available_row or r == type_total_row:
+                cell.font = summary_bold_font
+            else:
+                cell.font = summary_font
+
+    for r in range(1, last_details + 1):
+        for col in range(1, col_count + 1):
+            cell = details.cell(row=r, column=col)
+            cell.border = grid
+            if r in banner_rows:
+                cell.fill = header_fill
+                cell.font = banner_font
+                cell.alignment = center
+            elif r in header_rows:
+                cell.fill = header_fill
+                cell.font = chrome_header_font
+                cell.alignment = center
+            elif r in item_rows:
+                cell.font = body_font
+                cell.alignment = right if col in amount_cols else left
+            elif col in amount_cols:
+                cell.font = body_font
+                cell.alignment = right
+
+    summary.row_dimensions[1].height = 23.2
+    for r in summary_kpi_rows:
+        summary.row_dimensions[r].height = 17.6
+    summary.row_dimensions[type_header_row].height = 23.2
+    for r in type_data_rows:
+        summary.row_dimensions[r].height = 17.6
+    summary.row_dimensions[type_total_row].height = 17.6
+    summary.column_dimensions["A"].width = 34
+    summary.column_dimensions["B"].width = 39.5
+    for r in banner_rows:
+        details.row_dimensions[r].height = 20
+    for r in header_rows:
+        details.row_dimensions[r].height = 20
+    for r in item_rows:
+        details.row_dimensions[r].height = 17
+    detail_widths = (12, 18, 16, 14, 32, 12, 12)
+    for col, width in enumerate(detail_widths, start=1):
+        details.column_dimensions[get_column_letter(col)].width = width
 
     fname = report_export_filename(
         "Cash Ledger",
@@ -13479,12 +14362,15 @@ def export_cash_ledger_report():
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    return send_file(
+    response = send_file(
         buf,
         as_attachment=True,
         download_name=fname,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.route("/accounts/cash-ledger/load/delete", methods=["POST"])

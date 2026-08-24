@@ -63,6 +63,151 @@ class PosMenuTests(unittest.TestCase):
         except OSError:
             pass
 
+    def test_menu_from_reports_hub_keeps_report_nav(self):
+        from_pos = self.client.get("/point-of-sale/menu")
+        self.assertEqual(from_pos.status_code, 200)
+        pos_html = from_pos.get_data(as_text=True)
+        self.assertIn('id="de-nav-pos-group"', pos_html)
+        self.assertIn('id="de-nav-pos-menu"', pos_html)
+        self.assertRegex(pos_html, r'class="[^"]*\bis-open\b[^"]*"[^>]*id="de-nav-pos-group"')
+        self.assertRegex(pos_html, r'class="[^"]*\bis-active\b[^"]*"[^>]*id="de-nav-pos-menu"')
+
+        from_reports = self.client.get("/point-of-sale/menu?from_hub=reports")
+        self.assertEqual(from_reports.status_code, 200)
+        html = from_reports.get_data(as_text=True)
+        self.assertIn("Back to Reports", html)
+        self.assertRegex(html, r'class="[^"]*\bis-open\b[^"]*"[^>]*id="de-nav-report-group"')
+        self.assertRegex(html, r'class="[^"]*\bis-active\b[^"]*"[^>]*id="de-nav-report-home"')
+        self.assertNotRegex(html, r'class="[^"]*\bis-open\b[^"]*"[^>]*id="de-nav-pos-group"')
+        self.assertNotRegex(html, r'class="[^"]*\bis-active\b[^"]*"[^>]*id="de-nav-pos-menu"')
+
+    def test_menu_margin_export_summary_and_line_items(self):
+        create_cat = self.client.post(
+            "/point-of-sale/api/menu/categories",
+            json={"name": "Starters", "is_visible": True},
+        )
+        self.assertEqual(create_cat.status_code, 200)
+        category_id = create_cat.get_json()["category"]["id"]
+        create_item = self.client.post(
+            "/point-of-sale/api/menu/items",
+            json={
+                "category_id": category_id,
+                "name": "Soup",
+                "rate": 200,
+                "recipe": [
+                    {
+                        "product_id": self.product_id,
+                        "qty": 100,
+                        "unit": "g",
+                    }
+                ],
+            },
+        )
+        self.assertEqual(create_item.status_code, 200, create_item.get_data(as_text=True))
+
+        create_cat2 = self.client.post(
+            "/point-of-sale/api/menu/categories",
+            json={"name": "Mains", "is_visible": True},
+        )
+        self.assertEqual(create_cat2.status_code, 200)
+        category_id2 = create_cat2.get_json()["category"]["id"]
+        create_item2 = self.client.post(
+            "/point-of-sale/api/menu/items",
+            json={
+                "category_id": category_id2,
+                "name": "Pasta",
+                "rate": 350,
+                "recipe": [
+                    {
+                        "product_id": self.product_id,
+                        "qty": 150,
+                        "unit": "g",
+                    }
+                ],
+            },
+        )
+        self.assertEqual(
+            create_item2.status_code, 200, create_item2.get_data(as_text=True)
+        )
+
+        export = self.client.get("/point-of-sale/menu/export")
+        self.assertEqual(export.status_code, 200)
+        self.assertIn(
+            "spreadsheetml.sheet",
+            export.headers.get("Content-Type", ""),
+        )
+        cd = export.headers.get("Content-Disposition") or ""
+        self.assertIn("Hotel Bell Elite Menu & Margin.xlsx", cd)
+
+        from io import BytesIO
+        from openpyxl import load_workbook
+
+        expected_headers = [
+            "Menu Item",
+            "Outlet",
+            "Category",
+            "Selling Price",
+            "Food Cost",
+            "Gross Margin",
+            "Margin %",
+            "Status",
+        ]
+
+        wb = load_workbook(BytesIO(export.data))
+        self.assertEqual(wb.sheetnames, ["Summary", "Line Items", "All Items"])
+        summary = wb["Summary"]
+        details = wb["Line Items"]
+        all_items = wb["All Items"]
+        self.assertEqual(summary["A1"].value, "Hotel Bell Elite — Menu & Margin")
+        self.assertEqual(summary["A2"].value, "Total Menu Items")
+        self.assertEqual(int(summary["B2"].value), 2)
+        self.assertEqual(summary["A7"].value, "Category")
+        self.assertEqual(summary["A7"].fill.fgColor.rgb, "FF315A78")
+        self.assertIn("A1:B1", {str(r) for r in summary.merged_cells.ranges})
+
+        col_a = [
+            details.cell(row, 1).value
+            for row in range(1, (details.max_row or 1) + 1)
+        ]
+        self.assertIn("Hotel Bell Elite — Menu & Margin - Starters", col_a)
+        self.assertIn("Hotel Bell Elite — Menu & Margin - Mains", col_a)
+        banner = col_a.index("Hotel Bell Elite — Menu & Margin - Starters")
+        headers = [
+            details.cell(banner + 2, col).value for col in range(1, 9)
+        ]
+        self.assertEqual(headers, expected_headers)
+        self.assertEqual(details.cell(banner + 1, 1).fill.fgColor.rgb, "FF315A78")
+        self.assertEqual(details.cell(banner + 3, 1).value, "Soup")
+
+        all_col_a = [
+            all_items.cell(row, 1).value
+            for row in range(1, (all_items.max_row or 1) + 1)
+        ]
+        self.assertEqual(all_col_a[0], "Hotel Bell Elite — Menu & Margin")
+        self.assertNotIn("Hotel Bell Elite — Menu & Margin - Starters", all_col_a)
+        self.assertNotIn("Hotel Bell Elite — Menu & Margin - Mains", all_col_a)
+        all_headers = [
+            all_items.cell(2, col).value for col in range(1, 9)
+        ]
+        self.assertEqual(all_headers, expected_headers)
+        self.assertEqual(all_items.cell(1, 1).fill.fgColor.rgb, "FF315A78")
+        self.assertEqual(all_items.cell(2, 1).fill.fgColor.rgb, "FF315A78")
+        self.assertEqual(all_items.max_row, 4)
+        flat_names = {all_items.cell(row, 1).value for row in (3, 4)}
+        self.assertEqual(flat_names, {"Soup", "Pasta"})
+        flat_by_name = {
+            all_items.cell(row, 1).value: all_items.cell(row, 3).value
+            for row in (3, 4)
+        }
+        self.assertEqual(flat_by_name["Soup"], "Starters")
+        self.assertEqual(flat_by_name["Pasta"], "Mains")
+        # One banner + one header only (no per-category repeats)
+        self.assertEqual(
+            sum(1 for v in all_col_a if v == "Hotel Bell Elite — Menu & Margin"),
+            1,
+        )
+        self.assertEqual(sum(1 for v in all_col_a if v == "Menu Item"), 1)
+
     def test_empty_categories_then_create_item(self):
         list_res = self.client.get("/point-of-sale/api/menu/categories")
         self.assertEqual(list_res.status_code, 200)

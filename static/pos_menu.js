@@ -1610,51 +1610,26 @@
       });
   }
 
-  function exportCsv() {
-    var rows = sortedFilteredItems();
-    var header = [
-      'Menu Item',
-      'Outlet',
-      'Category',
-      'Selling Price',
-      'Food Cost',
-      'Gross Margin',
-      'Margin %',
-      'Status'
-    ];
-    function cell(v) {
-      var s = v == null ? '' : String(v);
-      if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-      return s;
-    }
-    var lines = [header.join(',')];
-    rows.forEach(function (it) {
-      var catName = itemCategoryName(it);
-      lines.push(
-        [
-          cell(it.name),
-          cell(itemOutletLabel(it)),
-          cell(catName),
-          cell(it.rate != null ? Number(it.rate).toFixed(2) : ''),
-          cell(it.food_cost != null ? Number(it.food_cost).toFixed(2) : ''),
-          cell(it.gross_margin != null ? Number(it.gross_margin).toFixed(2) : ''),
-          cell(it.margin_pct != null ? Number(it.margin_pct).toFixed(2) : ''),
-          cell(itemStatus(it) === 'hidden' ? 'Hidden' : 'Visible')
-        ].join(',')
-      );
-    });
-    var blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
-    var url = URL.createObjectURL(blob);
+  function exportMenuMarginXlsx() {
+    var params = new URLSearchParams();
+    var outlet = ensureFilterOutlet();
+    if (outlet) params.set('outlet', outlet);
+    if (filterCategory) params.set('category_id', String(filterCategory));
+    if (filterStatus) params.set('status', filterStatus);
+    var q = String(filterSearch || '').trim();
+    if (q) params.set('q', q);
+    var url = resolvePosApiBase() + '/menu/export';
+    var qs = params.toString();
+    if (qs) url += '?' + qs;
     var a = document.createElement('a');
     a.href = url;
-    a.download = 'menu-margin-export.csv';
+    a.setAttribute('download', 'Hotel Bell Elite Menu & Margin.xlsx');
+    a.rel = 'noopener';
     document.body.appendChild(a);
     a.click();
     a.remove();
-    setTimeout(function () {
-      URL.revokeObjectURL(url);
-    }, 500);
-    showToast('Exported ' + rows.length + ' row' + (rows.length === 1 ? '' : 's'));
+    var n = sortedFilteredItems().length;
+    showToast('Exporting ' + n + ' row' + (n === 1 ? '' : 's'));
   }
 
   function applyCategories(next, preferId) {
@@ -2742,7 +2717,7 @@
       if (actionBtn) {
         var action = actionBtn.getAttribute('data-pos-menu-action');
         if (action === 'export') {
-          exportCsv();
+          exportMenuMarginXlsx();
           return;
         }
         if (action === 'add-category') {

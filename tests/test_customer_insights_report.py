@@ -397,9 +397,178 @@ class CustomerInsightsReportTests(unittest.TestCase):
         from openpyxl import load_workbook
 
         wb = load_workbook(BytesIO(export.data))
-        self.assertEqual(wb.sheetnames, ["Customer Insights"])
-        ws = wb["Customer Insights"]
+        self.assertEqual(
+            wb.sheetnames, ["Summary", "Hotel", "Restaurant", "Bar"]
+        )
+        ws = wb["Summary"]
         self.assertEqual(ws["A1"].value, "Hotel Bell Elite — Customer Insights")
+        self.assertEqual(ws["A1"].fill.fgColor.rgb, "FF315A78")
+        self.assertEqual(
+            [ws.cell(2, col).value for col in range(1, 9)],
+            [
+                "Customer",
+                "Mobile",
+                "Orders",
+                "Top Item",
+                "Restaurant",
+                "Bar",
+                "Hotel",
+                "Total",
+            ],
+        )
+        summary_names = {
+            ws.cell(row, 1).value
+            for row in range(3, (ws.max_row or 2) + 1)
+            if ws.cell(row, 1).value
+        }
+        self.assertIn("Meera", summary_names)
+        self.assertIn("Mr. Baborsekh", summary_names)
+
+        self.assertEqual(
+            wb["Hotel"]["A1"].value,
+            "Hotel Bell Elite — Customer Insights - Hotel",
+        )
+        self.assertEqual(
+            wb["Restaurant"]["A1"].value,
+            "Hotel Bell Elite — Customer Insights - Restaurant",
+        )
+        self.assertEqual(
+            wb["Bar"]["A1"].value,
+            "Hotel Bell Elite — Customer Insights - Bar",
+        )
+        for sheet_name in ("Hotel", "Restaurant", "Bar"):
+            sheet = wb[sheet_name]
+            self.assertEqual(sheet["A1"].fill.fgColor.rgb, "FF315A78")
+            self.assertEqual(sheet["A2"].value, "Customer")
+
+        restaurant = wb["Restaurant"]
+        restaurant_names = {
+            restaurant.cell(row, 1).value
+            for row in range(3, (restaurant.max_row or 2) + 1)
+            if restaurant.cell(row, 1).value
+        }
+        self.assertIn("Meera", restaurant_names)
+        self.assertIn("Mr. Baborsekh", restaurant_names)
+
+        bar = wb["Bar"]
+        bar_names = {
+            bar.cell(row, 1).value
+            for row in range(3, (bar.max_row or 2) + 1)
+            if bar.cell(row, 1).value
+        }
+        # ORD-CI-05 has empty mobile + name Mr. Baborsekh but restaurant outlet only
+        # in setUp data for page test — no bar invoice in this test's FY seed.
+        self.assertEqual(bar_names, set())
+        self.assertEqual(
+            {
+                wb["Hotel"].cell(row, 1).value
+                for row in range(3, (wb["Hotel"].max_row or 2) + 1)
+                if wb["Hotel"].cell(row, 1).value
+            },
+            set(),
+        )
+
+    def test_export_outlet_sheets_filter_by_channel(self):
+        """Hotel / Restaurant / Bar sheets contain only that outlet's customers."""
+        self._pos_invoice(
+            outlet="restaurant",
+            order_no="ORD-CI-OUT-R",
+            menu_id=self.butter["id"],
+            name="Chicken Butter Masala",
+            rate=320,
+            qty=1,
+            customer_name="Rest Only",
+            customer_mobile="9111000001",
+        )
+        self._pos_invoice(
+            outlet="bar",
+            order_no="ORD-CI-OUT-B",
+            menu_id=self.whisky["id"],
+            name="Whisky Peg",
+            rate=250,
+            qty=1,
+            customer_name="Bar Only",
+            customer_mobile="9111000002",
+        )
+        self._hotel_invoice(
+            invoice_number="HBE/RM/OUT/2026-27",
+            guest_name="Hotel Only",
+            mobile="9111000003",
+            total=1800,
+        )
+        self._pos_invoice(
+            outlet="restaurant",
+            order_no="ORD-CI-OUT-BOTH-R",
+            menu_id=self.butter["id"],
+            name="Chicken Butter Masala",
+            rate=320,
+            qty=1,
+            customer_name="Multi Channel",
+            customer_mobile="9111000004",
+        )
+        self._pos_invoice(
+            outlet="bar",
+            order_no="ORD-CI-OUT-BOTH-B",
+            menu_id=self.whisky["id"],
+            name="Whisky Peg",
+            rate=250,
+            qty=2,
+            customer_name="Multi Channel",
+            customer_mobile="9111000004",
+        )
+
+        from io import BytesIO
+        from openpyxl import load_workbook
+
+        export = self.client.get(
+            "/reports/sales/customer-insights/export"
+            "?date_from=2026-08-01&date_to=2026-08-08"
+        )
+        self.assertEqual(export.status_code, 200)
+        wb = load_workbook(BytesIO(export.data))
+        self.assertEqual(
+            wb.sheetnames, ["Summary", "Hotel", "Restaurant", "Bar"]
+        )
+
+        def _names(sheet):
+            return {
+                sheet.cell(row, 1).value
+                for row in range(3, (sheet.max_row or 2) + 1)
+                if sheet.cell(row, 1).value
+            }
+
+        summary_names = _names(wb["Summary"])
+        self.assertEqual(
+            summary_names,
+            {"Rest Only", "Bar Only", "Hotel Only", "Multi Channel"},
+        )
+        self.assertEqual(_names(wb["Hotel"]), {"Hotel Only"})
+        self.assertEqual(
+            _names(wb["Restaurant"]), {"Rest Only", "Multi Channel"}
+        )
+        self.assertEqual(
+            _names(wb["Bar"]), {"Bar Only", "Multi Channel"}
+        )
+
+        hotel = wb["Hotel"]
+        self.assertEqual(hotel["A1"].value, "Hotel Bell Elite — Customer Insights - Hotel")
+        hotel_row = next(
+            row
+            for row in range(3, (hotel.max_row or 2) + 1)
+            if hotel.cell(row, 1).value == "Hotel Only"
+        )
+        self.assertEqual(float(hotel.cell(hotel_row, 7).value), 1800.0)
+        self.assertEqual(float(hotel.cell(hotel_row, 5).value or 0), 0.0)
+        self.assertEqual(float(hotel.cell(hotel_row, 6).value or 0), 0.0)
+
+        restaurant = wb["Restaurant"]
+        rest_row = next(
+            row
+            for row in range(3, (restaurant.max_row or 2) + 1)
+            if restaurant.cell(row, 1).value == "Rest Only"
+        )
+        self.assertEqual(float(restaurant.cell(rest_row, 5).value), 320.0)
+        self.assertEqual(restaurant.cell(rest_row, 4).value, "Chicken Butter Masala")
 
 
 if __name__ == "__main__":

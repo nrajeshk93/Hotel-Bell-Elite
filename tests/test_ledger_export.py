@@ -1,4 +1,4 @@
-"""Ledger hub card name and two-sheet Excel export."""
+"""Ledger hub card name and three-sheet Excel export."""
 
 import os
 import tempfile
@@ -138,11 +138,12 @@ class LedgerHubAndExportTests(unittest.TestCase):
                 ("Acme Foods", "29AAAAA0000A1Z5"),
             )
             supplier_id = cur.lastrowid
+            # Later purchase first in insert order — All Items must still sort by date asc.
             conn.execute(
                 """INSERT INTO sales_update_expenses
                    (company, location, sales_date, description, amount, payment_type,
                     supplier_id, category, expense_code, entry_kind, invoice_number)
-                   VALUES ('HBE', 'Hotel', '2026-07-01', 'Veg stock', 100, 'cash',
+                   VALUES ('HBE', 'Hotel', '2026-07-02', 'Veg stock', 100, 'cash',
                            ?, 'grocery', 'HBE-PU-9', 'purchase', 'INV-P1')""",
                 (supplier_id,),
             )
@@ -154,31 +155,40 @@ class LedgerHubAndExportTests(unittest.TestCase):
                            ?, 'utilities', 'HBE-EX-9', 'expense', 'INV-E1')""",
                 (supplier_id,),
             )
+            conn.execute(
+                """INSERT INTO sales_update_expenses
+                   (company, location, sales_date, description, amount, payment_type,
+                    supplier_id, category, expense_code, entry_kind, invoice_number)
+                   VALUES ('HBE', 'Hotel', '2026-07-01', 'Gas refill', 25, 'cash',
+                           ?, 'utilities', 'HBE-EX-8', 'expense', 'INV-E2')""",
+                (supplier_id,),
+            )
             conn.commit()
         finally:
             conn.close()
 
         export = self.client.get(
-            "/accounts/purchase-ledger/report?date_from=2026-07-01&date_to=2026-07-01"
+            "/accounts/purchase-ledger/report?date_from=2026-07-01&date_to=2026-07-02"
         )
         self.assertEqual(export.status_code, 200)
         cd = export.headers.get("Content-Disposition") or ""
         self.assertIn("Hotel Bell Elite Purchase & Expense Ledger", cd)
-        self.assertIn("01 July 26 to 01 July 26.xlsx", cd)
+        self.assertIn("01 July 26 to 02 July 26.xlsx", cd)
         self.assertIn("no-store", (export.headers.get("Cache-Control") or "").lower())
 
         from openpyxl import load_workbook
 
         wb = load_workbook(BytesIO(export.data))
-        self.assertEqual(wb.sheetnames, ["Summary", "Line Items"])
+        self.assertEqual(wb.sheetnames, ["Summary", "Line Items", "All Items"])
         summary = wb["Summary"]
         details = wb["Line Items"]
+        all_items = wb["All Items"]
         self.assertEqual(summary["A2"].value, "Purchase")
         self.assertEqual(summary["A3"].value, "Expense")
         self.assertEqual(summary["A4"].value, "Total")
         self.assertEqual(float(summary["B2"].value), 100)
-        self.assertEqual(float(summary["B3"].value), 40)
-        self.assertEqual(float(summary["B4"].value), 140)
+        self.assertEqual(float(summary["B3"].value), 65)
+        self.assertEqual(float(summary["B4"].value), 165)
         self.assertEqual(summary["B6"].value, "Amount")
         self.assertEqual(summary.max_column, 2)
         self.assertIn("A1:B1", {str(r) for r in summary.merged_cells.ranges})
@@ -199,6 +209,7 @@ class LedgerHubAndExportTests(unittest.TestCase):
         self.assertLess(col_a.index(purchase_banner), col_a.index(expense_banner))
         self.assertIn("HBE-PU-9", col_a)
         self.assertIn("HBE-EX-9", col_a)
+        self.assertIn("HBE-EX-8", col_a)
         self.assertLess(col_a.index(purchase_banner), col_a.index("HBE-PU-9"))
         self.assertLess(col_a.index("HBE-PU-9"), col_a.index(expense_banner))
         self.assertLess(col_a.index(expense_banner), col_a.index("HBE-EX-9"))
@@ -207,14 +218,77 @@ class LedgerHubAndExportTests(unittest.TestCase):
             details.cell(2, col).value for col in range(1, 14)
         ])
 
+        line_headers = [
+            details.cell(2, col).value for col in range(1, 13)
+        ]
+        self.assertEqual(
+            line_headers,
+            [
+                "ID",
+                "Date",
+                "Description",
+                "Category",
+                "Invoice",
+                "Supplier",
+                "GST",
+                "Payment",
+                "Status",
+                "Amount",
+                "Paid",
+                "Balance",
+            ],
+        )
+
+        all_banner = "Hotel Bell Elite — Purchase & Expense Ledger"
+        self.assertEqual(all_items.cell(1, 1).value, all_banner)
+        self.assertEqual(all_items.cell(1, 1).fill.fgColor.rgb, "FF315A78")
+        self.assertNotIn(purchase_banner, [
+            all_items.cell(row, 1).value
+            for row in range(1, (all_items.max_row or 1) + 1)
+        ])
+        self.assertNotIn(expense_banner, [
+            all_items.cell(row, 1).value
+            for row in range(1, (all_items.max_row or 1) + 1)
+        ])
+        all_headers = [
+            all_items.cell(2, col).value for col in range(1, 14)
+        ]
+        self.assertEqual(all_headers, ["Type"] + line_headers)
+        self.assertEqual(all_items.cell(2, 1).fill.fgColor.rgb, "FF315A78")
+        # Flat chronological: same-day by code (EX-8 before EX-9), then later purchase.
+        self.assertEqual(all_items.max_row, 5)
+        self.assertEqual(
+            [
+                (
+                    all_items.cell(row, 1).value,
+                    all_items.cell(row, 2).value,
+                    all_items.cell(row, 3).value,
+                )
+                for row in (3, 4, 5)
+            ],
+            [
+                ("Expense", "HBE-EX-8", "2026-07-01"),
+                ("Expense", "HBE-EX-9", "2026-07-01"),
+                ("Purchase", "HBE-PU-9", "2026-07-02"),
+            ],
+        )
+        types_present = {
+            all_items.cell(row, 1).value for row in (3, 4, 5)
+        }
+        self.assertEqual(types_present, {"Purchase", "Expense"})
+
         purchase_only = self.client.get(
             "/accounts/purchase-ledger/report"
-            "?date_from=2026-07-01&date_to=2026-07-01&kind=purchase"
+            "?date_from=2026-07-01&date_to=2026-07-02&kind=purchase"
         )
         self.assertEqual(purchase_only.status_code, 200)
         purchase_wb = load_workbook(BytesIO(purchase_only.data))
+        self.assertEqual(
+            purchase_wb.sheetnames, ["Summary", "Line Items", "All Items"]
+        )
         purchase_summary = purchase_wb["Summary"]
         purchase_details = purchase_wb["Line Items"]
+        purchase_all = purchase_wb["All Items"]
         self.assertEqual(purchase_summary["A2"].value, "Purchase")
         self.assertEqual(float(purchase_summary["B2"].value), 100)
         self.assertEqual(float(purchase_summary["B3"].value), 0)
@@ -227,3 +301,7 @@ class LedgerHubAndExportTests(unittest.TestCase):
         self.assertNotIn(expense_banner, purchase_col_a)
         self.assertIn("HBE-PU-9", purchase_col_a)
         self.assertNotIn("HBE-EX-9", purchase_col_a)
+        self.assertNotIn("HBE-EX-8", purchase_col_a)
+        self.assertEqual(purchase_all.cell(3, 1).value, "Purchase")
+        self.assertEqual(purchase_all.cell(3, 2).value, "HBE-PU-9")
+        self.assertEqual(purchase_all.max_row, 3)

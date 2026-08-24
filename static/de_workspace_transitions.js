@@ -1672,7 +1672,7 @@
    * never replace .de-sb-nav (that collapses other sections and drops items
    * the user still needs, e.g. Sales Analytics → Credit while on Payroll).
    */
-  function syncSidebarActiveFromUrl(url){
+    function syncSidebarActiveFromUrl(url){
     var curSidebar = document.querySelector('#de-sidebar, .de-sidebar');
     if(!curSidebar || !url) return;
 
@@ -1685,6 +1685,30 @@
     curSidebar.querySelectorAll('.de-nav-group.is-child-active').forEach(function(group){
       group.classList.remove('is-child-active');
     });
+
+    /* Reports hub drill-ins (?from_hub=reports) stay on Report — never jump to the
+       destination module (e.g. Menu & Margin → Restaurant POS). */
+    try{
+      var hubTarget = new URL(url, window.location.origin);
+      if((hubTarget.searchParams.get('from_hub') || '').toLowerCase() === 'reports'){
+        var reportHome =
+          curSidebar.querySelector('#de-nav-report-home') ||
+          curSidebar.querySelector('#de-nav-report-group a.de-nav-subitem');
+        if(reportHome){
+          reportHome.classList.add('is-active');
+          reportHome.setAttribute('aria-current', 'page');
+          var reportGroup = reportHome.closest('.de-nav-group');
+          if(reportGroup){
+            reportGroup.classList.add('is-open', 'is-child-active');
+            var reportToggle = reportGroup.querySelector('.de-nav-group-toggle');
+            if(reportToggle) reportToggle.setAttribute('aria-expanded', 'true');
+          }
+          restoreOpenNavGroups(curSidebar);
+          persistOpenNavGroups(curSidebar);
+          return;
+        }
+      }
+    } catch(eHub){}
 
     var key = navLinkKey(url);
     var path = navLinkPathname(url);
@@ -2792,8 +2816,8 @@
         '/static/ep_form_listbox.css?v=29',
         '/static/pos_tables.css?v=71',
         '/static/pos_invoice.css?v=65',
-        '/static/purchase_ledger.css?v=55',
-        '/static/cash_ledger.css?v=25',
+        '/static/purchase_ledger.css?v=56',
+        '/static/cash_ledger.css?v=26',
         '/static/communication_hub.css?v=12',
         '/static/communication_hub_promotion.css?v=1',
         '/static/hotel_rooms.css?v=72',

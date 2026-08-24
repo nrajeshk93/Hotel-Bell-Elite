@@ -105,7 +105,7 @@
         {% endif %}
         <a class="btn btn-primary" href="{{ url_for('stores_purchase_requests', outlet='both') }}">Stock Inward</a>
         {% elif page_key == 'stock_audit_report' and audit_report_export_url %}
-        <a class="btn btn-primary" href="{{ audit_report_export_url }}">Export Excel</a>
+        <a class="btn btn-primary" href="{{ audit_report_export_url }}">Export</a>
         {% elif page_key == 'product_master' and page_cta %}
         <button type="button" class="btn btn-primary" id="st-open-product-modal" data-st-action="open-product-modal">{{ page_cta }}</button>
         {% elif page_cta and page_cta_url and not (page_key == 'indent' and (show_form or detail)) %}

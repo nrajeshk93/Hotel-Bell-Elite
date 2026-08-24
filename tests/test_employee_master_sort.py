@@ -92,6 +92,40 @@ class EmployeeMasterSortTests(unittest.TestCase):
         self.assertIn("numeric: true", js)
         self.assertIn("querySelectorAll('tbody tr[data-sort-row]')", js)
 
+    def test_export_employee_master_uses_ledger_chrome_single_sheet(self):
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        export = self.client.get("/export/employee_master")
+        self.assertEqual(export.status_code, 200)
+        self.assertIn(
+            "spreadsheetml.sheet",
+            export.headers.get("Content-Type", ""),
+        )
+        cd = export.headers.get("Content-Disposition") or ""
+        self.assertIn("Hotel Bell Elite Employee Master", cd)
+
+        wb = load_workbook(BytesIO(export.data))
+        self.assertEqual(wb.sheetnames, ["Employees"])
+        self.assertNotIn("Summary", wb.sheetnames)
+        ws = wb["Employees"]
+        self.assertEqual(ws["A1"].value, "Hotel Bell Elite — Employee Master")
+        self.assertEqual(ws["A1"].fill.fgColor.rgb, "FF315A78")
+        self.assertEqual(ws["A1"].font.name, "Calibri")
+        self.assertEqual(ws["A2"].value, "Emp ID")
+        self.assertEqual(ws["A2"].fill.fgColor.rgb, "FF315A78")
+        self.assertEqual(ws["B2"].value, "Name")
+        self.assertEqual(ws["L2"].value, "Gross Salary")
+        # Three seeded employees start on row 3
+        names = {
+            ws.cell(row=r, column=2).value
+            for r in range(3, (ws.max_row or 2) + 1)
+        }
+        self.assertTrue({"Mira", "Asha", "Zara"}.issubset(names))
+        self.assertEqual(ws["A3"].font.name, "Calibri")
+        self.assertEqual(ws["L3"].alignment.horizontal, "right")
+
 
 if __name__ == "__main__":
     unittest.main()

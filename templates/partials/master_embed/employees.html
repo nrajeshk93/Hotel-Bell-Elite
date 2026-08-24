@@ -82,64 +82,51 @@
     </div>
     <div class="se-sales-header-card">
       <div class="se-sales-header-filters">
-        <div class="ep-header-filters sr-topbar-filters" aria-label="Employee filters">
-          <div class="cp-view-tabs" role="tablist" aria-label="Employee status">
-            {% if from_hub %}
-            <a class="cp-view-tab{% if sel_status|default('active') == 'active' %} is-active{% endif %}"
-               href="{{ url_for(emp_list_endpoint, year=sel_year, month=sel_month, q=search, status='active', location=sel_location|default(''), from_hub=from_hub) }}"
-               role="tab" aria-selected="{{ 'true' if sel_status|default('active') == 'active' else 'false' }}">Active</a>
-            <a class="cp-view-tab{% if sel_status|default('active') == 'inactive' %} is-active{% endif %}"
-               href="{{ url_for(emp_list_endpoint, year=sel_year, month=sel_month, q=search, status='inactive', location=sel_location|default(''), from_hub=from_hub) }}"
-               role="tab" aria-selected="{{ 'true' if sel_status|default('active') == 'inactive' else 'false' }}">Inactive</a>
-            {% elif emp_master_is_page %}
-            <a class="cp-view-tab{% if sel_status|default('active') == 'active' %} is-active{% endif %}"
-               href="{{ url_for(emp_list_endpoint, year=sel_year, month=sel_month, q=search, status='active', location=sel_location|default('')) }}"
-               role="tab" aria-selected="{{ 'true' if sel_status|default('active') == 'active' else 'false' }}">Active</a>
-            <a class="cp-view-tab{% if sel_status|default('active') == 'inactive' %} is-active{% endif %}"
-               href="{{ url_for(emp_list_endpoint, year=sel_year, month=sel_month, q=search, status='inactive', location=sel_location|default('')) }}"
-               role="tab" aria-selected="{{ 'true' if sel_status|default('active') == 'inactive' else 'false' }}">Inactive</a>
-            {% else %}
-            <a class="cp-view-tab{% if sel_status|default('active') == 'active' %} is-active{% endif %}"
-               href="{{ url_for(emp_list_endpoint, year=sel_year, month=sel_month, q=search, status='active', location=sel_location|default(''), embed=1) }}"
-               role="tab" aria-selected="{{ 'true' if sel_status|default('active') == 'active' else 'false' }}">Active</a>
-            <a class="cp-view-tab{% if sel_status|default('active') == 'inactive' %} is-active{% endif %}"
-               href="{{ url_for(emp_list_endpoint, year=sel_year, month=sel_month, q=search, status='inactive', location=sel_location|default(''), embed=1) }}"
-               role="tab" aria-selected="{{ 'true' if sel_status|default('active') == 'inactive' else 'false' }}">Inactive</a>
-            {% endif %}
-          </div>
-          <div class="se-filter-chip se-filter-chip--search ep-search-chip{% if search %} is-active{% endif %}" id="md-emp-search-chip">
-            <label class="se-filter-chip-label" for="md-emp-search">Search</label>
-            <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-              </span>
-              <form method="GET" action="{{ emp_master_filter_action }}" id="md-emp-search-form" class="ep-search-form">
-                {% if not emp_master_is_page %}<input type="hidden" name="embed" value="1">{% endif %}
-                {% if from_hub %}<input type="hidden" name="from_hub" value="{{ from_hub }}">{% endif %}
-                <input type="hidden" name="year" value="{{ sel_year }}">
-                <input type="hidden" name="month" value="{{ sel_month }}">
-                <input type="hidden" name="status" value="{{ sel_status|default('active') }}">
-                <input type="hidden" name="location" value="{{ sel_location|default('') }}">
-                <input type="hidden" name="sort" value="id">
-                <input type="search" name="q" id="md-emp-search" class="ep-search-input" value="{{ search }}" placeholder="Search employees…"
-                       autocomplete="off" aria-label="Search employees">
-              </form>
+        <form id="employee-master-filter-form" method="get" action="{{ emp_master_filter_action }}" class="sr-topbar-filters" aria-label="Employee filters">
+          {% if not emp_master_is_page %}<input type="hidden" name="embed" value="1">{% endif %}
+          {% if from_hub %}<input type="hidden" name="from_hub" value="{{ from_hub }}">{% endif %}
+          <input type="hidden" name="year" value="{{ sel_year }}">
+          <input type="hidden" name="month" value="{{ sel_month }}">
+          <input type="hidden" name="status" value="{{ sel_status|default('active') }}">
+          <input type="hidden" name="sort" value="id">
+          <div class="pl-kind-filter-host pl-header-field" id="employee-master-status-host">
+            <span class="se-filter-chip-label" id="employee-master-status-label">Status</span>
+            <div class="cp-view-tabs pl-kind-filter-tabs" role="tablist" aria-labelledby="employee-master-status-label" id="employee-master-status-tabs">
+              {% if from_hub %}
+              <a class="cp-view-tab pl-kind-filter-tab{% if sel_status|default('active') == 'active' %} is-active{% endif %}"
+                 href="{{ url_for(emp_list_endpoint, year=sel_year, month=sel_month, q=search, status='active', location=sel_location|default(''), from_hub=from_hub) }}"
+                 role="tab" aria-selected="{{ 'true' if sel_status|default('active') == 'active' else 'false' }}">Active</a>
+              <a class="cp-view-tab pl-kind-filter-tab{% if sel_status|default('active') == 'inactive' %} is-active{% endif %}"
+                 href="{{ url_for(emp_list_endpoint, year=sel_year, month=sel_month, q=search, status='inactive', location=sel_location|default(''), from_hub=from_hub) }}"
+                 role="tab" aria-selected="{{ 'true' if sel_status|default('active') == 'inactive' else 'false' }}">Inactive</a>
+              {% elif emp_master_is_page %}
+              <a class="cp-view-tab pl-kind-filter-tab{% if sel_status|default('active') == 'active' %} is-active{% endif %}"
+                 href="{{ url_for(emp_list_endpoint, year=sel_year, month=sel_month, q=search, status='active', location=sel_location|default('')) }}"
+                 role="tab" aria-selected="{{ 'true' if sel_status|default('active') == 'active' else 'false' }}">Active</a>
+              <a class="cp-view-tab pl-kind-filter-tab{% if sel_status|default('active') == 'inactive' %} is-active{% endif %}"
+                 href="{{ url_for(emp_list_endpoint, year=sel_year, month=sel_month, q=search, status='inactive', location=sel_location|default('')) }}"
+                 role="tab" aria-selected="{{ 'true' if sel_status|default('active') == 'inactive' else 'false' }}">Inactive</a>
+              {% else %}
+              <a class="cp-view-tab pl-kind-filter-tab{% if sel_status|default('active') == 'active' %} is-active{% endif %}"
+                 href="{{ url_for(emp_list_endpoint, year=sel_year, month=sel_month, q=search, status='active', location=sel_location|default(''), embed=1) }}"
+                 role="tab" aria-selected="{{ 'true' if sel_status|default('active') == 'active' else 'false' }}">Active</a>
+              <a class="cp-view-tab pl-kind-filter-tab{% if sel_status|default('active') == 'inactive' %} is-active{% endif %}"
+                 href="{{ url_for(emp_list_endpoint, year=sel_year, month=sel_month, q=search, status='inactive', location=sel_location|default(''), embed=1) }}"
+                 role="tab" aria-selected="{{ 'true' if sel_status|default('active') == 'inactive' else 'false' }}">Inactive</a>
+              {% endif %}
             </div>
           </div>
-          <form method="GET" action="{{ emp_master_filter_action }}" id="md-emp-filter-form" class="ep-topbar-filter-form emp-list-filter-form" aria-label="Department filter">
-            {% if not emp_master_is_page %}<input type="hidden" name="embed" value="1">{% endif %}
-            {% if from_hub %}<input type="hidden" name="from_hub" value="{{ from_hub }}">{% endif %}
-            <input type="hidden" name="q" value="{{ search }}">
-            <input type="hidden" name="year" value="{{ sel_year }}">
-            <input type="hidden" name="month" value="{{ sel_month }}">
-            <input type="hidden" name="status" value="{{ sel_status|default('active') }}">
-            <input type="hidden" name="sort" value="id">
-            {{ ep_toolbar_listbox('location', 'Department', ep_location_opts.options, sel_location|default(''), 'All Departments', 'md-emp-filter-form', searchable=true) }}
-            {% if sel_location %}
-            <a href="{% if from_hub %}{{ url_for(emp_list_endpoint, q=search, status=sel_status|default('active'), year=sel_year, month=sel_month, from_hub=from_hub) }}{% elif emp_master_is_page %}{{ url_for(emp_list_endpoint, q=search, status=sel_status|default('active'), year=sel_year, month=sel_month) }}{% else %}{{ url_for(emp_list_endpoint, q=search, status=sel_status|default('active'), year=sel_year, month=sel_month, embed=1) }}{% endif %}" class="btn-clear">✕ Clear</a>
-            {% endif %}
-          </form>
-        </div>
+          <div class="se-filter-chip se-filter-chip--search pl-search-chip pl-header-field-listbox pl-header-field{% if search %} is-active{% endif %}" id="emp-search-chip">
+            <label class="se-filter-chip-label" for="employee-master-search">Search</label>
+            <div class="se-filter-chip-control">
+              <input type="search" name="q" id="employee-master-search" class="pl-search-input pl-header-search" value="{{ search }}" placeholder="Name, ID, phone…" autocomplete="off" aria-label="Search employees">
+            </div>
+          </div>
+          {{ ep_toolbar_listbox('location', 'Department', ep_location_opts.options, sel_location|default(''), 'All Departments', 'employee-master-filter-form', searchable=true, extra_class='pl-header-field-listbox pl-header-field', field_id='employee-master-location') }}
+          {% if sel_location %}
+          <a href="{% if from_hub %}{{ url_for(emp_list_endpoint, q=search, status=sel_status|default('active'), year=sel_year, month=sel_month, from_hub=from_hub) }}{% elif emp_master_is_page %}{{ url_for(emp_list_endpoint, q=search, status=sel_status|default('active'), year=sel_year, month=sel_month) }}{% else %}{{ url_for(emp_list_endpoint, q=search, status=sel_status|default('active'), year=sel_year, month=sel_month, embed=1) }}{% endif %}" class="btn-clear">✕ Clear</a>
+          {% endif %}
+        </form>
       </div>
     </div>
   </header>

@@ -3557,6 +3557,63 @@ class StoresFlowTests(unittest.TestCase):
             export.content_type,
         )
         self.assertTrue(export.data[:2] == b"PK")
+        self.assertIn("no-store", export.headers.get("Cache-Control", ""))
+
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        wb = load_workbook(BytesIO(export.data))
+        self.assertEqual(wb.sheetnames, ["Summary", "Line Items"])
+        summary = wb["Summary"]
+        details = wb["Line Items"]
+        self.assertTrue(
+            (summary["A1"].value or "").startswith("Hotel Bell Elite — Stock Audit")
+        )
+        self.assertEqual(summary["A1"].fill.fgColor.rgb, "FF315A78")
+        self.assertEqual(summary["A2"].value, "Adjustments")
+        self.assertEqual(int(summary["B2"].value), 1)
+        self.assertEqual(summary["A3"].value, "Gains")
+        self.assertEqual(summary["A4"].value, "Losses")
+        self.assertEqual(int(summary["B4"].value), 1)
+        self.assertEqual(summary["A5"].value, "Net Variance Value")
+        self.assertEqual(summary["A7"].value, "Reason")
+        self.assertEqual(summary["A7"].fill.fgColor.rgb, "FF315A78")
+        self.assertIn("A1:B1", {str(r) for r in summary.merged_cells.ranges})
+
+        col_a = [
+            details.cell(row, 1).value
+            for row in range(1, (details.max_row or 1) + 1)
+        ]
+        banner = "Hotel Bell Elite — Stock Audit - Kitchen Wastage"
+        self.assertIn(banner, col_a)
+        banner_row = col_a.index(banner) + 1
+        self.assertEqual(details.cell(banner_row, 1).fill.fgColor.rgb, "FF315A78")
+        headers = [
+            details.cell(banner_row + 1, col).value for col in range(1, 15)
+        ]
+        self.assertEqual(
+            headers,
+            [
+                "Verified at",
+                "Outlet",
+                "Place",
+                "Audit",
+                "Product",
+                "Category",
+                "Unit",
+                "System qty",
+                "Actual qty",
+                "Variance qty",
+                "Variance value",
+                "Reason",
+                "Remarks",
+                "Verified by",
+            ],
+        )
+        self.assertEqual(details.cell(banner_row + 1, 1).fill.fgColor.rgb, "FF315A78")
+        self.assertEqual(details.cell(banner_row + 2, 5).value, "Beans")
+        self.assertEqual(details.cell(banner_row + 2, 13).value, "Prep loss")
 
         viewer = {
             "id": self.admin_id,

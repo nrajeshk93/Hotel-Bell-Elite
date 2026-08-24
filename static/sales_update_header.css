@@ -490,6 +490,8 @@ body.sb-off .se-hero-back svg {
   max-width: calc(100vw - 24px);
 }
 
+/* Single-month / single-day pickers — fit one calendar, no dual-month gutter */
+.se-sales-header .an-range-wrap--single-month.open .an-range-panel,
 .se-sales-header #se-date-range-panel {
   width: min(308px, calc(100vw - 36px));
 }

@@ -2623,10 +2623,23 @@ def _page_render(page_key: str, **kwargs):
             finally:
                 conn.close()
         kwargs["pending_approvals_count"] = pending_count
+    from_hub = ""
+    try:
+        from_hub = (request.args.get("from_hub") or "").strip().lower()
+    except RuntimeError:
+        from_hub = ""
+    if from_hub == "reports":
+        de_nav_section = "report"
+        de_nav_report_view = "home"
+        nav_stores_view = ""
+    else:
+        de_nav_section = "stores"
+        de_nav_report_view = kwargs.pop("de_nav_report_view", "")
     return render_template(
         "stores_page.html",
-        de_nav_section="stores",
+        de_nav_section=de_nav_section,
         de_nav_stores_view=nav_stores_view,
+        de_nav_report_view=de_nav_report_view,
         stores_outlets=outlets_for_ui,
         selected_outlet=selected_outlet,
         selected_outlet_label=selected_outlet_label,
@@ -9458,18 +9471,79 @@ def _stock_audit_report_filter_args(filters: dict[str, Any]) -> dict[str, str]:
     return args
 
 
-def _build_stock_audit_report_xlsx(rows: list[dict[str, Any]]) -> io.BytesIO:
-    from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Font
+def _stock_audit_excel_title_date(
+    date_from: date | None, date_to: date | None
+) -> str:
+    """Parenthetical date for the Excel title: (1 April 2026)."""
+    if not date_from or not date_to:
+        return ""
+    months = (
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    )
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Stock Audit"
-    title_font = Font(bold=True, size=14)
-    header_font = Font(bold=True)
-    ws["A1"] = "Hotel Bell Elite — Stock Audit Report"
-    ws["A1"].font = title_font
-    ws["A2"] = f"Generated {_now()}"
+    def _fmt(value: date) -> str:
+        return f"{value.day} {months[value.month - 1]} {value.year}"
+
+    if date_from == date_to:
+        return f" ({_fmt(date_from)})"
+    return f" ({_fmt(date_from)} – {_fmt(date_to)})"
+
+
+def _build_stock_audit_report_xlsx(
+    rows: list[dict[str, Any]],
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> io.BytesIO:
+    """Summary + Line Items workbook matching Purchase & Expense Ledger chrome."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    def _whole_or_float(value):
+        if value is None:
+            return None
+        try:
+            num = float(value)
+            return int(num) if num == int(num) else num
+        except (TypeError, ValueError):
+            return value
+
+    kpis = _stock_audit_adjustment_kpis(rows)
+    title_date = _stock_audit_excel_title_date(date_from, date_to)
+    report_title = "Stock Audit"
+
+    reason_order: list[str] = []
+    reason_groups: dict[str, list[dict[str, Any]]] = {}
+    reason_counts: dict[str, int] = {}
+    for row in rows:
+        label = (row.get("reason_label") or "").strip() or "Unspecified"
+        if label not in reason_groups:
+            reason_order.append(label)
+            reason_groups[label] = []
+            reason_counts[label] = 0
+        reason_groups[label].append(row)
+        reason_counts[label] += 1
+
+    sections = [
+        {"label": label, "entries": reason_groups[label]} for label in reason_order
+    ]
+    reason_rows = [
+        {"label": label, "count": reason_counts[label]} for label in reason_order
+    ]
+    reason_total = sum(item["count"] for item in reason_rows)
+
     headers = (
         "Verified at",
         "Outlet",
@@ -9486,31 +9560,187 @@ def _build_stock_audit_report_xlsx(rows: list[dict[str, Any]]) -> io.BytesIO:
         "Remarks",
         "Verified by",
     )
-    for col, title in enumerate(headers, start=1):
-        cell = ws.cell(row=4, column=col, value=title)
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal="center" if col >= 8 else "left")
-    for idx, row in enumerate(rows, start=5):
-        ws.cell(row=idx, column=1, value=row.get("verified_at") or "")
-        ws.cell(row=idx, column=2, value=row.get("outlet_label") or "")
-        ws.cell(row=idx, column=3, value=row.get("place_label") or "")
-        ws.cell(row=idx, column=4, value=row.get("audit_label") or "")
-        ws.cell(row=idx, column=5, value=row.get("item_name") or "")
-        ws.cell(row=idx, column=6, value=row.get("category_name") or "")
-        ws.cell(row=idx, column=7, value=row.get("unit") or "")
-        ws.cell(row=idx, column=8, value=row.get("system_qty"))
-        ws.cell(row=idx, column=9, value=row.get("actual_qty"))
-        ws.cell(row=idx, column=10, value=row.get("variance_qty"))
-        vv = row.get("variance_value")
-        ws.cell(row=idx, column=11, value=vv if vv is not None else "")
-        ws.cell(row=idx, column=12, value=row.get("reason_label") or "")
-        ws.cell(row=idx, column=13, value=row.get("remarks") or "")
-        ws.cell(row=idx, column=14, value=row.get("verified_by_name") or "")
-    from openpyxl.utils import get_column_letter
+    col_count = len(headers)
+    amount_cols = {8, 9, 10, 11}
 
-    widths = (18, 12, 12, 18, 22, 16, 8, 12, 12, 12, 14, 22, 24, 18)
-    for idx, width in enumerate(widths, start=1):
-        ws.column_dimensions[get_column_letter(idx)].width = width
+    wb = Workbook()
+    summary = wb.active
+    summary.title = "Summary"
+    details = wb.create_sheet("Line Items")
+
+    summary["A1"] = f"Hotel Bell Elite — {report_title}{title_date}"
+    summary_metrics = [
+        ("Adjustments", kpis["count"]),
+        ("Gains", kpis["positive"]),
+        ("Losses", kpis["negative"]),
+        ("Net Variance Value", kpis["variance_value"]),
+    ]
+    for idx, (label, amount) in enumerate(summary_metrics, start=2):
+        summary.cell(row=idx, column=1, value=label)
+        summary.cell(row=idx, column=2, value=_whole_or_float(amount))
+    summary.merge_cells("A1:B1")
+    net_row = 1 + len(summary_metrics)
+
+    reason_header_row = net_row + 2
+    summary.cell(row=reason_header_row, column=1, value="Reason")
+    summary.cell(row=reason_header_row, column=2, value="Count")
+    reason_data_rows: list[int] = []
+    row_idx = reason_header_row + 1
+    for item in reason_rows:
+        summary.cell(row=row_idx, column=1, value=item["label"])
+        summary.cell(row=row_idx, column=2, value=item["count"])
+        reason_data_rows.append(row_idx)
+        row_idx += 1
+    reason_total_row = row_idx
+    summary.cell(row=reason_total_row, column=1, value="Total")
+    summary.cell(row=reason_total_row, column=2, value=reason_total)
+
+    def _write_audit_row(target_row: int, entry: dict[str, Any]) -> None:
+        vv = entry.get("variance_value")
+        values = (
+            entry.get("verified_at") or "",
+            entry.get("outlet_label") or "",
+            entry.get("place_label") or "",
+            entry.get("audit_label") or "",
+            entry.get("item_name") or "",
+            entry.get("category_name") or "",
+            entry.get("unit") or "",
+            _whole_or_float(entry.get("system_qty")),
+            _whole_or_float(entry.get("actual_qty")),
+            _whole_or_float(entry.get("variance_qty")),
+            _whole_or_float(vv) if vv is not None else "",
+            entry.get("reason_label") or "",
+            entry.get("remarks") or "",
+            entry.get("verified_by_name") or "",
+        )
+        for col, value in enumerate(values, start=1):
+            details.cell(row=target_row, column=col, value=value)
+
+    banner_rows: list[int] = []
+    header_rows: list[int] = []
+    item_rows: list[int] = []
+    row_idx = 1
+    if not sections:
+        details.cell(
+            row=row_idx,
+            column=1,
+            value=f"Hotel Bell Elite — {report_title}",
+        )
+        details.merge_cells(
+            start_row=row_idx,
+            start_column=1,
+            end_row=row_idx,
+            end_column=col_count,
+        )
+        banner_rows.append(row_idx)
+        row_idx += 1
+        for col, title in enumerate(headers, start=1):
+            details.cell(row=row_idx, column=col, value=title)
+        header_rows.append(row_idx)
+        row_idx += 1
+    else:
+        for i, section in enumerate(sections):
+            if i > 0:
+                row_idx += 1
+            details.cell(
+                row=row_idx,
+                column=1,
+                value=f"Hotel Bell Elite — {report_title} - {section['label']}",
+            )
+            details.merge_cells(
+                start_row=row_idx,
+                start_column=1,
+                end_row=row_idx,
+                end_column=col_count,
+            )
+            banner_rows.append(row_idx)
+            row_idx += 1
+            for col, title in enumerate(headers, start=1):
+                details.cell(row=row_idx, column=col, value=title)
+            header_rows.append(row_idx)
+            row_idx += 1
+            for entry in section.get("entries") or []:
+                _write_audit_row(row_idx, entry)
+                item_rows.append(row_idx)
+                row_idx += 1
+
+    last_details = max(1, row_idx - 1)
+    header_fill = PatternFill(
+        fill_type="solid",
+        start_color="FF315A78",
+        end_color="FF315A78",
+    )
+    banner_font = Font(bold=True, size=16, color="FFFFFFFF")
+    chrome_header_font = Font(bold=True, size=11, color="FFFFFFFF")
+    summary_title_font = Font(name="Calibri", bold=True, size=16, color="FFFFFFFF")
+    summary_font = Font(name="Calibri", size=12, color="FF000000")
+    summary_bold_font = Font(name="Calibri", bold=True, size=12, color="FF000000")
+    body_font = Font(size=11, color="FF000000")
+    thin = Side(style="thin", color="FF000000")
+    grid = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    right = Alignment(horizontal="right", vertical="center", wrap_text=True)
+
+    summary_kpi_rows = set(range(2, net_row + 1))
+    summary_chrome_rows = {
+        1,
+        *summary_kpi_rows,
+        reason_header_row,
+        reason_total_row,
+        *reason_data_rows,
+    }
+    for r in sorted(summary_chrome_rows):
+        for col in range(1, 3):
+            cell = summary.cell(row=r, column=col)
+            cell.border = grid
+            cell.alignment = center
+            if r == 1 or r == reason_header_row:
+                cell.fill = header_fill
+                cell.font = summary_title_font
+            elif r == net_row or r == reason_total_row:
+                cell.font = summary_bold_font
+            else:
+                cell.font = summary_font
+
+    for r in range(1, last_details + 1):
+        for col in range(1, col_count + 1):
+            cell = details.cell(row=r, column=col)
+            cell.border = grid
+            if r in banner_rows:
+                cell.fill = header_fill
+                cell.font = banner_font
+                cell.alignment = center
+            elif r in header_rows:
+                cell.fill = header_fill
+                cell.font = chrome_header_font
+                cell.alignment = center
+            elif r in item_rows:
+                cell.font = body_font
+                cell.alignment = right if col in amount_cols else left
+            elif col in amount_cols:
+                cell.font = body_font
+                cell.alignment = right
+
+    summary.row_dimensions[1].height = 23.2
+    for r in summary_kpi_rows:
+        summary.row_dimensions[r].height = 17.6
+    summary.row_dimensions[reason_header_row].height = 23.2
+    for r in reason_data_rows:
+        summary.row_dimensions[r].height = 17.6
+    summary.row_dimensions[reason_total_row].height = 17.6
+    summary.column_dimensions["A"].width = 34
+    summary.column_dimensions["B"].width = 39.5
+    for r in banner_rows:
+        details.row_dimensions[r].height = 20
+    for r in header_rows:
+        details.row_dimensions[r].height = 20
+    for r in item_rows:
+        details.row_dimensions[r].height = 17
+    detail_widths = (18, 12, 12, 18, 22, 16, 8, 12, 12, 12, 14, 22, 24, 18)
+    for col, width in enumerate(detail_widths, start=1):
+        details.column_dimensions[get_column_letter(col)].width = width
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -9591,18 +9821,28 @@ def stores_stock_audit_report_export():
         )
     finally:
         conn.close()
-    buf = _build_stock_audit_report_xlsx(rows)
-    return send_file(
+    date_from = filters.get("date_from")
+    date_to = filters.get("date_to")
+    date_filter_active = bool(date_from and date_to)
+    buf = _build_stock_audit_report_xlsx(
+        rows,
+        date_from=date_from if date_filter_active else None,
+        date_to=date_to if date_filter_active else None,
+    )
+    response = send_file(
         buf,
         as_attachment=True,
         download_name=report_export_filename(
             "Stock Audit",
-            date_from=filters.get("date_from"),
-            date_to=filters.get("date_to"),
-            date_filter_active=bool(filters.get("date_from") and filters.get("date_to")),
+            date_from=date_from,
+            date_to=date_to,
+            date_filter_active=date_filter_active,
         ),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 def register_stores(app, *, pop_auth_notice, get_user):

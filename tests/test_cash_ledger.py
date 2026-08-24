@@ -392,6 +392,106 @@ class CashLedgerHelperTests(unittest.TestCase):
         rules = [rule.rule for rule in app_module.app.url_map.iter_rules()]
         self.assertIn("/accounts/cash-ledger/report", rules)
 
+    def test_export_cash_ledger_report_summary_and_line_items(self):
+        import os
+        import tempfile
+        from io import BytesIO
+        from unittest import mock
+
+        from openpyxl import load_workbook
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tmp.close()
+        db_path = tmp.name
+        orig = db_mod.DATABASE_PATH
+        db_mod.DATABASE_PATH = db_path
+        try:
+            db_mod.init_db()
+            conn = db_mod.get_db()
+            try:
+                conn.execute(
+                    """INSERT INTO sales_updates
+                       (company, location, sales_date, sales_entry_values, created_at, updated_at)
+                       VALUES (?,?,?,?,datetime('now'),datetime('now'))""",
+                    ("HBE", "Hotel", "2026-07-01", json.dumps({"actual_cash": 1000})),
+                )
+                conn.execute(
+                    """INSERT INTO sales_update_expenses
+                       (company, location, sales_date, description, amount, payment_type, expense_code)
+                       VALUES (?,?,?,?,?,?,?)""",
+                    ("HBE", "Hotel", "2026-07-01", "Veggies", 100, "cash", "HBE-EX-1"),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            app = app_module.app
+            app.config["TESTING"] = True
+            client = app.test_client()
+            user = {
+                "id": 1,
+                "username": "admin",
+                "full_name": "Administrator",
+                "is_admin": True,
+                "is_active": True,
+                "dashboard_access": set(),
+                "stores_access": set(),
+            }
+            with mock.patch.object(app_module, "get_current_user", return_value=user):
+                export = client.get(
+                    "/accounts/cash-ledger/report?date_from=2026-07-01&date_to=2026-07-01"
+                )
+            self.assertEqual(export.status_code, 200)
+            self.assertIn(
+                "spreadsheetml.sheet",
+                export.headers.get("Content-Type", ""),
+            )
+            cd = export.headers.get("Content-Disposition") or ""
+            self.assertIn("Hotel Bell Elite Cash Ledger", cd)
+            self.assertIn("01 July 26.xlsx", cd)
+
+            wb = load_workbook(BytesIO(export.data))
+            self.assertEqual(wb.sheetnames, ["Summary", "Line Items"])
+            summary = wb["Summary"]
+            details = wb["Line Items"]
+            self.assertTrue(
+                (summary["A1"].value or "").startswith("Hotel Bell Elite — Cash Ledger")
+            )
+            self.assertEqual(summary["A2"].value, "Actual Cash")
+            self.assertEqual(float(summary["B2"].value), 1000)
+            self.assertEqual(summary["A8"].value, "Available Cash")
+            self.assertEqual(float(summary["B8"].value), 900)
+            self.assertEqual(summary["A10"].value, "Movement Type")
+            self.assertEqual(summary["A10"].fill.fgColor.rgb, "FF315A78")
+            self.assertIn("A1:B1", {str(r) for r in summary.merged_cells.ranges})
+
+            col_a = [
+                details.cell(row, 1).value
+                for row in range(1, (details.max_row or 1) + 1)
+            ]
+            self.assertIn("Hotel Bell Elite — Cash Ledger - Actual Cash", col_a)
+            self.assertIn("Hotel Bell Elite — Cash Ledger - Expense", col_a)
+            expense_banner = col_a.index(
+                "Hotel Bell Elite — Cash Ledger - Expense"
+            )
+            headers = [
+                details.cell(expense_banner + 2, col).value for col in range(1, 8)
+            ]
+            self.assertEqual(
+                headers,
+                ["Date", "Type", "Detail", "ID", "Description", "Amount", "Balance"],
+            )
+            self.assertEqual(
+                details.cell(expense_banner + 1, 1).fill.fgColor.rgb, "FF315A78"
+            )
+            self.assertEqual(details.cell(expense_banner + 3, 4).value, "HBE-EX-1")
+        finally:
+            db_mod.DATABASE_PATH = orig
+            try:
+                os.unlink(db_path)
+            except OSError:
+                pass
+
     def test_resolve_cash_ledger_date_range_defaults_to_fy(self):
         date_from, date_to, active = app_module._resolve_cash_ledger_date_range({})
         fy_start, today = db_mod.indian_fiscal_year_bounds()

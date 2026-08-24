@@ -1355,9 +1355,28 @@ def _emp_render(template, **kwargs):
     kwargs.setdefault('today_year', default_year)
     kwargs.setdefault('today_month', default_month)
     kwargs.setdefault('auth_notice', _pop_auth_notice())
-    kwargs.setdefault('de_nav_host', 'payroll')
-    kwargs.setdefault('de_nav_section', 'payroll')
-    kwargs.setdefault('de_nav_payroll_view', _payroll_nav_view(kwargs.get('mode')))
+    from_hub = ""
+    try:
+        if has_request_context():
+            from_hub = (
+                (kwargs.get("from_hub") or request.args.get("from_hub") or "")
+                .strip()
+                .lower()
+            )
+        else:
+            from_hub = (kwargs.get("from_hub") or "").strip().lower()
+    except RuntimeError:
+        from_hub = (kwargs.get("from_hub") or "").strip().lower()
+    # Reports hub drill-in: keep Report nav — do not jump to Payroll.
+    if from_hub == "reports":
+        kwargs.setdefault("de_nav_host", "report")
+        kwargs.setdefault("de_nav_section", "report")
+        kwargs.setdefault("de_nav_report_view", "home")
+        kwargs.setdefault("de_nav_payroll_view", "")
+    else:
+        kwargs.setdefault('de_nav_host', 'payroll')
+        kwargs.setdefault('de_nav_section', 'payroll')
+        kwargs.setdefault('de_nav_payroll_view', _payroll_nav_view(kwargs.get('mode')))
     if kwargs.get('mode') in ('credits', 'credits_dashboard'):
         import app as app_module
         kwargs.setdefault(
@@ -3291,73 +3310,171 @@ _SUN_SHIFT_LABELS = {
 
 @payroll_bp.route('/export/employee_master')
 def export_employee_master():
-    """Employee Master Report — Hotel Bell Elite only."""
+    """Employee Master Excel — Purchase & Expense ledger chrome, single sheet (no Summary)."""
     from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
     conn = get_db()
     rows = conn.execute(
         f"SELECT * FROM employees ORDER BY {_EMPLOYEE_SORT_ORDERS['id']}"
     ).fetchall()
     conn.close()
 
-    COL_WIDTHS = [
-        12, 26, 16,                # Emp ID, Name, Department
-        14, 16, 10, 10,            # Mobile, Guardian Mobile, Sex, Status
-        16, 14, 18, 16,            # Aadhar, PAN, EPF No, ESIC No
-        14, 14,                    # Gross, Basic
-        14, 10,                    # EPF Amount, EPF Exempt
-        14, 10,                    # ESIC Amount, ESIC Exempt
-        20, 24, 20, 14,            # Bank Name, Account Holder, Account Number, IFSC
-        34,                        # Address
-    ]
-    headers = [
-        'Emp ID', 'Name', 'Department',
-        'Mobile', 'Guardian Mobile', 'Sex', 'Status',
-        'Aadhar', 'PAN', 'EPF No', 'ESIC No',
-        'Gross Salary', 'Basic Salary',
-        'EPF Amount', 'EPF Exempt',
-        'ESIC Amount', 'ESIC Exempt',
-        'Bank Name', 'Account Holder Name', 'Account Number', 'IFSC Code',
-        'Address',
-    ]
+    headers = (
+        "Emp ID",
+        "Name",
+        "Department",
+        "Mobile",
+        "Guardian Mobile",
+        "Sex",
+        "Status",
+        "Aadhar",
+        "PAN",
+        "EPF No",
+        "ESIC No",
+        "Gross Salary",
+        "Basic Salary",
+        "EPF Amount",
+        "EPF Exempt",
+        "ESIC Amount",
+        "ESIC Exempt",
+        "Bank Name",
+        "Account Holder Name",
+        "Account Number",
+        "IFSC Code",
+        "Address",
+    )
+    col_count = len(headers)
+    amount_cols = {12, 13, 14, 16}
+    col_widths = (
+        12, 26, 16,
+        14, 16, 10, 10,
+        16, 14, 18, 16,
+        14, 14,
+        14, 10,
+        14, 10,
+        20, 24, 20, 14,
+        34,
+    )
 
-    def _fill_sheet(ws, sheet_rows):
-        ws.append(headers)
-        _xl_style_header(ws, headers, '1F4E79')
-        for r in sheet_rows:
-            e = dict(r)
-            ws.append([
-                e.get('emp_code', ''),
-                e['name'],
-                e['location'],
-                e.get('mobile', ''),
-                e.get('guardian_mobile', ''),
-                e.get('sex', ''),
-                e.get('status', 'active'),
-                e.get('aadhar', ''),
-                e.get('pan', ''),
-                e.get('epf_number', ''),
-                e.get('esic_number', ''),
-                _round_rupee(e['gross_salary']),
-                _round_rupee(e.get('basic_salary', 0) or 0),
-                _round_rupee(e.get('epf_amount', 0) or 0),
-                'Yes' if e.get('epf_exempt') else 'No',
-                _round_rupee(e.get('esic_amount', 0) or 0),
-                'Yes' if e.get('esic_exempt') else 'No',
-                e.get('bank_name', '') or '',
-                e.get('account_holder_name', '') or '',
-                e.get('account_number', '') or '',
-                e.get('ifsc_code', '') or '',
-                e.get('address', ''),
-            ])
-        _xl_style_data(ws, headers, center_from=5)
-        _xl_col_widths(ws, COL_WIDTHS)
+    def _whole_or_float(value):
+        if value is None:
+            return None
+        try:
+            num = float(value)
+            return int(num) if num == int(num) else num
+        except (TypeError, ValueError):
+            return value
+
+    def _row_values(e):
+        return (
+            e.get("emp_code", "") or "",
+            e.get("name", "") or "",
+            e.get("location", "") or "",
+            e.get("mobile", "") or "",
+            e.get("guardian_mobile", "") or "",
+            e.get("sex", "") or "",
+            e.get("status", "active") or "active",
+            e.get("aadhar", "") or "",
+            e.get("pan", "") or "",
+            e.get("epf_number", "") or "",
+            e.get("esic_number", "") or "",
+            _whole_or_float(_round_rupee(e.get("gross_salary"))),
+            _whole_or_float(_round_rupee(e.get("basic_salary", 0) or 0)),
+            _whole_or_float(_round_rupee(e.get("epf_amount", 0) or 0)),
+            "Yes" if e.get("epf_exempt") else "No",
+            _whole_or_float(_round_rupee(e.get("esic_amount", 0) or 0)),
+            "Yes" if e.get("esic_exempt") else "No",
+            e.get("bank_name", "") or "",
+            e.get("account_holder_name", "") or "",
+            e.get("account_number", "") or "",
+            e.get("ifsc_code", "") or "",
+            e.get("address", "") or "",
+        )
 
     wb = Workbook()
     ws = wb.active
-    ws.title = _DEFAULT_COMPANY[:31]
-    _fill_sheet(ws, rows)
+    ws.title = "Employees"
 
-    return _xl_send(wb, report_export_filename("Employee Master"))
+    banner_row = 1
+    header_row = 2
+    ws.cell(
+        row=banner_row,
+        column=1,
+        value=f"Hotel Bell Elite — Employee Master",
+    )
+    ws.merge_cells(
+        start_row=banner_row,
+        start_column=1,
+        end_row=banner_row,
+        end_column=col_count,
+    )
+    for col, title in enumerate(headers, start=1):
+        ws.cell(row=header_row, column=col, value=title)
+
+    item_rows = []
+    row_idx = header_row + 1
+    for r in rows:
+        values = _row_values(dict(r))
+        for col, value in enumerate(values, start=1):
+            ws.cell(row=row_idx, column=col, value=value)
+        item_rows.append(row_idx)
+        row_idx += 1
+
+    last_row = max(header_row, row_idx - 1)
+    header_fill = PatternFill(
+        fill_type="solid",
+        start_color="FF315A78",
+        end_color="FF315A78",
+    )
+    banner_font = Font(name="Calibri", bold=True, size=16, color="FFFFFFFF")
+    chrome_header_font = Font(name="Calibri", bold=True, size=11, color="FFFFFFFF")
+    body_font = Font(name="Calibri", size=11, color="FF000000")
+    thin = Side(style="thin", color="FF000000")
+    grid = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    right = Alignment(horizontal="right", vertical="center", wrap_text=True)
+
+    for r in range(1, last_row + 1):
+        for col in range(1, col_count + 1):
+            cell = ws.cell(row=r, column=col)
+            cell.border = grid
+            if r == banner_row:
+                cell.fill = header_fill
+                cell.font = banner_font
+                cell.alignment = center
+            elif r == header_row:
+                cell.fill = header_fill
+                cell.font = chrome_header_font
+                cell.alignment = center
+            elif r in item_rows:
+                cell.font = body_font
+                if col in amount_cols:
+                    cell.alignment = right
+                else:
+                    cell.alignment = left
+
+    ws.row_dimensions[banner_row].height = 20
+    ws.row_dimensions[header_row].height = 20
+    for r in item_rows:
+        ws.row_dimensions[r].height = 17
+    for col, width in enumerate(col_widths, start=1):
+        ws.column_dimensions[get_column_letter(col)].width = width
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    response = send_file(
+        buf,
+        as_attachment=True,
+        download_name=report_export_filename("Employee Master"),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @payroll_bp.route('/export/attendance_report')
