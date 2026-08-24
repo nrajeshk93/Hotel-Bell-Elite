@@ -441,6 +441,75 @@ class LoginSecurityTests(unittest.TestCase):
             conn.close()
         self.assertEqual(int(admin_row["is_active"]), 1)
 
+    def test_password_complexity_rules(self):
+        self.assertTrue(auth_security.password_meets_complexity("Password1!"))
+        self.assertIsNone(auth_security.password_complexity_error("Abcd123!"))
+        self.assertFalse(auth_security.password_meets_complexity("short1!"))
+        self.assertFalse(auth_security.password_meets_complexity("alllowercase1!"))
+        self.assertFalse(auth_security.password_meets_complexity("ALLUPPERCASE1!"))
+        self.assertFalse(auth_security.password_meets_complexity("NoNumber!"))
+        self.assertFalse(auth_security.password_meets_complexity("NoSpecial1"))
+        self.assertEqual(
+            auth_security.password_complexity_error("weak"),
+            auth_security.PASSWORD_COMPLEXITY_MESSAGE,
+        )
+
+    def test_create_user_rejects_weak_password(self):
+        conn = db_mod.get_db()
+        try:
+            admin_id = conn.execute(
+                "SELECT id FROM users WHERE username = 'admin'"
+            ).fetchone()["id"]
+            staff_role_id = conn.execute(
+                "SELECT id FROM access_roles WHERE name = ?",
+                ("Staff",),
+            ).fetchone()["id"]
+        finally:
+            conn.close()
+
+        with mock.patch.object(self.app_mod, "get_current_user") as get_user:
+            get_user.return_value = {
+                "id": admin_id,
+                "username": "admin",
+                "is_admin": True,
+                "is_active": True,
+                "user_access": {"users", "add"},
+                "dashboard_access": set(),
+            }
+            weak = self.client.post(
+                "/access-management/save",
+                data={
+                    "username": "newstaff",
+                    "full_name": "New Staff",
+                    "email": "newstaff@example.com",
+                    "password": "password",
+                    "role_id": str(staff_role_id),
+                },
+            )
+            self.assertEqual(weak.status_code, 400)
+            self.assertIn(auth_security.PASSWORD_COMPLEXITY_MESSAGE, weak.get_data(as_text=True))
+            strong = self.client.post(
+                "/access-management/save",
+                data={
+                    "username": "newstaff",
+                    "full_name": "New Staff",
+                    "email": "newstaff@example.com",
+                    "password": "Password1!",
+                    "role_id": str(staff_role_id),
+                },
+                follow_redirects=False,
+            )
+        self.assertEqual(strong.status_code, 303)
+        conn = db_mod.get_db()
+        try:
+            created = conn.execute(
+                "SELECT id FROM users WHERE username = ?",
+                ("newstaff",),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(created)
+
     def test_hash_password_uses_argon2id(self):
         encoded = auth_security.hash_password("fresh-secret")
         self.assertTrue(encoded.startswith("$argon2id$"))

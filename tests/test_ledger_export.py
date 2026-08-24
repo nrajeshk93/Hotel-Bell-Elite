@@ -179,9 +179,9 @@ class LedgerHubAndExportTests(unittest.TestCase):
         from openpyxl import load_workbook
 
         wb = load_workbook(BytesIO(export.data))
-        self.assertEqual(wb.sheetnames, ["Summary", "Line Items", "All Items"])
+        self.assertEqual(wb.sheetnames, ["Summary", "Grouped", "All Items"])
         summary = wb["Summary"]
-        details = wb["Line Items"]
+        details = wb["Grouped"]
         all_items = wb["All Items"]
         self.assertEqual(summary["A2"].value, "Purchase")
         self.assertEqual(summary["A3"].value, "Expense")
@@ -284,10 +284,10 @@ class LedgerHubAndExportTests(unittest.TestCase):
         self.assertEqual(purchase_only.status_code, 200)
         purchase_wb = load_workbook(BytesIO(purchase_only.data))
         self.assertEqual(
-            purchase_wb.sheetnames, ["Summary", "Line Items", "All Items"]
+            purchase_wb.sheetnames, ["Summary", "Grouped", "All Items"]
         )
         purchase_summary = purchase_wb["Summary"]
-        purchase_details = purchase_wb["Line Items"]
+        purchase_details = purchase_wb["Grouped"]
         purchase_all = purchase_wb["All Items"]
         self.assertEqual(purchase_summary["A2"].value, "Purchase")
         self.assertEqual(float(purchase_summary["B2"].value), 100)
@@ -305,3 +305,213 @@ class LedgerHubAndExportTests(unittest.TestCase):
         self.assertEqual(purchase_all.cell(3, 1).value, "Purchase")
         self.assertEqual(purchase_all.cell(3, 2).value, "HBE-PU-9")
         self.assertEqual(purchase_all.max_row, 3)
+
+
+class TipsExportTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.tmp.close()
+        self.db_path = self.tmp.name
+        self._orig_path = db_mod.DATABASE_PATH
+        db_mod.DATABASE_PATH = self.db_path
+        db_mod.init_db()
+
+        import app as app_mod
+
+        self.app_mod = app_mod
+        self.app = app_mod.app
+        self.app.config["TESTING"] = True
+        self.client = self.app.test_client()
+
+        conn = db_mod.get_db()
+        try:
+            admin = conn.execute(
+                "SELECT id FROM users WHERE username = 'admin'"
+            ).fetchone()
+            self.admin_id = admin["id"]
+            conn.execute(
+                "INSERT INTO employees (emp_code, name, company, location, status) VALUES (?, ?, ?, ?, ?)",
+                ("E001", "Anita", "HBE", "Hotel", "active"),
+            )
+            conn.execute(
+                "INSERT INTO employees (emp_code, name, company, location, status) VALUES (?, ?, ?, ?, ?)",
+                ("E002", "Ravi", "HBE", "Bar", "active"),
+            )
+            conn.executemany(
+                """INSERT INTO sales_update_tips
+                   (company, location, sales_date, employee_id, amount, description)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                [
+                    ("HBE", "Hotel", "2026-07-10", 1, 100, ""),
+                    ("HBE", "Bar", "2026-07-11", 1, 50, "Bar shift"),
+                    ("HBE", "Restaurant", "2026-07-12", 1, 25, ""),
+                    ("HBE", "Bar", "2026-07-12", 2, 80, ""),
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.user = {
+            "id": self.admin_id,
+            "username": "admin",
+            "full_name": "Administrator",
+            "is_admin": True,
+            "is_active": True,
+            "dashboard_access": set(),
+            "stores_access": set(),
+        }
+        self._get_user_patch = mock.patch.object(
+            app_mod, "get_current_user", return_value=self.user
+        )
+        self._get_user_patch.start()
+
+    def tearDown(self):
+        self._get_user_patch.stop()
+        db_mod.DATABASE_PATH = self._orig_path
+        try:
+            os.unlink(self.db_path)
+        except OSError:
+            pass
+
+    def test_tips_page_export_button_label_and_filename(self):
+        page = self.client.get("/sales_update/tips")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn(">Export</a>", html)
+        self.assertIn("/sales_update/tips/report?", html)
+        fy_start, today = db_mod.indian_fiscal_year_bounds()
+        expected = report_export_filename(
+            "Tips",
+            date_from=fy_start,
+            date_to=today,
+            date_filter_active=True,
+        )
+        self.assertTrue(expected.startswith("Hotel Bell Elite Tips"))
+        export = self.client.get(
+            "/sales_update/tips/report"
+            f"?company=HBE&date_from={fy_start.isoformat()}&date_to={today.isoformat()}"
+        )
+        self.assertEqual(export.status_code, 200)
+        cd = export.headers.get("Content-Disposition") or ""
+        self.assertIn(expected.replace("&", "&amp;").split(".xlsx")[0], cd.replace("&", "&amp;"))
+
+    def test_tips_export_summary_grouped_and_all_items(self):
+        export = self.client.get(
+            "/sales_update/tips/report"
+            "?company=HBE&date_from=2026-07-01&date_to=2026-07-31"
+        )
+        self.assertEqual(export.status_code, 200)
+        cd = export.headers.get("Content-Disposition") or ""
+        self.assertIn("Hotel Bell Elite Tips", cd)
+        self.assertIn("01 July 26 to 31 July 26.xlsx", cd)
+        self.assertIn("no-store", (export.headers.get("Cache-Control") or "").lower())
+
+        from openpyxl import load_workbook
+
+        wb = load_workbook(BytesIO(export.data))
+        self.assertEqual(wb.sheetnames, ["Summary", "Grouped", "All Items"])
+        summary = wb["Summary"]
+        grouped = wb["Grouped"]
+        all_items = wb["All Items"]
+
+        self.assertEqual(summary["A2"].value, "Hotel")
+        self.assertEqual(summary["A3"].value, "Bar")
+        self.assertEqual(summary["A4"].value, "Restaurant")
+        self.assertEqual(summary["A5"].value, "Total")
+        self.assertEqual(float(summary["B2"].value), 100)
+        self.assertEqual(float(summary["B3"].value), 130)
+        self.assertEqual(float(summary["B4"].value), 25)
+        self.assertEqual(float(summary["B5"].value), 255)
+        self.assertTrue(
+            (summary["A1"].value or "").startswith("Hotel Bell Elite — Tips (")
+        )
+        self.assertIn("A1:B1", {str(r) for r in summary.merged_cells.ranges})
+        self.assertEqual(summary["A1"].fill.fgColor.rgb, "FF315A78")
+
+        col_a = [
+            grouped.cell(row, 1).value
+            for row in range(1, (grouped.max_row or 1) + 1)
+        ]
+        hotel_banner = "Hotel Bell Elite — Tips - Hotel"
+        bar_banner = "Hotel Bell Elite — Tips - Bar"
+        restaurant_banner = "Hotel Bell Elite — Tips - Restaurant"
+        self.assertIn(hotel_banner, col_a)
+        self.assertIn(bar_banner, col_a)
+        self.assertIn(restaurant_banner, col_a)
+        self.assertLess(col_a.index(hotel_banner), col_a.index(bar_banner))
+        self.assertLess(col_a.index(bar_banner), col_a.index(restaurant_banner))
+        self.assertIn("Anita", col_a)
+        self.assertIn("Ravi", col_a)
+        self.assertEqual(grouped.cell(2, 1).value, "Employee")
+        self.assertEqual(
+            [grouped.cell(2, col).value for col in range(1, 4)],
+            ["Employee", "Emp Code", "Amount"],
+        )
+        self.assertEqual(grouped.cell(1, 1).fill.fgColor.rgb, "FF315A78")
+        self.assertEqual(grouped.cell(2, 1).fill.fgColor.rgb, "FF315A78")
+
+        self.assertEqual(all_items.cell(1, 1).value, "Hotel Bell Elite — Tips")
+        self.assertEqual(all_items.cell(1, 1).fill.fgColor.rgb, "FF315A78")
+        self.assertEqual(all_items.cell(2, 1).fill.fgColor.rgb, "FF315A78")
+        all_headers = [
+            all_items.cell(2, col).value for col in range(1, 8)
+        ]
+        self.assertEqual(
+            all_headers,
+            [
+                "Type",
+                "Date",
+                "Employee",
+                "Emp Code",
+                "Location",
+                "Amount",
+                "Description",
+            ],
+        )
+        self.assertEqual(all_items.max_row, 6)
+        self.assertEqual(
+            [
+                (
+                    all_items.cell(row, 1).value,
+                    all_items.cell(row, 2).value,
+                    all_items.cell(row, 3).value,
+                    float(all_items.cell(row, 6).value),
+                )
+                for row in (3, 4, 5, 6)
+            ],
+            [
+                ("Hotel", "2026-07-10", "Anita", 100.0),
+                ("Bar", "2026-07-11", "Anita", 50.0),
+                ("Restaurant", "2026-07-12", "Anita", 25.0),
+                ("Bar", "2026-07-12", "Ravi", 80.0),
+            ],
+        )
+
+    def test_tips_export_location_filter(self):
+        export = self.client.get(
+            "/sales_update/tips/report"
+            "?company=HBE&location=Bar&date_from=2026-07-01&date_to=2026-07-31"
+        )
+        self.assertEqual(export.status_code, 200)
+
+        from openpyxl import load_workbook
+
+        wb = load_workbook(BytesIO(export.data))
+        summary = wb["Summary"]
+        grouped = wb["Grouped"]
+        all_items = wb["All Items"]
+        self.assertEqual(float(summary["B2"].value), 0)
+        self.assertEqual(float(summary["B3"].value), 130)
+        self.assertEqual(float(summary["B5"].value), 130)
+        col_a = [
+            grouped.cell(row, 1).value
+            for row in range(1, (grouped.max_row or 1) + 1)
+        ]
+        self.assertIn("Hotel Bell Elite — Tips - Bar", col_a)
+        self.assertNotIn("Hotel Bell Elite — Tips - Hotel", col_a)
+        self.assertNotIn("Hotel Bell Elite — Tips - Restaurant", col_a)
+        self.assertEqual(all_items.max_row, 4)
+        self.assertTrue(
+            all(all_items.cell(row, 1).value == "Bar" for row in (3, 4))
+        )

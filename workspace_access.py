@@ -50,6 +50,45 @@ _STORES_SUBMODULES = (
     {"key": "stock_audit", "label": "Stock Audit"},
 )
 
+_POS_SUBMODULES = (
+    {"key": "tables", "label": "Tables"},
+    {"key": "invoice", "label": "POS"},
+    {"key": "invoice_ledger", "label": "Invoice Ledger"},
+    {"key": "sales_update", "label": "Sales Update"},
+    {"key": "menu", "label": "Menu"},
+    {"key": "settings", "label": "Settings"},
+)
+
+_HOTEL_SUBMODULES = (
+    {"key": "reservations", "label": "Reservations"},
+    {"key": "rooms", "label": "Rooms"},
+    {"key": "invoice_ledger", "label": "Invoice Ledger"},
+    {"key": "credit", "label": "Credit"},
+    {"key": "sales_update", "label": "Sales Update"},
+    {"key": "settings", "label": "Settings"},
+)
+
+_COMMUNICATION_HUB_SUBMODULES = (
+    {"key": "inbox", "label": "Inbox"},
+    {"key": "promotion", "label": "Promotion"},
+)
+
+_MASTER_SUBMODULES = (
+    {"key": "customer", "label": "Customer Master"},
+    {"key": "agency", "label": "Agency Master"},
+    {"key": "category", "label": "Category Master"},
+)
+
+_REPORTS_SUBMODULES = (
+    {"key": "hotel_sales", "label": "Hotel Sales"},
+    {"key": "agency_billing", "label": "Agency Ledger"},
+    {"key": "manager_insight", "label": "Manager Insight"},
+    {"key": "meal_plan", "label": "Meal Plan"},
+    {"key": "restaurant_sales", "label": "Sales - Restaurant & Bar"},
+    {"key": "menu_sales", "label": "Menu Insights"},
+    {"key": "customer_insights", "label": "Customer Insights"},
+)
+
 
 def _flatten_submodules(items):
     """Flat key/label list for permission checks (nested UI children included)."""
@@ -105,34 +144,30 @@ _WORKSPACE_MODULE_REGISTRY = (
     {
         "key": "point_of_sale",
         "label": "Restaurant",
-        # Dashboard module with sidebar sub-pages (Tables, Invoice, Settings); access is module-level.
-        "permission_scope": None,
-        "permission_field": None,
-        "permission_children": (),
+        "permission_scope": "point_of_sale",
+        "permission_field": "point_of_sale_modules",
+        "permission_children": _POS_SUBMODULES,
     },
     {
         "key": "point_of_sale_bar",
         "label": "Bar",
-        # Parallel POS workspace for Bar (Tables, POS, Ledger, Menu, Settings).
-        "permission_scope": None,
-        "permission_field": None,
-        "permission_children": (),
+        "permission_scope": "point_of_sale_bar",
+        "permission_field": "point_of_sale_bar_modules",
+        "permission_children": _POS_SUBMODULES,
     },
     {
         "key": "hotel_rooms",
         "label": "Hotel",
-        # Front-office room board (Rooms); separate from Sales Update - Hotel.
-        "permission_scope": None,
-        "permission_field": None,
-        "permission_children": (),
+        "permission_scope": "hotel_rooms",
+        "permission_field": "hotel_rooms_modules",
+        "permission_children": _HOTEL_SUBMODULES,
     },
     {
         "key": "communication_hub",
         "label": "Communication Hub",
-        # WhatsApp inbox — module-level access.
-        "permission_scope": None,
-        "permission_field": None,
-        "permission_children": (),
+        "permission_scope": "communication_hub",
+        "permission_field": "communication_hub_modules",
+        "permission_children": _COMMUNICATION_HUB_SUBMODULES,
     },
     {
         "key": "stores",
@@ -144,22 +179,21 @@ _WORKSPACE_MODULE_REGISTRY = (
     {
         "key": "master",
         "label": "Master",
-        # Dashboard module shell; access is module-level until sub-pages are added.
-        "permission_scope": None,
-        "permission_field": None,
-        "permission_children": (),
+        "permission_scope": "master",
+        "permission_field": "master_modules",
+        "permission_children": _MASTER_SUBMODULES,
     },
     {
         "key": "reports",
         "label": "Report",
-        "permission_scope": None,
-        "permission_field": None,
-        "permission_children": (),
+        "permission_scope": "reports",
+        "permission_field": "reports_modules",
+        "permission_children": _REPORTS_SUBMODULES,
     },
     {
         "key": "settings",
         "label": "Settings",
-        # Workspace settings shell; access is module-level until sub-pages are added.
+        # Workspace settings hub Overview only; outlet settings live under Restaurant/Bar/Hotel.
         "permission_scope": None,
         "permission_field": None,
         "permission_children": (),
@@ -222,6 +256,21 @@ _ACCOUNTS_SUBMODULE_LABELS = {
 }
 _STORES_SUBMODULE_LABELS = {
     item["key"]: item["label"] for item in _STORES_SUBMODULES_FLAT
+}
+_POS_SUBMODULE_LABELS = {
+    item["key"]: item["label"] for item in _POS_SUBMODULES
+}
+_HOTEL_SUBMODULE_LABELS = {
+    item["key"]: item["label"] for item in _HOTEL_SUBMODULES
+}
+_COMMUNICATION_HUB_SUBMODULE_LABELS = {
+    item["key"]: item["label"] for item in _COMMUNICATION_HUB_SUBMODULES
+}
+_MASTER_SUBMODULE_LABELS = {
+    item["key"]: item["label"] for item in _MASTER_SUBMODULES
+}
+_REPORTS_SUBMODULE_LABELS = {
+    item["key"]: item["label"] for item in _REPORTS_SUBMODULES
 }
 
 _ACCESS_MODULE_UI_META = {
@@ -311,120 +360,185 @@ _ACCESS_MODULE_UI_META = {
 }
 
 # Point of Sale workspace routes (Tables + POS + Invoice Ledger + Menu + Settings). Not Sales Analytics.
-_POINT_OF_SALE_ENDPOINTS = {
-    "point_of_sale",
-    "point_of_sale_invoice",
-    "point_of_sale_invoice_ledger",
-    "point_of_sale_sales_update",
-    "point_of_sale_menu",
-    "point_of_sale_menu_export",
-    "point_of_sale_settings",
-    "export_pos_invoice_ledger_report",
-    "point_of_sale_api_floor",
-    "point_of_sale_api_settings",
-    "point_of_sale_api_menu_categories",
-    "point_of_sale_api_menu_category_delete",
-    "point_of_sale_api_menu_items",
-    "point_of_sale_api_menu_items_bulk",
-    "point_of_sale_api_menu_items_bulk_template",
-    "point_of_sale_api_menu_item_delete",
-    "point_of_sale_api_menu_products",
-    "point_of_sale_api_invoices_save",
-    "point_of_sale_api_invoice_detail",
-    "point_of_sale_api_invoice_delete",
-    "point_of_sale_api_invoice_reopen_edit",
-    "point_of_sale_api_customers",
-    "point_of_sale_api_invoice_settle",
-    "point_of_sale_api_invoices_settle_selected",
-    "point_of_sale_api_hotel_rooms_occupied",
-    "point_of_sale_api_kot_tokens",
-    "point_of_sale_api_kot_tokens_reduce",
+_POINT_OF_SALE_ENDPOINT_GROUPS = {
+    "tables": {
+        "point_of_sale",
+        "point_of_sale_api_floor",
+        "point_of_sale_api_kot_tokens",
+        "point_of_sale_api_kot_tokens_reduce",
+    },
+    "invoice": {
+        "point_of_sale_invoice",
+        "point_of_sale_api_invoices_save",
+        "point_of_sale_api_invoice_detail",
+        "point_of_sale_api_invoice_delete",
+        "point_of_sale_api_invoice_reopen_edit",
+        "point_of_sale_api_customers",
+        "point_of_sale_api_invoice_settle",
+        "point_of_sale_api_invoices_settle_selected",
+        "point_of_sale_api_hotel_rooms_occupied",
+        "point_of_sale_api_kot_tokens",
+        "point_of_sale_api_kot_tokens_reduce",
+        "point_of_sale_api_menu_products",
+    },
+    "invoice_ledger": {
+        "point_of_sale_invoice_ledger",
+        "export_pos_invoice_ledger_report",
+        "point_of_sale_api_invoice_detail",
+        "point_of_sale_api_invoice_delete",
+        "point_of_sale_api_invoice_reopen_edit",
+        "point_of_sale_api_invoice_settle",
+        "point_of_sale_api_invoices_settle_selected",
+    },
+    "sales_update": {
+        "point_of_sale_sales_update",
+    },
+    "menu": {
+        "point_of_sale_menu",
+        "point_of_sale_menu_export",
+        "point_of_sale_api_menu_categories",
+        "point_of_sale_api_menu_category_delete",
+        "point_of_sale_api_menu_items",
+        "point_of_sale_api_menu_items_bulk",
+        "point_of_sale_api_menu_items_bulk_template",
+        "point_of_sale_api_menu_item_delete",
+        "point_of_sale_api_menu_products",
+    },
+    "settings": {
+        "point_of_sale_settings",
+        "point_of_sale_api_settings",
+    },
 }
+_POINT_OF_SALE_ENDPOINTS = set().union(*_POINT_OF_SALE_ENDPOINT_GROUPS.values())
 
-_POINT_OF_SALE_BAR_ENDPOINTS = {
-    "bar_point_of_sale",
-    "bar_point_of_sale_invoice",
-    "bar_point_of_sale_invoice_ledger",
-    "bar_point_of_sale_sales_update",
-    "bar_point_of_sale_menu",
-    "bar_point_of_sale_menu_export",
-    "bar_point_of_sale_settings",
-    "bar_export_pos_invoice_ledger_report",
-    "bar_point_of_sale_api_floor",
-    "bar_point_of_sale_api_settings",
-    "bar_point_of_sale_api_menu_categories",
-    "bar_point_of_sale_api_menu_category_delete",
-    "bar_point_of_sale_api_menu_items",
-    "bar_point_of_sale_api_menu_items_bulk",
-    "bar_point_of_sale_api_menu_items_bulk_template",
-    "bar_point_of_sale_api_menu_item_delete",
-    "bar_point_of_sale_api_menu_products",
-    "bar_point_of_sale_api_invoices_save",
-    "bar_point_of_sale_api_invoice_detail",
-    "bar_point_of_sale_api_invoice_delete",
-    "bar_point_of_sale_api_invoice_reopen_edit",
-    "bar_point_of_sale_api_customers",
-    "bar_point_of_sale_api_invoice_settle",
-    "bar_point_of_sale_api_invoices_settle_selected",
-    "bar_point_of_sale_api_hotel_rooms_occupied",
-    "bar_point_of_sale_api_kot_tokens",
-    "bar_point_of_sale_api_kot_tokens_reduce",
+_POINT_OF_SALE_BAR_ENDPOINT_GROUPS = {
+    "tables": {
+        "bar_point_of_sale",
+        "bar_point_of_sale_api_floor",
+        "bar_point_of_sale_api_kot_tokens",
+        "bar_point_of_sale_api_kot_tokens_reduce",
+    },
+    "invoice": {
+        "bar_point_of_sale_invoice",
+        "bar_point_of_sale_api_invoices_save",
+        "bar_point_of_sale_api_invoice_detail",
+        "bar_point_of_sale_api_invoice_delete",
+        "bar_point_of_sale_api_invoice_reopen_edit",
+        "bar_point_of_sale_api_customers",
+        "bar_point_of_sale_api_invoice_settle",
+        "bar_point_of_sale_api_invoices_settle_selected",
+        "bar_point_of_sale_api_hotel_rooms_occupied",
+        "bar_point_of_sale_api_kot_tokens",
+        "bar_point_of_sale_api_kot_tokens_reduce",
+        "bar_point_of_sale_api_menu_products",
+    },
+    "invoice_ledger": {
+        "bar_point_of_sale_invoice_ledger",
+        "bar_export_pos_invoice_ledger_report",
+        "bar_point_of_sale_api_invoice_detail",
+        "bar_point_of_sale_api_invoice_delete",
+        "bar_point_of_sale_api_invoice_reopen_edit",
+        "bar_point_of_sale_api_invoice_settle",
+        "bar_point_of_sale_api_invoices_settle_selected",
+    },
+    "sales_update": {
+        "bar_point_of_sale_sales_update",
+    },
+    "menu": {
+        "bar_point_of_sale_menu",
+        "bar_point_of_sale_menu_export",
+        "bar_point_of_sale_api_menu_categories",
+        "bar_point_of_sale_api_menu_category_delete",
+        "bar_point_of_sale_api_menu_items",
+        "bar_point_of_sale_api_menu_items_bulk",
+        "bar_point_of_sale_api_menu_items_bulk_template",
+        "bar_point_of_sale_api_menu_item_delete",
+        "bar_point_of_sale_api_menu_products",
+    },
+    "settings": {
+        "bar_point_of_sale_settings",
+        "bar_point_of_sale_api_settings",
+    },
 }
+_POINT_OF_SALE_BAR_ENDPOINTS = set().union(*_POINT_OF_SALE_BAR_ENDPOINT_GROUPS.values())
 
-_HOTEL_ROOMS_ENDPOINTS = {
-    "hotel_rooms",
-    "hotel_rooms_api",
-    "hotel_room_detail",
-    "hotel_room_detail_api",
-    "hotel_room_invoice_page",
-    "hotel_guest_lookup_api",
-    "hotel_customers_api",
-    "hotel_id_document_upload",
-    "hotel_id_document_file",
-    "hotel_id_document_file_view",
-    "hotel_reservations",
-    "hotel_reservations_api",
-    "hotel_reservation_detail_api",
-    "hotel_reservation_assign_api",
-    "hotel_invoice_ledger",
-    "hotel_invoice_ledger_export",
-    "hotel_room_transfer_invoices",
-    "hotel_room_transfer_invoices_export",
-    "hotel_invoice_ledger_api",
-    "hotel_invoice_ledger_settle_api",
-    "hotel_invoice_ledger_settle_selected_api",
-    "hotel_invoice_ledger_cancel_api",
-    "hotel_invoice_ledger_reopen_edit_api",
-    "hotel_invoice_ledger_edit_page",
-    "hotel_invoice_ledger_edit_api",
-    "hotel_credit",
-    "export_hotel_credit_report",
-    "create_hotel_credit_payment",
-    "delete_hotel_credit_payment",
-    "hotel_credit_payment_detail",
-    "hotel_credit_pending_receipts",
-    "hotel_sales_update",
-    "hotel_settings",
-    "hotel_settings_api",
+_HOTEL_ROOMS_ENDPOINT_GROUPS = {
+    "reservations": {
+        "hotel_reservations",
+        "hotel_reservations_api",
+        "hotel_reservation_detail_api",
+        "hotel_reservation_assign_api",
+        "hotel_guest_lookup_api",
+        "hotel_customers_api",
+        "hotel_id_document_upload",
+        "hotel_id_document_file",
+        "hotel_id_document_file_view",
+    },
+    "rooms": {
+        "hotel_rooms",
+        "hotel_rooms_api",
+        "hotel_room_detail",
+        "hotel_room_detail_api",
+        "hotel_room_invoice_page",
+        "hotel_guest_lookup_api",
+        "hotel_customers_api",
+        "hotel_id_document_upload",
+        "hotel_id_document_file",
+        "hotel_id_document_file_view",
+    },
+    "invoice_ledger": {
+        "hotel_invoice_ledger",
+        "hotel_invoice_ledger_export",
+        "hotel_room_transfer_invoices",
+        "hotel_room_transfer_invoices_export",
+        "hotel_invoice_ledger_api",
+        "hotel_invoice_ledger_settle_api",
+        "hotel_invoice_ledger_settle_selected_api",
+        "hotel_invoice_ledger_cancel_api",
+        "hotel_invoice_ledger_reopen_edit_api",
+        "hotel_invoice_ledger_edit_page",
+        "hotel_invoice_ledger_edit_api",
+    },
+    "credit": {
+        "hotel_credit",
+        "export_hotel_credit_report",
+        "create_hotel_credit_payment",
+        "delete_hotel_credit_payment",
+        "hotel_credit_payment_detail",
+        "hotel_credit_pending_receipts",
+    },
+    "sales_update": {
+        "hotel_sales_update",
+    },
+    "settings": {
+        "hotel_settings",
+        "hotel_settings_api",
+    },
 }
+_HOTEL_ROOMS_ENDPOINTS = set().union(*_HOTEL_ROOMS_ENDPOINT_GROUPS.values())
 
 _MAIN_DASHBOARD_ENDPOINTS = {
     "main_dashboard",
 }
 
-_COMMUNICATION_HUB_ENDPOINTS = {
-    "communication_hub",
-    "communication_hub_promotion",
-    "communication_hub_api_conversations",
-    "communication_hub_api_conversation_create",
-    "communication_hub_api_conversation_delete",
-    "communication_hub_api_messages",
-    "communication_hub_api_message_send",
-    "communication_hub_api_promotion_templates",
-    "communication_hub_api_promotion_sample",
-    "communication_hub_api_promotion_preview",
-    "communication_hub_api_promotion_send",
+_COMMUNICATION_HUB_ENDPOINT_GROUPS = {
+    "inbox": {
+        "communication_hub",
+        "communication_hub_api_conversations",
+        "communication_hub_api_conversation_create",
+        "communication_hub_api_conversation_delete",
+        "communication_hub_api_messages",
+        "communication_hub_api_message_send",
+    },
+    "promotion": {
+        "communication_hub_promotion",
+        "communication_hub_api_promotion_templates",
+        "communication_hub_api_promotion_sample",
+        "communication_hub_api_promotion_preview",
+        "communication_hub_api_promotion_send",
+    },
 }
+_COMMUNICATION_HUB_ENDPOINTS = set().union(*_COMMUNICATION_HUB_ENDPOINT_GROUPS.values())
 
 _STORES_ENDPOINT_GROUPS = {
     "product_master": {
@@ -475,42 +589,62 @@ _STORES_ENDPOINT_GROUPS = {
 _STORES_PARENT_ENDPOINTS = set().union(*_STORES_ENDPOINT_GROUPS.values()) | {"stores"}
 _STORES_ENDPOINTS = _STORES_PARENT_ENDPOINTS
 
-_MASTER_ENDPOINTS = {
-    "master",
-    "customer_master",
-    "save_customer",
-    "delete_customer",
-    "export_customer_report",
-    "agency_master",
-    "save_agency",
-    "delete_agency",
-    "export_agency_report",
-    "create_agency",
-    "list_agencies_api",
-    "category_master",
-    "save_category_master",
-    "delete_category_master",
+_MASTER_ENDPOINT_GROUPS = {
+    "customer": {
+        "customer_master",
+        "save_customer",
+        "delete_customer",
+        "export_customer_report",
+    },
+    "agency": {
+        "agency_master",
+        "save_agency",
+        "delete_agency",
+        "export_agency_report",
+        "create_agency",
+        "list_agencies_api",
+    },
+    "category": {
+        "category_master",
+        "save_category_master",
+        "delete_category_master",
+    },
 }
+_MASTER_ENDPOINTS = set().union(*_MASTER_ENDPOINT_GROUPS.values()) | {"master"}
 
-_REPORTS_ENDPOINTS = {
-    "reports",
-    "sales_report_hotel",
-    "sales_report_hotel_export",
-    "sales_report_agency_billing",
-    "sales_report_agency_billing_export",
-    "sales_report_manager_insight",
-    "sales_report_manager_insight_export",
-    "sales_report_meal_plan",
-    "sales_report_meal_plan_export",
-    "sales_report_restaurant",
-    "sales_report_restaurant_export",
-    "sales_report_bar",
-    "sales_report_bar_export",
-    "sales_report_menu",
-    "sales_report_menu_export",
-    "sales_report_customer_insights",
-    "sales_report_customer_insights_export",
+_REPORTS_ENDPOINT_GROUPS = {
+    "hotel_sales": {
+        "sales_report_hotel",
+        "sales_report_hotel_export",
+    },
+    "agency_billing": {
+        "sales_report_agency_billing",
+        "sales_report_agency_billing_export",
+    },
+    "manager_insight": {
+        "sales_report_manager_insight",
+        "sales_report_manager_insight_export",
+    },
+    "meal_plan": {
+        "sales_report_meal_plan",
+        "sales_report_meal_plan_export",
+    },
+    "restaurant_sales": {
+        "sales_report_restaurant",
+        "sales_report_restaurant_export",
+        "sales_report_bar",
+        "sales_report_bar_export",
+    },
+    "menu_sales": {
+        "sales_report_menu",
+        "sales_report_menu_export",
+    },
+    "customer_insights": {
+        "sales_report_customer_insights",
+        "sales_report_customer_insights_export",
+    },
 }
+_REPORTS_ENDPOINTS = set().union(*_REPORTS_ENDPOINT_GROUPS.values()) | {"reports"}
 
 _SETTINGS_ENDPOINTS = {
     "settings",
@@ -885,42 +1019,49 @@ def reconcile_super_admin_only_dashboard_modules(
 
 
 def _empty_permission_sets():
-    return (set(), set(), set(), set(), set(), set())
+    return {
+        "dashboard": set(),
+        "sales_analytics": set(),
+        "user_access": set(),
+        "payroll": set(),
+        "accounts": set(),
+        "stores": set(),
+        "point_of_sale": set(),
+        "point_of_sale_bar": set(),
+        "hotel_rooms": set(),
+        "communication_hub": set(),
+        "master": set(),
+        "reports": set(),
+    }
+
+
+_PERMISSION_SCOPE_ATTRS = {
+    "dashboard": "dashboard_access",
+    "sales_analytics": "sales_analytics_access",
+    "user_access": "user_access",
+    "payroll": "payroll_access",
+    "accounts": "accounts_access",
+    "stores": "stores_access",
+    "point_of_sale": "point_of_sale_access",
+    "point_of_sale_bar": "point_of_sale_bar_access",
+    "hotel_rooms": "hotel_rooms_access",
+    "communication_hub": "communication_hub_access",
+    "master": "master_access",
+    "reports": "reports_access",
+}
 
 
 def _permission_sets_from_rows(rows):
-    dashboard_access = set()
-    sales_analytics_access = set()
-    user_access = set()
-    payroll_access = set()
-    accounts_access = set()
-    stores_access = set()
+    sets = _empty_permission_sets()
     for row in rows:
         scope = (row["scope"] or "").strip()
         item_key = (row["item_key"] or "").strip()
         if scope == "dashboard" and item_key == "sales_update":
             # Legacy key from earlier builds.
-            dashboard_access.add("sales_analytics")
-        elif scope == "dashboard" and item_key:
-            dashboard_access.add(item_key)
-        elif scope == "sales_analytics" and item_key:
-            sales_analytics_access.add(item_key)
-        elif scope == "user_access" and item_key:
-            user_access.add(item_key)
-        elif scope == "payroll" and item_key:
-            payroll_access.add(item_key)
-        elif scope == "accounts" and item_key:
-            accounts_access.add(item_key)
-        elif scope == "stores" and item_key:
-            stores_access.add(item_key)
-    return (
-        dashboard_access,
-        sales_analytics_access,
-        user_access,
-        payroll_access,
-        accounts_access,
-        stores_access,
-    )
+            sets["dashboard"].add("sales_analytics")
+        elif scope in sets and item_key:
+            sets[scope].add(item_key)
+    return sets
 
 
 def load_user_permissions(conn, user_id):
@@ -940,20 +1081,8 @@ def load_role_permissions(conn, role_id):
 
 
 def _apply_permission_sets(target, permission_sets):
-    (
-        dashboard_access,
-        sales_analytics_access,
-        user_access,
-        payroll_access,
-        accounts_access,
-        stores_access,
-    ) = permission_sets
-    target["dashboard_access"] = dashboard_access
-    target["sales_analytics_access"] = sales_analytics_access
-    target["user_access"] = user_access
-    target["payroll_access"] = payroll_access
-    target["accounts_access"] = accounts_access
-    target["stores_access"] = stores_access
+    for scope, attr in _PERMISSION_SCOPE_ATTRS.items():
+        target[attr] = set(permission_sets.get(scope) or ())
 
 
 def build_user_context(conn, row):
@@ -1039,6 +1168,18 @@ def user_can_access_dashboard(user, module_key):
         return True
     if module_key == "stores" and user.get("stores_access", set()):
         return True
+    if module_key == "point_of_sale" and user.get("point_of_sale_access", set()):
+        return True
+    if module_key == "point_of_sale_bar" and user.get("point_of_sale_bar_access", set()):
+        return True
+    if module_key == "hotel_rooms" and user.get("hotel_rooms_access", set()):
+        return True
+    if module_key == "communication_hub" and user.get("communication_hub_access", set()):
+        return True
+    if module_key == "master" and user.get("master_access", set()):
+        return True
+    if module_key == "reports" and user.get("reports_access", set()):
+        return True
     return module_key in user.get("dashboard_access", set())
 
 
@@ -1119,6 +1260,98 @@ def user_can_access_stores_submodule(user, submodule_key):
     return submodule_key in _stores_access_keys(user)
 
 
+def _scoped_access_keys(user, *, attr, dashboard_key, all_keys):
+    """Resolved page keys for a scoped module (legacy parent grant = all pages)."""
+    if not user:
+        return set()
+    if user.get("is_admin"):
+        return set(all_keys)
+    access = set(user.get(attr, set()) or set())
+    if access:
+        return access
+    if dashboard_key in user.get("dashboard_access", set()):
+        return set(all_keys)
+    return set()
+
+
+def user_can_access_point_of_sale_submodule(user, submodule_key):
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
+    return submodule_key in _scoped_access_keys(
+        user,
+        attr="point_of_sale_access",
+        dashboard_key="point_of_sale",
+        all_keys={item["key"] for item in _POS_SUBMODULES},
+    )
+
+
+def user_can_access_point_of_sale_bar_submodule(user, submodule_key):
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
+    return submodule_key in _scoped_access_keys(
+        user,
+        attr="point_of_sale_bar_access",
+        dashboard_key="point_of_sale_bar",
+        all_keys={item["key"] for item in _POS_SUBMODULES},
+    )
+
+
+def user_can_access_hotel_rooms_submodule(user, submodule_key):
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
+    return submodule_key in _scoped_access_keys(
+        user,
+        attr="hotel_rooms_access",
+        dashboard_key="hotel_rooms",
+        all_keys={item["key"] for item in _HOTEL_SUBMODULES},
+    )
+
+
+def user_can_access_communication_hub_submodule(user, submodule_key):
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
+    return submodule_key in _scoped_access_keys(
+        user,
+        attr="communication_hub_access",
+        dashboard_key="communication_hub",
+        all_keys={item["key"] for item in _COMMUNICATION_HUB_SUBMODULES},
+    )
+
+
+def user_can_access_master_submodule(user, submodule_key):
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
+    return submodule_key in _scoped_access_keys(
+        user,
+        attr="master_access",
+        dashboard_key="master",
+        all_keys={item["key"] for item in _MASTER_SUBMODULES},
+    )
+
+
+def user_can_access_reports_submodule(user, submodule_key):
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
+    return submodule_key in _scoped_access_keys(
+        user,
+        attr="reports_access",
+        dashboard_key="reports",
+        all_keys={item["key"] for item in _REPORTS_SUBMODULES},
+    )
+
+
 def user_can_access_supplier_master(user):
     if not user:
         return False
@@ -1130,12 +1363,12 @@ def user_can_access_supplier_master(user):
 
 
 def user_can_access_customer_master(user):
-    """Customer Master is available to Master hub and Restaurant/POS users."""
+    """Customer Master is available to Master hub and Restaurant/Bar users."""
     if not user:
         return False
     if user.get("is_admin"):
         return True
-    if user_can_access_dashboard(user, "master"):
+    if user_can_access_master_submodule(user, "customer"):
         return True
     if user_can_access_dashboard(user, "point_of_sale"):
         return True
@@ -1150,9 +1383,24 @@ def user_can_access_agency_master(user):
         return False
     if user.get("is_admin"):
         return True
-    if user_can_access_dashboard(user, "master"):
+    if user_can_access_master_submodule(user, "agency"):
         return True
     if user_can_access_dashboard(user, "hotel_rooms"):
+        return True
+    return False
+
+
+def user_can_access_category_master(user):
+    """Category Master via Master hub or Restaurant/Bar Menu."""
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
+    if user_can_access_master_submodule(user, "category"):
+        return True
+    if user_can_access_point_of_sale_submodule(user, "menu"):
+        return True
+    if user_can_access_point_of_sale_bar_submodule(user, "menu"):
         return True
     return False
 
@@ -1173,6 +1421,18 @@ def dashboard_access_list(user):
         dashboard_access.add("accounts")
     if user.get("stores_access", set()):
         dashboard_access.add("stores")
+    if user.get("point_of_sale_access", set()):
+        dashboard_access.add("point_of_sale")
+    if user.get("point_of_sale_bar_access", set()):
+        dashboard_access.add("point_of_sale_bar")
+    if user.get("hotel_rooms_access", set()):
+        dashboard_access.add("hotel_rooms")
+    if user.get("communication_hub_access", set()):
+        dashboard_access.add("communication_hub")
+    if user.get("master_access", set()):
+        dashboard_access.add("master")
+    if user.get("reports_access", set()):
+        dashboard_access.add("reports")
     return [item["key"] for item in _DASHBOARD_MODULES if item["key"] in dashboard_access]
 
 
@@ -1206,6 +1466,78 @@ def stores_access_list(user):
         for item in _STORES_SUBMODULES_FLAT
         if user_can_access_stores_submodule(user, item["key"])
     ]
+
+
+def point_of_sale_access_list(user):
+    if not user:
+        return []
+    unlocked = _scoped_access_keys(
+        user,
+        attr="point_of_sale_access",
+        dashboard_key="point_of_sale",
+        all_keys={item["key"] for item in _POS_SUBMODULES},
+    )
+    return [item["key"] for item in _POS_SUBMODULES if item["key"] in unlocked]
+
+
+def point_of_sale_bar_access_list(user):
+    if not user:
+        return []
+    unlocked = _scoped_access_keys(
+        user,
+        attr="point_of_sale_bar_access",
+        dashboard_key="point_of_sale_bar",
+        all_keys={item["key"] for item in _POS_SUBMODULES},
+    )
+    return [item["key"] for item in _POS_SUBMODULES if item["key"] in unlocked]
+
+
+def hotel_rooms_access_list(user):
+    if not user:
+        return []
+    unlocked = _scoped_access_keys(
+        user,
+        attr="hotel_rooms_access",
+        dashboard_key="hotel_rooms",
+        all_keys={item["key"] for item in _HOTEL_SUBMODULES},
+    )
+    return [item["key"] for item in _HOTEL_SUBMODULES if item["key"] in unlocked]
+
+
+def communication_hub_access_list(user):
+    if not user:
+        return []
+    unlocked = _scoped_access_keys(
+        user,
+        attr="communication_hub_access",
+        dashboard_key="communication_hub",
+        all_keys={item["key"] for item in _COMMUNICATION_HUB_SUBMODULES},
+    )
+    return [item["key"] for item in _COMMUNICATION_HUB_SUBMODULES if item["key"] in unlocked]
+
+
+def master_access_list(user):
+    if not user:
+        return []
+    unlocked = _scoped_access_keys(
+        user,
+        attr="master_access",
+        dashboard_key="master",
+        all_keys={item["key"] for item in _MASTER_SUBMODULES},
+    )
+    return [item["key"] for item in _MASTER_SUBMODULES if item["key"] in unlocked]
+
+
+def reports_access_list(user):
+    if not user:
+        return []
+    unlocked = _scoped_access_keys(
+        user,
+        attr="reports_access",
+        dashboard_key="reports",
+        all_keys={item["key"] for item in _REPORTS_SUBMODULES},
+    )
+    return [item["key"] for item in _REPORTS_SUBMODULES if item["key"] in unlocked]
 
 
 def sales_analytics_access_list(user):
@@ -1290,6 +1622,100 @@ def user_can_access_endpoint_stores(user, endpoint):
     if not submodule:
         return True
     return user_can_access_stores_submodule(user, submodule)
+
+
+def _endpoint_submodules_from_groups(endpoint, groups):
+    matches = []
+    for key, endpoints in groups.items():
+        if endpoint in endpoints:
+            matches.append(key)
+    return matches
+
+
+def get_endpoint_point_of_sale_submodules(endpoint):
+    return _endpoint_submodules_from_groups(endpoint, _POINT_OF_SALE_ENDPOINT_GROUPS)
+
+
+def get_endpoint_point_of_sale_bar_submodules(endpoint):
+    return _endpoint_submodules_from_groups(endpoint, _POINT_OF_SALE_BAR_ENDPOINT_GROUPS)
+
+
+def get_endpoint_hotel_rooms_submodules(endpoint):
+    return _endpoint_submodules_from_groups(endpoint, _HOTEL_ROOMS_ENDPOINT_GROUPS)
+
+
+def get_endpoint_communication_hub_submodule(endpoint):
+    matches = _endpoint_submodules_from_groups(endpoint, _COMMUNICATION_HUB_ENDPOINT_GROUPS)
+    return matches[0] if matches else None
+
+
+def get_endpoint_master_submodule(endpoint):
+    matches = _endpoint_submodules_from_groups(endpoint, _MASTER_ENDPOINT_GROUPS)
+    return matches[0] if matches else None
+
+
+def get_endpoint_reports_submodule(endpoint):
+    matches = _endpoint_submodules_from_groups(endpoint, _REPORTS_ENDPOINT_GROUPS)
+    return matches[0] if matches else None
+
+
+def _user_can_access_any_submodule(user, submodules, checker):
+    if not submodules:
+        return True
+    if len(submodules) == 1:
+        return checker(user, submodules[0])
+    return any(checker(user, key) for key in submodules)
+
+
+def user_can_access_endpoint_point_of_sale(user, endpoint):
+    return _user_can_access_any_submodule(
+        user,
+        get_endpoint_point_of_sale_submodules(endpoint),
+        user_can_access_point_of_sale_submodule,
+    )
+
+
+def user_can_access_endpoint_point_of_sale_bar(user, endpoint):
+    return _user_can_access_any_submodule(
+        user,
+        get_endpoint_point_of_sale_bar_submodules(endpoint),
+        user_can_access_point_of_sale_bar_submodule,
+    )
+
+
+def user_can_access_endpoint_hotel_rooms(user, endpoint):
+    return _user_can_access_any_submodule(
+        user,
+        get_endpoint_hotel_rooms_submodules(endpoint),
+        user_can_access_hotel_rooms_submodule,
+    )
+
+
+def user_can_access_endpoint_communication_hub(user, endpoint):
+    submodule = get_endpoint_communication_hub_submodule(endpoint)
+    if not submodule:
+        return True
+    return user_can_access_communication_hub_submodule(user, submodule)
+
+
+def user_can_access_endpoint_master(user, endpoint):
+    submodule = get_endpoint_master_submodule(endpoint)
+    if not submodule:
+        return True
+    if submodule == "customer":
+        return user_can_access_customer_master(user)
+    if submodule == "agency":
+        return user_can_access_agency_master(user)
+    if submodule == "category":
+        return user_can_access_category_master(user)
+    return user_can_access_master_submodule(user, submodule)
+
+
+def user_can_access_endpoint_reports(user, endpoint):
+    submodule = get_endpoint_reports_submodule(endpoint)
+    if not submodule:
+        return True
+    return user_can_access_reports_submodule(user, submodule)
 
 
 def get_endpoint_sales_analytics_submodules(endpoint):
@@ -1377,6 +1803,12 @@ def _normalize_permission_modules(
     payroll_modules=None,
     accounts_modules=None,
     stores_modules=None,
+    point_of_sale_modules=None,
+    point_of_sale_bar_modules=None,
+    hotel_rooms_modules=None,
+    communication_hub_modules=None,
+    master_modules=None,
+    reports_modules=None,
 ):
     dashboard_modules = sorted({
         module for module in (dashboard_modules or []) if module in _DASHBOARD_MODULE_LABELS
@@ -1406,6 +1838,36 @@ def _normalize_permission_modules(
         for module in (stores_modules or [])
         if module in _STORES_SUBMODULE_LABELS
     })
+    point_of_sale_modules = sorted({
+        module
+        for module in (point_of_sale_modules or [])
+        if module in _POS_SUBMODULE_LABELS
+    })
+    point_of_sale_bar_modules = sorted({
+        module
+        for module in (point_of_sale_bar_modules or [])
+        if module in _POS_SUBMODULE_LABELS
+    })
+    hotel_rooms_modules = sorted({
+        module
+        for module in (hotel_rooms_modules or [])
+        if module in _HOTEL_SUBMODULE_LABELS
+    })
+    communication_hub_modules = sorted({
+        module
+        for module in (communication_hub_modules or [])
+        if module in _COMMUNICATION_HUB_SUBMODULE_LABELS
+    })
+    master_modules = sorted({
+        module
+        for module in (master_modules or [])
+        if module in _MASTER_SUBMODULE_LABELS
+    })
+    reports_modules = sorted({
+        module
+        for module in (reports_modules or [])
+        if module in _REPORTS_SUBMODULE_LABELS
+    })
 
     if sales_analytics_modules and "sales_analytics" not in dashboard_modules:
         dashboard_modules = sorted(set(dashboard_modules + ["sales_analytics"]))
@@ -1417,43 +1879,60 @@ def _normalize_permission_modules(
         dashboard_modules = sorted(set(dashboard_modules + ["accounts"]))
     if stores_modules and "stores" not in dashboard_modules:
         dashboard_modules = sorted(set(dashboard_modules + ["stores"]))
+    if point_of_sale_modules and "point_of_sale" not in dashboard_modules:
+        dashboard_modules = sorted(set(dashboard_modules + ["point_of_sale"]))
+    if point_of_sale_bar_modules and "point_of_sale_bar" not in dashboard_modules:
+        dashboard_modules = sorted(set(dashboard_modules + ["point_of_sale_bar"]))
+    if hotel_rooms_modules and "hotel_rooms" not in dashboard_modules:
+        dashboard_modules = sorted(set(dashboard_modules + ["hotel_rooms"]))
+    if communication_hub_modules and "communication_hub" not in dashboard_modules:
+        dashboard_modules = sorted(set(dashboard_modules + ["communication_hub"]))
+    if master_modules and "master" not in dashboard_modules:
+        dashboard_modules = sorted(set(dashboard_modules + ["master"]))
+    if reports_modules and "reports" not in dashboard_modules:
+        dashboard_modules = sorted(set(dashboard_modules + ["reports"]))
 
-    return (
-        dashboard_modules,
-        sales_analytics_modules,
-        user_access_modules,
-        payroll_modules,
-        accounts_modules,
-        stores_modules,
-    )
+    return {
+        "dashboard": dashboard_modules,
+        "sales_analytics": sales_analytics_modules,
+        "user_access": user_access_modules,
+        "payroll": payroll_modules,
+        "accounts": accounts_modules,
+        "stores": stores_modules,
+        "point_of_sale": point_of_sale_modules,
+        "point_of_sale_bar": point_of_sale_bar_modules,
+        "hotel_rooms": hotel_rooms_modules,
+        "communication_hub": communication_hub_modules,
+        "master": master_modules,
+        "reports": reports_modules,
+    }
 
 
-def _permission_insert_rows(
-    dashboard_modules,
-    sales_analytics_modules,
-    user_access_modules,
-    payroll_modules,
-    accounts_modules,
-    stores_modules,
-):
+# Parent dashboard key for each child permission scope (form field → dashboard module).
+_SCOPE_PARENT_DASHBOARD = {
+    "sales_analytics": "sales_analytics",
+    "user_access": "access_management",
+    "payroll": "employee_payroll",
+    "accounts": "accounts",
+    "stores": "stores",
+    "point_of_sale": "point_of_sale",
+    "point_of_sale_bar": "point_of_sale_bar",
+    "hotel_rooms": "hotel_rooms",
+    "communication_hub": "communication_hub",
+    "master": "master",
+    "reports": "reports",
+}
+
+
+def _permission_insert_rows(normalized):
     rows = []
+    dashboard_modules = normalized.get("dashboard") or []
     for module_key in dashboard_modules:
         rows.append(("dashboard", module_key))
-    if "sales_analytics" in dashboard_modules:
-        for module_key in sales_analytics_modules:
-            rows.append(("sales_analytics", module_key))
-    if "access_management" in dashboard_modules:
-        for module_key in user_access_modules:
-            rows.append(("user_access", module_key))
-    if "employee_payroll" in dashboard_modules:
-        for module_key in payroll_modules:
-            rows.append(("payroll", module_key))
-    if "accounts" in dashboard_modules:
-        for module_key in accounts_modules:
-            rows.append(("accounts", module_key))
-    if "stores" in dashboard_modules:
-        for module_key in stores_modules:
-            rows.append(("stores", module_key))
+    for scope, parent in _SCOPE_PARENT_DASHBOARD.items():
+        if parent in dashboard_modules:
+            for module_key in normalized.get(scope) or []:
+                rows.append((scope, module_key))
     return rows
 
 
@@ -1466,31 +1945,29 @@ def set_user_permissions(
     payroll_modules=None,
     accounts_modules=None,
     stores_modules=None,
+    point_of_sale_modules=None,
+    point_of_sale_bar_modules=None,
+    hotel_rooms_modules=None,
+    communication_hub_modules=None,
+    master_modules=None,
+    reports_modules=None,
 ):
-    (
+    normalized = _normalize_permission_modules(
         dashboard_modules,
         sales_analytics_modules,
         user_access_modules,
         payroll_modules,
         accounts_modules,
         stores_modules,
-    ) = _normalize_permission_modules(
-        dashboard_modules,
-        sales_analytics_modules,
-        user_access_modules,
-        payroll_modules,
-        accounts_modules,
-        stores_modules,
+        point_of_sale_modules,
+        point_of_sale_bar_modules,
+        hotel_rooms_modules,
+        communication_hub_modules,
+        master_modules,
+        reports_modules,
     )
     conn.execute("DELETE FROM user_permissions WHERE user_id = ?", (user_id,))
-    for scope, item_key in _permission_insert_rows(
-        dashboard_modules,
-        sales_analytics_modules,
-        user_access_modules,
-        payroll_modules,
-        accounts_modules,
-        stores_modules,
-    ):
+    for scope, item_key in _permission_insert_rows(normalized):
         conn.execute(
             "INSERT INTO user_permissions (user_id, scope, item_key) VALUES (?, ?, ?)",
             (user_id, scope, item_key),
@@ -1506,31 +1983,29 @@ def set_role_permissions(
     payroll_modules=None,
     accounts_modules=None,
     stores_modules=None,
+    point_of_sale_modules=None,
+    point_of_sale_bar_modules=None,
+    hotel_rooms_modules=None,
+    communication_hub_modules=None,
+    master_modules=None,
+    reports_modules=None,
 ):
-    (
+    normalized = _normalize_permission_modules(
         dashboard_modules,
         sales_analytics_modules,
         user_access_modules,
         payroll_modules,
         accounts_modules,
         stores_modules,
-    ) = _normalize_permission_modules(
-        dashboard_modules,
-        sales_analytics_modules,
-        user_access_modules,
-        payroll_modules,
-        accounts_modules,
-        stores_modules,
+        point_of_sale_modules,
+        point_of_sale_bar_modules,
+        hotel_rooms_modules,
+        communication_hub_modules,
+        master_modules,
+        reports_modules,
     )
     conn.execute("DELETE FROM access_role_permissions WHERE role_id = ?", (role_id,))
-    for scope, item_key in _permission_insert_rows(
-        dashboard_modules,
-        sales_analytics_modules,
-        user_access_modules,
-        payroll_modules,
-        accounts_modules,
-        stores_modules,
-    ):
+    for scope, item_key in _permission_insert_rows(normalized):
         conn.execute(
             "INSERT INTO access_role_permissions (role_id, scope, item_key) VALUES (?, ?, ?)",
             (role_id, scope, item_key),
@@ -1557,6 +2032,25 @@ def _access_label_bundle(entity):
         ],
         "stores_labels": [
             _STORES_SUBMODULE_LABELS[key] for key in stores_access_list(entity)
+        ],
+        "point_of_sale_labels": [
+            _POS_SUBMODULE_LABELS[key] for key in point_of_sale_access_list(entity)
+        ],
+        "point_of_sale_bar_labels": [
+            _POS_SUBMODULE_LABELS[key] for key in point_of_sale_bar_access_list(entity)
+        ],
+        "hotel_rooms_labels": [
+            _HOTEL_SUBMODULE_LABELS[key] for key in hotel_rooms_access_list(entity)
+        ],
+        "communication_hub_labels": [
+            _COMMUNICATION_HUB_SUBMODULE_LABELS[key]
+            for key in communication_hub_access_list(entity)
+        ],
+        "master_labels": [
+            _MASTER_SUBMODULE_LABELS[key] for key in master_access_list(entity)
+        ],
+        "reports_labels": [
+            _REPORTS_SUBMODULE_LABELS[key] for key in reports_access_list(entity)
         ],
     }
 
@@ -1810,23 +2304,22 @@ def ensure_access_roles_schema(conn):
                     (role_name,),
                 ).fetchone()["id"]
             )
-            (
-                dashboard_access,
-                sales_analytics_access,
-                user_access,
-                payroll_access,
-                accounts_access,
-                stores_access,
-            ) = _permission_sets_from_rows(perm_rows)
+            perm_sets = _permission_sets_from_rows(perm_rows)
             set_role_permissions(
                 conn,
                 role_id,
-                sorted(dashboard_access),
-                sorted(sales_analytics_access),
-                sorted(user_access),
-                sorted(payroll_access),
-                sorted(accounts_access),
-                sorted(stores_access),
+                sorted(perm_sets["dashboard"]),
+                sorted(perm_sets["sales_analytics"]),
+                sorted(perm_sets["user_access"]),
+                sorted(perm_sets["payroll"]),
+                sorted(perm_sets["accounts"]),
+                sorted(perm_sets["stores"]),
+                point_of_sale_modules=sorted(perm_sets["point_of_sale"]),
+                point_of_sale_bar_modules=sorted(perm_sets["point_of_sale_bar"]),
+                hotel_rooms_modules=sorted(perm_sets["hotel_rooms"]),
+                communication_hub_modules=sorted(perm_sets["communication_hub"]),
+                master_modules=sorted(perm_sets["master"]),
+                reports_modules=sorted(perm_sets["reports"]),
             )
         conn.execute(
             "UPDATE users SET role_id = ?, is_admin = 0 WHERE id = ?",
@@ -1868,6 +2361,10 @@ def validate_access_user_form(
             errors.append("Enter a valid email address.")
     if not user_id and not password:
         errors.append("Password is required for a new user.")
+    elif password:
+        complexity_error = auth_security.password_complexity_error(password)
+        if complexity_error:
+            errors.append(complexity_error)
     if not role_id:
         errors.append("Role is required.")
     elif not role:
@@ -1992,6 +2489,12 @@ def validate_access_role_form(
     payroll_modules=None,
     accounts_modules=None,
     stores_modules=None,
+    point_of_sale_modules=None,
+    point_of_sale_bar_modules=None,
+    hotel_rooms_modules=None,
+    communication_hub_modules=None,
+    master_modules=None,
+    reports_modules=None,
 ):
     errors = []
     actor_is_admin = bool(actor and actor.get("is_admin"))
@@ -2052,6 +2555,30 @@ def validate_access_role_form(
         errors.append(
             "Choose at least one Purchase & Inventory submodule when Purchase & Inventory access is enabled."
         )
+    if "point_of_sale" in dashboard_modules and not point_of_sale_modules and not is_admin:
+        errors.append(
+            "Choose at least one Restaurant submodule when Restaurant access is enabled."
+        )
+    if "point_of_sale_bar" in dashboard_modules and not point_of_sale_bar_modules and not is_admin:
+        errors.append(
+            "Choose at least one Bar submodule when Bar access is enabled."
+        )
+    if "hotel_rooms" in dashboard_modules and not hotel_rooms_modules and not is_admin:
+        errors.append(
+            "Choose at least one Hotel submodule when Hotel access is enabled."
+        )
+    if "communication_hub" in dashboard_modules and not communication_hub_modules and not is_admin:
+        errors.append(
+            "Choose at least one Communication Hub submodule when Communication Hub access is enabled."
+        )
+    if "master" in dashboard_modules and not master_modules and not is_admin:
+        errors.append(
+            "Choose at least one Master submodule when Master access is enabled."
+        )
+    if "reports" in dashboard_modules and not reports_modules and not is_admin:
+        errors.append(
+            "Choose at least one Report submodule when Report access is enabled."
+        )
 
     if original and bool(original["is_admin"]) and not is_admin:
         assigned_active_admins = int(
@@ -2089,6 +2616,12 @@ def save_access_role_record(
     payroll_modules=None,
     accounts_modules=None,
     stores_modules=None,
+    point_of_sale_modules=None,
+    point_of_sale_bar_modules=None,
+    hotel_rooms_modules=None,
+    communication_hub_modules=None,
+    master_modules=None,
+    reports_modules=None,
     sql_now,
 ):
     name = (name or "").strip()
@@ -2132,6 +2665,12 @@ def save_access_role_record(
             payroll_modules,
             accounts_modules,
             stores_modules,
+            point_of_sale_modules,
+            point_of_sale_bar_modules,
+            hotel_rooms_modules,
+            communication_hub_modules,
+            master_modules,
+            reports_modules,
         )
     _sync_users_is_admin_for_role(conn, saved_role_id, is_admin)
     return saved_role_id, result_flag

@@ -12,7 +12,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=28">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=55">
-<link rel="stylesheet" href="{{ url_for('static', filename='access_management_premium.css') }}?v=36">
+<link rel="stylesheet" href="{{ url_for('static', filename='access_management_premium.css') }}?v=37">
 <link rel="stylesheet" href="{{ url_for('static', filename='access_module_access.css') }}?v=3">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=53">
 <script>
@@ -288,7 +288,7 @@ input[type="text"]:focus,input[type="password"]:focus,input[type="email"]:focus,
                 <div>
                   <label for="password">Password</label>
                   <div class="am-password-field">
-                    <input type="password" id="password" name="password" placeholder="{% if form.id %}Leave blank to keep the current password{% else %}Set a password{% endif %}" {% if not form.id %}required{% endif %} autocomplete="new-password">
+                    <input type="password" id="password" name="password" placeholder="{% if form.id %}Leave blank to keep the current password{% else %}Set a password{% endif %}" minlength="8" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}" title="At least 8 characters, with one uppercase letter, one lowercase letter, one number, and one special character." aria-describedby="am-password-hint" {% if not form.id %}required{% endif %} autocomplete="new-password">
                     <button type="button" class="am-password-eye" id="am-toggle-password" aria-label="Show password" aria-pressed="false" aria-controls="password">
                       <svg class="am-password-eye-show" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>
                       <svg class="am-password-eye-hide" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.5 10.6A2.8 2.8 0 0 0 13.4 13.5"/><path d="M7 7.4C4.4 9 2.8 11.2 2 12c1.2 1.5 4.5 6 10 6 1.8 0 3.4-.4 4.8-1"/><path d="M14.2 6.4C13.5 6.1 12.8 6 12 6c-5.5 0-8.8 4.5-10 6 .3.4.8 1 1.5 1.8"/></svg>
@@ -298,6 +298,7 @@ input[type="text"]:focus,input[type="password"]:focus,input[type="email"]:focus,
                     <input type="checkbox" id="must_change_password" name="must_change_password" value="1"{% if form.must_change_password %} checked{% endif %}>
                     Require password change on next login
                   </label>
+                  <p class="am-field-hint" id="am-password-hint">At least 8 characters, with one uppercase letter, one lowercase letter, one number, and one special character.</p>
                 </div>
               </div>
 
@@ -359,8 +360,8 @@ input[type="text"]:focus,input[type="password"]:focus,input[type="email"]:focus,
               </div>
 
               <div class="form-actions">
-                <button type="submit" class="btn btn-primary">{% if form.id %}Save Changes{% else %}Create User{% endif %}</button>
                 <a class="btn" href="{{ url_for('access_management', focus='form') }}">Reset</a>
+                <button type="submit" class="btn btn-primary">{% if form.id %}Save Changes{% else %}Create User{% endif %}</button>
               </div>
             </form>
           </div>
@@ -496,6 +497,22 @@ input[type="text"]:focus,input[type="password"]:focus,input[type="email"]:focus,
       passwordToggle.setAttribute('aria-pressed', show ? 'true' : 'false');
       passwordToggle.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
     });
+  }
+
+  if(passwordInput){
+    var passwordRequired = passwordInput.hasAttribute('required');
+    var passwordRule = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+    var passwordMessage = 'At least 8 characters, with one uppercase letter, one lowercase letter, one number, and one special character.';
+    function syncPasswordValidity(){
+      var value = String(passwordInput.value || '');
+      if(!value && !passwordRequired){
+        passwordInput.setCustomValidity('');
+        return;
+      }
+      passwordInput.setCustomValidity(passwordRule.test(value) ? '' : passwordMessage);
+    }
+    passwordInput.addEventListener('input', syncPasswordValidity);
+    passwordInput.addEventListener('invalid', syncPasswordValidity);
   }
 
   function showInitials(){

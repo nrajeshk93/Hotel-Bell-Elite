@@ -1195,6 +1195,15 @@
     return isLiquorCategory(cat);
   }
 
+  /** Real menu variant only — ignore category mistakenly stored as variant. */
+  function lineDisplayVariant(line) {
+    var variant = String((line && line.variant) || '').trim();
+    if (!variant) return '';
+    var category = String((line && line.category) || '').trim();
+    if (category && variant.toLowerCase() === category.toLowerCase()) return '';
+    return variant;
+  }
+
   function buildMenuCatalog(rawItems, categories) {
     var byCategory = {};
     (categories || []).forEach(function (cat) {
@@ -1848,9 +1857,6 @@
           '<div><div class="pos-inv-item-name">' +
           escapeHtml(line.name) +
           '</div>' +
-          (line.variant
-            ? '<div class="pos-inv-item-variant">' + escapeHtml(line.variant) + '</div>'
-            : '') +
           (lineNotes
             ? '<div class="pos-inv-item-note" title="' +
               escapeHtml(lineNotes) +
@@ -1953,12 +1959,13 @@
       .map(function (entry) {
         var line = entry.line;
         var note = String(line.notes || '').trim();
+        var variant = lineDisplayVariant(line);
         return (
           '<tr><td class="qty">' +
           entry.qty +
           '</td><td class="name">' +
           escapeHtml(line.name) +
-          (line.variant ? '<div class="variant">' + escapeHtml(line.variant) + '</div>' : '') +
+          (variant ? '<div class="variant">' + escapeHtml(variant) + '</div>' : '') +
           (note ? '<div class="note">' + escapeHtml(note) + '</div>' : '') +
           '</td></tr>'
         );
@@ -2024,7 +2031,7 @@
         return {
           qty: entry.qty,
           name: line.name,
-          variant: line.variant,
+          variant: lineDisplayVariant(line),
           notes: line.notes
         };
       }),
@@ -2997,7 +3004,9 @@
         menuId: item.id || null,
         name: item.name,
         category: item.category || '',
-        variant: item.variant || item.category || '',
+        /* Keep real menu variants only — never copy category here (it was
+           showing under the item name and on slips as e.g. "DESSERTS"). */
+        variant: item.variant || '',
         rate: Number(item.rate) || 0,
         qty: qty || 1,
         isLiquor: !!item.isLiquor || item.itemKind === 'liquor' || isLiquorCategory(item.category),
@@ -3327,7 +3336,10 @@
         menuId: line.menu_item_id || line.menuId || null,
         name: line.name,
         category: category,
-        variant: line.variant || '',
+        variant: lineDisplayVariant({
+          variant: line.variant || '',
+          category: category
+        }),
         rate: Number(line.rate) || 0,
         qty: Number(line.qty) || 0,
         isLiquor: liquor,
@@ -4542,7 +4554,7 @@
           menuId: line.menuId,
           name: line.name,
           category: line.category || '',
-          variant: line.variant || '',
+          variant: lineDisplayVariant(line),
           rate: Number(line.rate) || 0,
           qty: Number(line.qty) || 0,
           isLiquor: !!line.isLiquor || isLiquorLine(line),

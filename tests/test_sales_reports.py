@@ -749,6 +749,8 @@ class SalesReportsTests(unittest.TestCase):
         self.assertIn(inv_no, html)
         self.assertIn("Outstanding", html)
         self.assertIn("Collected in period", html)
+        self.assertIn(">Export</a>", html)
+        self.assertNotIn("Export Excel", html)
 
         conn = db_mod.get_db()
         try:
@@ -786,19 +788,37 @@ class SalesReportsTests(unittest.TestCase):
         export = self.client.get("/reports/sales/agency-billing/export")
         self.assertEqual(export.status_code, 200)
         self.assertTrue(export.data[:2] == b"PK")
+        self.assertIn("no-store", (export.headers.get("Cache-Control") or "").lower())
         from openpyxl import load_workbook
 
         wb = load_workbook(BytesIO(export.data))
-        ws = wb.active
-        self.assertEqual(ws.title, "Agency Ledger")
-        self.assertIn("Agency Ledger", str(ws["A1"].value or ""))
-        headers = [ws.cell(4, col).value for col in range(1, 10)]
+        self.assertEqual(wb.sheetnames, ["Summary", "Grouped", "All Items"])
+        summary = wb["Summary"]
+        grouped = wb["Grouped"]
+        all_items = wb["All Items"]
+        self.assertEqual(summary.title, "Summary")
+        self.assertIn("Agency Ledger", str(summary["A1"].value or ""))
+        self.assertEqual(summary["A2"].value, "Billed")
+        self.assertEqual(summary["A3"].value, "Received")
+        self.assertEqual(summary["A4"].value, "Outstanding")
+        self.assertEqual(summary["A5"].value, "Collected in period")
+        self.assertEqual(summary["A6"].value, "Total")
+        self.assertEqual(summary["A1"].fill.fgColor.rgb, "FF315A78")
+        self.assertIn("A1:B1", {str(r) for r in summary.merged_cells.ranges})
+
+        col_a = [
+            grouped.cell(row, 1).value
+            for row in range(1, (grouped.max_row or 1) + 1)
+        ]
+        agency_banner = "Hotel Bell Elite — Agency Ledger - Travel Desk Co"
+        self.assertIn(agency_banner, col_a)
+        self.assertIn(inv_no, col_a)
+        self.assertEqual(grouped.cell(2, 1).value, "Invoice No")
         self.assertEqual(
-            headers,
+            [grouped.cell(2, col).value for col in range(1, 9)],
             [
                 "Invoice No",
                 "Date",
-                "Agency",
                 "Guest",
                 "Room",
                 "Billed",
@@ -807,7 +827,29 @@ class SalesReportsTests(unittest.TestCase):
                 "Status",
             ],
         )
-        invoice_col = [ws.cell(row, 1).value for row in range(5, (ws.max_row or 4) + 1)]
+        self.assertEqual(grouped.cell(1, 1).fill.fgColor.rgb, "FF315A78")
+        self.assertEqual(grouped.cell(2, 1).fill.fgColor.rgb, "FF315A78")
+
+        self.assertEqual(all_items.cell(1, 1).value, "Hotel Bell Elite — Agency Ledger")
+        self.assertEqual(all_items.cell(1, 1).fill.fgColor.rgb, "FF315A78")
+        self.assertEqual(
+            [all_items.cell(2, col).value for col in range(1, 10)],
+            [
+                "Agency",
+                "Invoice No",
+                "Date",
+                "Guest",
+                "Room",
+                "Billed",
+                "Received",
+                "Balance",
+                "Status",
+            ],
+        )
+        invoice_col = [
+            all_items.cell(row, 2).value
+            for row in range(3, (all_items.max_row or 2) + 1)
+        ]
         self.assertIn(inv_no, invoice_col)
         fy_start, today = db_mod.indian_fiscal_year_bounds()
         cd = export.headers.get("Content-Disposition") or ""

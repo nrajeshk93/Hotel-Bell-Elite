@@ -69,6 +69,12 @@
       payroll_modules: parseJson(byId('ma-initial-payroll'), []),
       accounts_modules: parseJson(byId('ma-initial-accounts'), []),
       stores_modules: parseJson(byId('ma-initial-stores'), []),
+      point_of_sale_modules: parseJson(byId('ma-initial-point-of-sale'), []),
+      point_of_sale_bar_modules: parseJson(byId('ma-initial-point-of-sale-bar'), []),
+      hotel_rooms_modules: parseJson(byId('ma-initial-hotel-rooms'), []),
+      communication_hub_modules: parseJson(byId('ma-initial-communication-hub'), []),
+      master_modules: parseJson(byId('ma-initial-master'), []),
+      reports_modules: parseJson(byId('ma-initial-reports'), []),
     };
 
     var scopeConfig = {};

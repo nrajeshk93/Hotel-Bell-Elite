@@ -173,11 +173,16 @@ from sales_report_parser import OUTLET_BAR, OUTLET_RESTAURANT, parse_sales_repor
 import asia_tech_client
 from workspace_access import (
     _ACCOUNTS_SUBMODULE_LABELS,
+    _COMMUNICATION_HUB_SUBMODULE_LABELS,
     _DASHBOARD_MODULE_LABELS,
     _DASHBOARD_MODULES,
+    _HOTEL_SUBMODULE_LABELS,
+    _MASTER_SUBMODULE_LABELS,
     _PUBLIC_ENDPOINTS,
     _PAYROLL_SUBMODULE_LABELS,
     _POS_RESTAURANT_SALES_WRITE_ENDPOINTS,
+    _POS_SUBMODULE_LABELS,
+    _REPORTS_SUBMODULE_LABELS,
     _SALES_ANALYTICS_SUBMODULE_LABELS,
     _STORES_SUBMODULE_LABELS,
     _USER_ACCESS_SUBMODULE_LABELS,
@@ -185,22 +190,34 @@ from workspace_access import (
     access_module_tree_ui,
     accounts_access_list,
     build_user_context,
+    communication_hub_access_list,
     dashboard_access_list,
     delete_access_role,
     fetch_access_management_users,
     get_access_role,
     get_endpoint_accounts_submodule,
+    get_endpoint_communication_hub_submodule,
     get_endpoint_dashboard_module,
+    get_endpoint_hotel_rooms_submodules,
+    get_endpoint_master_submodule,
     get_endpoint_payroll_submodule,
+    get_endpoint_point_of_sale_bar_submodules,
+    get_endpoint_point_of_sale_submodules,
+    get_endpoint_reports_submodule,
     get_endpoint_stores_submodule,
     get_endpoint_user_access_submodule,
+    hotel_rooms_access_list,
     SUPER_ADMINISTRATOR_ROLE_NAME,
     is_built_in_administrator_role,
     is_system_administrator,
     list_access_roles,
+    master_access_list,
     normalize_username,
     payroll_access_list,
+    point_of_sale_access_list,
+    point_of_sale_bar_access_list,
     reconcile_super_admin_only_dashboard_modules,
+    reports_access_list,
     role_summary_for_ui,
     sales_analytics_access_list,
     save_access_role_record,
@@ -208,16 +225,29 @@ from workspace_access import (
     stores_access_list,
     user_access_submodule_list,
     user_can_access_accounts_submodule,
+    user_can_access_agency_master,
+    user_can_access_category_master,
+    user_can_access_communication_hub_submodule,
+    user_can_access_customer_master,
     user_can_access_dashboard,
     user_can_access_endpoint_accounts,
+    user_can_access_endpoint_communication_hub,
+    user_can_access_endpoint_hotel_rooms,
+    user_can_access_endpoint_master,
+    user_can_access_endpoint_point_of_sale,
+    user_can_access_endpoint_point_of_sale_bar,
+    user_can_access_endpoint_reports,
     user_can_access_endpoint_sales_analytics,
     user_can_access_endpoint_stores,
+    user_can_access_hotel_rooms_submodule,
+    user_can_access_master_submodule,
     user_can_access_payroll_submodule,
+    user_can_access_point_of_sale_bar_submodule,
+    user_can_access_point_of_sale_submodule,
+    user_can_access_reports_submodule,
     user_can_access_sales_analytics_submodule,
     user_can_access_stores_submodule,
     user_can_access_supplier_master,
-    user_can_access_customer_master,
-    user_can_access_agency_master,
     user_can_access_user_access_submodule,
     user_can_edit_kot_sent_lines,
     user_can_edit_unsettled_invoices,
@@ -819,6 +849,51 @@ def enforce_access():
         )
         return _permission_denied_response(f"You do not have access to {label}.")
 
+    if not user_can_access_endpoint_point_of_sale(user, endpoint):
+        keys = get_endpoint_point_of_sale_submodules(endpoint)
+        label = _POS_SUBMODULE_LABELS.get(
+            keys[0] if keys else "",
+            "requested Restaurant section",
+        )
+        return _permission_denied_response(f"You do not have access to {label}.")
+
+    if not user_can_access_endpoint_point_of_sale_bar(user, endpoint):
+        keys = get_endpoint_point_of_sale_bar_submodules(endpoint)
+        label = _POS_SUBMODULE_LABELS.get(
+            keys[0] if keys else "",
+            "requested Bar section",
+        )
+        return _permission_denied_response(f"You do not have access to {label}.")
+
+    if not user_can_access_endpoint_hotel_rooms(user, endpoint):
+        keys = get_endpoint_hotel_rooms_submodules(endpoint)
+        label = _HOTEL_SUBMODULE_LABELS.get(
+            keys[0] if keys else "",
+            "requested Hotel section",
+        )
+        return _permission_denied_response(f"You do not have access to {label}.")
+
+    if not user_can_access_endpoint_communication_hub(user, endpoint):
+        label = _COMMUNICATION_HUB_SUBMODULE_LABELS.get(
+            get_endpoint_communication_hub_submodule(endpoint) or "",
+            "requested Communication Hub section",
+        )
+        return _permission_denied_response(f"You do not have access to {label}.")
+
+    if not user_can_access_endpoint_master(user, endpoint):
+        label = _MASTER_SUBMODULE_LABELS.get(
+            get_endpoint_master_submodule(endpoint) or "",
+            "requested Master section",
+        )
+        return _permission_denied_response(f"You do not have access to {label}.")
+
+    if not user_can_access_endpoint_reports(user, endpoint):
+        label = _REPORTS_SUBMODULE_LABELS.get(
+            get_endpoint_reports_submodule(endpoint) or "",
+            "requested Report section",
+        )
+        return _permission_denied_response(f"You do not have access to {label}.")
+
     return None
 
 
@@ -887,11 +962,23 @@ def inject_auth_context():
         "accessible_payroll_modules": payroll_access_list(user),
         "accessible_accounts_modules": accounts_access_list(user),
         "accessible_stores_modules": stores_access_list(user),
+        "accessible_point_of_sale_modules": point_of_sale_access_list(user),
+        "accessible_point_of_sale_bar_modules": point_of_sale_bar_access_list(user),
+        "accessible_hotel_rooms_modules": hotel_rooms_access_list(user),
+        "accessible_communication_hub_modules": communication_hub_access_list(user),
+        "accessible_master_modules": master_access_list(user),
+        "accessible_reports_modules": reports_access_list(user),
         "has_dashboard_access": lambda key: user_can_access_dashboard(user, key),
         "has_sales_analytics_access": lambda key: user_can_access_sales_analytics_submodule(user, key),
         "has_payroll_access": lambda key: user_can_access_payroll_submodule(user, key),
         "has_accounts_access": lambda key: user_can_access_accounts_submodule(user, key),
         "has_stores_access": lambda key: user_can_access_stores_submodule(user, key),
+        "has_point_of_sale_access": lambda key: user_can_access_point_of_sale_submodule(user, key),
+        "has_point_of_sale_bar_access": lambda key: user_can_access_point_of_sale_bar_submodule(user, key),
+        "has_hotel_rooms_access": lambda key: user_can_access_hotel_rooms_submodule(user, key),
+        "has_communication_hub_access": lambda key: user_can_access_communication_hub_submodule(user, key),
+        "has_master_access": lambda key: user_can_access_master_submodule(user, key),
+        "has_reports_access": lambda key: user_can_access_reports_submodule(user, key),
         "has_supplier_master_access": lambda: user_can_access_supplier_master(user),
         "has_customer_master_access": lambda: user_can_access_customer_master(user),
         "has_agency_master_access": lambda: user_can_access_agency_master(user),
@@ -4985,6 +5072,8 @@ def change_password():
             error = "Enter a new password."
         elif new_password != confirm_password:
             error = "New password and confirmation do not match."
+        elif auth_security.password_complexity_error(new_password):
+            error = auth_security.PASSWORD_COMPLEXITY_MESSAGE
         else:
             conn = get_db()
             try:
@@ -5595,8 +5684,36 @@ def main_dashboard():
 @app.route("/master")
 def master():
     """Master data workspace hub."""
+    user = get_current_user()
     conn = get_db()
     payload = build_masters_dashboard(url_for, conn)
+    visible = []
+    for item in payload.get("masters") or []:
+        mid = item.get("id")
+        if mid == "supplier" and user_can_access_supplier_master(user):
+            visible.append(item)
+        elif mid == "customer" and user_can_access_customer_master(user):
+            visible.append(item)
+        elif mid == "agency" and user_can_access_agency_master(user):
+            visible.append(item)
+        elif mid == "product" and user_can_access_stores_submodule(user, "product_master"):
+            visible.append(item)
+        elif mid == "menu" and (
+            user_can_access_point_of_sale_submodule(user, "menu")
+            or user_can_access_point_of_sale_bar_submodule(user, "menu")
+        ):
+            visible.append(item)
+        elif mid == "category" and user_can_access_category_master(user):
+            visible.append(item)
+        elif mid == "employee" and user_can_access_payroll_submodule(user, "employee"):
+            visible.append(item)
+    payload["masters"] = visible
+    payload["masters_kpis"] = {
+        "total_masters": len(visible),
+        "active_masters": sum(1 for m in visible if m.get("active", True)),
+        "total_records": sum(int(m.get("record_count") or 0) for m in visible),
+        "recently_updated": sum(1 for m in visible if m.get("recently_updated")),
+    }
     return render_template(
         "master.html",
         de_nav_section="master",
@@ -5634,11 +5751,7 @@ def _category_master_form_payload(source=None, *, category_id=""):
 def category_master():
     """POS menu Category Master — list and manage Restaurant/Bar categories."""
     user = get_current_user()
-    if not (
-        user_can_access_dashboard(user, "master")
-        or user_can_access_dashboard(user, "point_of_sale")
-        or user_can_access_dashboard(user, "point_of_sale_bar")
-    ):
+    if not user_can_access_category_master(user):
         return _permission_denied_response("You do not have access to Category Master.")
 
     selected_id = (request.args.get("category_id") or "").strip()
@@ -5691,11 +5804,7 @@ def category_master():
 @app.route("/masters/categories/save", methods=["POST"], endpoint="save_category_master")
 def save_category_master():
     user = get_current_user()
-    if not (
-        user_can_access_dashboard(user, "master")
-        or user_can_access_dashboard(user, "point_of_sale")
-        or user_can_access_dashboard(user, "point_of_sale_bar")
-    ):
+    if not user_can_access_category_master(user):
         return _permission_denied_response("You do not have access to Category Master.")
 
     category_id_raw = (request.form.get("category_id") or "").strip()
@@ -5747,11 +5856,7 @@ def save_category_master():
 @app.route("/masters/categories/delete", methods=["POST"], endpoint="delete_category_master")
 def delete_category_master():
     user = get_current_user()
-    if not (
-        user_can_access_dashboard(user, "master")
-        or user_can_access_dashboard(user, "point_of_sale")
-        or user_can_access_dashboard(user, "point_of_sale_bar")
-    ):
+    if not user_can_access_category_master(user):
         return _permission_denied_response("You do not have access to Category Master.")
 
     category_id_raw = (request.form.get("category_id") or "").strip()
@@ -5788,7 +5893,65 @@ def delete_category_master():
 @app.route("/reports")
 def reports():
     """Cross-module reports hub — view and download module reports."""
+    user = get_current_user()
     payload = build_reports_dashboard(url_for)
+    sales_report_keys = {
+        "hotel_sales",
+        "agency_billing",
+        "manager_insight",
+        "meal_plan",
+        "restaurant_sales",
+        "menu_sales",
+        "customer_insights",
+    }
+    owning_checks = {
+        "expense_ledger": lambda: user_can_access_accounts_submodule(user, "purchase_ledger"),
+        "cash_ledger": lambda: user_can_access_accounts_submodule(user, "cash_ledger"),
+        "credit_payment": lambda: user_can_access_accounts_submodule(user, "credit_payment"),
+        "tips": lambda: user_can_access_payroll_submodule(user, "tips"),
+        "employee_master": lambda: user_can_access_payroll_submodule(user, "employee"),
+        "monthly_payroll": lambda: user_can_access_payroll_submodule(user, "report"),
+        "attendance": lambda: user_can_access_payroll_submodule(user, "attendance"),
+        "credits": lambda: user_can_access_payroll_submodule(user, "credit"),
+        "bank": lambda: user_can_access_payroll_submodule(user, "report"),
+        "menu_margin": lambda: (
+            user_can_access_point_of_sale_submodule(user, "menu")
+            or user_can_access_point_of_sale_bar_submodule(user, "menu")
+        ),
+        "stock": lambda: user_can_access_stores_submodule(user, "stock"),
+        "stock_audit": lambda: user_can_access_stores_submodule(user, "stock_audit"),
+    }
+    visible = []
+    for item in payload.get("reports") or []:
+        rid = item.get("id")
+        if rid in sales_report_keys:
+            if user_can_access_reports_submodule(user, rid):
+                visible.append(item)
+            continue
+        checker = owning_checks.get(rid)
+        if checker and checker():
+            visible.append(item)
+    payload["reports"] = visible
+    report_sections = []
+    for section in payload.get("report_sections") or []:
+        section_reports = [r for r in visible if r.get("category") == section.get("key")]
+        if not section_reports:
+            continue
+        report_sections.append(
+            {
+                **section,
+                "reports": section_reports,
+                "count": len(section_reports),
+            }
+        )
+    payload["report_sections"] = report_sections
+    categories = {r.get("category") for r in visible if r.get("category")}
+    payload["reports_kpis"] = {
+        "total_reports": len(visible),
+        "downloadable": sum(1 for r in visible if r.get("download_href") or r.get("downloadable")),
+        "modules": len(categories),
+        "categories": payload.get("reports_kpis", {}).get("categories", len(categories)),
+    }
     return render_template(
         "reports.html",
         de_nav_section="report",
@@ -6740,34 +6903,83 @@ def _agency_billing_page():
 
 
 def _agency_billing_export():
+    """Excel download of agency billing — Summary + Grouped + All Items."""
     from openpyxl import Workbook
-    from openpyxl.styles import Font
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
-    from io import BytesIO
 
     filters = _agency_billing_filters(request.args)
     rows, kpis, _agencies, _selected_supplier, _label = _agency_billing_load(filters)
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Agency Ledger"
-    header_font = Font(bold=True)
-    title_date = _sales_report_excel_title_date(filters)
-    ws["A1"] = f"Hotel Bell Elite — Agency Ledger{title_date}"
-    ws["A1"].font = Font(bold=True, size=14)
-    ws["A2"] = "Invoices"
-    ws["B2"] = int(kpis.get("total") or 0)
-    ws["C2"] = "Billed"
-    ws["D2"] = round_half_up(kpis.get("billed"), 2)
-    ws["E2"] = "Received"
-    ws["F2"] = round_half_up(kpis.get("received"), 2)
-    ws["G2"] = "Outstanding"
-    ws["H2"] = round_half_up(kpis.get("outstanding"), 2)
-    ws["I2"] = "Collected in period"
-    ws["J2"] = round_half_up(kpis.get("collected_in_period"), 2)
-    headers = (
+
+    def _whole_or_float(value):
+        if value is None:
+            return None
+        try:
+            num = float(value)
+            return int(num) if num == int(num) else num
+        except (TypeError, ValueError):
+            return value
+
+    def _status_label(status):
+        return "Settled" if status == "settled" else "Outstanding"
+
+    agency_totals = {}
+    agency_order = []
+    for item in rows:
+        label = str(item.get("agency_name") or "—").strip() or "—"
+        if label not in agency_totals:
+            agency_order.append(label)
+            agency_totals[label] = {
+                "billed": 0.0,
+                "received": 0.0,
+                "outstanding": 0.0,
+                "entries": [],
+            }
+        bucket = agency_totals[label]
+        bucket["billed"] = round_half_up(
+            bucket["billed"] + float(item.get("billed") or 0), 2
+        )
+        bucket["received"] = round_half_up(
+            bucket["received"] + float(item.get("received") or 0), 2
+        )
+        bucket["outstanding"] = round_half_up(
+            bucket["outstanding"] + float(item.get("balance") or 0), 2
+        )
+        bucket["entries"].append(item)
+    agency_order.sort(key=lambda name: name.lower())
+    sections = [
+        {"label": label, "entries": agency_totals[label]["entries"]}
+        for label in agency_order
+    ]
+    agency_rows = [
+        {
+            "label": label,
+            "billed": agency_totals[label]["billed"],
+            "received": agency_totals[label]["received"],
+            "outstanding": agency_totals[label]["outstanding"],
+        }
+        for label in agency_order
+    ]
+    agency_billed_total = round_half_up(
+        sum(item["billed"] for item in agency_rows), 2
+    )
+
+    kpi_rows = [
+        ("Billed", round_half_up(kpis.get("billed"), 2)),
+        ("Received", round_half_up(kpis.get("received"), 2)),
+        ("Outstanding", round_half_up(kpis.get("outstanding"), 2)),
+        ("Collected in period", round_half_up(kpis.get("collected_in_period"), 2)),
+    ]
+    stat_rows = [
+        {"label": "Invoices", "count": int(kpis.get("total") or 0)},
+        {"label": "Outstanding", "count": int(kpis.get("open") or 0)},
+        {"label": "Settled", "count": int(kpis.get("settled") or 0)},
+    ]
+    stat_total = sum(item["count"] for item in stat_rows)
+
+    grouped_headers = (
         "Invoice No",
         "Date",
-        "Agency",
         "Guest",
         "Room",
         "Billed",
@@ -6775,35 +6987,272 @@ def _agency_billing_export():
         "Balance",
         "Status",
     )
-    for col, title in enumerate(headers, start=1):
-        cell = ws.cell(row=4, column=col, value=title)
-        cell.font = header_font
-    for idx, row in enumerate(rows, start=5):
-        ws.cell(row=idx, column=1, value=row.get("invoice_number") or "")
-        ws.cell(row=idx, column=2, value=row.get("credit_date") or "")
-        ws.cell(row=idx, column=3, value=row.get("agency_name") or "")
-        ws.cell(row=idx, column=4, value=row.get("guest_name") or "")
-        ws.cell(row=idx, column=5, value=row.get("room_number") or "")
-        ws.cell(row=idx, column=6, value=row.get("billed"))
-        ws.cell(row=idx, column=7, value=row.get("received"))
-        ws.cell(row=idx, column=8, value=row.get("balance"))
-        ws.cell(
-            row=idx,
-            column=9,
-            value="Settled" if row.get("status") == "settled" else "Outstanding",
+    all_headers = ("Agency",) + grouped_headers
+    grouped_col_count = len(grouped_headers)
+    all_col_count = len(all_headers)
+    grouped_amount_cols = {5, 6, 7}
+    all_amount_cols = {6, 7, 8}
+    title_date = _sales_report_excel_title_date(filters)
+
+    wb = Workbook()
+    summary = wb.active
+    summary.title = "Summary"
+    grouped = wb.create_sheet("Grouped")
+    all_items = wb.create_sheet("All Items")
+
+    summary["A1"] = f"Hotel Bell Elite — Agency Ledger{title_date}"
+    for idx, (label, amount) in enumerate(kpi_rows, start=2):
+        summary.cell(row=idx, column=1, value=label)
+        summary.cell(row=idx, column=2, value=_whole_or_float(amount))
+    total_row = 2 + len(kpi_rows)
+    summary.cell(row=total_row, column=1, value="Total")
+    summary.cell(
+        row=total_row,
+        column=2,
+        value=_whole_or_float(round_half_up(kpis.get("billed"), 2)),
+    )
+    summary.merge_cells("A1:B1")
+
+    agency_header_row = total_row + 2
+    summary.cell(row=agency_header_row, column=1, value="Agency")
+    summary.cell(row=agency_header_row, column=2, value="Billed")
+    agency_data_rows = []
+    row_idx = agency_header_row + 1
+    for item in agency_rows:
+        summary.cell(row=row_idx, column=1, value=item["label"])
+        summary.cell(
+            row=row_idx, column=2, value=_whole_or_float(item["billed"])
         )
-    max_col = ws.max_column or 1
-    last = ws.max_row or 1
-    for col in range(1, max_col + 1):
-        width = 14
-        for row_idx in range(1, last + 1):
-            value = ws.cell(row=row_idx, column=col).value
-            if value is None:
-                continue
-            width = max(width, min(len(str(value)) + 2, 40))
-        ws.column_dimensions[get_column_letter(col)].width = width
+        agency_data_rows.append(row_idx)
+        row_idx += 1
+    agency_total_row = row_idx
+    summary.cell(row=agency_total_row, column=1, value="Total")
+    summary.cell(
+        row=agency_total_row,
+        column=2,
+        value=_whole_or_float(agency_billed_total),
+    )
+
+    stat_header_row = agency_total_row + 2
+    summary.cell(row=stat_header_row, column=1, value="Metric")
+    summary.cell(row=stat_header_row, column=2, value="Count")
+    stat_data_rows = []
+    row_idx = stat_header_row + 1
+    for item in stat_rows:
+        summary.cell(row=row_idx, column=1, value=item["label"])
+        summary.cell(row=row_idx, column=2, value=item["count"])
+        stat_data_rows.append(row_idx)
+        row_idx += 1
+    stat_total_row = row_idx
+    summary.cell(row=stat_total_row, column=1, value="Total")
+    summary.cell(row=stat_total_row, column=2, value=stat_total)
+
+    def _row_values(entry, *, include_agency=False):
+        values = (
+            entry.get("invoice_number") or "",
+            entry.get("credit_date") or "",
+            entry.get("guest_name") or "",
+            entry.get("room_number") or "",
+            _whole_or_float(round_half_up(entry.get("billed"), 2)),
+            _whole_or_float(round_half_up(entry.get("received"), 2)),
+            _whole_or_float(round_half_up(entry.get("balance"), 2)),
+            _status_label(entry.get("status")),
+        )
+        if include_agency:
+            values = (entry.get("agency_name") or "—",) + values
+        return values
+
+    def _write_row(sheet, target_row, entry, *, include_agency=False):
+        for col, value in enumerate(
+            _row_values(entry, include_agency=include_agency), start=1
+        ):
+            sheet.cell(row=target_row, column=col, value=value)
+
+    banner_rows = []
+    header_rows = []
+    item_rows = []
+    row_idx = 1
+    for i, section in enumerate(sections):
+        if i > 0:
+            row_idx += 1
+        grouped.cell(
+            row=row_idx,
+            column=1,
+            value=f"Hotel Bell Elite — Agency Ledger - {section['label']}",
+        )
+        grouped.merge_cells(
+            start_row=row_idx,
+            start_column=1,
+            end_row=row_idx,
+            end_column=grouped_col_count,
+        )
+        banner_rows.append(row_idx)
+        row_idx += 1
+        for col, title in enumerate(grouped_headers, start=1):
+            grouped.cell(row=row_idx, column=col, value=title)
+        header_rows.append(row_idx)
+        row_idx += 1
+        section_entries = sorted(
+            section.get("entries") or [],
+            key=lambda e: (
+                str(e.get("credit_date") or ""),
+                str(e.get("invoice_number") or ""),
+            ),
+        )
+        for entry in section_entries:
+            _write_row(grouped, row_idx, entry)
+            item_rows.append(row_idx)
+            row_idx += 1
+    last_grouped = max(1, row_idx - 1)
+
+    chronological_entries = sorted(
+        rows,
+        key=lambda e: (
+            str(e.get("credit_date") or ""),
+            str(e.get("invoice_number") or ""),
+            int(e.get("id") or 0),
+        ),
+    )
+    all_banner_rows = []
+    all_header_rows = []
+    all_item_rows = []
+    all_row = 1
+    all_items.cell(row=all_row, column=1, value="Hotel Bell Elite — Agency Ledger")
+    all_items.merge_cells(
+        start_row=all_row,
+        start_column=1,
+        end_row=all_row,
+        end_column=all_col_count,
+    )
+    all_banner_rows.append(all_row)
+    all_row += 1
+    for col, title in enumerate(all_headers, start=1):
+        all_items.cell(row=all_row, column=col, value=title)
+    all_header_rows.append(all_row)
+    all_row += 1
+    for entry in chronological_entries:
+        _write_row(all_items, all_row, entry, include_agency=True)
+        all_item_rows.append(all_row)
+        all_row += 1
+    last_all_items = max(1, all_row - 1)
+
+    header_fill = PatternFill(
+        fill_type="solid",
+        start_color="FF315A78",
+        end_color="FF315A78",
+    )
+    banner_font = Font(bold=True, size=16, color="FFFFFFFF")
+    chrome_header_font = Font(bold=True, size=11, color="FFFFFFFF")
+    summary_title_font = Font(name="Calibri", bold=True, size=16, color="FFFFFFFF")
+    summary_font = Font(name="Calibri", size=12, color="FF000000")
+    summary_bold_font = Font(name="Calibri", bold=True, size=12, color="FF000000")
+    body_font = Font(size=11, color="FF000000")
+    thin = Side(style="thin", color="FF000000")
+    grid = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    right = Alignment(horizontal="right", vertical="center", wrap_text=True)
+
+    summary_kpi_rows = set(range(2, total_row + 1))
+    summary_chrome_rows = {
+        1,
+        agency_header_row,
+        agency_total_row,
+        stat_header_row,
+        stat_total_row,
+        *agency_data_rows,
+        *stat_data_rows,
+        *summary_kpi_rows,
+    }
+    for r in sorted(summary_chrome_rows):
+        for col in range(1, 3):
+            cell = summary.cell(row=r, column=col)
+            cell.border = grid
+            cell.alignment = center
+            if r == 1 or r in (agency_header_row, stat_header_row):
+                cell.fill = header_fill
+                cell.font = summary_title_font
+            elif r in (total_row, agency_total_row, stat_total_row):
+                cell.font = summary_bold_font
+            else:
+                cell.font = summary_font
+
+    def _style_detail_sheet(
+        sheet,
+        last_row,
+        sheet_col_count,
+        sheet_banner_rows,
+        sheet_header_rows,
+        sheet_item_rows,
+        sheet_amount_cols,
+        sheet_widths,
+    ):
+        for r in range(1, last_row + 1):
+            for col in range(1, sheet_col_count + 1):
+                cell = sheet.cell(row=r, column=col)
+                cell.border = grid
+                if r in sheet_banner_rows:
+                    cell.fill = header_fill
+                    cell.font = banner_font
+                    cell.alignment = center
+                elif r in sheet_header_rows:
+                    cell.fill = header_fill
+                    cell.font = chrome_header_font
+                    cell.alignment = center
+                elif r in sheet_item_rows:
+                    cell.font = body_font
+                    cell.alignment = right if col in sheet_amount_cols else left
+                elif col in sheet_amount_cols:
+                    cell.font = body_font
+                    cell.alignment = right
+        for r in sheet_banner_rows:
+            sheet.row_dimensions[r].height = 20
+        for r in sheet_header_rows:
+            sheet.row_dimensions[r].height = 20
+        for r in sheet_item_rows:
+            sheet.row_dimensions[r].height = 17
+        for col, width in enumerate(sheet_widths, start=1):
+            sheet.column_dimensions[get_column_letter(col)].width = width
+
+    grouped_widths = (16, 12, 22, 10, 12, 12, 12, 12)
+    all_widths = (22,) + grouped_widths
+    _style_detail_sheet(
+        grouped,
+        last_grouped,
+        grouped_col_count,
+        banner_rows,
+        header_rows,
+        item_rows,
+        grouped_amount_cols,
+        grouped_widths,
+    )
+    _style_detail_sheet(
+        all_items,
+        last_all_items,
+        all_col_count,
+        all_banner_rows,
+        all_header_rows,
+        all_item_rows,
+        all_amount_cols,
+        all_widths,
+    )
+
+    summary.row_dimensions[1].height = 23.2
+    for r in summary_kpi_rows:
+        summary.row_dimensions[r].height = 17.6
+    summary.row_dimensions[agency_header_row].height = 23.2
+    for r in agency_data_rows:
+        summary.row_dimensions[r].height = 17.6
+    summary.row_dimensions[agency_total_row].height = 17.6
+    summary.row_dimensions[stat_header_row].height = 23.2
+    for r in stat_data_rows:
+        summary.row_dimensions[r].height = 17.6
+    summary.row_dimensions[stat_total_row].height = 17.6
+    summary.column_dimensions["A"].width = 34
+    summary.column_dimensions["B"].width = 39.5
+
     fname = report_export_filename("Agency Ledger", filters=filters)
-    buf = BytesIO()
+    buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
     response = send_file(
@@ -8130,7 +8579,7 @@ def settings():
     """Workspace settings hub."""
     user = get_current_user()
     settings_cards = []
-    if user_can_access_dashboard(user, "point_of_sale"):
+    if user_can_access_point_of_sale_submodule(user, "settings"):
         settings_cards.append(
             {
                 "name": "Restaurant Settings",
@@ -8139,7 +8588,7 @@ def settings():
                 "icon_tone": "indigo",
             }
         )
-    if user_can_access_dashboard(user, "point_of_sale_bar"):
+    if user_can_access_point_of_sale_bar_submodule(user, "settings"):
         settings_cards.append(
             {
                 "name": "Bar Settings",
@@ -8148,7 +8597,7 @@ def settings():
                 "icon_tone": "rose",
             }
         )
-    if user_can_access_dashboard(user, "hotel_rooms"):
+    if user_can_access_hotel_rooms_submodule(user, "settings"):
         settings_cards.append(
             {
                 "name": "Hotel Settings",
@@ -13451,7 +13900,7 @@ def export_purchase_ledger_report():
     wb = Workbook()
     summary = wb.active
     summary.title = "Summary"
-    details = wb.create_sheet("Line Items")
+    details = wb.create_sheet("Grouped")
     all_items = wb.create_sheet("All Items")
 
     summary["A1"] = f"Hotel Bell Elite — {PURCHASE_EXPENSE_LEDGER_NAME}{title_date}"
@@ -16799,9 +17248,10 @@ def sales_update_tips_page():
 
 @app.route("/sales_update/tips/report")
 def export_tips_report():
-    """Excel download of tip details and employee rollup for the selected filters."""
+    """Excel download of tip details — Summary + Grouped + All Items."""
     from openpyxl import Workbook
-    from openpyxl.styles import Font
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
 
     selected_company = request.args.get("company", DEFAULT_COMPANY)
     if selected_company not in SALES_COMPANY_LOCATIONS:
@@ -16834,70 +17284,309 @@ def export_tips_report():
     finally:
         conn.close()
 
-    wb = Workbook()
-    header_font = Font(bold=True)
+    def _whole_or_float(value):
+        if value is None:
+            return None
+        try:
+            num = float(value)
+            return int(num) if num == int(num) else num
+        except (TypeError, ValueError):
+            return value
 
-    summary = wb.active
-    summary.title = "Summary"
-    summary_headers = ["Metric", "Amount"]
-    for col, title in enumerate(summary_headers, start=1):
-        cell = summary.cell(row=1, column=col, value=title)
-        cell.font = header_font
-    summary_rows = [
-        ("Total Tips", tips_bundle["grand_total"]),
+    outlet_amount_keys = {
+        OUTLET_HOTEL: "hotel",
+        OUTLET_BAR: "bar",
+        OUTLET_RESTAURANT: "restaurant",
+    }
+    outlet_kpi_rows = [
         ("Hotel", tips_bundle["hotel_total"]),
         ("Bar", tips_bundle["bar_total"]),
         ("Restaurant", tips_bundle["restaurant_total"]),
-        ("Location", location_filter),
-        ("Date From", date_from.isoformat() if date_filter_active else "All"),
-        ("Date To", date_to.isoformat() if date_filter_active else "All"),
-        ("Employees", len(tips_bundle["employees"])),
-        ("Tip Lines", len(detail_entries)),
     ]
-    for idx, (label, value) in enumerate(summary_rows, start=2):
-        summary.cell(row=idx, column=1, value=label)
-        summary.cell(row=idx, column=2, value=value)
+    outlet_breakdown = [
+        {"label": label, "amount": amount}
+        for label, amount in outlet_kpi_rows
+        if abs(float(amount or 0)) > 0.004
+    ]
+    outlet_breakdown_total = round_half_up(
+        sum(item["amount"] for item in outlet_breakdown), 2
+    )
+    stat_rows = [
+        {"label": "Employees", "count": len(tips_bundle["employees"])},
+        {"label": "Tip Lines", "count": len(detail_entries)},
+    ]
+    stat_total = sum(item["count"] for item in stat_rows)
 
-    by_employee = wb.create_sheet("By Employee")
-    emp_headers = ["Employee", "Emp Code", "Hotel", "Bar", "Restaurant", "Total"]
-    for col, title in enumerate(emp_headers, start=1):
-        cell = by_employee.cell(row=1, column=col, value=title)
-        cell.font = header_font
-    for idx, row in enumerate(tips_bundle["employees"], start=2):
-        by_employee.cell(row=idx, column=1, value=row.get("employee_name") or "")
-        by_employee.cell(row=idx, column=2, value=row.get("employee_code") or "")
-        by_employee.cell(row=idx, column=3, value=round_half_up(row.get("hotel"), 2))
-        by_employee.cell(row=idx, column=4, value=round_half_up(row.get("bar"), 2))
-        by_employee.cell(row=idx, column=5, value=round_half_up(row.get("restaurant"), 2))
-        by_employee.cell(row=idx, column=6, value=round_half_up(row.get("total"), 2))
+    sections = []
+    for outlet in TIP_OUTLET_LOCATIONS:
+        amount_key = outlet_amount_keys[outlet]
+        employee_rows = [
+            emp for emp in tips_bundle["employees"]
+            if abs(float(emp.get(amount_key) or 0)) > 0.004
+        ]
+        if employee_rows:
+            sections.append(
+                {
+                    "label": outlet,
+                    "entries": employee_rows,
+                    "amount_key": amount_key,
+                }
+            )
 
-    detail = wb.create_sheet("Tip Details")
-    detail_headers = [
+    grouped_headers = ("Employee", "Emp Code", "Amount")
+    all_headers = (
+        "Type",
         "Date",
         "Employee",
         "Emp Code",
         "Location",
         "Amount",
         "Description",
-    ]
-    for col, title in enumerate(detail_headers, start=1):
-        cell = detail.cell(row=1, column=col, value=title)
-        cell.font = header_font
-    for idx, entry in enumerate(detail_entries, start=2):
-        detail.cell(row=idx, column=1, value=entry.get("sales_date") or "")
-        detail.cell(row=idx, column=2, value=entry.get("employee_name") or "")
-        detail.cell(row=idx, column=3, value=entry.get("employee_code") or "")
-        detail.cell(row=idx, column=4, value=entry.get("location") or "")
-        detail.cell(row=idx, column=5, value=round_half_up(entry.get("amount"), 2))
-        detail.cell(row=idx, column=6, value=entry.get("description") or "")
+    )
+    grouped_col_count = len(grouped_headers)
+    all_col_count = len(all_headers)
+    grouped_amount_cols = {3}
+    all_amount_cols = {6}
 
-    for ws in (summary, by_employee, detail):
-        for column_cells in ws.columns:
-            width = 12
-            for cell in column_cells:
-                value = "" if cell.value is None else str(cell.value)
-                width = max(width, min(len(value) + 2, 40))
-            ws.column_dimensions[column_cells[0].column_letter].width = width
+    title_date = _sales_report_excel_title_date(
+        {
+            "date_filter_active": date_filter_active,
+            "date_from": date_from,
+            "date_to": date_to,
+        }
+    )
+
+    wb = Workbook()
+    summary = wb.active
+    summary.title = "Summary"
+    grouped = wb.create_sheet("Grouped")
+    all_items = wb.create_sheet("All Items")
+
+    summary["A1"] = f"Hotel Bell Elite — Tips{title_date}"
+    for idx, (label, amount) in enumerate(outlet_kpi_rows, start=2):
+        summary.cell(row=idx, column=1, value=label)
+        summary.cell(row=idx, column=2, value=_whole_or_float(amount))
+    total_row = 2 + len(outlet_kpi_rows)
+    summary.cell(row=total_row, column=1, value="Total")
+    summary.cell(row=total_row, column=2, value=_whole_or_float(tips_bundle["grand_total"]))
+    summary.merge_cells("A1:B1")
+
+    outlet_header_row = total_row + 2
+    summary.cell(row=outlet_header_row, column=1, value="Outlet")
+    summary.cell(row=outlet_header_row, column=2, value="Amount")
+    outlet_data_rows = []
+    row_idx = outlet_header_row + 1
+    for item in outlet_breakdown:
+        summary.cell(row=row_idx, column=1, value=item["label"])
+        summary.cell(row=row_idx, column=2, value=_whole_or_float(item["amount"]))
+        outlet_data_rows.append(row_idx)
+        row_idx += 1
+    outlet_total_row = row_idx
+    summary.cell(row=outlet_total_row, column=1, value="Total")
+    summary.cell(row=outlet_total_row, column=2, value=_whole_or_float(outlet_breakdown_total))
+
+    stat_header_row = outlet_total_row + 2
+    summary.cell(row=stat_header_row, column=1, value="Metric")
+    summary.cell(row=stat_header_row, column=2, value="Count")
+    stat_data_rows = []
+    row_idx = stat_header_row + 1
+    for item in stat_rows:
+        summary.cell(row=row_idx, column=1, value=item["label"])
+        summary.cell(row=row_idx, column=2, value=item["count"])
+        stat_data_rows.append(row_idx)
+        row_idx += 1
+    stat_total_row = row_idx
+    summary.cell(row=stat_total_row, column=1, value="Total")
+    summary.cell(row=stat_total_row, column=2, value=stat_total)
+
+    def _write_grouped_row(sheet, target_row, employee_row, amount_key):
+        values = (
+            employee_row.get("employee_name") or "",
+            employee_row.get("employee_code") or "",
+            _whole_or_float(round_half_up(employee_row.get(amount_key), 2)),
+        )
+        for col, value in enumerate(values, start=1):
+            sheet.cell(row=target_row, column=col, value=value)
+
+    def _write_all_items_row(sheet, target_row, entry):
+        values = (
+            entry.get("location") or "",
+            entry.get("sales_date") or "",
+            entry.get("employee_name") or "",
+            entry.get("employee_code") or "",
+            entry.get("location") or "",
+            _whole_or_float(round_half_up(entry.get("amount"), 2)),
+            entry.get("description") or "",
+        )
+        for col, value in enumerate(values, start=1):
+            sheet.cell(row=target_row, column=col, value=value)
+
+    banner_rows = []
+    header_rows = []
+    item_rows = []
+    row_idx = 1
+    for i, section in enumerate(sections):
+        if i > 0:
+            row_idx += 1
+        grouped.cell(
+            row=row_idx,
+            column=1,
+            value=f"Hotel Bell Elite — Tips - {section['label']}",
+        )
+        grouped.merge_cells(
+            start_row=row_idx,
+            start_column=1,
+            end_row=row_idx,
+            end_column=grouped_col_count,
+        )
+        banner_rows.append(row_idx)
+        row_idx += 1
+        for col, title in enumerate(grouped_headers, start=1):
+            grouped.cell(row=row_idx, column=col, value=title)
+        header_rows.append(row_idx)
+        row_idx += 1
+        for employee_row in section.get("entries") or []:
+            _write_grouped_row(grouped, row_idx, employee_row, section["amount_key"])
+            item_rows.append(row_idx)
+            row_idx += 1
+    last_grouped = max(1, row_idx - 1)
+
+    all_banner_rows = []
+    all_header_rows = []
+    all_item_rows = []
+    all_row = 1
+    all_items.cell(row=all_row, column=1, value="Hotel Bell Elite — Tips")
+    all_items.merge_cells(
+        start_row=all_row,
+        start_column=1,
+        end_row=all_row,
+        end_column=all_col_count,
+    )
+    all_banner_rows.append(all_row)
+    all_row += 1
+    for col, title in enumerate(all_headers, start=1):
+        all_items.cell(row=all_row, column=col, value=title)
+    all_header_rows.append(all_row)
+    all_row += 1
+    for entry in detail_entries:
+        _write_all_items_row(all_items, all_row, entry)
+        all_item_rows.append(all_row)
+        all_row += 1
+    last_all_items = max(1, all_row - 1)
+
+    header_fill = PatternFill(
+        fill_type="solid",
+        start_color="FF315A78",
+        end_color="FF315A78",
+    )
+    banner_font = Font(bold=True, size=16, color="FFFFFFFF")
+    chrome_header_font = Font(bold=True, size=11, color="FFFFFFFF")
+    summary_title_font = Font(name="Calibri", bold=True, size=16, color="FFFFFFFF")
+    summary_font = Font(name="Calibri", size=12, color="FF000000")
+    summary_bold_font = Font(name="Calibri", bold=True, size=12, color="FF000000")
+    body_font = Font(size=11, color="FF000000")
+    thin = Side(style="thin", color="FF000000")
+    grid = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    right = Alignment(horizontal="right", vertical="center", wrap_text=True)
+
+    summary_kpi_rows = set(range(2, total_row + 1))
+    summary_chrome_rows = {
+        1,
+        outlet_header_row,
+        outlet_total_row,
+        stat_header_row,
+        stat_total_row,
+        *outlet_data_rows,
+        *stat_data_rows,
+    }
+    for r in sorted(summary_chrome_rows):
+        for col in range(1, 3):
+            cell = summary.cell(row=r, column=col)
+            cell.border = grid
+            cell.alignment = center
+            if r == 1 or r in (outlet_header_row, stat_header_row):
+                cell.fill = header_fill
+                cell.font = summary_title_font
+            elif r in (total_row, outlet_total_row, stat_total_row):
+                cell.font = summary_bold_font
+            else:
+                cell.font = summary_font
+
+    def _style_detail_sheet(
+        sheet,
+        last_row,
+        sheet_col_count,
+        sheet_banner_rows,
+        sheet_header_rows,
+        sheet_item_rows,
+        sheet_amount_cols,
+        sheet_widths,
+    ):
+        for r in range(1, last_row + 1):
+            for col in range(1, sheet_col_count + 1):
+                cell = sheet.cell(row=r, column=col)
+                cell.border = grid
+                if r in sheet_banner_rows:
+                    cell.fill = header_fill
+                    cell.font = banner_font
+                    cell.alignment = center
+                elif r in sheet_header_rows:
+                    cell.fill = header_fill
+                    cell.font = chrome_header_font
+                    cell.alignment = center
+                elif r in sheet_item_rows:
+                    cell.font = body_font
+                    cell.alignment = right if col in sheet_amount_cols else left
+                elif col in sheet_amount_cols:
+                    cell.font = body_font
+                    cell.alignment = right
+        for r in sheet_banner_rows:
+            sheet.row_dimensions[r].height = 20
+        for r in sheet_header_rows:
+            sheet.row_dimensions[r].height = 20
+        for r in sheet_item_rows:
+            sheet.row_dimensions[r].height = 17
+        for col, width in enumerate(sheet_widths, start=1):
+            sheet.column_dimensions[get_column_letter(col)].width = width
+
+    grouped_widths = (28, 14, 12)
+    all_widths = (12, 12, 28, 14, 14, 12, 32)
+    _style_detail_sheet(
+        grouped,
+        last_grouped,
+        grouped_col_count,
+        banner_rows,
+        header_rows,
+        item_rows,
+        grouped_amount_cols,
+        grouped_widths,
+    )
+    _style_detail_sheet(
+        all_items,
+        last_all_items,
+        all_col_count,
+        all_banner_rows,
+        all_header_rows,
+        all_item_rows,
+        all_amount_cols,
+        all_widths,
+    )
+
+    summary.row_dimensions[1].height = 23.2
+    for r in summary_kpi_rows:
+        summary.row_dimensions[r].height = 17.6
+    summary.row_dimensions[outlet_header_row].height = 23.2
+    for r in outlet_data_rows:
+        summary.row_dimensions[r].height = 17.6
+    summary.row_dimensions[outlet_total_row].height = 17.6
+    summary.row_dimensions[stat_header_row].height = 23.2
+    for r in stat_data_rows:
+        summary.row_dimensions[r].height = 17.6
+    summary.row_dimensions[stat_total_row].height = 17.6
+    summary.column_dimensions["A"].width = 34
+    summary.column_dimensions["B"].width = 39.5
 
     fname = report_export_filename(
         "Tips",
@@ -16908,12 +17597,15 @@ def export_tips_report():
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    return send_file(
+    response = send_file(
         buf,
         as_attachment=True,
         download_name=fname,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 def _tips_incentive_payout_payload(conn, company, year, month):
@@ -18149,6 +18841,12 @@ def access_roles():
         "payroll_modules": payroll_access_list(selected_role) if selected_role else [],
         "accounts_modules": accounts_access_list(selected_role) if selected_role else [],
         "stores_modules": stores_access_list(selected_role) if selected_role else [],
+        "point_of_sale_modules": point_of_sale_access_list(selected_role) if selected_role else [],
+        "point_of_sale_bar_modules": point_of_sale_bar_access_list(selected_role) if selected_role else [],
+        "hotel_rooms_modules": hotel_rooms_access_list(selected_role) if selected_role else [],
+        "communication_hub_modules": communication_hub_access_list(selected_role) if selected_role else [],
+        "master_modules": master_access_list(selected_role) if selected_role else [],
+        "reports_modules": reports_access_list(selected_role) if selected_role else [],
     }
     success_message = ""
     if saved_flag == "created":
@@ -18233,6 +18931,12 @@ def save_access_role():
     payroll_modules = request.form.getlist("payroll_modules")
     accounts_modules = request.form.getlist("accounts_modules")
     stores_modules = request.form.getlist("stores_modules")
+    point_of_sale_modules = request.form.getlist("point_of_sale_modules")
+    point_of_sale_bar_modules = request.form.getlist("point_of_sale_bar_modules")
+    hotel_rooms_modules = request.form.getlist("hotel_rooms_modules")
+    communication_hub_modules = request.form.getlist("communication_hub_modules")
+    master_modules = request.form.getlist("master_modules")
+    reports_modules = request.form.getlist("reports_modules")
 
     if sales_analytics_modules and not is_admin and "sales_analytics" not in dashboard_modules:
         dashboard_modules = list(dashboard_modules) + ["sales_analytics"]
@@ -18244,6 +18948,18 @@ def save_access_role():
         dashboard_modules = list(dashboard_modules) + ["accounts"]
     if stores_modules and not is_admin and "stores" not in dashboard_modules:
         dashboard_modules = list(dashboard_modules) + ["stores"]
+    if point_of_sale_modules and not is_admin and "point_of_sale" not in dashboard_modules:
+        dashboard_modules = list(dashboard_modules) + ["point_of_sale"]
+    if point_of_sale_bar_modules and not is_admin and "point_of_sale_bar" not in dashboard_modules:
+        dashboard_modules = list(dashboard_modules) + ["point_of_sale_bar"]
+    if hotel_rooms_modules and not is_admin and "hotel_rooms" not in dashboard_modules:
+        dashboard_modules = list(dashboard_modules) + ["hotel_rooms"]
+    if communication_hub_modules and not is_admin and "communication_hub" not in dashboard_modules:
+        dashboard_modules = list(dashboard_modules) + ["communication_hub"]
+    if master_modules and not is_admin and "master" not in dashboard_modules:
+        dashboard_modules = list(dashboard_modules) + ["master"]
+    if reports_modules and not is_admin and "reports" not in dashboard_modules:
+        dashboard_modules = list(dashboard_modules) + ["reports"]
 
     conn = get_db()
     try:
@@ -18274,6 +18990,12 @@ def save_access_role():
             payroll_modules=payroll_modules,
             accounts_modules=accounts_modules,
             stores_modules=stores_modules,
+            point_of_sale_modules=point_of_sale_modules,
+            point_of_sale_bar_modules=point_of_sale_bar_modules,
+            hotel_rooms_modules=hotel_rooms_modules,
+            communication_hub_modules=communication_hub_modules,
+            master_modules=master_modules,
+            reports_modules=reports_modules,
         )
         if errors:
             roles = list_access_roles(conn)
@@ -18293,6 +19015,12 @@ def save_access_role():
                 "payroll_modules": payroll_modules,
                 "accounts_modules": accounts_modules,
                 "stores_modules": stores_modules,
+                "point_of_sale_modules": point_of_sale_modules,
+                "point_of_sale_bar_modules": point_of_sale_bar_modules,
+                "hotel_rooms_modules": hotel_rooms_modules,
+                "communication_hub_modules": communication_hub_modules,
+                "master_modules": master_modules,
+                "reports_modules": reports_modules,
             }
             return _am_roles_page_render(
                 "access_roles.html",
@@ -18317,6 +19045,12 @@ def save_access_role():
             payroll_modules=payroll_modules,
             accounts_modules=accounts_modules,
             stores_modules=stores_modules,
+            point_of_sale_modules=point_of_sale_modules,
+            point_of_sale_bar_modules=point_of_sale_bar_modules,
+            hotel_rooms_modules=hotel_rooms_modules,
+            communication_hub_modules=communication_hub_modules,
+            master_modules=master_modules,
+            reports_modules=reports_modules,
             sql_now=SQL_NOW,
         )
         conn.commit()

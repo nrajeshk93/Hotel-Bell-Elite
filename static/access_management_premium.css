@@ -696,6 +696,13 @@ body.am-module .btn-primary svg{width:16px;height:16px}
 #access-management-page .layout.form-focus .am-role-row{
   margin-top:18px;
 }
+#access-management-page #am-user-form .form-actions{
+  display:flex;
+  justify-content:flex-end;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:10px;
+}
 
 @container access-content (max-width:720px){
   .layout.form-focus .form-grid{

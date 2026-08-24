@@ -138,11 +138,21 @@
         <svg class="de-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
       </button>
       <div class="de-nav-sub" id="de-nav-pos-sub">
+        {% if has_point_of_sale_access('tables') %}
         <a class="de-nav-subitem{% if pos_open and (pos_view == 'tables' or pos_view == 'home') %} is-active{% endif %}" id="de-nav-pos-tables" href="{{ url_for('point_of_sale') }}"{% if pos_open and (pos_view == 'tables' or pos_view == 'home') %} aria-current="page"{% endif %}>Tables</a>
+        {% endif %}
+        {% if has_point_of_sale_access('invoice') %}
         <a class="de-nav-subitem{% if pos_open and pos_view == 'invoice' %} is-active{% endif %}" id="de-nav-pos-invoice" href="{{ url_for('point_of_sale_invoice') }}"{% if pos_open and pos_view == 'invoice' %} aria-current="page"{% endif %}>POS</a>
+        {% endif %}
+        {% if has_point_of_sale_access('invoice_ledger') %}
         <a class="de-nav-subitem{% if pos_open and pos_view == 'invoice_ledger' %} is-active{% endif %}" id="de-nav-pos-invoice-ledger" href="{{ url_for('point_of_sale_invoice_ledger') }}"{% if pos_open and pos_view == 'invoice_ledger' %} aria-current="page"{% endif %}>Invoice Ledger</a>
+        {% endif %}
+        {% if has_point_of_sale_access('sales_update') %}
         <a class="de-nav-subitem{% if pos_open and pos_view == 'sales_update' %} is-active{% endif %}" id="de-nav-pos-sales-update" href="{{ url_for('point_of_sale_sales_update', date=nav_date, company=nav_company) if nav_date else url_for('point_of_sale_sales_update') }}"{% if pos_open and pos_view == 'sales_update' %} aria-current="page"{% endif %}>Sales Update</a>
+        {% endif %}
+        {% if has_point_of_sale_access('menu') %}
         <a class="de-nav-subitem{% if pos_open and pos_view == 'menu' %} is-active{% endif %}" id="de-nav-pos-menu" href="{{ url_for('point_of_sale_menu') }}"{% if pos_open and pos_view == 'menu' %} aria-current="page"{% endif %}>Menu</a>
+        {% endif %}
       </div>
     </div>
     {% endif %}
@@ -155,11 +165,21 @@
         <svg class="de-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
       </button>
       <div class="de-nav-sub" id="de-nav-bar-pos-sub">
+        {% if has_point_of_sale_bar_access('tables') %}
         <a class="de-nav-subitem{% if bar_pos_open and (pos_view == 'tables' or pos_view == 'home') %} is-active{% endif %}" id="de-nav-bar-pos-tables" href="{{ url_for('bar_point_of_sale') }}"{% if bar_pos_open and (pos_view == 'tables' or pos_view == 'home') %} aria-current="page"{% endif %}>Tables</a>
+        {% endif %}
+        {% if has_point_of_sale_bar_access('invoice') %}
         <a class="de-nav-subitem{% if bar_pos_open and pos_view == 'invoice' %} is-active{% endif %}" id="de-nav-bar-pos-invoice" href="{{ url_for('bar_point_of_sale_invoice') }}"{% if bar_pos_open and pos_view == 'invoice' %} aria-current="page"{% endif %}>POS</a>
+        {% endif %}
+        {% if has_point_of_sale_bar_access('invoice_ledger') %}
         <a class="de-nav-subitem{% if bar_pos_open and pos_view == 'invoice_ledger' %} is-active{% endif %}" id="de-nav-bar-pos-invoice-ledger" href="{{ url_for('bar_point_of_sale_invoice_ledger') }}"{% if bar_pos_open and pos_view == 'invoice_ledger' %} aria-current="page"{% endif %}>Invoice Ledger</a>
+        {% endif %}
+        {% if has_point_of_sale_bar_access('sales_update') %}
         <a class="de-nav-subitem{% if bar_pos_open and pos_view == 'sales_update' %} is-active{% endif %}" id="de-nav-bar-pos-sales-update" href="{{ url_for('bar_point_of_sale_sales_update', date=nav_date, company=nav_company) if nav_date else url_for('bar_point_of_sale_sales_update') }}"{% if bar_pos_open and pos_view == 'sales_update' %} aria-current="page"{% endif %}>Sales Update</a>
+        {% endif %}
+        {% if has_point_of_sale_bar_access('menu') %}
         <a class="de-nav-subitem{% if bar_pos_open and pos_view == 'menu' %} is-active{% endif %}" id="de-nav-bar-pos-menu" href="{{ url_for('bar_point_of_sale_menu') }}"{% if bar_pos_open and pos_view == 'menu' %} aria-current="page"{% endif %}>Menu</a>
+        {% endif %}
       </div>
     </div>
     {% endif %}
@@ -172,11 +192,21 @@
         <svg class="de-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
       </button>
       <div class="de-nav-sub" id="de-nav-hotel-sub">
+        {% if has_hotel_rooms_access('reservations') %}
         <a class="de-nav-subitem{% if hotel_open and hotel_view == 'reservations' %} is-active{% endif %}" id="de-nav-hotel-reservations" href="{{ url_for('hotel_reservations') }}"{% if hotel_open and hotel_view == 'reservations' %} aria-current="page"{% endif %}>Reservations</a>
+        {% endif %}
+        {% if has_hotel_rooms_access('rooms') %}
         <a class="de-nav-subitem{% if hotel_open and hotel_view == 'rooms' %} is-active{% endif %}" id="de-nav-hotel-rooms" href="{{ url_for('hotel_rooms') }}"{% if hotel_open and hotel_view == 'rooms' %} aria-current="page"{% endif %}>Rooms</a>
+        {% endif %}
+        {% if has_hotel_rooms_access('invoice_ledger') %}
         <a class="de-nav-subitem{% if hotel_open and hotel_view == 'invoice_ledger' %} is-active{% endif %}" id="de-nav-hotel-invoice-ledger" href="{{ url_for('hotel_invoice_ledger') }}"{% if hotel_open and hotel_view == 'invoice_ledger' %} aria-current="page"{% endif %}>Invoice Ledger</a>
+        {% endif %}
+        {% if has_hotel_rooms_access('credit') %}
         <a class="de-nav-subitem{% if hotel_open and hotel_view == 'credit' %} is-active{% endif %}" id="de-nav-hotel-credit" href="{{ url_for('hotel_credit') }}"{% if hotel_open and hotel_view == 'credit' %} aria-current="page"{% endif %}>Credit</a>
+        {% endif %}
+        {% if has_hotel_rooms_access('sales_update') %}
         <a class="de-nav-subitem{% if hotel_open and hotel_view == 'sales_update' %} is-active{% endif %}" id="de-nav-hotel-sales-update" href="{{ url_for('hotel_sales_update', date=nav_date, company=nav_company) if nav_date else url_for('hotel_sales_update') }}"{% if hotel_open and hotel_view == 'sales_update' %} aria-current="page"{% endif %}>Sales Update</a>
+        {% endif %}
       </div>
     </div>
     {% endif %}
@@ -189,8 +219,12 @@
         <svg class="de-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
       </button>
       <div class="de-nav-sub" id="de-nav-communication-hub-sub">
+        {% if has_communication_hub_access('inbox') %}
         <a class="de-nav-subitem{% if communication_hub_open and (communication_hub_view == 'inbox' or not communication_hub_view) %} is-active{% endif %}" id="de-nav-communication-hub-inbox" href="{{ url_for('communication_hub') }}"{% if communication_hub_open and (communication_hub_view == 'inbox' or not communication_hub_view) %} aria-current="page"{% endif %}>Inbox</a>
+        {% endif %}
+        {% if has_communication_hub_access('promotion') %}
         <a class="de-nav-subitem{% if communication_hub_open and communication_hub_view == 'promotion' %} is-active{% endif %}" id="de-nav-communication-hub-promotion" href="{{ url_for('communication_hub_promotion') }}"{% if communication_hub_open and communication_hub_view == 'promotion' %} aria-current="page"{% endif %}>Promotion</a>
+        {% endif %}
       </div>
     </div>
     {% endif %}

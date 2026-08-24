@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import io
 import random
+import re
 import secrets
 import threading
 import time
@@ -34,6 +35,25 @@ _ip_attempts: dict[str, list[float]] = {}
 CAPTCHA_SESSION_ANSWER = "login_captcha_answer"
 CAPTCHA_SESSION_EXPIRES = "login_captcha_expires"
 CAPTCHA_TTL_SEC = 10 * 60
+
+PASSWORD_COMPLEXITY_MESSAGE = (
+    "Password must be at least 8 characters and include one uppercase letter, "
+    "one lowercase letter, one number, and one special character."
+)
+# Lookaheads: lowercase, uppercase, digit, non-alphanumeric; length 8+.
+_PASSWORD_COMPLEXITY_RE = re.compile(
+    r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$"
+)
+
+
+def password_meets_complexity(password: str | None) -> bool:
+    return bool(password) and bool(_PASSWORD_COMPLEXITY_RE.search(str(password)))
+
+
+def password_complexity_error(password: str | None) -> str | None:
+    if password_meets_complexity(password):
+        return None
+    return PASSWORD_COMPLEXITY_MESSAGE
 
 
 def sql_now() -> str:

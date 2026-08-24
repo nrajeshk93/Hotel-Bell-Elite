@@ -162,16 +162,57 @@ class WorkspaceAccessTests(unittest.TestCase):
         )
         pos = next(node for node in tree if node["label"] == "Restaurant")
         self.assertEqual(pos["dashboardKey"], "point_of_sale")
-        self.assertEqual(pos["children"], [])
+        self.assertEqual(
+            [child["label"] for child in pos["children"]],
+            ["Tables", "POS", "Invoice Ledger", "Sales Update", "Menu", "Settings"],
+        )
+        self.assertEqual(pos["children"][0]["fieldName"], "point_of_sale_modules")
+        bar = next(node for node in tree if node["label"] == "Bar")
+        self.assertEqual(
+            [child["label"] for child in bar["children"]],
+            ["Tables", "POS", "Invoice Ledger", "Sales Update", "Menu", "Settings"],
+        )
+        self.assertEqual(bar["children"][0]["fieldName"], "point_of_sale_bar_modules")
+        hotel = next(node for node in tree if node["label"] == "Hotel")
+        self.assertEqual(
+            [child["label"] for child in hotel["children"]],
+            [
+                "Reservations",
+                "Rooms",
+                "Invoice Ledger",
+                "Credit",
+                "Sales Update",
+                "Settings",
+            ],
+        )
+        comm = next(node for node in tree if node["label"] == "Communication Hub")
+        self.assertEqual(
+            [child["label"] for child in comm["children"]],
+            ["Inbox", "Promotion"],
+        )
         stores = next(node for node in tree if node["label"] == "Purchase & Inventory")
         self.assertEqual(stores["dashboardKey"], "stores")
         self.assertEqual(len(stores["children"]), 5)
         master = next(node for node in tree if node["label"] == "Master")
         self.assertEqual(master["dashboardKey"], "master")
-        self.assertEqual(master["children"], [])
+        self.assertEqual(
+            [child["label"] for child in master["children"]],
+            ["Customer Master", "Agency Master", "Category Master"],
+        )
         report = next(node for node in tree if node["label"] == "Report")
         self.assertEqual(report["dashboardKey"], "reports")
-        self.assertEqual(report["children"], [])
+        self.assertEqual(
+            [child["label"] for child in report["children"]],
+            [
+                "Hotel Sales",
+                "Agency Ledger",
+                "Manager Insight",
+                "Meal Plan",
+                "Sales - Restaurant & Bar",
+                "Menu Insights",
+                "Customer Insights",
+            ],
+        )
 
     def test_cancellation_access_unlocks_kot_sent_line_edits(self):
         locked = {
@@ -277,6 +318,88 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertFalse(user_can_access_endpoint_accounts(user, "purchase_ledger"))
         self.assertEqual(get_endpoint_accounts_submodule("purchase_ledger"), "purchase_ledger")
         self.assertEqual(accounts_access_list(user), ["cash_ledger"])
+
+    def test_restaurant_submodule_grants_only_selected_pages(self):
+        from workspace_access import (
+            get_endpoint_point_of_sale_submodules,
+            user_can_access_endpoint_point_of_sale,
+            user_can_access_point_of_sale_submodule,
+            point_of_sale_access_list,
+        )
+
+        user = {
+            "id": 61,
+            "is_admin": False,
+            "dashboard_access": {"point_of_sale"},
+            "point_of_sale_access": {"tables"},
+        }
+        self.assertTrue(user_can_access_point_of_sale_submodule(user, "tables"))
+        self.assertFalse(user_can_access_point_of_sale_submodule(user, "invoice"))
+        self.assertTrue(user_can_access_endpoint_point_of_sale(user, "point_of_sale"))
+        self.assertFalse(user_can_access_endpoint_point_of_sale(user, "point_of_sale_invoice"))
+        self.assertIn("tables", get_endpoint_point_of_sale_submodules("point_of_sale"))
+        self.assertEqual(point_of_sale_access_list(user), ["tables"])
+
+    def test_legacy_parent_only_restaurant_unlocks_all_children(self):
+        from workspace_access import (
+            user_can_access_point_of_sale_submodule,
+            user_can_access_hotel_rooms_submodule,
+            user_can_access_reports_submodule,
+            point_of_sale_access_list,
+            hotel_rooms_access_list,
+            reports_access_list,
+        )
+
+        restaurant = {
+            "id": 62,
+            "is_admin": False,
+            "dashboard_access": {"point_of_sale"},
+            "point_of_sale_access": set(),
+        }
+        hotel = {
+            "id": 63,
+            "is_admin": False,
+            "dashboard_access": {"hotel_rooms"},
+            "hotel_rooms_access": set(),
+        }
+        reports = {
+            "id": 64,
+            "is_admin": False,
+            "dashboard_access": {"reports"},
+            "reports_access": set(),
+        }
+        self.assertTrue(user_can_access_point_of_sale_submodule(restaurant, "invoice"))
+        self.assertEqual(len(point_of_sale_access_list(restaurant)), 6)
+        self.assertTrue(user_can_access_hotel_rooms_submodule(hotel, "rooms"))
+        self.assertEqual(len(hotel_rooms_access_list(hotel)), 6)
+        self.assertTrue(user_can_access_reports_submodule(reports, "hotel_sales"))
+        self.assertEqual(len(reports_access_list(reports)), 7)
+
+    def test_endpoint_submodule_mapping_for_new_scopes(self):
+        from workspace_access import (
+            get_endpoint_point_of_sale_submodules,
+            get_endpoint_hotel_rooms_submodules,
+            get_endpoint_communication_hub_submodule,
+            get_endpoint_master_submodule,
+            get_endpoint_reports_submodule,
+        )
+
+        self.assertEqual(get_endpoint_point_of_sale_submodules("point_of_sale_invoice"), ["invoice"])
+        self.assertEqual(get_endpoint_point_of_sale_submodules("point_of_sale_menu"), ["menu"])
+        self.assertEqual(get_endpoint_hotel_rooms_submodules("hotel_reservations"), ["reservations"])
+        self.assertEqual(get_endpoint_hotel_rooms_submodules("hotel_rooms"), ["rooms"])
+        self.assertEqual(get_endpoint_communication_hub_submodule("communication_hub"), "inbox")
+        self.assertEqual(
+            get_endpoint_communication_hub_submodule("communication_hub_promotion"),
+            "promotion",
+        )
+        self.assertEqual(get_endpoint_master_submodule("customer_master"), "customer")
+        self.assertEqual(get_endpoint_master_submodule("category_master"), "category")
+        self.assertEqual(get_endpoint_reports_submodule("sales_report_hotel"), "hotel_sales")
+        self.assertEqual(
+            get_endpoint_reports_submodule("sales_report_restaurant"),
+            "restaurant_sales",
+        )
 
     def test_submodule_grants_parent_dashboard_access(self):
         user = {

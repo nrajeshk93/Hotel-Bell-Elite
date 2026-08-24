@@ -962,12 +962,6 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   overflow:hidden;
   text-overflow:ellipsis;
 }
-.pos-inv-item-variant{
-  margin-top:2px;
-  font-size:12px;
-  color:var(--pos-muted);
-  font-weight:500;
-}
 .pos-inv-item-note{
   margin-top:3px;
   font-size:12px;

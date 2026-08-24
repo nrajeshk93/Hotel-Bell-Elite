@@ -312,8 +312,8 @@
     if(form.hasAttribute('data-st-decide-form') || form.id === 'st-reject-form') return false;
     var method = String(form.getAttribute('method') || form.method || 'get').toLowerCase();
     if(method && method !== 'get' && method !== 'post') return false;
-    var enctype = String(form.getAttribute('enctype') || form.enctype || '').toLowerCase();
-    if(enctype.indexOf('multipart') !== -1) return false;
+    // Multipart (e.g. access-management photo) is fine: softSubmitForm posts FormData
+    // via fetch, which sets the boundary Content-Type. Hard submit would exit fullscreen.
     return shouldSoftNavigate();
   }
 
