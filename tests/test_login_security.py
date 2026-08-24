@@ -857,6 +857,26 @@ class LoginSecurityTests(unittest.TestCase):
         self.assertEqual(home.status_code, 302)
         self.assertTrue((home.headers.get("Location") or "").endswith("/"))
 
+    def test_post_logout_clears_session(self):
+        self.client.post(
+            "/login",
+            data={"username": "admin", "password": "admin"},
+            follow_redirects=False,
+        )
+        resp = self.client.post(
+            "/logout",
+            headers={
+                "X-Requested-With": "XMLHttpRequest",
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 302)
+        home = self.client.get("/home", follow_redirects=False)
+        self.assertEqual(home.status_code, 302)
+        self.assertTrue((home.headers.get("Location") or "").endswith("/"))
+
     def test_home_requires_login(self):
         home = self.client.get("/home", follow_redirects=False)
         self.assertEqual(home.status_code, 302)

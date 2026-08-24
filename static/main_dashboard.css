@@ -234,7 +234,7 @@ body.main-dashboard-module #main-dashboard-page {
 
 /* Match header / filter card column to Sales Trend (same max-width + gutters) */
 body.main-dashboard-module #main-dashboard-page > header.se-sales-header.su-header {
-  max-width: min(1480px, 100%);
+  max-width: none;
   margin-left: auto;
   margin-right: auto;
   padding-left: 24px;
@@ -251,7 +251,7 @@ body.main-dashboard-module #main-dashboard-page > header.se-sales-header.su-head
 }
 
 body.main-dashboard-module #main-dashboard-page > .rdx-content.content.se-content {
-  max-width: min(1480px, 100%);
+  max-width: none;
   margin: 0 auto;
   padding: 20px 24px 56px;
   width: 100%;

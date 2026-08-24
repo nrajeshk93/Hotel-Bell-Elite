@@ -3,24 +3,24 @@
  * Cache Storage is a fallback for offline + brief disconnects.
  * Floor APIs are never cached — occupancy must not go stale.
  * POS menu GETs stay network-first; mutation APIs are not intercepted. */
-var CACHE_VERSION = 'hbe-app-v1';
+var CACHE_VERSION = 'hbe-app-v4';
 var PRECACHE = [
   '/home',
   '/point-of-sale/invoice',
   '/bar-point-of-sale/invoice',
   '/static/manifest.webmanifest',
-  '/static/de_workspace_shell.css?v=53',
+  '/static/de_workspace_shell.css?v=54',
   '/static/ep_form_listbox.css?v=29',
   '/static/hbe_table_scroll.css?v=2',
   '/static/hbe_kpi.css?v=13',
   '/static/hbe_app_toast.css?v=1',
   '/static/reports_page_scroll.css?v=5',
-  '/static/pos_invoice.css?v=51',
-  '/static/pos_invoice.js?v=145',
+  '/static/pos_invoice.css?v=52',
+  '/static/pos_invoice.js?v=147',
   '/static/pos_offline.js?v=5',
   '/static/ep_form_listbox.js?v=66',
   '/static/de_workspace_nav.js?v=46',
-  '/static/de_workspace_transitions.js?v=184',
+  '/static/de_workspace_transitions.js?v=189',
   '/static/hbe_table_scroll.js?v=10',
   '/static/hbe_app_toast.js?v=3',
   '/static/de_pwa.js?v=12',

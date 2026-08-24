@@ -44,7 +44,7 @@ body.pos-invoice-module #ep-workspace.de-module .de-main-wrapper,
 }
 body.pos-invoice-module .de-main-inner.pos-invoice-page,
 #pos-invoice-page.de-main-inner{
-  max-width:1440px;
+  max-width:none;
   margin:0 auto;
   padding:24px 28px 108px;
   min-height:100vh;

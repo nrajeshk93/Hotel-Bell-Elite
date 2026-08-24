@@ -214,12 +214,12 @@ body.sb-off .db-sidebar{transform:translateX(-230px)}
 /* Decorative background element removed — was causing giant blank/dark circle issue */
 
 .db-main-inner{
-  position:relative;z-index:1;min-height:100vh;width:100%;max-width:1220px;
+  position:relative;z-index:1;min-height:100vh;width:100%;max-width:none;
   margin:0 auto;padding:18px 24px 32px 26px
 }
 
 .db-main-inner--invoice {
-  max-width: 1520px;
+  max-width: none;
 }
 
 .db-main-inner--form {

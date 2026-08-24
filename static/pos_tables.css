@@ -33,7 +33,7 @@ body.pos-module{
   background:var(--pos-bg);
 }
 body.pos-module .de-main-inner.pos-tables-page{
-  max-width:1400px;
+  max-width:none;
   margin:0 auto;
   padding:28px 32px 40px;
   min-height:100vh;

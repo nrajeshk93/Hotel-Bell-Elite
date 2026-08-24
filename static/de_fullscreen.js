@@ -538,7 +538,15 @@
       return;
     }
     // Soft-nav / pushState often drops fullscreen; keep preference so restore can run.
-    if(softNavInProgress || navRestoreWindowOpen()) return;
+    if(softNavInProgress || navRestoreWindowOpen()){
+      if(escExitPending){
+        escExitPending = false;
+        setPreference(false);
+        return;
+      }
+      scheduleRestore();
+      return;
+    }
     // Esc or browser UI exit while idle — stay out; do not re-enter on nav clicks.
     escExitPending = false;
     setPreference(false);

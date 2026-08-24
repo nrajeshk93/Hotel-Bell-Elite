@@ -32,7 +32,7 @@ body.hotel-rooms-module{
   background:var(--hotel-bg);
 }
 body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
-  max-width:1400px;
+  max-width:none;
   margin:0 auto;
   padding:28px 32px 40px;
   min-height:100vh;

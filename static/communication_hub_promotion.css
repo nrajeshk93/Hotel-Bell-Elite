@@ -1,29 +1,149 @@
-/* Promotion — align with Purchase / Expense staff-credit forms */
-body.ch-promotion-module .ch-promo-content{
-  padding:16px 20px 32px;
-  max-width:760px;
+/* Promotion — Purchase & Expense ledger chrome */
+
+body.ch-promotion-module #ch-promotion-page{
+  container-type:inline-size;
+  container-name:ch-promo-page;
 }
 
-body.ch-promotion-module .ch-promo-box{
-  width:100%;
-  max-width:720px;
+body.ch-promotion-module #ch-promotion-page .su-header-tools.ch-header-tools{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex:1 1 280px;
+  min-width:0;
+  flex-wrap:wrap;
+}
+
+body.ch-promotion-module #ch-promotion-page .su-header-tools .btn-primary{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+}
+
+body.ch-promotion-module #ch-promotion-page .su-header-tools .btn-primary svg{
+  width:14px;
+  height:14px;
+  stroke:currentColor;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  fill:none;
+}
+
+/* Form card under header — same role as Purchase filter card */
+body.ch-promotion-module .ch-promo-form-card{
+  display:flex;
+  flex-direction:column;
+  gap:0;
+  padding:16px 18px 14px;
+}
+
+body.ch-promotion-module .ch-promo-form-intro{
+  margin-bottom:14px;
+}
+
+body.ch-promotion-module .ch-promo-form-intro-title{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font:800 15px/1.25 Inter,system-ui,sans-serif;
+  color:var(--txt, #0f172a);
+  margin-bottom:6px;
+}
+
+body.ch-promotion-module .ch-promo-form-intro-title svg{
+  width:18px;
+  height:18px;
+  stroke:var(--acc, #2563eb);
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  flex-shrink:0;
+}
+
+body.ch-promotion-module .ch-promo-form-copy{
   margin:0;
+  font:500 13px/1.5 Inter,system-ui,sans-serif;
+  color:var(--txt2, #64748b);
+  max-width:62ch;
 }
 
-body.ch-promotion-module .ch-promo-box + .ch-promo-box{
-  margin-top:16px;
+body.ch-promotion-module .ch-promo-form-card .staff-credit-error{
+  display:none;
+  margin-bottom:14px;
 }
 
-body.ch-promotion-module .ch-promo-box .staff-grid{
-  margin-bottom:4px;
+body.ch-promotion-module .ch-promo-form-card .staff-credit-error:not([hidden]){
+  display:block;
+}
+
+body.ch-promotion-module .ch-promo-form-card .staff-credit-error[hidden]{
+  display:none !important;
+}
+
+/* Two equal columns, labels and controls share one baseline */
+body.ch-promotion-module .ch-promo-fields{
+  --ch-promo-control-h:44px;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:12px 16px;
+  align-items:start;
+  margin-bottom:0;
+}
+
+body.ch-promotion-module .ch-promo-field{
+  margin-bottom:0;
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+}
+
+body.ch-promotion-module .ch-promo-field-label,
+body.ch-promotion-module .ch-promo-template-listbox .se-filter-chip-label{
+  display:block;
+  margin:0 0 5px;
+  min-height:14px;
+  font-size:11px;
+  font-weight:700;
+  color:var(--txt2, #4A5568);
+  text-transform:uppercase;
+  letter-spacing:.4px;
+  line-height:1.2;
 }
 
 body.ch-promotion-module .ch-promo-template-listbox{
   width:100%;
 }
 
+body.ch-promotion-module .ch-promo-template-listbox.se-filter-chip{
+  width:100%;
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+}
+
+body.ch-promotion-module .ch-promo-template-listbox .se-filter-chip-control{
+  box-sizing:border-box;
+  width:100%;
+  height:var(--ch-promo-control-h);
+  min-height:var(--ch-promo-control-h);
+  max-height:var(--ch-promo-control-h);
+  border-radius:8px;
+}
+
+body.ch-promotion-module .ch-promo-template-listbox .se-filter-chip-trigger,
+body.ch-promotion-module .ch-promo-template-listbox input.se-filter-chip-combobox{
+  box-sizing:border-box;
+  height:100%;
+  min-height:0;
+  max-height:100%;
+  line-height:1.2;
+}
+
 body.ch-promotion-module .ch-promo-template-listbox .se-filter-chip-chev{
-  display:none;
+  display:none !important;
 }
 
 body.ch-promotion-module .ch-promo-template-meta{
@@ -36,35 +156,25 @@ body.ch-promotion-module .ch-promo-template-meta.is-warn{
   color:#b45309;
 }
 
-body.ch-promotion-module .staff-supplier-field-head{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  margin-bottom:5px;
-}
-
-body.ch-promotion-module .staff-supplier-field-head label{
-  margin-bottom:0;
-}
-
 body.ch-promotion-module .ch-promo-file-control{
   display:flex;
   align-items:center;
   gap:10px;
-  width:100%;
-  min-height:44px;
-  padding:0 12px 0 6px;
   box-sizing:border-box;
+  width:100%;
+  height:var(--ch-promo-control-h);
+  min-height:var(--ch-promo-control-h);
+  max-height:var(--ch-promo-control-h);
+  padding:0 12px 0 6px;
   border:1px solid var(--border, #e2e8f0);
-  border-radius:10px;
+  border-radius:8px;
   background:#fff;
   cursor:pointer;
 }
 
 body.ch-promotion-module .ch-promo-file-control:focus-within{
   border-color:var(--acc, #2563eb);
-  box-shadow:0 0 0 3px rgba(37,99,235,.15);
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
 }
 
 body.ch-promotion-module .ch-promo-file-control input[type="file"]{
@@ -81,9 +191,9 @@ body.ch-promotion-module .ch-promo-file-btn{
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  min-height:32px;
+  min-height:30px;
   padding:0 12px;
-  border-radius:8px;
+  border-radius:6px;
   background:#f1f5f9;
   color:var(--txt, #0f172a);
   font:700 12px/1 Inter,system-ui,sans-serif;
@@ -103,22 +213,45 @@ body.ch-promotion-module .ch-promo-file-name.has-file{
   color:var(--txt, #0f172a);
 }
 
-body.ch-promotion-module .ch-promo-preview{
-  margin-top:8px;
-  padding-top:14px;
-  border-top:1px solid var(--border, #e2e8f0);
+body.ch-promotion-module .ch-promo-form-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  gap:8px;
+  margin-top:14px;
+  padding-top:12px;
+  border-top:1px solid var(--border-s, #eef2f7);
 }
 
-body.ch-promotion-module .ch-promo-section-head{
+/* Content panels — ledger table sections */
+body.ch-promotion-module .ch-promo-content{
+  padding-top:8px;
+  max-width:none;
+}
+
+body.ch-promotion-module .ch-promo-panel{
+  background:#fff;
+  border:1px solid var(--border, #e2e8f0);
+  border-radius:14px;
+  padding:16px 18px 18px;
+  margin-bottom:16px;
+}
+
+body.ch-promotion-module .ch-promo-panel[hidden]{
+  display:none !important;
+}
+
+body.ch-promotion-module .ch-promo-panel-head{
   display:flex;
   align-items:baseline;
   justify-content:space-between;
   gap:12px;
-  margin-bottom:10px;
+  margin-bottom:12px;
   flex-wrap:wrap;
 }
 
-body.ch-promotion-module .ch-promo-section-title{
+body.ch-promotion-module .ch-promo-panel-title{
+  margin:0;
   font:800 13px/1.2 Inter,system-ui,sans-serif;
   color:var(--txt, #0f172a);
   letter-spacing:.02em;
@@ -131,11 +264,15 @@ body.ch-promotion-module .ch-promo-preview-stats{
 }
 
 body.ch-promotion-module .ch-promo-preview-table-wrap{
-  max-height:260px;
+  max-height:min(420px,52vh);
   overflow:auto;
   border:1px solid var(--border, #e2e8f0);
   border-radius:10px;
   background:#fff;
+}
+
+body.ch-promotion-module .ch-promo-preview-table-wrap[hidden]{
+  display:none !important;
 }
 
 body.ch-promotion-module .ch-promo-table{
@@ -146,7 +283,7 @@ body.ch-promotion-module .ch-promo-table{
 
 body.ch-promotion-module .ch-promo-table th,
 body.ch-promotion-module .ch-promo-table td{
-  padding:9px 12px;
+  padding:10px 12px;
   border-bottom:1px solid #eef2f7;
   text-align:left;
   vertical-align:top;
@@ -170,21 +307,12 @@ body.ch-promotion-module .ch-promo-status-sent{ color:#15803d; font-weight:700; 
 body.ch-promotion-module .ch-promo-status-failed{ color:#b91c1c; font-weight:700; }
 body.ch-promotion-module .ch-promo-status-skipped{ color:#a16207; font-weight:700; }
 
-body.ch-promotion-module .ch-promo-box .staff-credit-error[hidden]{
-  display:none !important;
-}
-
-body.ch-promotion-module .ch-promo-box .staff-credit-actions .staff-primary svg{
-  width:15px;
-  height:15px;
-  stroke:currentColor;
-  stroke-width:2;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-}
-
 @media (max-width:760px){
-  body.ch-promotion-module .ch-promo-content{
-    padding:12px 14px 28px;
+  body.ch-promotion-module .ch-promo-fields{
+    grid-template-columns:1fr;
+  }
+
+  body.ch-promotion-module #ch-promotion-page .su-header-tools.ch-header-tools{
+    justify-content:flex-start;
   }
 }

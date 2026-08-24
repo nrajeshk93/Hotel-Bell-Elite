@@ -34,7 +34,7 @@ a{text-decoration:none;color:inherit}svg{width:17px;height:17px;stroke:currentCo
 @media(max-width:900px){.kpi-grid,.filter-card{grid-template-columns:1fr}}@media(max-width:760px){:root{--sw:0px}.sidebar{transform:translateX(-230px);width:230px}.sidebar.open{transform:translateX(0)}.sb-overlay.open{display:block}.main-wrapper{margin-left:0}.menu-btn{display:flex}.sb-pin-btn{display:none}body.sb-off .sidebar{transform:translateX(-230px)}body.sb-off .main-wrapper{margin-left:0}.topbar-actions,.date-form,.date-form input,.btn{width:100%}.content{padding:16px 14px 32px}}
 
 /* ===== Sales Entry enterprise dashboard ===== */
-.content.se-content{max-width:1600px;margin:0 auto;padding:20px 28px 56px;flex:1;width:100%;min-width:0;box-sizing:border-box}
+.content.se-content{max-width:none;margin:0 auto;padding:20px 28px 56px;flex:1;width:100%;min-width:0;box-sizing:border-box}
 body.se-cash-mode .content.se-content.sr-kpi-canvas{
   max-width:none;margin:0;width:100%;
   padding:20px 24px 48px;

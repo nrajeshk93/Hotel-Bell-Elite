@@ -1,6 +1,6 @@
 /* Retail Intelligence Dashboard — premium SaaS analytics */
 .rdx-content {
-  max-width: 1480px;
+  max-width: none;
   margin: 0 auto;
   padding: 20px 24px 56px;
   flex: 1;

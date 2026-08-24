@@ -788,11 +788,14 @@
       var next = url.pathname + (qs ? '?' + qs : '') + url.hash;
       var cur = global.location.pathname + global.location.search + global.location.hash;
       if (next !== cur) {
+        /* replaceState can drop browser fullscreen; arm + re-enter in-gesture. */
+        preserveFullscreenGesture();
         global.history.replaceState(
           Object.assign({}, global.history.state || {}, { deSoftNav: true }),
           '',
           next
         );
+        preserveFullscreenGesture();
       }
     } catch (err3) {}
   }
@@ -1134,6 +1137,43 @@
         el.hidden = true;
       }, 200);
     }, 2200);
+  }
+
+  /** Keep browser fullscreen across KOT save/print (same pattern as invoice ledger). */
+  function preserveFullscreenGesture() {
+    if (global.deFullscreen && typeof global.deFullscreen.preserveForNavigation === 'function') {
+      global.deFullscreen.preserveForNavigation();
+    } else if (global.deFullscreen && typeof global.deFullscreen.armForSoftNav === 'function') {
+      global.deFullscreen.armForSoftNav();
+    }
+  }
+
+  function restoreFullscreenIfNeeded() {
+    if (global.deFullscreen && typeof global.deFullscreen.restoreIfNeeded === 'function') {
+      global.deFullscreen.restoreIfNeeded();
+    }
+  }
+
+  /**
+   * Disabling/hiding the focused control can move focus outside the fullscreen
+   * element (#de-fs-app) and force the browser to exit fullscreen. Park focus
+   * inside the FS root before mutating the Send KOT button.
+   */
+  function parkFocusInsideFullscreen(page, el) {
+    try {
+      if (!el || document.activeElement !== el) return;
+      el.blur();
+      var root =
+        document.getElementById('de-fs-app') ||
+        (page && page.id === 'pos-invoice-page' ? page : null) ||
+        document.getElementById('pos-invoice-page') ||
+        document.documentElement;
+      if (!root) return;
+      if (root.tabIndex < 0) root.tabIndex = -1;
+      if (typeof root.focus === 'function') root.focus({ preventScroll: true });
+    } catch (err) {
+      /* Best-effort only — never block KOT on focus errors. */
+    }
   }
 
   function menuCatalogUrl(path) {
@@ -1925,6 +1965,7 @@
     var pending = pendingKotLines();
     var pendingItems = pending.length;
     /* Appear only when there are items yet to send — same idea as Tables KOT banner. */
+    if (pendingItems === 0) parkFocusInsideFullscreen(page, btn);
     btn.hidden = pendingItems === 0;
     btn.disabled = pendingItems === 0;
     btn.classList.toggle('is-pending', pendingItems > 0);
@@ -2051,6 +2092,20 @@
   }
 
   function printKotTicketBrowser(html) {
+    /* window.open / native print() exit browser fullscreen. Prefer the in-app
+       preview host inside #de-fs-app; skip auto print while fullscreen is on. */
+    var inFs =
+      (global.deFullscreen &&
+        typeof global.deFullscreen.isActive === 'function' &&
+        global.deFullscreen.isActive()) ||
+      (global.deFullscreen &&
+        typeof global.deFullscreen.isPreferred === 'function' &&
+        global.deFullscreen.isPreferred());
+    if (openInAppPrintPage(html, { autoPrint: !inFs })) return;
+    if (inFs) {
+      toast('KOT ready — use Print from the preview (fullscreen stays on).');
+      return;
+    }
     var win = global.open('', '_blank', 'width=380,height=600');
     if (!win) return;
     win.document.write(html);
@@ -2623,6 +2678,7 @@
 
   /** After Generate Invoice, use the dedicated send-kot endpoint (cart is locked). */
   function sendKotForGeneratedInvoice(page, pending) {
+    preserveFullscreenGesture();
     if (!isBrowserOnline()) {
       toast('Send to Kitchen requires an internet connection after the invoice is generated.');
       return Promise.resolve();
@@ -2633,6 +2689,7 @@
     }
 
     var btn = $('#pos-inv-send-kot', page);
+    parkFocusInsideFullscreen(page, btn);
     if (btn) btn.disabled = true;
 
     return fetch(INVOICE_API + '/' + encodeURIComponent(state.invoiceId) + '/send-kot', {
@@ -2666,21 +2723,28 @@
         }
         var count = pending.length;
         renderLines(page);
+        persistInvoiceResumeContext();
         toast('KOT sent to kitchen for ' + count + (count === 1 ? ' item.' : ' items.'));
+        restoreFullscreenIfNeeded();
       })
       .catch(function () {
         toast('Could not send KOT. Check your connection and try again.');
       })
       .then(function () {
+        parkFocusInsideFullscreen(page, btn);
         if (btn) btn.disabled = false;
         updateKotBar(page);
+        preserveFullscreenGesture();
+        restoreFullscreenIfNeeded();
       });
   }
 
   function sendKot(page) {
+    preserveFullscreenGesture();
     cancelAutosaveTimer();
     if (saveInflight) {
       var waitBtn = $('#pos-inv-send-kot', page);
+      parkFocusInsideFullscreen(page, waitBtn);
       if (waitBtn) waitBtn.disabled = true;
       return saveInflight
         .catch(function () {
@@ -2742,6 +2806,7 @@
     var epochAtStart = dirtyEpoch;
 
     var btn = $('#pos-inv-send-kot', page);
+    parkFocusInsideFullscreen(page, btn);
     if (btn) btn.disabled = true;
 
     function finishKotSuccess(invoice) {
@@ -2757,6 +2822,7 @@
       clearDirtyAfterPersist(epochAtStart, page);
       if (!state.dirty) cancelAutosaveTimer();
       syncFloorOccupancyAfterSave(page, payload, invoice);
+      persistInvoiceResumeContext();
       if (
         !global.hbePosPrinterPrefs ||
         global.hbePosPrinterPrefs.shouldAutoPrintKot(
@@ -2775,6 +2841,7 @@
           ? 'KOT sent to kitchen for ' + count + (count === 1 ? ' item.' : ' items.')
           : 'KOT printed offline for ' + count + (count === 1 ? ' item.' : ' items.') + ' Will sync when online.'
       );
+      restoreFullscreenIfNeeded();
     }
 
     function runKotSave() {
@@ -2837,9 +2904,13 @@
         });
     }
 
+    preserveFullscreenGesture();
     runKotSave().then(function () {
+      parkFocusInsideFullscreen(page, btn);
       if (btn) btn.disabled = false;
       updateKotBar(page);
+      preserveFullscreenGesture();
+      restoreFullscreenIfNeeded();
     });
   }
 

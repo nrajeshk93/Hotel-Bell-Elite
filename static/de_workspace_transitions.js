@@ -1369,16 +1369,22 @@
   function collectBodyContent(sourceBody){
     var scripts = [];
     var nodes = [];
+    if(!sourceBody) return { nodes: nodes, scripts: scripts };
     Array.from(sourceBody.childNodes).forEach(function(node){
       if(isExecutableScript(node)){
         scripts.push(node);
       } else if(node.nodeType === 1 && node.id === 'de-fs-app'){
         Array.from(node.childNodes).forEach(function(child){
           if(isExecutableScript(child)) scripts.push(child);
-          else nodes.push(child);
+          else if(child.nodeType === 1 || child.nodeType === 3){
+            if(child.nodeType === 3 && !String(child.textContent || '').trim()) return;
+            if(child.nodeType === 1) extractNestedScripts(child, scripts);
+            nodes.push(child);
+          }
         });
       } else if(node.nodeType === 1 || node.nodeType === 3){
         if(node.nodeType === 3 && !String(node.textContent || '').trim()) return;
+        if(node.nodeType === 1) extractNestedScripts(node, scripts);
         nodes.push(node);
       }
     });
@@ -1986,8 +1992,9 @@
     });
   }
 
-  /** Session-ending routes must hard-nav — soft-nav + auth abort would history.back()
-   *  and leave a zombie shell with is-navigating stuck on Logout. */
+  /** Session-ending routes must not hard-nav while fullscreen — that always
+   *  exits the Fullscreen API. Prefetch GET /logout still must not clear the
+   *  session; a real click uses POST (see logoutWhileKeepingFullscreen). */
   function isLogoutUrl(url){
     try{
       var path = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
@@ -1995,6 +2002,154 @@
     } catch(e){
       return false;
     }
+  }
+
+  function shouldKeepFullscreen(){
+    return isFullscreenActive() || isFullscreenPreferred();
+  }
+
+  function keepFullscreenGesture(){
+    if(window.deFullscreen && typeof window.deFullscreen.armForSoftNav === 'function'){
+      window.deFullscreen.armForSoftNav();
+    }
+    if(window.deFullscreen && typeof window.deFullscreen.preserveForNavigation === 'function'){
+      window.deFullscreen.preserveForNavigation();
+    } else if(window.deFullscreen && typeof window.deFullscreen.ensureRoot === 'function'){
+      window.deFullscreen.ensureRoot();
+    }
+  }
+
+  /**
+   * Replace #de-fs-app contents (never remove the fullscreen element / <html>)
+   * so Sign In / full-document shells can paint without exiting fullscreen.
+   */
+  function swapDocumentInsideFullscreen(doc, url, done, navToken){
+    if(navToken != null && !isCurrentSoftNav(navToken)) return;
+    if(typeof window.closeMasterModal === 'function'){
+      try{ window.closeMasterModal(); } catch(eModal){}
+    }
+    if(window.deFullscreen && typeof window.deFullscreen.ensureRoot === 'function'){
+      window.deFullscreen.ensureRoot();
+    }
+    keepFullscreenGesture();
+    var host = document.getElementById('de-fs-app') || document.body;
+    var nextBodyClass = (doc.body && doc.body.className) ? doc.body.className : '';
+    var nextTitle = doc.title || '';
+    var mergedAssets = mergeHeadAssets(doc, doc.body);
+    var addedLinks = mergedAssets.addedLinks || [];
+    var staleLinks = mergedAssets.staleLinks || [];
+    var content = collectBodyContent(doc.body);
+    var frag = document.createDocumentFragment();
+    content.nodes.forEach(function(node){
+      if(node.nodeType === 1 && node.tagName === 'LINK' && (node.getAttribute('rel') || '') === 'stylesheet'){
+        return;
+      }
+      if(node.nodeType === 1 && node.tagName === 'STYLE') return;
+      if(node.nodeType === 1 && node.id === 'de-fs-app') return;
+      frag.appendChild(document.importNode(node, true));
+    });
+
+    var finishSwap = function(){
+      if(navToken != null && !isCurrentSoftNav(navToken)) return;
+      document.documentElement.classList.add('de-soft-navigating');
+      if(nextTitle) document.title = nextTitle;
+      if(nextBodyClass) document.body.className = nextBodyClass;
+      if(typeof host.replaceChildren === 'function'){
+        host.replaceChildren(frag);
+      } else {
+        while(host.firstChild) host.removeChild(host.firstChild);
+        host.appendChild(frag);
+      }
+      dropStaleWhenReady(staleLinks, addedLinks);
+      var syncUrl = urlWithPosSettingsSection(url);
+      try{
+        var current = new URL(window.location.href);
+        var next = new URL(syncUrl, window.location.href);
+        if(current.pathname !== next.pathname || current.search !== next.search || current.hash !== next.hash){
+          keepFullscreenGesture();
+          history.replaceState({ deSoftNav: true }, '', syncUrl);
+          keepFullscreenGesture();
+        }
+      } catch(eSync){}
+      keepFullscreenGesture();
+      runScriptNodes(content.scripts, function(){
+        if(navToken != null && !isCurrentSoftNav(navToken)) return;
+        try{
+          finalizeSoftNav();
+        } catch(err){
+          try{ console.error('de fullscreen document swap failed', err); } catch(eLog){}
+        } finally {
+          markMainLoading(false);
+          finishSoftNavUi(done, navToken);
+          endSoftNavigatingClass();
+          keepFullscreenGesture();
+        }
+      });
+    };
+
+    waitForStylesheets(addedLinks).then(finishSwap);
+  }
+
+  function logoutWhileKeepingFullscreen(url){
+    var logoutUrl = url || '/logout';
+    var nav = beginSoftNavGeneration();
+    setSoftNavFlag(true);
+    markMainLoading(true);
+    document.documentElement.classList.add('de-soft-nav-session');
+    keepFullscreenGesture();
+    if(window.deFullscreen && typeof window.deFullscreen.ensureRoot === 'function'){
+      window.deFullscreen.ensureRoot();
+    }
+    /* pushState during the click — after fetch, the browser will not re-enter FS. */
+    try{ history.pushState({ deSoftNav: true }, '', '/'); } catch(ePush){}
+    keepFullscreenGesture();
+    showSoftNavProgress();
+    fetch(logoutUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        Accept: 'text/html',
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-De-Logout': '1'
+      },
+      redirect: 'follow',
+      cache: 'no-store'
+    }).then(function(response){
+      if(!response.ok) throw new Error('logout failed');
+      var contentType = (response.headers.get('content-type') || '').toLowerCase();
+      if(contentType.indexOf('text/html') === -1) throw new Error('non-html logout response');
+      return response.text().then(function(html){
+        return { html: html, url: stripPartialParam(response.url || '/') };
+      });
+    }).then(function(result){
+      if(!isCurrentSoftNav(nav.token)){
+        markMainLoading(false);
+        hideSoftNavProgress();
+        return;
+      }
+      if(!result.html) throw new Error('empty logout html');
+      keepFullscreenGesture();
+      var doc = new DOMParser().parseFromString(result.html, 'text/html');
+      swapDocumentInsideFullscreen(doc, result.url || '/', hideSoftNavProgress, nav.token);
+    }).catch(function(){
+      markMainLoading(false);
+      setSoftNavFlag(false);
+      hideSoftNavProgress();
+      try{ sessionStorage.removeItem(NAV_FLAG); } catch(eFlag){}
+      window.location.href = logoutUrl;
+    });
+  }
+
+  function handleLogoutLink(event, link){
+    if(!link) return false;
+    var href = link.href || link.getAttribute('href') || '';
+    if(!isLogoutUrl(href)) return false;
+    if(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return false;
+    if(!shouldKeepFullscreen()) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    logoutWhileKeepingFullscreen(link.href || href);
+    return true;
   }
 
   function finalizeSoftNav(){
@@ -2133,6 +2288,12 @@
       };
 
       waitForStylesheets(addedLinks).then(finishSwap);
+      return;
+    }
+
+    /* Login / missing-shell documents: keep <html> / #de-fs-app so fullscreen survives. */
+    if(shouldKeepFullscreen()){
+      swapDocumentInsideFullscreen(doc, url, done, navToken);
       return;
     }
 
@@ -2328,6 +2489,10 @@
       } catch(ePath){}
       if(!authShell && (doc.body && doc.body.classList.contains('login-page'))) authShell = true;
       if(authShell || !doc.querySelector('.de-main-wrapper')){
+        if(shouldKeepFullscreen()){
+          applySoftSwap(doc, swapUrl, done, sidebarScroll, nav.token);
+          return;
+        }
         throw new Error(authShell ? 'auth-shell' : 'missing main wrapper for soft nav');
       }
       applySoftSwap(doc, swapUrl, done, sidebarScroll, nav.token);
@@ -2420,8 +2585,13 @@
       window.location.href = stripEmbedParam(url);
       return;
     }
-    /* Logout must clear the session via a real navigation (never soft-nav/prefetch). */
+    /* Logout hard-nav always exits browser fullscreen. While FS is on, POST
+       the session clear and swap Sign In into #de-fs-app instead. */
     if(isLogoutUrl(url)){
+      if(shouldKeepFullscreen()){
+        logoutWhileKeepingFullscreen(url);
+        return;
+      }
       window.location.href = url;
       return;
     }
@@ -2569,6 +2739,8 @@
     document.addEventListener('pointerdown', prefetchFromSidebarEvent, true);
     document.addEventListener('mouseover', prefetchFromSidebarEvent, true);
     document.addEventListener('click', function(event){
+      var anyLink = event.target.closest('a[href]');
+      if(anyLink && handleLogoutLink(event, anyLink)) return;
       var link = event.target.closest('.de-sidebar a[href], .sidebar a[href]');
       if(!link) return;
       handleSidebarLink(event, link);
@@ -2576,6 +2748,7 @@
     document.addEventListener('click', function(event){
       var link = event.target.closest('a[href]');
       if(!link) return;
+      if(handleLogoutLink(event, link)) return;
       handleWorkspaceLink(event, link);
     }, true);
   }
@@ -2805,26 +2978,26 @@
       /* Apply module CSS now so the first click does not wait on a cold sheet. */
       [
         '/static/masters_dashboard.css?v=53',
-        '/static/main_dashboard.css?v=31',
-        '/static/main_dashboard_analytics.css?v=14',
+        '/static/main_dashboard.css?v=32',
+        '/static/main_dashboard_analytics.css?v=15',
         '/static/hbe_kpi.css?v=13',
-        '/static/sales_entry_dashboard.css?v=33',
+        '/static/sales_entry_dashboard.css?v=34',
         '/static/sales_update_header.css?v=12',
-        '/static/sales_update_premium.css?v=28',
-        '/static/de_workspace_shell.css?v=53',
+        '/static/sales_update_premium.css?v=29',
+        '/static/de_workspace_shell.css?v=54',
         '/static/stores.css?v=131',
         '/static/ep_form_listbox.css?v=29',
-        '/static/pos_tables.css?v=71',
-        '/static/pos_invoice.css?v=65',
+        '/static/pos_tables.css?v=72',
+        '/static/pos_invoice.css?v=66',
         '/static/purchase_ledger.css?v=56',
         '/static/cash_ledger.css?v=26',
         '/static/communication_hub.css?v=12',
         '/static/communication_hub_promotion.css?v=1',
-        '/static/hotel_rooms.css?v=72',
-        '/static/hotel_reservations.css?v=45',
+        '/static/hotel_rooms.css?v=73',
+        '/static/hotel_reservations.css?v=46',
         '/static/hotel_date_picker.css?v=9',
         '/static/access_management_premium.css?v=32',
-        '/static/hbe_home_premium.css?v=19',
+        '/static/hbe_home_premium.css?v=20',
         '/static/sales_report.css?v=19',
         '/static/sales_date_range.css?v=2',
         '/static/reports_page_scroll.css?v=5'

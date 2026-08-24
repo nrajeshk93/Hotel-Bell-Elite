@@ -73,7 +73,7 @@ body.ep-module header.ep-header.topbar.se-sales-header.su-header{
   padding:40px 48px 0;
   display:block;
   margin-left:auto;margin-right:auto;
-  width:100%;max-width:min(1600px,100%);
+  width:100%;max-width:none;
   box-sizing:border-box;min-width:0;
 }
 body.ep-module .su-header-top{
@@ -328,7 +328,7 @@ body.ep-module .ep-header-main .search-wrap input{
 }
 body.ep-module .content{padding:24px 48px 48px;background:var(--bg);flex:1}
 body.ep-module .content.se-content{
-  max-width:min(1600px,100%);
+  max-width:none;
   margin-left:auto;
   margin-right:auto;
   width:100%;

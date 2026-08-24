@@ -5177,12 +5177,13 @@ def unlock_account():
     )
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["GET", "POST"])
 def logout():
     # Prefetch / soft-nav GET must not destroy the session. Idle prefetch of
     # the home Logout link was signing Administrator out while the avatar
     # still showed AD; refresh then loaded a limited user (or the login page).
-    if is_background_fetch_request():
+    # POST is a real click (fullscreen-safe fetch) and always clears the session.
+    if request.method == "GET" and is_background_fetch_request():
         return Response(status=204)
     session.pop(AUTH_USER_SESSION_KEY, None)
     return redirect(url_for("index"))

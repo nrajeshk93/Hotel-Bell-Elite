@@ -10,13 +10,13 @@
 <title>Promotion | Communication Hub | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=28">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=53">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=29">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=54">
 <link rel="stylesheet" href="{{ url_for('static', filename='communication_hub.css') }}?v=12">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=29">
-<link rel="stylesheet" href="{{ url_for('static', filename='communication_hub_promotion.css') }}?v=4">
+<link rel="stylesheet" href="{{ url_for('static', filename='communication_hub_promotion.css') }}?v=5">
 <script>
 (function(){
   try{
@@ -31,12 +31,12 @@
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=28">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='communication_hub.css') }}?v=12">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=29">
-<link rel="stylesheet" href="{{ url_for('static', filename='communication_hub_promotion.css') }}?v=4">
+<link rel="stylesheet" href="{{ url_for('static', filename='communication_hub_promotion.css') }}?v=5">
 {% endif %}
 
 <div class="main-wrapper" id="ch-promotion-page"
@@ -71,23 +71,29 @@
         {% else %}
         <span class="ch-wa-badge">WhatsApp connected</span>
         {% endif %}
+        <a class="btn btn-primary" id="ch-promo-sample" href="{{ url_for('communication_hub_api_promotion_sample') }}">Sample</a>
+        <button type="button" class="btn btn-primary" id="ch-promo-send" disabled>
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+          <span>Send</span>
+        </button>
       </div>
     </div>
-  </header>
 
-  <section class="content se-content ch-promo-content">
-    <div class="staff-credit-box ch-promo-box" aria-label="Promotion blast">
-      <div class="staff-credit-head">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-        </svg>
-        <span>Send WhatsApp template</span>
+    <div class="se-sales-header-card ch-promo-form-card">
+      <div class="ch-promo-form-intro">
+        <div class="ch-promo-form-intro-title">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          <span>Send WhatsApp template</span>
+        </div>
+        <p class="ch-promo-form-copy">Choose an approved template and upload the recipients Excel file. Preview runs automatically before send.</p>
       </div>
 
       <div id="ch-promo-error" class="staff-credit-error" hidden></div>
 
-      <div class="staff-grid">
-        <div class="staff-field staff-field--inline">
+      <div class="ch-promo-fields">
+        <div class="staff-field ch-promo-field">
           {{ ep_listbox(
             'template',
             'Template *',
@@ -102,11 +108,8 @@
           <p class="ch-promo-template-meta" id="ch-promo-template-meta" hidden></p>
         </div>
 
-        <div class="staff-field staff-field--inline">
-          <div class="staff-supplier-field-head">
-            <label for="ch-promo-file">Recipients Excel *</label>
-            <a class="staff-supplier-add-btn" id="ch-promo-sample" href="{{ url_for('communication_hub_api_promotion_sample') }}">Sample</a>
-          </div>
+        <div class="staff-field ch-promo-field">
+          <label class="ch-promo-field-label" for="ch-promo-file">Recipients Excel *</label>
           <label class="ch-promo-file-control" for="ch-promo-file">
             <input type="file" id="ch-promo-file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
             <span class="ch-promo-file-btn" aria-hidden="true">Choose file</span>
@@ -115,39 +118,31 @@
         </div>
       </div>
 
-      <div class="ch-promo-preview staff-credit-history" id="ch-promo-preview" hidden>
-        <div class="ch-promo-section-head">
-          <span class="ch-promo-section-title">Preview</span>
-          <span class="ch-promo-preview-stats" id="ch-promo-preview-stats"></span>
-        </div>
-        <div class="ch-promo-preview-table-wrap" id="ch-promo-preview-table-wrap" hidden>
-          <table class="ch-promo-table" aria-label="Preview recipients">
-            <thead>
-              <tr><th>Row</th><th>Name</th><th>Mobile</th></tr>
-            </thead>
-            <tbody id="ch-promo-preview-body"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="staff-credit-actions">
+      <div class="ch-promo-form-actions">
         <button type="button" class="btn staff-secondary" id="ch-promo-refresh-templates">Refresh templates</button>
-        <button type="button" class="btn staff-primary" id="ch-promo-send" disabled>
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
-          <span>Send</span>
-        </button>
+      </div>
+    </div>
+  </header>
+
+  <section class="content se-content ch-promo-content">
+    <div class="ch-promo-panel" id="ch-promo-preview" hidden>
+      <div class="ch-promo-panel-head">
+        <h2 class="ch-promo-panel-title">Preview</h2>
+        <span class="ch-promo-preview-stats" id="ch-promo-preview-stats"></span>
+      </div>
+      <div class="ch-promo-preview-table-wrap" id="ch-promo-preview-table-wrap" hidden>
+        <table class="ch-promo-table" aria-label="Preview recipients">
+          <thead>
+            <tr><th>Row</th><th>Name</th><th>Mobile</th></tr>
+          </thead>
+          <tbody id="ch-promo-preview-body"></tbody>
+        </table>
       </div>
     </div>
 
-    <div class="staff-credit-box ch-promo-box ch-promo-results" id="ch-promo-results" hidden>
-      <div class="staff-credit-head">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <circle cx="12" cy="12" r="9"/>
-          <path d="M12 8v4l3 3"/>
-        </svg>
-        <span>Results</span>
-      </div>
-      <div class="ch-promo-section-head">
+    <div class="ch-promo-panel" id="ch-promo-results" hidden>
+      <div class="ch-promo-panel-head">
+        <h2 class="ch-promo-panel-title">Results</h2>
         <span class="ch-promo-preview-stats" id="ch-promo-results-stats"></span>
       </div>
       <div class="ch-promo-preview-table-wrap">
@@ -163,7 +158,7 @@
 </div>
 
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=63"></script>
-<script src="{{ url_for('static', filename='communication_hub_promotion.js') }}?v=3"></script>
+<script src="{{ url_for('static', filename='communication_hub_promotion.js') }}?v=4"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

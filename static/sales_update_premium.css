@@ -275,7 +275,7 @@ body.su-module header.se-sales-header.su-header{
   margin-left:auto;
   margin-right:auto;
   width:100%;
-  max-width:min(1600px,100%);
+  max-width:none;
   box-sizing:border-box;
   min-width:0;
 }
@@ -298,7 +298,7 @@ body.su-module .staff-credit-head svg{stroke:var(--acc)}
 body.su-module .se-filter-chip select,
 body.su-module .se-filter-chip .se-filter-chip-trigger{font-weight:500;color:#111827}
 body.su-module .content.se-content{
-  max-width:min(1600px,100%);margin-left:auto;margin-right:auto;
+  max-width:none;margin-left:auto;margin-right:auto;
   padding:24px 48px 48px;width:100%;box-sizing:border-box;min-width:0;
 }
 body.su-module .card{border-radius:20px;border:1px solid #EEF2F7;box-shadow:0 8px 30px rgba(15,23,42,.04)}

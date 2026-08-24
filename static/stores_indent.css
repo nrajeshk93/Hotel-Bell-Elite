@@ -5,7 +5,7 @@ body.su-module.st-indent-shell .main-wrapper{
 }
 
 body.su-module.st-indent-shell .se-content{
-  max-width:1400px;
+  max-width:none;
   width:100%;
   min-width:0;
   margin:0 auto;
@@ -18,7 +18,7 @@ body.su-module.st-indent-shell .su-header{
   border:0;
   box-shadow:none;
   padding:24px 32px 8px;
-  max-width:1400px;
+  max-width:none;
   margin:0 auto;
   container-type:inline-size;
   container-name:st-indent-header;

@@ -198,6 +198,11 @@ html.de-sidebar-wide-boot .de-sidebar .de-help-expanded{display:block!important}
 body.de-open.ep-module{overflow:auto;}
 #ep-workspace.de-module .de-main-wrapper{flex:1;min-width:0;overflow:auto;height:100vh;background:#F4F6F9;}
 #ep-workspace.de-module .main-wrapper{margin-left:0;min-height:100vh;transition:none;}
+.de-main-inner{
+  width:100%;
+  max-width:none;
+  box-sizing:border-box;
+}
 /* Hide legacy header pin on all de-module pages (not only ≤760px). */
 #main-app.de-module .de-sb-pin-btn,
 #ep-workspace.de-module .de-sb-pin-btn,

@@ -8,10 +8,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Settings | {{ pos_label|default('Restaurant') }} | Hotel Bell Elite</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=53">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=54">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=37">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=38">
 <script>
 (function(){
   try{
@@ -29,7 +29,7 @@
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=37">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=38">
 {% endif %}
 
 <div class="de-main-inner pos-settings-page" id="pos-settings-page" data-pos-settings data-pos-outlet="{{ pos_outlet|default('restaurant') }}" data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}">
