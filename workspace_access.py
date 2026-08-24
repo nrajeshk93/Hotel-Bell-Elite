@@ -209,7 +209,7 @@ _WORKSPACE_MODULE_REGISTRY = (
     {
         "key": "cancellation_access",
         "label": "Cancellation",
-        # Module-level grant: cancel unsettled invoices; edit/remove kitchen-sent POS lines after KOT.
+        # Module-level grant: cancel unsettled invoices; Tables KOT edits after send.
         "permission_scope": None,
         "permission_field": None,
         "permission_children": (),
@@ -298,14 +298,16 @@ _ACCESS_MODULE_UI_META = {
         "icon": "receipt",
         "description": (
             "Counter billing and invoice workspace for guest sales. "
-            "After a KOT is sent, those lines stay locked unless the role also has Cancellation."
+            "Kitchen-sent lines can be edited until Generate Invoice; "
+            "after that, Cancellation is required for KOT changes on Tables."
         ),
     },
     "point_of_sale_bar": {
         "icon": "receipt",
         "description": (
             "Bar counter billing and invoice workspace. "
-            "After a KOT is sent, those lines stay locked unless the role also has Cancellation."
+            "Kitchen-sent lines can be edited until Generate Invoice; "
+            "after that, Cancellation is required for KOT changes on Tables."
         ),
     },
 
@@ -344,8 +346,7 @@ _ACCESS_MODULE_UI_META = {
         "icon": "ban",
         "description": (
             "Cancel unsettled POS and Hotel invoices; "
-            "edit or remove kitchen-sent POS lines after a KOT is sent. "
-            "Kitchen Order Tokens on the Tables page update to match. "
+            "edit Kitchen Order Tokens on the Tables page after a KOT is sent. "
             "Only a Super Administrator can grant this module to a role."
         ),
     },
@@ -1769,9 +1770,10 @@ def is_system_administrator(user):
 
 
 def user_can_edit_kot_sent_lines(user):
-    """True when the user may change or remove kitchen-sent POS lines.
+    """True when the user may change Kitchen Order Tokens on Tables after KOT.
 
     Granted via the Cancellation module (administrators include all modules).
+    POS Create Invoice allows line edits until Generate Invoice without this.
     """
     return user_can_access_dashboard(user, "cancellation_access")
 

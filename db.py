@@ -5692,14 +5692,26 @@ def _pos_invoice_line_kitchen_key(menu_item_id, name, variant):
     )
 
 
-def _enforce_pos_kot_line_protections(conn, invoice_id, normalized_lines, *, allow_kot_cancel=False):
-    """Protect kitchen-sent quantities unless Cancellation is granted.
+def _enforce_pos_kot_line_protections(
+    conn,
+    invoice_id,
+    normalized_lines,
+    *,
+    allow_kot_cancel=False,
+    customer_bill_sent=False,
+):
+    """Protect kitchen-sent quantities after Generate Invoice unless Cancellation is granted.
 
-    Without cancel rights: block qty below prior sent_qty / removing those lines,
-    and re-apply prior sent_qty so clients cannot clear kitchen state silently.
+    Before the customer bill is generated, anyone saving the draft may reduce or
+    remove kitchen-sent lines (POS Create Invoice). After Generate Invoice, without
+    cancel rights: block qty below prior sent_qty / removing those lines, and
+    re-apply prior sent_qty so clients cannot clear kitchen state silently.
     With cancel rights: accept client qty/sent_qty (already capped to qty).
     """
     if not invoice_id:
+        return
+    # Pre-invoice cart edits are open to all POS users.
+    if not customer_bill_sent or allow_kot_cancel:
         return
     old_rows = conn.execute(
         """
@@ -5717,9 +5729,6 @@ def _enforce_pos_kot_line_protections(conn, invoice_id, normalized_lines, *, all
     for row in old_rows:
         key = _pos_invoice_line_kitchen_key(row["menu_item_id"], row["name"], row["variant"])
         required[key] = required.get(key, 0.0) + float(row["sent_qty"] or 0)
-
-    if allow_kot_cancel:
-        return
 
     available = {}
     for line in normalized_lines:
@@ -5751,8 +5760,9 @@ def _enforce_pos_kot_line_protections(conn, invoice_id, normalized_lines, *, all
 def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, actor_is_admin=False):
     """Create or update a POS invoice by order_no. Returns the saved invoice dict.
 
-    Kitchen-sent quantities cannot be reduced below sent_qty and those lines
-    cannot be removed unless allow_kot_cancel (Cancellation) is true.
+    Before Generate Invoice, kitchen-sent lines may be reduced or removed by any
+    POS save. After the bill is generated, those changes need allow_kot_cancel
+    (Cancellation) — and normal saves are blocked once the invoice is generated.
     Banquet-only CGST/UGST percent overrides are stored only when actor_is_admin.
     """
     ensure_pos_schema(conn)
@@ -6048,6 +6058,7 @@ def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, ac
             int(existing["id"]),
             normalized_lines,
             allow_kot_cancel=bool(allow_kot_cancel),
+            customer_bill_sent=bool(was_bill_sent),
         )
 
     creator = str(created_by or "").strip()

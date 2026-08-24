@@ -1834,51 +1834,38 @@
     (state.discountSelectDraft || []).forEach(function (uid) {
       draftSet[String(uid)] = true;
     });
-    var canCancelKot = canCancelKotLines(page);
-    var kotLockTip = canCancelKot
-      ? 'Kitchen-sent — changes update the Kitchen Order Token'
-      : 'Sent to kitchen — needs Cancellation to change or remove';
-
     body.innerHTML = state.lines
       .map(function (line) {
         var displayRate = lineDisplayRate(line);
         var amt = lineDisplayAmount(line);
         var pendingQty = pendingKotQty(line);
         var sentQty = lineKitchenSentQty(line);
-        var kotLocked = sentQty > 0 && !canCancelKot;
-        /* Pending units may always drop; kitchen-sent units need Cancellation. */
-        var canDecrease = !locked && (
-          canCancelKot ? Number(line.qty) > 1 : Number(line.qty) > sentQty
-        );
-        var canDelete = !locked && (!kotLocked || canCancelKot);
-        var canEditNote = !locked && (!kotLocked || canCancelKot);
+        /* Until Generate Invoice, anyone with POS access may change qty / remove
+           kitchen-sent lines. After the bill is generated the cart stays locked. */
+        var canDecrease = !locked && Number(line.qty) > 1;
+        var canDelete = !locked;
+        var canEditNote = !locked;
         var lineNotes = String(line.notes || '').trim();
         var checked = !!draftSet[String(line.uid)];
         var decreaseTip = selecting
           ? 'Finish item selection first'
           : locked
             ? 'Invoice locked — settle to continue'
-            : kotLocked && !canDecrease
-              ? kotLockTip
-              : '';
+            : '';
         var noteTip = selecting
           ? 'Finish item selection first'
           : locked
             ? 'Invoice locked — settle to continue'
-            : kotLocked
-              ? kotLockTip
-              : lineNotes
-                ? lineNotes
-                : 'Add customised note';
+            : lineNotes
+              ? lineNotes
+              : 'Add customised note';
         var deleteTip = selecting
           ? 'Finish item selection first'
           : locked
             ? 'Invoice locked — settle to continue'
-            : kotLocked
-              ? kotLockTip
-              : canCancelKot && sentQty > 0
-                ? kotLockTip
-                : '';
+            : sentQty > 0
+              ? 'Remove item (kitchen KOT will update on save)'
+              : '';
         return (
           '<tr data-line-id="' +
           escapeHtml(line.uid) +
@@ -5114,19 +5101,8 @@
     if (action === 'clear') {
       closeMoreMenu(page);
       if (guardInvoiceLocked()) return;
-      var kept = state.lines.filter(function (line) {
-        return lineHasKitchenSent(line);
-      });
-      if (kept.length && kept.length === state.lines.length) {
-        toast('Kitchen-sent items cannot be cleared. Cancel the KOT to remove them.');
-        return;
-      }
-      state.lines = kept;
-      if (state.lines.length) {
-        toast('Unsent items cleared. Kitchen-sent items were kept.');
-      } else {
-        toast('All items cleared.');
-      }
+      state.lines = [];
+      toast('All items cleared.');
       persistAfterLineChange(page);
       return;
     }
@@ -5503,19 +5479,11 @@
       }
       if (e.target.closest('[data-line-note]')) {
         if (guardInvoiceLocked()) return;
-        if (lineHasKitchenSent(line) && !canCancelKotLines(page)) {
-          toast('Sent to kitchen — needs Cancellation to edit this item.');
-          return;
-        }
         openLineNoteModal(page, line);
         return;
       }
       if (e.target.closest('[data-del]')) {
         if (guardInvoiceLocked()) return;
-        if (lineHasKitchenSent(line) && !canCancelKotLines(page)) {
-          toast('Sent to kitchen — needs Cancellation to remove this item.');
-          return;
-        }
         state.lines = state.lines.filter(function (l) {
           return l.uid !== id;
         });
@@ -5528,16 +5496,6 @@
         if (qtyBtn.disabled) return;
         var delta = Number(qtyBtn.getAttribute('data-qty')) || 0;
         var nextQty = Math.max(1, (Number(line.qty) || 1) + delta);
-        var sentQty = lineKitchenSentQty(line);
-        if (
-          delta < 0 &&
-          sentQty > 0 &&
-          nextQty < sentQty &&
-          !canCancelKotLines(page)
-        ) {
-          toast('Sent to kitchen — needs Cancellation to reduce below the sent quantity.');
-          return;
-        }
         line.qty = nextQty;
         /* Cap kitchen-sent qty so Tables KOT tokens match the bill. */
         if ((Number(line.sentQty) || 0) > line.qty) line.sentQty = line.qty;

@@ -1062,87 +1062,151 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(len(inv.get("lines") or []), 1)
         self.assertEqual(int((inv["lines"][0].get("qty") or 0)), 2)
 
-    def test_kitchen_sent_lines_locked_without_cancellation_access(self):
+    def test_kitchen_sent_lines_editable_before_invoice_without_cancellation(self):
+        """Before Generate Invoice, anyone may reduce or remove kitchen-sent lines."""
         save = self.client.post(
             "/point-of-sale/api/invoices",
-            json=self._payload("ORD-2607-0080", "T1", kot_send=True),
+            json=self._payload(
+                "ORD-2607-0080",
+                "T1",
+                kot_send=True,
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "rate": 100,
+                        "qty": 2,
+                        "kotSentQty": 2,
+                    },
+                    {
+                        "uid": "2",
+                        "menuId": None,
+                        "name": "Sandwich",
+                        "variant": "",
+                        "rate": 150,
+                        "qty": 1,
+                        "kotSentQty": 1,
+                    },
+                ],
+            ),
         )
         self.assertEqual(save.status_code, 200, save.get_data(as_text=True))
 
         conn = db_mod.get_db()
         try:
-            # Cannot drop qty below kitchen-sent amount.
+            # Drop qty below prior kitchen-sent amount — allowed pre-invoice.
+            cut = db_mod.save_pos_invoice(
+                conn,
+                self._payload(
+                    "ORD-2607-0080",
+                    "T1",
+                    lines=[
+                        {
+                            "uid": "1",
+                            "menuId": None,
+                            "name": "Filter Coffee",
+                            "variant": "",
+                            "rate": 100,
+                            "qty": 1,
+                            "kotSentQty": 1,
+                        },
+                        {
+                            "uid": "2",
+                            "menuId": None,
+                            "name": "Sandwich",
+                            "variant": "",
+                            "rate": 150,
+                            "qty": 1,
+                            "kotSentQty": 1,
+                        },
+                    ],
+                ),
+                allow_kot_cancel=False,
+            )
+            coffee = next(l for l in cut["lines"] if l["name"] == "Filter Coffee")
+            self.assertEqual(int(coffee["qty"]), 1)
+            self.assertEqual(int(coffee.get("sent_qty") or 0), 1)
+
+            # Remove the kitchen-sent Sandwich line entirely.
+            removed = db_mod.save_pos_invoice(
+                conn,
+                self._payload(
+                    "ORD-2607-0080",
+                    "T1",
+                    lines=[
+                        {
+                            "uid": "1",
+                            "menuId": None,
+                            "name": "Filter Coffee",
+                            "variant": "",
+                            "rate": 100,
+                            "qty": 1,
+                            "kotSentQty": 1,
+                        }
+                    ],
+                ),
+                allow_kot_cancel=False,
+            )
+            names = [l["name"] for l in removed["lines"]]
+            self.assertEqual(names, ["Filter Coffee"])
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_kitchen_sent_lines_locked_after_invoice_without_cancellation(self):
+        """After Generate Invoice, kot protections still require Cancellation."""
+        save = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-0083", "T1", kot_send=True),
+        )
+        self.assertEqual(save.status_code, 200, save.get_data(as_text=True))
+        invoice_id = int(save.get_json()["invoice"]["id"])
+
+        conn = db_mod.get_db()
+        try:
+            # Mark bill generated without rewriting lines (keeps sent_qty intact).
+            conn.execute(
+                "UPDATE pos_invoices SET customer_bill_sent = 1, customer_bill_at = ? WHERE id = ?",
+                ("2026-07-22 19:00:00", invoice_id),
+            )
+            conn.commit()
+
             with self.assertRaises(ValueError) as cut:
-                db_mod.save_pos_invoice(
+                db_mod._enforce_pos_kot_line_protections(
                     conn,
-                    self._payload(
-                        "ORD-2607-0080",
-                        "T1",
-                        lines=[
-                            {
-                                "uid": "1",
-                                "menuId": None,
-                                "name": "Filter Coffee",
-                                "variant": "",
-                                "rate": 100,
-                                "qty": 1,
-                                "kotSentQty": 1,
-                            }
-                        ],
-                    ),
+                    invoice_id,
+                    [
+                        {
+                            "menu_item_id": None,
+                            "name": "Filter Coffee",
+                            "variant": "",
+                            "qty": 1,
+                            "sent_qty": 1,
+                        }
+                    ],
                     allow_kot_cancel=False,
+                    customer_bill_sent=True,
                 )
             self.assertIn("kitchen-sent", str(cut.exception).lower())
-            conn.rollback()
 
-            # Cannot remove the kitchen-sent line.
-            with self.assertRaises(ValueError) as removed:
-                db_mod.save_pos_invoice(
-                    conn,
-                    self._payload(
-                        "ORD-2607-0080",
-                        "T1",
-                        lines=[
-                            {
-                                "uid": "2",
-                                "menuId": None,
-                                "name": "Sandwich",
-                                "variant": "",
-                                "rate": 150,
-                                "qty": 1,
-                                "kotSentQty": 0,
-                            }
-                        ],
-                    ),
-                    allow_kot_cancel=False,
-                )
-            self.assertIn("kitchen-sent", str(removed.exception).lower())
-            conn.rollback()
-
-            # Admin flag alone (legacy kw) does not bypass — needs Cancellation.
-            with self.assertRaises(ValueError) as admin_cut:
-                db_mod.save_pos_invoice(
-                    conn,
-                    self._payload(
-                        "ORD-2607-0080",
-                        "T1",
-                        lines=[
-                            {
-                                "uid": "1",
-                                "menuId": None,
-                                "name": "Filter Coffee",
-                                "variant": "",
-                                "rate": 100,
-                                "qty": 1,
-                                "kotSentQty": 1,
-                            }
-                        ],
-                    ),
-                    actor_is_admin=True,
-                    allow_kot_cancel=False,
-                )
-            self.assertIn("kitchen-sent", str(admin_cut.exception).lower())
-            conn.rollback()
+            # Same reduction is allowed when the bill is not yet generated.
+            db_mod._enforce_pos_kot_line_protections(
+                conn,
+                invoice_id,
+                [
+                    {
+                        "menu_item_id": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "qty": 1,
+                        "sent_qty": 1,
+                    }
+                ],
+                allow_kot_cancel=False,
+                customer_bill_sent=False,
+            )
         finally:
             conn.close()
 
