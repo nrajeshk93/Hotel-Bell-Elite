@@ -9,7 +9,7 @@ var PRECACHE = [
   '/point-of-sale/invoice',
   '/bar-point-of-sale/invoice',
   '/static/manifest.webmanifest',
-  '/static/de_workspace_shell.css?v=54',
+  '/static/de_workspace_shell.css?v=55',
   '/static/ep_form_listbox.css?v=29',
   '/static/hbe_table_scroll.css?v=2',
   '/static/hbe_kpi.css?v=13',

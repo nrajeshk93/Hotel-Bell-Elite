@@ -240,7 +240,7 @@ body.de-open.ep-module{overflow:auto;}
     transition:width var(--de-sb-rail-ms) var(--de-sb-ease),min-width var(--de-sb-rail-ms) var(--de-sb-ease),max-width var(--de-sb-rail-ms) var(--de-sb-ease),flex-basis var(--de-sb-rail-ms) var(--de-sb-ease),margin-right var(--de-sb-rail-ms) var(--de-sb-ease),transform var(--de-sb-rail-ms) var(--de-sb-ease);
     overflow-x:hidden;
     overflow-y:hidden;
-    scrollbar-gutter:stable;
+    scrollbar-gutter:auto;
     box-shadow:none;
   }
   #main-app.de-module .de-sidebar.de-sidebar--snap-measure,
@@ -456,6 +456,17 @@ body.de-open.ep-module{overflow:auto;}
     overflow-anchor:none;
     overscroll-behavior:contain;
     padding:0 2px 8px;
+    /* Hide the thick OS scrollbar “rod” between sidebar and content (macOS
+       overlay scrollbars hide it; Windows/Linux Chrome always show it). */
+    scrollbar-width:none;
+    -ms-overflow-style:none;
+  }
+  #main-app.de-module .de-sb-nav::-webkit-scrollbar,
+  #ep-workspace.de-module .de-sb-nav::-webkit-scrollbar,
+  #dashboard.de-module .de-sb-nav::-webkit-scrollbar{
+    width:0;
+    height:0;
+    display:none;
   }
   #main-app.de-module .de-sb-nav a,
   #ep-workspace.de-module .de-sb-nav a,

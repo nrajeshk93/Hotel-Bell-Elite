@@ -2984,7 +2984,7 @@
         '/static/sales_entry_dashboard.css?v=34',
         '/static/sales_update_header.css?v=12',
         '/static/sales_update_premium.css?v=29',
-        '/static/de_workspace_shell.css?v=54',
+        '/static/de_workspace_shell.css?v=55',
         '/static/stores.css?v=131',
         '/static/ep_form_listbox.css?v=29',
         '/static/pos_tables.css?v=72',
