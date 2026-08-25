@@ -63,13 +63,6 @@ body.ch-promotion-module .ch-promo-form-intro-title svg{
   flex-shrink:0;
 }
 
-body.ch-promotion-module .ch-promo-form-copy{
-  margin:0;
-  font:500 13px/1.5 Inter,system-ui,sans-serif;
-  color:var(--txt2, #64748b);
-  max-width:62ch;
-}
-
 body.ch-promotion-module .ch-promo-form-card .staff-credit-error{
   display:none;
   margin-bottom:14px;

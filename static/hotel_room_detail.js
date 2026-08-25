@@ -1158,7 +1158,13 @@
           item.sourceRoomId,
           item.sourceRoomNumber
         );
-        if (override != null) {
+        /*
+         * Prefer live mergeRoomRates only when they carry a real amount.
+         * Absorbed members often keep roomRate 0 on mergeRoomRates while the
+         * folio still holds the stay charge — overriding with 0 hid those
+         * lines and made Estimated Total look inflated vs the charge list.
+         */
+        if (override != null && override > 0.009) {
           amount = override;
         }
       }

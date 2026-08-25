@@ -90,20 +90,21 @@
   function fillTemplateSelect(page, templates, errorMsg) {
     var optionsWrap = templateOptionsWrap(page);
     if (!optionsWrap) return;
-    loadedTemplates = templates || [];
+    loadedTemplates = (templates || []).filter(function (t) {
+      return !!(t && t.sendable);
+    });
     optionsWrap.textContent = '';
 
     var placeholderLabel = errorMsg
       ? errorMsg
       : loadedTemplates.length
         ? 'Select a template…'
-        : 'No approved templates found';
+        : 'No supported templates found';
 
     if (!errorMsg) {
       loadedTemplates.forEach(function (t) {
         var value = t.name + '::' + t.language;
         var label = t.name + ' (' + t.language + ')';
-        if (!t.sendable) label += ' — not supported';
         var btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'se-filter-listbox-option';
