@@ -9865,16 +9865,17 @@ def _hotel_pending_hotel_amount(stay):
     if not primary:
         return round(float(stay.get("estimatedTotal") or 0), 2), []
 
-    invoiced_nights = max(
-        0,
-        int(
-            _hotel_num(
-                stay.get("hotelInvoicedBillableNights") or stay.get("billableNights"),
-                0,
-            )
-        ),
-    )
     current_nights = max(1, int(_hotel_num(stay.get("billableNights"), 1)))
+    raw_invoiced = int(_hotel_num(stay.get("hotelInvoicedBillableNights"), 0))
+    # Missing/zero night snapshot → treat nights as already invoiced (legacy stays).
+    invoiced_nights = raw_invoiced if raw_invoiced > 0 else current_nights
+    has_hotel_snap = bool(
+        raw_invoiced > 0
+        or float(stay.get("hotelInvoicedEstimatedTotal") or 0) > 0.009
+        or float(stay.get("hotelInvoicedExtraBedAmount") or 0) > 0.009
+        or float(stay.get("hotelInvoicedEarlyCheckinAmount") or 0) > 0.009
+        or float(stay.get("hotelInvoicedLateCheckoutAmount") or 0) > 0.009
+    )
     pending = 0.0
     breakdown = []
 
@@ -9899,7 +9900,11 @@ def _hotel_pending_hotel_amount(stay):
     )
     for field, snap_field, label in snap_fields:
         current = round(float(stay.get(field) or 0), 2)
-        snap = round(float(stay.get(snap_field) or 0), 2)
+        if has_hotel_snap:
+            snap = round(float(stay.get(snap_field) or 0), 2)
+        else:
+            # Legacy invoice without snapshots — do not invent pending extras.
+            snap = current
         delta = round(current - snap, 2)
         if delta > 0.009:
             pending += delta
@@ -9910,6 +9915,9 @@ def _hotel_pending_hotel_amount(stay):
             continue
         amt = round(float(line.get("amount") or 0), 2)
         if amt <= 0:
+            continue
+        # Untagged folio on a legacy invoiced stay was almost always billed already.
+        if not has_hotel_snap:
             continue
         pending += amt
         breakdown.append(
@@ -16848,7 +16856,18 @@ def require_hotel_room_invoice_for_checkout(conn, room_id):
         "billingRoomId"
     ):
         return
-    if stay.get("invoiceGenerated") and stay.get("invoiceNumber"):
+    # Billed via a former merge primary — allow checkout without minting again.
+    if stay.get("billedInvoiceGenerated") and stay.get("billedInvoiceNumber"):
+        return
+    inv_no = _hotel_str(stay.get("invoiceNumber") or stay.get("invoice_number"), 60)
+    if not inv_no:
+        for entry in _hotel_invoice_history_entries(stay, kind="hotel"):
+            inv_no = _hotel_str(entry.get("invoiceNumber"), 60)
+            if inv_no:
+                stay["invoiceNumber"] = inv_no
+                stay["invoiceGenerated"] = True
+                break
+    if stay.get("invoiceGenerated") and inv_no:
         if _hotel_has_pending_charges(stay):
             raise ValueError(
                 "Generate Additional Invoice before check out — pending charges remain."

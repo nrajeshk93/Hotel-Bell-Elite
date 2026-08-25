@@ -126,17 +126,41 @@
 
   function generateInvoiceLabel(root) {
     var kind = invoiceKindFromPage(root);
+    var stay = (lastRoom && lastRoom.stay) || null;
     if (isLedgerEdit(root)) return 'Modify and Generate Invoice';
-    if (kind === 'fb') return 'Generate F&B Invoice';
-    if (kind === 'hotel') return 'Generate Room Invoice';
-    return 'Generate Invoice';
+    if (kind === 'fb') {
+      return stay &&
+        (stay.fbTransferInvoiceGenerated ||
+          stay.fbTransferInvoiceNumber ||
+          stay.fb_transfer_invoice_number)
+        ? 'Generate Additional F&B Invoice'
+        : 'Generate F&B Invoice';
+    }
+    if (kind === 'hotel') {
+      return stay && stay.invoiceGenerated && invoiceNumber(stay)
+        ? 'Generate Additional Room Invoice'
+        : 'Generate Room Invoice';
+    }
+    return stay && stay.invoiceGenerated && invoiceNumber(stay)
+      ? 'Generate Additional Invoice'
+      : 'Generate Invoice';
   }
 
   function generateInvoiceTitle(root) {
     var kind = invoiceKindFromPage(root);
+    var stay = (lastRoom && lastRoom.stay) || null;
     if (isLedgerEdit(root)) return 'Modify and regenerate hotel room invoice';
-    if (kind === 'fb') return 'Generate F&B room transfer invoice';
-    if (kind === 'hotel') return 'Generate hotel room invoice';
+    if (kind === 'fb') {
+      return stay &&
+        (stay.fbTransferInvoiceGenerated || stay.fbTransferInvoiceNumber)
+        ? 'Generate additional F&B room transfer invoice'
+        : 'Generate F&B room transfer invoice';
+    }
+    if (kind === 'hotel') {
+      return stay && stay.invoiceGenerated && invoiceNumber(stay)
+        ? 'Generate additional hotel room invoice for pending charges'
+        : 'Generate hotel room invoice';
+    }
     return 'Generate hotel room invoice';
   }
 
@@ -237,6 +261,76 @@
     return stayEditUnlocked(stay);
   }
 
+  function folioLineInvoicedNo(line) {
+    return String(
+      (line &&
+        (line.invoicedInvoiceNumber || line.invoiced_invoice_number)) ||
+        ''
+    ).trim();
+  }
+
+  function isFbTransferFolioLine(line) {
+    var lineKind = String((line && line.kind) || '').toLowerCase();
+    return (
+      lineKind === 'restaurant_room_transfer' ||
+      lineKind === 'bar_room_transfer'
+    );
+  }
+
+  function hasPendingFbCharges(stay) {
+    if (!stay) return false;
+    var folio = Array.isArray(stay.folioCharges) ? stay.folioCharges : [];
+    return folio.some(function (line) {
+      if (!line || !isFbTransferFolioLine(line)) return false;
+      if (!(Number(line.amount || 0) > 0)) return false;
+      return !folioLineInvoicedNo(line);
+    });
+  }
+
+  /**
+   * Match room-detail / backend pending hotel logic so Generate Additional
+   * stays available after Extra Bed / overstay / untagged folio post-invoice.
+   */
+  function hasPendingHotelCharges(stay) {
+    if (!stay) return false;
+    var primary = invoiceNumber(stay);
+    if (!primary) return false;
+    var bookedNights = Math.max(1, Number(stay.nights || 1));
+    var billableNights = Math.max(1, Number(stay.billableNights || bookedNights));
+    var rawInvoiced = Math.max(
+      0,
+      Math.floor(Number(stay.hotelInvoicedBillableNights || 0))
+    );
+    var invoicedNights = rawInvoiced > 0 ? rawInvoiced : billableNights;
+    var hasHotelSnap =
+      Number(stay.hotelInvoicedBillableNights || 0) > 0 ||
+      Number(stay.hotelInvoicedEstimatedTotal || 0) > 0 ||
+      Number(stay.hotelInvoicedExtraBedAmount || 0) > 0 ||
+      Number(stay.hotelInvoicedEarlyCheckinAmount || 0) > 0 ||
+      Number(stay.hotelInvoicedLateCheckoutAmount || 0) > 0;
+    if (billableNights > invoicedNights) return true;
+    var snapFields = [
+      ['extraBedAmount', 'hotelInvoicedExtraBedAmount'],
+      ['earlyCheckinAmount', 'hotelInvoicedEarlyCheckinAmount'],
+      ['lateCheckoutAmount', 'hotelInvoicedLateCheckoutAmount']
+    ];
+    for (var i = 0; i < snapFields.length; i++) {
+      var current = Number(stay[snapFields[i][0]] || 0);
+      var snap = hasHotelSnap ? Number(stay[snapFields[i][1]] || 0) : current;
+      if (current - snap > 0.009) return true;
+    }
+    if (!hasHotelSnap) return false;
+    var folio = Array.isArray(stay.folioCharges) ? stay.folioCharges : [];
+    for (var j = 0; j < folio.length; j++) {
+      var line = folio[j];
+      if (!line || isFbTransferFolioLine(line) || folioLineInvoicedNo(line)) {
+        continue;
+      }
+      if (Number(line.amount || 0) > 0) return true;
+    }
+    return false;
+  }
+
   function invoiceLocked(stay, root) {
     if (chargesEditable(stay, root)) return false;
     var kind = invoiceKindFromPage(root);
@@ -263,27 +357,45 @@
         stay.fbTransferInvoiceGenerated
       );
       if (!hasFbe) return false;
-      var folio = Array.isArray(stay.folioCharges) ? stay.folioCharges : [];
-      var pendingFb = folio.some(function (line) {
-        if (!line) return false;
-        var lineKind = String(line.kind || '').toLowerCase();
-        if (
-          lineKind !== 'restaurant_room_transfer' &&
-          lineKind !== 'bar_room_transfer'
-        ) {
-          return false;
-        }
-        if (!(Number(line.amount || 0) > 0)) return false;
-        return !String(
-          line.invoicedInvoiceNumber || line.invoiced_invoice_number || ''
-        ).trim();
-      });
-      return !pendingFb;
+      return !hasPendingFbCharges(stay);
     }
     if (kind === 'hotel') {
+      /* Folio stays locked after the first HBE; Generate Additional is separate. */
       return !!(stay && stay.invoiceGenerated && invoiceNumber(stay));
     }
     return !!(stay && stay.invoiceGenerated && invoiceNumber(stay));
+  }
+
+  function stayHasMintedInvoice(stay, root) {
+    var kind = invoiceKindFromPage(root);
+    if (!stay) return false;
+    if (kind === 'fb') {
+      return !!(
+        stay.fbTransferInvoiceNumber ||
+        stay.fb_transfer_invoice_number ||
+        stay.fbTransferInvoiceGenerated
+      );
+    }
+    return !!(stay.invoiceGenerated && invoiceNumber(stay));
+  }
+
+  function canGenerateInvoice(stay, root) {
+    if (!stay) return false;
+    if (isMergeMemberRoom(lastRoom, stay)) return false;
+    var kind = invoiceKindFromPage(root);
+    if (kind === 'fb') {
+      if (hasPendingFbCharges(stay)) return true;
+      return !(
+        stay.fbTransferInvoiceNumber ||
+        stay.fb_transfer_invoice_number ||
+        stay.fbTransferInvoiceGenerated
+      );
+    }
+    if (hasPendingHotelCharges(stay)) return true;
+    if (kind === 'hotel' || kind === 'all') {
+      return !(stay.invoiceGenerated && invoiceNumber(stay));
+    }
+    return !invoiceLocked(stay, root);
   }
 
   function statusLabel(status) {
@@ -801,19 +913,23 @@
       var mergeNums = Array.isArray(stay && stay.mergeRoomNumbers)
         ? stay.mergeRoomNumbers
         : [];
-      var sharedMergeAlreadyInvoiced = !!(
+      var allowGenerate = canGenerateInvoice(stay, root);
+      /* Merge members / billed-via-primary never mint here; primary with
+         pending Extra Bed / overstay still gets Generate Additional. */
+      var sharedMergeFullySettled = !!(
         mergeNums.length > 1 &&
         (billedViaPrimary ||
-          (stay && stay.invoiceGenerated && invoiceNumber(stay)))
+          (stay && stay.invoiceGenerated && invoiceNumber(stay))) &&
+        !allowGenerate
       );
       if (!stay) {
         genBtn.disabled = true;
         genBtn.textContent = genLabel;
-      } else if (memberRoom || sharedMergeAlreadyInvoiced) {
+      } else if (memberRoom || (sharedMergeFullySettled && !allowGenerate)) {
         genBtn.disabled = true;
         if (
           billedViaPrimary ||
-          sharedMergeAlreadyInvoiced ||
+          sharedMergeFullySettled ||
           invoiceLocked(stay, root)
         ) {
           genBtn.title = 'Invoice already generated on the billing primary';
@@ -829,6 +945,11 @@
             '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"/></svg> Billing on Room ' +
             escapeHtml(billLabel);
         }
+      } else if (allowGenerate) {
+        genBtn.disabled = false;
+        genBtn.innerHTML =
+          '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"/></svg> ' +
+          genLabel;
       } else if (invoiceLocked(stay, root)) {
         genBtn.disabled = true;
         genBtn.innerHTML =
@@ -841,7 +962,7 @@
       }
     }
     if (settleBtn) {
-      var canSettle = invoiceLocked(stay, root);
+      var canSettle = stayHasMintedInvoice(stay, root);
       settleBtn.hidden = !canSettle;
       settleBtn.disabled = !canSettle;
     }

@@ -753,6 +753,47 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(room.get("statusLabel"), "Dirty")
         self.assertFalse(room.get("stay"))
 
+    def test_checkout_allows_legacy_invoice_without_night_snapshots(self):
+        """Invoiced stays missing hotelInvoiced* must still check out."""
+        self._checkin_with_charges("room-104", advance=0)
+        self._generate_stay_invoice("room-104")
+        # Force legacy shape: clear snapshots + leave an untagged folio line.
+        conn = db_mod.get_db()
+        try:
+            layout = db_mod.get_hotel_rooms_layout(conn)
+            rooms = layout.get("rooms") or []
+            room = next(r for r in rooms if r.get("id") == "room-104")
+            stay = dict(room.get("stay") or {})
+            stay["hotelInvoicedBillableNights"] = 0
+            stay["hotelInvoicedEstimatedTotal"] = 0
+            stay["hotelInvoicedExtraBedAmount"] = 0
+            stay["hotelInvoicedEarlyCheckinAmount"] = 0
+            stay["hotelInvoicedLateCheckoutAmount"] = 0
+            folio = list(stay.get("folioCharges") or [])
+            folio.append(
+                {
+                    "id": "legacy-untagged",
+                    "kind": "other",
+                    "label": "Room 102 — stay charges",
+                    "amount": 2000,
+                    "source": "room_merge",
+                    "sourceRoomId": "room-102",
+                }
+            )
+            stay["folioCharges"] = folio
+            room["stay"] = db_mod._normalize_hotel_room_stay(stay)
+            db_mod.save_hotel_rooms_layout(conn, layout.get("floors") or [], rooms)
+            conn.commit()
+        finally:
+            conn.close()
+
+        closed = self.client.put(
+            "/hotel/api/rooms/room-104",
+            json={"action": "checkout"},
+        )
+        self.assertEqual(closed.status_code, 200, closed.get_data(as_text=True))
+        self.assertEqual(closed.get_json()["room"]["status"], "dirty")
+
     def test_checkout_rejected_without_invoice(self):
         self._checkin_with_charges("room-104", advance=0)
         before = self.client.get("/hotel/api/rooms/room-104").get_json()["room"]
@@ -4800,6 +4841,69 @@ class HotelRoomsTests(unittest.TestCase):
         )
         self.assertEqual(checkout.status_code, 400, checkout.get_data(as_text=True))
         self.assertIn("Additional Invoice", checkout.get_data(as_text=True))
+
+    def test_extra_bed_after_invoice_allows_additional_then_checkout(self):
+        """Extra Bed added after HBE must mint Additional — then checkout works."""
+        self._checkin_with_charges("room-101", advance=0)
+        gen = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "generate_invoice", "payment_splits": []},
+        )
+        self.assertEqual(gen.status_code, 200, gen.get_data(as_text=True))
+        stay1 = gen.get_json()["room"]["stay"]
+        hbe1 = stay1["invoiceNumber"]
+        self.assertEqual(float(stay1.get("hotelInvoicedExtraBedAmount") or 0), 500.0)
+
+        # Simulate Extra Bed raised after the first invoice (layout mutation —
+        # update_charge is locked once HBE exists; front desk still ends up here
+        # via stay edits / merge flows).
+        conn = db_mod.get_db()
+        try:
+            layout = db_mod.get_hotel_rooms_layout(conn)
+            rooms = layout.get("rooms") or []
+            room = next(r for r in rooms if r.get("id") == "room-101")
+            stay = dict(room.get("stay") or {})
+            stay["extraBedAmount"] = 2400.0
+            stay["extraBedQty"] = 1
+            stay["extraBedRate"] = 2400.0
+            stay["extraBedNights"] = 1
+            room["stay"] = db_mod._normalize_hotel_room_stay(stay)
+            db_mod.save_hotel_rooms_layout(conn, layout.get("floors") or [], rooms)
+            conn.commit()
+        finally:
+            conn.close()
+
+        stay_pending = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]["stay"]
+        self.assertEqual(float(stay_pending.get("extraBedAmount") or 0), 2400.0)
+        pending, lines = db_mod._hotel_pending_hotel_amount(stay_pending)
+        self.assertGreater(pending, 0.009)
+        self.assertTrue(any("Extra" in (row.get("label") or "") for row in lines))
+
+        blocked = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "checkout"},
+        )
+        self.assertEqual(blocked.status_code, 400, blocked.get_data(as_text=True))
+        self.assertIn("Additional Invoice", blocked.get_data(as_text=True))
+
+        gen2 = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "generate_invoice", "payment_splits": [], "invoice_kind": "hotel"},
+        )
+        self.assertEqual(gen2.status_code, 200, gen2.get_data(as_text=True))
+        stay2 = gen2.get_json()["room"]["stay"]
+        self.assertEqual(stay2["invoiceNumber"], hbe1)
+        self.assertEqual(float(stay2.get("hotelInvoicedExtraBedAmount") or 0), 2400.0)
+        hist = stay2.get("invoiceHistory") or []
+        hotel_hist = [e for e in hist if (e.get("kind") or "") == "hotel"]
+        self.assertGreaterEqual(len(hotel_hist), 2)
+
+        closed = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "checkout"},
+        )
+        self.assertEqual(closed.status_code, 200, closed.get_data(as_text=True))
+        self.assertEqual(closed.get_json()["room"]["status"], "dirty")
 
     def test_unmerge_primary_scope_one_shows_former_member(self):
         """Unmerge Room on the primary must not leave the member hidden on the board."""

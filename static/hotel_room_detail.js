@@ -1358,10 +1358,20 @@
       1,
       Number((stay && stay.billableNights) || bookedNights + overstayNights)
     );
+    /* Match backend: missing/zero night snapshot means "fully invoiced for nights". */
     var invoicedNights = Math.max(
       0,
       Math.floor(Number((stay && stay.hotelInvoicedBillableNights) || 0))
     );
+    if (invoicedNights <= 0) {
+      invoicedNights = billableNights;
+    }
+    var hasHotelSnap =
+      Number((stay && stay.hotelInvoicedBillableNights) || 0) > 0 ||
+      Number((stay && stay.hotelInvoicedEstimatedTotal) || 0) > 0 ||
+      Number((stay && stay.hotelInvoicedExtraBedAmount) || 0) > 0 ||
+      Number((stay && stay.hotelInvoicedEarlyCheckinAmount) || 0) > 0 ||
+      Number((stay && stay.hotelInvoicedLateCheckoutAmount) || 0) > 0;
     if (billableNights > invoicedNights) {
       var roomRate = Math.max(0, Number((stay && stay.roomRate) || 0));
       var primaryNightly = (stay && stay.nightlyRates) || [];
@@ -1390,7 +1400,10 @@
     ];
     snapFields.forEach(function (row) {
       var current = Math.round(Number((stay && stay[row[0]]) || 0) * 100) / 100;
-      var snap = Math.round(Number((stay && stay[row[1]]) || 0) * 100) / 100;
+      /* Legacy invoices without snapshots: do not invent pending extras. */
+      var snap = hasHotelSnap
+        ? Math.round(Number((stay && stay[row[1]]) || 0) * 100) / 100
+        : current;
       var delta = Math.round((current - snap) * 100) / 100;
       if (delta > 0.009) lines.push({ label: row[2], amount: delta });
     });
@@ -1400,6 +1413,12 @@
       if (!item || isFbTransferFolio(item) || folioLineInvoicedNo(item)) return;
       var amount = Number(item.amount || 0);
       if (!(amount > 0)) return;
+      /*
+       * Legacy / merge absorb lines may lack invoicedInvoiceNumber even though
+       * the HBE was minted covering them. When no hotel snapshots exist, treat
+       * pre-invoice folio as already billed so checkout is not blocked.
+       */
+      if (!hasHotelSnap) return;
       lines.push({
         label:
           typeof labelFn === 'function'
@@ -2055,7 +2074,12 @@
       mergeNums.length > 1 &&
       (stay.invoiceGenerated || stay.invoiceNumber || billedViaPrimary)
     );
-    if (isMember || billedViaPrimary || sharedMergeAlreadyInvoiced) {
+    /* Merged primary still needs Generate Additional when charges are pending. */
+    var mergeBlocksGenerate =
+      isMember ||
+      billedViaPrimary ||
+      (sharedMergeAlreadyInvoiced && !hasPending);
+    if (mergeBlocksGenerate) {
       if (genBtn) genBtn.hidden = true;
       if (genHotelBtn) {
         genHotelBtn.hidden = true;
@@ -2461,17 +2485,23 @@
     var stay = (room && room.stay) || null;
     if (!stay) return false;
     var mergeNums = Array.isArray(stay.mergeRoomNumbers) ? stay.mergeRoomNumbers : [];
+    var hotelHistory = invoiceHistoryEntries(stay).filter(function (entry) {
+      return entry.kind === 'hotel';
+    });
     if (
       (room && room.isMergeMember) ||
       stay.mergeRole === 'member' ||
       stay.billingRoomId ||
       stay.billedInvoiceGenerated ||
       stay.billedInvoiceNumber ||
-      (mergeNums.length > 1 && (stay.invoiceGenerated || stay.invoiceNumber))
+      (mergeNums.length > 1 &&
+        (stay.invoiceGenerated || stay.invoiceNumber || hotelHistory.length))
     ) {
       return false;
     }
-    if (!(stay.invoiceGenerated || stay.invoiceNumber)) return true;
+    if (!(stay.invoiceGenerated || stay.invoiceNumber || hotelHistory.length)) {
+      return true;
+    }
     return stayHasPendingCharges(stay, room);
   }
 
@@ -2500,9 +2530,31 @@
       showToast('Generate Invoice to check out', true);
       return;
     }
+    var stay = (lastRoom && lastRoom.stay) || null;
+    var hotelHistory = invoiceHistoryEntries(stay).filter(function (entry) {
+      return entry.kind === 'hotel';
+    });
+    var hasHotelInvoice = !!(
+      stay &&
+      (stay.invoiceGenerated ||
+        stay.invoiceNumber ||
+        stay.billedInvoiceGenerated ||
+        stay.billedInvoiceNumber ||
+        hotelHistory.length)
+    );
+    var needsAdditional = !!(hasHotelInvoice && stayHasPendingCharges(stay, lastRoom));
+    var titleEl = modal.querySelector('#hrd-checkout-invoice-title');
+    if (titleEl) {
+      titleEl.textContent = needsAdditional
+        ? 'Generate Additional Invoice to check out'
+        : 'Generate Invoice to check out';
+    }
     var go = $('#hrd-checkout-invoice-go', modal);
     var roomId = (root && root.getAttribute('data-room-id')) || '';
     if (go) {
+      go.textContent = needsAdditional
+        ? 'Generate Additional Invoice'
+        : 'Generate Invoice';
       go.setAttribute(
         'href',
         roomId
