@@ -65,7 +65,7 @@
         {% if error %}
           <div class="login-error">{{ error }}</div>
         {% endif %}
-        <div id="login-offline-notice" class="login-notice" hidden>You're offline. Reconnect to sign in.</div>
+        <div id="login-offline-notice" class="login-notice" hidden>You're offline. You can still sign in with your password on this device.</div>
 
         <form method="POST" action="{{ url_for('login') }}" class="login-form" autocomplete="on" id="login-form">
           <div class="form-group">
@@ -114,6 +114,7 @@
   </div>
 
   <script src="{{ url_for('static', filename='de_pwa.js') }}?v=12"></script>
+  <script src="{{ url_for('static', filename='offline_auth.js') }}?v=1"></script>
   <script>
   (function(){
     var eye = document.getElementById('login-toggle-password');
@@ -137,39 +138,9 @@
 
     var notice = document.getElementById('login-offline-notice');
     var form = document.getElementById('login-form');
-    var OFFLINE_MSG = "You're offline. Reconnect to sign in.";
-
-    function isOffline() {
-      return typeof navigator !== 'undefined' && navigator.onLine === false;
+    if (window.HbeOfflineAuth && form) {
+      window.HbeOfflineAuth.bindLoginForm(form, { noticeEl: notice });
     }
-
-    function showOfflineNotice() {
-      if (!notice) return;
-      notice.textContent = OFFLINE_MSG;
-      notice.hidden = false;
-    }
-
-    function hideOfflineNotice() {
-      if (!notice) return;
-      /* Keep server-rendered notices; only clear our offline banner text. */
-      if (notice.textContent === OFFLINE_MSG) notice.hidden = true;
-    }
-
-    function syncOfflineBanner() {
-      if (isOffline()) showOfflineNotice();
-      else hideOfflineNotice();
-    }
-
-    if (form) {
-      form.addEventListener('submit', function (event) {
-        if (!isOffline()) return;
-        event.preventDefault();
-        showOfflineNotice();
-      });
-    }
-    window.addEventListener('offline', syncOfflineBanner);
-    window.addEventListener('online', syncOfflineBanner);
-    syncOfflineBanner();
   })();
   </script>
 </body>
