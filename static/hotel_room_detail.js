@@ -1110,15 +1110,31 @@
         : Math.round(roomRate * Math.max(0, billableNights - bookedNights) * 100) /
           100;
     var lines = [];
+    var isMergePrimary =
+      !!(room && room.isMergePrimary) ||
+      String((stay && stay.mergeRole) || '').toLowerCase() === 'primary';
+    var isMergeMember =
+      !!(room && room.isMergeMember) ||
+      String((stay && stay.mergeRole) || '').toLowerCase() === 'member' ||
+      !!(stay && stay.billingRoomId);
+    var mergeBillView = isMergePrimary || isMergeMember || mergeRates.length > 1;
     if (bookedCharges > 0) {
       var roomLabel = 'Room Charges';
-      var isMergePrimary =
-        !!(room && room.isMergePrimary) ||
-        String((stay && stay.mergeRole) || '').toLowerCase() === 'primary';
       var roomNumber = String(
         (room && (room.number || room.roomNumber)) || ''
       ).trim();
-      if (isMergePrimary && roomNumber) {
+      var primaryNumber = String(
+        (primaryMerge && (primaryMerge.number || primaryMerge.roomNumber)) ||
+          (room && room.billingRoomNumber) ||
+          (stay && stay.billingRoomNumber) ||
+          ''
+      ).trim();
+      if (mergeBillView) {
+        var labelNum = isMergePrimary ? roomNumber : primaryNumber || roomNumber;
+        if (labelNum) {
+          roomLabel = 'Room ' + labelNum + ' — stay charges';
+        }
+      } else if (isMergePrimary && roomNumber) {
         roomLabel = 'Room ' + roomNumber + ' — stay charges';
       }
       lines.push({ label: roomLabel, amount: bookedCharges });
@@ -1150,10 +1166,10 @@
       if (!(amount > 0)) return;
       var src = String(item.source || '');
       if (src === 'merged_room_rate' || src === 'room_merge') {
-        var mergedNow =
-          !!(room && room.isMergePrimary) ||
-          String((stay && stay.mergeRole) || '').toLowerCase() === 'primary';
-        if (!mergedNow) return;
+        /*
+         * Members overlay the primary folio — always show absorb / merged-rate
+         * lines so Estimated Charges match the shared total on every room.
+         */
         var override = mergeChargesFor(
           item.sourceRoomId,
           item.sourceRoomNumber
@@ -1557,9 +1573,26 @@
         if (discount > subtotal) discount = subtotal;
       }
     }
-    /* Prefer live recompute so overstay nights update even if stay payload is stale. */
+    /* Prefer live recompute so overstay nights update even if stay payload is stale.
+       For merge bills, always use the inclusive line sum so Estimated Total matches
+       the visible Room 207/306/… stay-charge rows (members overlay the shared folio). */
+    var folio = Array.isArray(stay && stay.folioCharges) ? stay.folioCharges : [];
+    var hasMergeFolio = folio.some(function (item) {
+      if (!item) return false;
+      var src = String(item.source || '');
+      return src === 'merged_room_rate' || src === 'room_merge';
+    });
+    var mergeBill =
+      hasMergeFolio ||
+      (Array.isArray(stay && stay.mergeRoomRates) && stay.mergeRoomRates.length > 1) ||
+      !!(room && (room.isMergePrimary || room.isMergeMember)) ||
+      String((stay && stay.mergeRole) || '').toLowerCase() === 'primary' ||
+      String((stay && stay.mergeRole) || '').toLowerCase() === 'member' ||
+      !!(stay && stay.billingRoomId);
     var estimated = computedEstimated;
+    var estimatedFromLines = mergeBill;
     if (
+      !estimatedFromLines &&
       stay &&
       stay.estimatedTotal != null &&
       !stay.independentBilling &&
@@ -1570,6 +1603,7 @@
     var advance = Math.max(0, Number((stay && stay.advancePaid) || 0));
     var balance = Math.max(0, Math.round((estimated - advance) * 100) / 100);
     if (
+      !estimatedFromLines &&
       stay &&
       stay.balanceAmount != null &&
       !(Number(stay.overstayNights) > 0 || overstayNightsFromStay(stay) > 0)
@@ -4196,7 +4230,7 @@
 
   function collectMergeRoomRates(form) {
     if (!form) return [];
-    return $all('.hrd-ci-rate-room', form).map(function (row) {
+    var fromForm = $all('.hrd-ci-rate-room', form).map(function (row) {
       var nightly = collectNightlyRatesFromRoomEl(row);
       var rateEl = row.querySelector('[data-merge-room-rate]');
       var planEl = row.querySelector('[data-merge-rate-plan]');
@@ -4218,6 +4252,45 @@
         isPrimary: row.getAttribute('data-merge-primary') === '1'
       };
     });
+    /*
+     * Member edit UI only lists this room. Keep other merge rooms' rates from
+     * the live stay so the primary bill does not drop sibling tariffs.
+     */
+    var existing =
+      (lastRoom &&
+        lastRoom.stay &&
+        Array.isArray(lastRoom.stay.mergeRoomRates) &&
+        lastRoom.stay.mergeRoomRates) ||
+      [];
+    if (!existing.length || !fromForm.length) return fromForm;
+    var byId = {};
+    var byNum = {};
+    existing.forEach(function (row, idx) {
+      if (!row) return;
+      if (row.roomId) byId[String(row.roomId)] = idx;
+      if (row.number) byNum[String(row.number)] = idx;
+    });
+    var merged = existing.map(function (row) {
+      return Object.assign({}, row || {});
+    });
+    fromForm.forEach(function (row) {
+      if (!row) return;
+      var idx = -1;
+      if (row.roomId && Object.prototype.hasOwnProperty.call(byId, String(row.roomId))) {
+        idx = byId[String(row.roomId)];
+      } else if (
+        row.number &&
+        Object.prototype.hasOwnProperty.call(byNum, String(row.number))
+      ) {
+        idx = byNum[String(row.number)];
+      }
+      if (idx < 0) {
+        merged.push(row);
+        return;
+      }
+      merged[idx] = Object.assign({}, merged[idx], row);
+    });
+    return merged;
   }
 
   function applyNightlyRowLocks(form) {
@@ -9880,15 +9953,27 @@
       mergeRoomRates: collectMergeRoomRates(form),
       nightlyRates: (function () {
         var rows = collectMergeRoomRates(form);
+        var formNightly = null;
+        for (var i = 0; i < rows.length; i++) {
+          if (
+            rows[i] &&
+            lastRoom &&
+            String(rows[i].roomId || '') === String(lastRoom.id || '')
+          ) {
+            formNightly = rows[i].nightlyRates || null;
+            break;
+          }
+        }
         if (lastRoom && lastRoom.isMergeMember) {
+          if (formNightly && formNightly.length) return formNightly;
           return Array.isArray(lastRoom.stay && lastRoom.stay.nightlyRates)
             ? lastRoom.stay.nightlyRates
             : [];
         }
         var primary = null;
-        for (var i = 0; i < rows.length; i++) {
-          if (rows[i] && rows[i].isPrimary) {
-            primary = rows[i];
+        for (var j = 0; j < rows.length; j++) {
+          if (rows[j] && rows[j].isPrimary) {
+            primary = rows[j];
             break;
           }
         }

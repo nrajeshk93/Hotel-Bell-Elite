@@ -13817,12 +13817,78 @@ def _hotel_lock_invoiced_snapshots_to_current(stay):
     return out
 
 
-def _hotel_sync_merge_group_shared_data(rooms, tariff_rates=None):
+def _hotel_upsert_merge_rate_rows(existing_rows, incoming_rows):
+    """Merge incoming mergeRoomRates into existing rows by roomId / number."""
+    out = []
+    index_by_id = {}
+    index_by_num = {}
+    for row in existing_rows or []:
+        if not isinstance(row, dict):
+            continue
+        copy = dict(row)
+        out.append(copy)
+        rid = str(copy.get("roomId") or "").strip()
+        num = str(copy.get("number") or "").strip()
+        if rid:
+            index_by_id[rid] = len(out) - 1
+        if num:
+            index_by_num[num] = len(out) - 1
+    for row in incoming_rows or []:
+        if not isinstance(row, dict):
+            continue
+        rid = str(row.get("roomId") or "").strip()
+        num = str(row.get("number") or "").strip()
+        idx = None
+        if rid and rid in index_by_id:
+            idx = index_by_id[rid]
+        elif num and num in index_by_num:
+            idx = index_by_num[num]
+        if idx is None:
+            copy = dict(row)
+            out.append(copy)
+            if rid:
+                index_by_id[rid] = len(out) - 1
+            if num:
+                index_by_num[num] = len(out) - 1
+            continue
+        merged = dict(out[idx])
+        for key, value in row.items():
+            if key == "nightlyRates":
+                if isinstance(value, list) and value:
+                    merged["nightlyRates"] = list(value)
+                continue
+            if value in (None, "", [], {}):
+                continue
+            merged[key] = value
+        # Prefer explicit roomRate / first nightly when provided.
+        try:
+            rate = float(row.get("roomRate")) if row.get("roomRate") is not None else None
+        except (TypeError, ValueError):
+            rate = None
+        if rate is not None:
+            merged["roomRate"] = max(0.0, rate)
+            nightly = merged.get("nightlyRates")
+            if isinstance(nightly, list) and nightly and isinstance(nightly[0], dict):
+                first = dict(nightly[0])
+                first["roomRate"] = merged["roomRate"]
+                if row.get("ratePlan"):
+                    first["ratePlan"] = row.get("ratePlan")
+                nightly = list(nightly)
+                nightly[0] = first
+                merged["nightlyRates"] = nightly
+        out[idx] = merged
+    return out
+
+
+def _hotel_sync_merge_group_shared_data(rooms, tariff_rates=None, rate_source_room_id=None):
     """Keep bill money on the primary; do not overwrite each room's own guest.
 
     Folio/payments stay on the billing primary; members keep mergeRole and
     billingRoomId. Occupancy, checkedInAt, and guest identity stay on each
     room. Empty merge shells still inherit the primary guest for display.
+
+    rate_source_room_id: when set (check-in/edit save), only that room's
+    mergeRoomRates are folded onto the primary so sibling edits don't clobber.
     """
     if not isinstance(rooms, list):
         return
@@ -13933,9 +13999,42 @@ def _hotel_sync_merge_group_shared_data(rooms, tariff_rates=None):
             room["mergePrimary"] = False
             room["mergeGroupId"] = primary.get("mergeGroupId")
 
+        # Fold rate edits only when a specific room was just saved. Layout heal /
+        # merge (rate_source_room_id=None) must not re-apply stale member
+        # mergeRoomRates and clobber the primary bill.
+        folded_rates = list(primary_stay.get("mergeRoomRates") or [])
+        source_id = str(rate_source_room_id or "").strip()
+        if source_id:
+            for room in peers:
+                rid = str(room.get("id") or "").strip()
+                if rid and rid != source_id and rid != str(primary.get("id") or ""):
+                    continue
+                mstay = room.get("stay") if isinstance(room.get("stay"), dict) else {}
+                peer_rows = mstay.get("mergeRoomRates") or []
+                if isinstance(peer_rows, list) and peer_rows:
+                    folded_rates = _hotel_upsert_merge_rate_rows(folded_rates, peer_rows)
+            primary_stay["mergeRoomRates"] = folded_rates
+            primary["stay"] = primary_stay
+
         _hotel_sync_merged_room_rate_folio(
             primary, rooms, tariff_rates=tariff_rates
         )
+
+        # Members read mergeRoomRates via overlay — clear stored copies so a later
+        # heal cannot re-fold stale partial lists onto the primary.
+        primary_rates = list((primary.get("stay") or {}).get("mergeRoomRates") or [])
+        for room in peers:
+            if room.get("id") == primary.get("id"):
+                continue
+            mstay = room.get("stay") if isinstance(room.get("stay"), dict) else None
+            if not isinstance(mstay, dict):
+                continue
+            if mstay.get("mergeRoomRates"):
+                mstay = dict(mstay)
+                mstay["mergeRoomRates"] = []
+                room["stay"] = mstay
+        if primary_rates and isinstance(primary.get("stay"), dict):
+            primary["stay"]["mergeRoomRates"] = primary_rates
 
 
 def _hotel_overlay_merge_shared_bill_view(room, rooms):
@@ -16228,7 +16327,9 @@ def save_hotel_room_checkin(conn, room_id, stay, status="occupied"):
     if not found:
         raise ValueError("Room not found.")
     _hotel_sync_merge_group_shared_data(
-        rooms, tariff_rates=get_hotel_tariff_rates(conn)
+        rooms,
+        tariff_rates=get_hotel_tariff_rates(conn),
+        rate_source_room_id=target,
     )
     if normalized_stay:
         # Prefer the post-sync stay on the target room for guest profile save.
@@ -18327,7 +18428,27 @@ def _hotel_sync_merged_room_rate_folio(primary, rooms, tariff_rates=None):
         if not mid:
             continue
         if _has_absorb(mid):
-            # Occupied absorb already billed this room — remove any auto rate line.
+            # Occupied absorb already billed this room — refresh amount only when
+            # mergeRoomRates carry a real tariff; otherwise keep the absorb line.
+            number = str(member.get("number") or "").strip() or mid
+            member_row = _lookup_saved_row(mid, number)
+            amount = _row_charges(member_row, _nightly_rate_for(member))
+            absorb_idx = -1
+            for idx, line in enumerate(folio):
+                if not isinstance(line, dict):
+                    continue
+                if str(line.get("source") or "") != "room_merge":
+                    continue
+                if str(line.get("sourceRoomId") or "").strip() != mid:
+                    continue
+                absorb_idx = idx
+                break
+            if absorb_idx >= 0 and amount > 0.009:
+                line = dict(folio[absorb_idx])
+                line["label"] = f"Room {number} — stay charges"
+                line["amount"] = amount
+                line["sourceRoomNumber"] = number
+                folio[absorb_idx] = line
             idx = _find_rate_line_index(mid)
             if idx >= 0:
                 folio.pop(idx)

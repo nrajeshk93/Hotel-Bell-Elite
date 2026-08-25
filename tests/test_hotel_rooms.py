@@ -4162,6 +4162,204 @@ class HotelRoomsTests(unittest.TestCase):
             float(primary["stay"].get("estimatedTotal") or 0), 15000.0, places=2
         )
 
+    def test_member_rate_edit_updates_absorb_folio_and_total(self):
+        """Editing a merged member tariff must refresh the primary absorb line."""
+        check_in, check_out = self._stay_window(nights=1)
+        self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Pri",
+                    "lastName": "Mary",
+                    "mobile": "9000000207",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 1,
+                    "roomRate": 12600,
+                    "advancePaid": 0,
+                },
+            },
+        )
+        self.client.put(
+            "/hotel/api/rooms/room-102",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Mem",
+                    "lastName": "Ber",
+                    "mobile": "9000000307",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 1,
+                    "roomRate": 4200,
+                    "advancePaid": 0,
+                },
+            },
+        )
+        merged = self.client.put(
+            "/hotel/api/rooms/room-102",
+            json={
+                "action": "merge_rooms",
+                "fromRoomId": "room-102",
+                "toRoomId": "room-101",
+            },
+        )
+        self.assertEqual(merged.status_code, 200, merged.get_data(as_text=True))
+        primary = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]
+        absorb = [
+            f
+            for f in (primary["stay"].get("folioCharges") or [])
+            if f.get("source") == "room_merge"
+            and str(f.get("sourceRoomId") or "") == "room-102"
+        ]
+        self.assertEqual(len(absorb), 1, primary["stay"].get("folioCharges"))
+        self.assertAlmostEqual(float(absorb[0].get("amount") or 0), 4200.0, places=2)
+
+        # Member edit form typically sends only this room's rate row.
+        edited = self.client.put(
+            "/hotel/api/rooms/room-102",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Mem",
+                    "lastName": "Ber",
+                    "mobile": "9000000307",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 1,
+                    "roomRate": 1,
+                    "ratePlan": "MAP",
+                    "mergeRoomRates": [
+                        {
+                            "roomId": "room-102",
+                            "number": "102",
+                            "roomType": "premium_without_balcony",
+                            "ratePlan": "MAP",
+                            "roomRate": 1,
+                            "isPrimary": False,
+                            "nightlyRates": [
+                                {"date": check_in, "roomRate": 1, "ratePlan": "MAP"}
+                            ],
+                        }
+                    ],
+                    "nightlyRates": [
+                        {"date": check_in, "roomRate": 1, "ratePlan": "MAP"}
+                    ],
+                    "advancePaid": 0,
+                },
+            },
+        )
+        self.assertEqual(edited.status_code, 200, edited.get_data(as_text=True))
+
+        primary_after = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]
+        absorb_after = [
+            f
+            for f in (primary_after["stay"].get("folioCharges") or [])
+            if f.get("source") == "room_merge"
+            and str(f.get("sourceRoomId") or "") == "room-102"
+        ]
+        self.assertEqual(len(absorb_after), 1, primary_after["stay"].get("folioCharges"))
+        self.assertAlmostEqual(float(absorb_after[0].get("amount") or 0), 1.0, places=2)
+        by_num = {
+            str(r.get("number") or ""): r
+            for r in (primary_after["stay"].get("mergeRoomRates") or [])
+        }
+        self.assertAlmostEqual(float(by_num["102"]["roomRate"]), 1.0, places=2)
+        self.assertAlmostEqual(
+            float(primary_after["stay"].get("estimatedTotal") or 0), 12601.0, places=2
+        )
+
+    def test_merge_estimated_total_parity_primary_and_member_overlay(self):
+        """Primary and member overlay must share folio + estimatedTotal after merge."""
+        check_in, check_out = self._stay_window(nights=1)
+        self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Pri",
+                    "lastName": "Mary",
+                    "mobile": "9000000208",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 1,
+                    "roomRate": 4200,
+                    "advancePaid": 0,
+                },
+            },
+        )
+        self.client.put(
+            "/hotel/api/rooms/room-102",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Mem",
+                    "lastName": "Ber",
+                    "mobile": "9000000308",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 1,
+                    "roomRate": 4200,
+                    "advancePaid": 0,
+                },
+            },
+        )
+        merged = self.client.put(
+            "/hotel/api/rooms/room-102",
+            json={
+                "action": "merge_rooms",
+                "fromRoomId": "room-102",
+                "toRoomId": "room-101",
+            },
+        )
+        self.assertEqual(merged.status_code, 200, merged.get_data(as_text=True))
+
+        primary = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]
+        member = self.client.get("/hotel/api/rooms/room-102").get_json()["room"]
+        pstay = primary["stay"]
+        mstay = member["stay"]
+
+        absorb = [
+            f
+            for f in (pstay.get("folioCharges") or [])
+            if f.get("source") == "room_merge"
+            and str(f.get("sourceRoomId") or "") == "room-102"
+        ]
+        self.assertEqual(len(absorb), 1, pstay.get("folioCharges"))
+        absorb_amt = float(absorb[0].get("amount") or 0)
+        primary_rate = float(pstay.get("roomRate") or 0)
+        nights = max(1, int(float(pstay.get("nights") or 1)))
+        expected = round(primary_rate * nights + absorb_amt, 2)
+        self.assertAlmostEqual(float(pstay.get("estimatedTotal") or 0), expected, places=2)
+
+        self.assertEqual(mstay.get("mergeRole"), "member")
+        self.assertEqual(mstay.get("billingRoomId"), "room-101")
+        self.assertAlmostEqual(
+            float(mstay.get("estimatedTotal") or 0),
+            float(pstay.get("estimatedTotal") or 0),
+            places=2,
+        )
+        self.assertEqual(
+            [
+                (f.get("source"), f.get("sourceRoomId"), float(f.get("amount") or 0))
+                for f in (mstay.get("folioCharges") or [])
+                if str(f.get("source") or "") in ("room_merge", "merged_room_rate")
+            ],
+            [
+                (f.get("source"), f.get("sourceRoomId"), float(f.get("amount") or 0))
+                for f in (pstay.get("folioCharges") or [])
+                if str(f.get("source") or "") in ("room_merge", "merged_room_rate")
+            ],
+        )
+        # FE contract: member overlay includes absorb labels for Estimated Charges.
+        absorb_labels = [
+            str(f.get("label") or "")
+            for f in (mstay.get("folioCharges") or [])
+            if f.get("source") == "room_merge"
+        ]
+        self.assertTrue(any("102" in label for label in absorb_labels), absorb_labels)
+
     def test_merge_allows_any_rooms_without_stay(self):
         """Vacant / status-only rooms can join a billing merge group."""
         merged = self.client.put(
