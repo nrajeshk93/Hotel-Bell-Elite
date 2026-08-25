@@ -49,6 +49,8 @@ _SPC_FY_ORDER_RE = re.compile(r"^SPC/(\d{2}-\d{2})/(\d+)$", re.IGNORECASE)
 _SPC_NILL_FY_ORDER_RE = re.compile(r"^SPC/(\d{2}-\d{2})/Nill/(\d+)$", re.IGNORECASE)
 _SPC_LEGACY_LONG_FY_ORDER_RE = re.compile(r"^SPC/(\d+)/(\d{4}-\d{2})$", re.IGNORECASE)
 _SPC_LEGACY_ORDER_RE = re.compile(r"^SPC/(\d+)$", re.IGNORECASE)
+_KOT_SPC_FY_RE = re.compile(r"^KOT/SPC/(\d{2}-\d{2})/(\d+)$", re.IGNORECASE)
+_KOT_INV_FY_RE = re.compile(r"^KOT/INV/(\d{2}-\d{2})/(\d+)$", re.IGNORECASE)
 _INV_FY_ORDER_RE = re.compile(r"^INV/(\d{2}-\d{2})/(\d+)$", re.IGNORECASE)
 _INV_NILL_FY_ORDER_RE = re.compile(r"^INV/(\d{2}-\d{2})/Nill/(\d+)$", re.IGNORECASE)
 _INV_LEGACY_LONG_FY_ORDER_RE = re.compile(r"^INV/(\d+)/(\d{4}-\d{2})$", re.IGNORECASE)
@@ -366,6 +368,118 @@ def allocate_pos_bar_order_no(conn, order_date=None, nil_tax=False):
         if not _pos_order_no_taken(conn, candidate, outlet=POS_OUTLET_BAR):
             return candidate
     raise ValueError("Unable to allocate a bar invoice number.")
+
+
+def pos_kot_display_no(order_no, kot_no=""):
+    """Kitchen token display number: prefer stored series, else KOT/… from order_no.
+
+    Official series is KOT/SPC/{yy-yy}/{n} (Restaurant) or KOT/INV/{yy-yy}/{n} (Bar).
+    Legacy ORD- / KOT- prefixes are normalized to KOT/.
+    """
+    stored = " ".join(str(kot_no or "").split()).strip()
+    if stored:
+        return stored
+    text = " ".join(str(order_no or "").split()).strip()
+    if not text:
+        return ""
+    upper = text.upper()
+    if upper.startswith("KOT/"):
+        return text
+    if upper.startswith("KOT-"):
+        return "KOT/" + text[4:]
+    if upper.startswith("ORD-"):
+        return "KOT/" + text[4:]
+    return "KOT/" + text
+
+
+def _next_pos_kot_seq(conn, brand, fiscal_year):
+    """Next unused n for KOT/{brand}/{yy-yy}/{n}."""
+    short_fy = indian_fiscal_year_short_label(fiscal_year)
+    brand = str(brand or "SPC").strip().upper() or "SPC"
+    fy_re = _KOT_INV_FY_RE if brand == "INV" else _KOT_SPC_FY_RE
+    used = set()
+    rows = conn.execute(
+        """
+        SELECT kot_no
+        FROM pos_invoices
+        WHERE upper(TRIM(COALESCE(kot_no, ''))) LIKE ?
+        """,
+        (f"KOT/{brand}/%",),
+    ).fetchall()
+    for row in rows:
+        value = str(row["kot_no"] or "").strip()
+        match = fy_re.match(value)
+        if match and match.group(1) == short_fy:
+            try:
+                used.add(int(match.group(2)))
+            except (TypeError, ValueError):
+                pass
+    n = 1
+    while n in used:
+        n += 1
+    return n
+
+
+def allocate_pos_kot_no(conn, outlet=None, order_date=None):
+    """Allocate KOT/SPC|{INV}/{yy-yy}/{n} for the first kitchen send."""
+    outlet_norm = normalize_pos_outlet(outlet)
+    brand = "INV" if outlet_norm == POS_OUTLET_BAR else "SPC"
+    fy = indian_fiscal_year_label(order_date)
+    short_fy = indian_fiscal_year_short_label(fy)
+    for _ in range(10000):
+        seq = _next_pos_kot_seq(conn, brand, fy)
+        candidate = f"KOT/{brand}/{short_fy}/{seq}"
+        taken = conn.execute(
+            """
+            SELECT id FROM pos_invoices
+            WHERE upper(TRIM(COALESCE(kot_no, ''))) = upper(?)
+            LIMIT 1
+            """,
+            (candidate,),
+        ).fetchone()
+        if not taken:
+            return candidate
+    raise ValueError("Unable to allocate a kitchen order token number.")
+
+
+def ensure_pos_invoice_kot_no(conn, invoice_id, *, outlet=None, order_date=None):
+    """Persist a KOT series number on first kitchen send (idempotent)."""
+    ensure_pos_schema(conn)
+    try:
+        invoice_id = int(invoice_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid invoice id.") from exc
+    row = conn.execute(
+        """
+        SELECT kot_no, outlet, order_date, order_no, first_kot_at
+        FROM pos_invoices
+        WHERE id = ?
+        """,
+        (invoice_id,),
+    ).fetchone()
+    if not row:
+        raise ValueError("Invoice not found.")
+    existing = " ".join(str(row["kot_no"] or "").split()).strip()
+    if existing:
+        return existing
+    keys = row.keys()
+    use_outlet = outlet
+    if use_outlet is None and "outlet" in keys:
+        use_outlet = row["outlet"]
+    use_date = order_date
+    if use_date is None and "order_date" in keys:
+        use_date = row["order_date"] or None
+    kot_no = allocate_pos_kot_no(conn, outlet=use_outlet, order_date=use_date)
+    conn.execute(
+        f"""
+        UPDATE pos_invoices
+        SET kot_no = ?,
+            updated_at = {SQL_NOW}
+        WHERE id = ?
+        """,
+        (kot_no, invoice_id),
+    )
+    return kot_no
 
 
 def resolve_pos_outlets(outlet=None, outlets=None):
@@ -727,6 +841,10 @@ def ensure_pos_schema(conn):
         cursor.execute("ALTER TABLE pos_invoices ADD COLUMN kot_sent INTEGER NOT NULL DEFAULT 0")
     if "first_kot_at" not in invoice_cols:
         cursor.execute("ALTER TABLE pos_invoices ADD COLUMN first_kot_at TEXT NOT NULL DEFAULT ''")
+    if "kot_no" not in invoice_cols:
+        cursor.execute(
+            "ALTER TABLE pos_invoices ADD COLUMN kot_no TEXT NOT NULL DEFAULT ''"
+        )
     if "customer_bill_sent" not in invoice_cols:
         cursor.execute(
             "ALTER TABLE pos_invoices ADD COLUMN customer_bill_sent INTEGER NOT NULL DEFAULT 0"
@@ -3586,6 +3704,7 @@ def _pos_invoice_row_to_dict(conn, row, *, include_lines=False):
         "status": row["status"] or "open",
         "kot_sent": bool(row["kot_sent"]),
         "first_kot_at": row["first_kot_at"] or "",
+        "kot_no": (row["kot_no"] or "").strip() if "kot_no" in row.keys() else "",
         "customer_bill_sent": bool(row["customer_bill_sent"]) if "customer_bill_sent" in row.keys() else False,
         "customer_bill_at": (row["customer_bill_at"] or "") if "customer_bill_at" in row.keys() else "",
         "cancel_reason": (row["cancel_reason"] or "") if "cancel_reason" in row.keys() else "",
@@ -4483,6 +4602,7 @@ def list_pos_kot_pending_summary(conn, outlet=POS_OUTLET_RESTAURANT):
             i.saved_at AS saved_at,
             i.updated_at AS updated_at,
             i.first_kot_at AS first_kot_at,
+            COALESCE(i.kot_no, '') AS kot_no,
             COUNT(l.id) AS pending_items,
             COALESCE(SUM(l.qty - COALESCE(l.sent_qty, 0)), 0) AS pending_qty
         FROM pos_invoices i
@@ -4494,7 +4614,7 @@ def list_pos_kot_pending_summary(conn, outlet=POS_OUTLET_RESTAURANT):
           AND i.order_type = 'dine_in'
           AND i.outlet = ?
           AND TRIM(COALESCE(i.table_label, '')) != ''
-        GROUP BY i.id, i.order_no, i.table_label, i.saved_at, i.updated_at, i.first_kot_at
+        GROUP BY i.id, i.order_no, i.table_label, i.saved_at, i.updated_at, i.first_kot_at, i.kot_no
         ORDER BY i.id ASC
         """,
         (outlet,),
@@ -4514,11 +4634,7 @@ def list_pos_kot_pending_summary(conn, outlet=POS_OUTLET_RESTAURANT):
             seats = None
         table_status = str(floor.get("status") or "available").strip().lower() or "available"
         order_no = (row["order_no"] or "").strip()
-        kot_no = order_no
-        if kot_no.upper().startswith("ORD-"):
-            kot_no = "KOT-" + kot_no[4:]
-        elif kot_no and not kot_no.upper().startswith("KOT-"):
-            kot_no = "KOT-" + kot_no
+        kot_no = pos_kot_display_no(order_no, row["kot_no"] if "kot_no" in row.keys() else "")
         first_kot = (row["first_kot_at"] or "").strip()
         saved_at = (row["saved_at"] or "").strip()
         updated_at = (row["updated_at"] or "").strip()
@@ -4557,7 +4673,7 @@ def send_pos_invoice_pending_kot(conn, invoice_id):
 
     row = conn.execute(
         """
-        SELECT id, order_no, table_label, order_type, kot_sent, first_kot_at, status, outlet
+        SELECT id, order_no, table_label, order_type, kot_sent, first_kot_at, kot_no, status, outlet, order_date
         FROM pos_invoices
         WHERE id = ? AND is_active = 1
         """,
@@ -4587,7 +4703,8 @@ def send_pos_invoice_pending_kot(conn, invoice_id):
         )
 
     first_kot_at = (row["first_kot_at"] or "").strip()
-    if not first_kot_at:
+    is_first_kot = not first_kot_at
+    if is_first_kot:
         first_kot_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
         f"""
@@ -4599,6 +4716,13 @@ def send_pos_invoice_pending_kot(conn, invoice_id):
         """,
         (first_kot_at, invoice_id),
     )
+    if is_first_kot or not str(row["kot_no"] or "").strip():
+        ensure_pos_invoice_kot_no(
+            conn,
+            invoice_id,
+            outlet=row["outlet"] if "outlet" in row.keys() else None,
+            order_date=row["order_date"] if "order_date" in row.keys() else None,
+        )
 
     table_label = (row["table_label"] or "").strip()
     order_type = _normalize_pos_order_type(row["order_type"])
@@ -4638,6 +4762,7 @@ def list_pos_kot_tokens(conn, outlet=POS_OUTLET_RESTAURANT):
             i.updated_at AS updated_at,
             COALESCE(i.customer_bill_sent, 0) AS customer_bill_sent,
             COALESCE(i.customer_bill_at, '') AS customer_bill_at,
+            COALESCE(i.kot_no, '') AS kot_no,
             COUNT(l.id) AS sent_items,
             COALESCE(SUM(COALESCE(l.sent_qty, 0)), 0) AS sent_qty
         FROM pos_invoices i
@@ -4654,7 +4779,7 @@ def list_pos_kot_tokens(conn, outlet=POS_OUTLET_RESTAURANT):
         GROUP BY
             i.id, i.order_no, i.table_label, i.order_type,
             i.first_kot_at, i.saved_at, i.updated_at,
-            i.customer_bill_sent, i.customer_bill_at
+            i.customer_bill_sent, i.customer_bill_at, i.kot_no
         ORDER BY i.table_label ASC, i.id ASC
         """,
         (outlet,),
@@ -4671,13 +4796,12 @@ def list_pos_kot_tokens(conn, outlet=POS_OUTLET_RESTAURANT):
             seats = None
         table_status = str(floor.get("status") or "occupied").strip().lower() or "occupied"
         order_no = (row["order_no"] or "").strip()
-        kot_no = order_no
-        if kot_no.upper().startswith("ORD-"):
-            kot_no = "KOT-" + kot_no[4:]
-        elif kot_no and not kot_no.upper().startswith("KOT-"):
-            kot_no = "KOT-" + kot_no
-        sent_at = (row["first_kot_at"] or row["updated_at"] or row["saved_at"] or "").strip()
+        stored_kot = (row["kot_no"] or "").strip() if "kot_no" in row.keys() else ""
         invoice_id = int(row["invoice_id"])
+        if not stored_kot and (row["first_kot_at"] or "").strip():
+            stored_kot = ensure_pos_invoice_kot_no(conn, invoice_id, outlet=outlet)
+        kot_no = pos_kot_display_no(order_no, stored_kot)
+        sent_at = (row["first_kot_at"] or row["updated_at"] or row["saved_at"] or "").strip()
         line_rows = conn.execute(
             """
             SELECT
@@ -4737,18 +4861,23 @@ def list_pos_kot_tokens(conn, outlet=POS_OUTLET_RESTAURANT):
     }
 
 
-def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, created_by=""):
-    """Reduce kitchen-sent quantities from the Tables KOT hub and sync the bill.
+def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, created_by="", reason=""):
+    """Adjust kitchen-sent quantities from the Tables KOT hub and sync the bill.
 
     ``changes`` is a list of {invoice_id, line_id, sent_qty} where sent_qty is the
-    new kitchen-sent amount (0 removes that sent portion / line when qty hits 0).
-    Requires Cancellation (allow_kot_cancel=True).
+    new kitchen-sent amount (0 removes that sent portion / line when qty hits 0;
+    values above the previous sent qty increase both kitchen-sent and bill qty).
+    Requires Cancellation (allow_kot_cancel=True). A non-empty reason is required
+    only when any line is reduced (or the order is fully cancelled).
     """
     ensure_pos_schema(conn)
     if not allow_kot_cancel:
-        raise ValueError("Cancellation is required to reduce kitchen-sent items.")
+        raise ValueError("Cancellation is required to edit kitchen-sent items.")
     if not isinstance(changes, list) or not changes:
         raise ValueError("No quantity changes to save.")
+    reason_text = " ".join(str(reason or "").split()).strip()
+    if len(reason_text) > 500:
+        reason_text = reason_text[:500]
 
     by_invoice = {}
     for raw in changes:
@@ -4770,6 +4899,27 @@ def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, cre
     if not by_invoice:
         raise ValueError("No quantity changes to save.")
 
+    # Detect reductions against current DB state so reason rules are accurate.
+    has_reduction = False
+    for invoice_id, line_map in by_invoice.items():
+        invoice = get_pos_invoice(conn, invoice_id)
+        if not invoice:
+            raise ValueError(f"Invoice #{invoice_id} not found.")
+        for line in invoice.get("lines") or []:
+            lid = int(line.get("id") or 0)
+            if lid not in line_map:
+                continue
+            old_sent = _pos_money(line.get("sent_qty"))
+            new_sent = _pos_money(line_map[lid])
+            if new_sent + 1e-9 < old_sent:
+                has_reduction = True
+                break
+        if has_reduction:
+            break
+
+    if has_reduction and not reason_text:
+        raise ValueError("Enter a reason for reducing or cancelling kitchen items.")
+
     updated = []
     for invoice_id, line_map in by_invoice.items():
         invoice = get_pos_invoice(conn, invoice_id)
@@ -4784,6 +4934,7 @@ def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, cre
 
         next_lines = []
         changed = False
+        invoice_has_reduction = False
         for line in invoice.get("lines") or []:
             lid = int(line.get("id") or 0)
             old_sent = _pos_money(line.get("sent_qty"))
@@ -4803,9 +4954,7 @@ def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, cre
                 )
                 continue
             new_sent = _pos_money(line_map[lid])
-            if new_sent > old_sent:
-                new_sent = old_sent
-            if new_sent + 1e-9 >= old_sent:
+            if abs(new_sent - old_sent) <= 1e-9:
                 next_lines.append(
                     {
                         "uid": line.get("uid") or line.get("line_uid"),
@@ -4819,6 +4968,25 @@ def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, cre
                     }
                 )
                 continue
+            if new_sent > old_sent:
+                delta = new_sent - old_sent
+                new_qty = old_qty + delta
+                changed = True
+                next_lines.append(
+                    {
+                        "uid": line.get("uid") or line.get("line_uid"),
+                        "menuId": line.get("menu_item_id"),
+                        "name": line.get("name"),
+                        "variant": line.get("variant") or "",
+                        "rate": line.get("rate"),
+                        "qty": new_qty,
+                        "kotSentQty": new_sent,
+                        "notes": line.get("notes") or "",
+                    }
+                )
+                continue
+
+            invoice_has_reduction = True
             delta = old_sent - new_sent
             new_qty = old_qty - delta
             if new_qty <= 1e-9:
@@ -4844,6 +5012,17 @@ def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, cre
         if not next_lines:
             # Full kitchen cancel — drop the open pre-invoice bill so the table
             # can return to available (do not Close & Free; that deducts stock).
+            # Persist reason before soft-delete (same pattern as cancel_pos_invoice).
+            conn.execute(
+                f"""
+                UPDATE pos_invoices
+                SET cancel_reason = ?,
+                    cancelled_at = {SQL_NOW},
+                    updated_at = {SQL_NOW}
+                WHERE id = ?
+                """,
+                (reason_text, invoice_id),
+            )
             soft_delete_pos_invoice(conn, invoice_id)
             updated.append(
                 {
@@ -4853,6 +5032,7 @@ def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, cre
                     "table_label": table_label,
                     "outlet": invoice.get("outlet"),
                     "order_no": invoice.get("order_no"),
+                    "cancel_reason": reason_text,
                 }
             )
             continue
@@ -4894,10 +5074,23 @@ def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, cre
             created_by=created_by,
             allow_kot_cancel=True,
         )
+        if invoice_has_reduction and reason_text:
+            conn.execute(
+                f"""
+                UPDATE pos_invoices
+                SET cancel_reason = ?,
+                    updated_at = {SQL_NOW}
+                WHERE id = ?
+                """,
+                (reason_text, invoice_id),
+            )
+            if isinstance(saved, dict):
+                saved = dict(saved)
+                saved["cancel_reason"] = reason_text
         updated.append(saved)
 
     if not updated:
-        raise ValueError("No kitchen quantities were reduced.")
+        raise ValueError("No kitchen quantities were changed.")
     cancelled_count = sum(1 for inv in updated if inv.get("cancelled"))
     return {
         "updated_count": len(updated),
@@ -5700,18 +5893,16 @@ def _enforce_pos_kot_line_protections(
     allow_kot_cancel=False,
     customer_bill_sent=False,
 ):
-    """Protect kitchen-sent quantities after Generate Invoice unless Cancellation is granted.
+    """Protect kitchen-sent quantities unless Cancellation (KOT Edit) is granted.
 
-    Before the customer bill is generated, anyone saving the draft may reduce or
-    remove kitchen-sent lines (POS Create Invoice). After Generate Invoice, without
-    cancel rights: block qty below prior sent_qty / removing those lines, and
-    re-apply prior sent_qty so clients cannot clear kitchen state silently.
-    With cancel rights: accept client qty/sent_qty (already capped to qty).
+    Reduce/remove of kitchen-sent amounts must go through Tables → Kitchen Order
+    Tokens (Edit) with a reason (allow_kot_cancel=True). Create Invoice may still
+    increase qty or trim only unsent units. After Generate Invoice the same floor
+    applies; cancel rights are still required to go below prior sent_qty.
     """
     if not invoice_id:
         return
-    # Pre-invoice cart edits are open to all POS users.
-    if not customer_bill_sent or allow_kot_cancel:
+    if allow_kot_cancel:
         return
     old_rows = conn.execute(
         """
@@ -5739,7 +5930,8 @@ def _enforce_pos_kot_line_protections(
         have = available.get(key, 0.0)
         if have + 1e-9 < need:
             raise ValueError(
-                "Kitchen-sent items cannot be reduced or removed without Cancellation."
+                "Kitchen-sent items cannot be reduced or removed here. "
+                "Use Tables → Kitchen Order Tokens (Edit) and enter a reason."
             )
 
     # Preserve kitchen-sent amounts on matching lines (ignore client zeroing).
@@ -5760,9 +5952,9 @@ def _enforce_pos_kot_line_protections(
 def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, actor_is_admin=False):
     """Create or update a POS invoice by order_no. Returns the saved invoice dict.
 
-    Before Generate Invoice, kitchen-sent lines may be reduced or removed by any
-    POS save. After the bill is generated, those changes need allow_kot_cancel
-    (Cancellation) — and normal saves are blocked once the invoice is generated.
+    Kitchen-sent line reductions/removals require allow_kot_cancel (Cancellation /
+    Tables KOT Edit). Create Invoice may increase qty or change unsent units only.
+    After Generate Invoice, normal saves are blocked once the invoice is generated.
     Banquet-only CGST/UGST percent overrides are stored only when actor_is_admin.
     """
     ensure_pos_schema(conn)
@@ -5924,7 +6116,7 @@ def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, ac
     kot_send = bool(payload.get("kotSend") or payload.get("kot_send"))
 
     _existing_cols = """
-        id, order_no, kot_sent, first_kot_at, customer_bill_sent, customer_bill_at, outlet,
+        id, order_no, kot_sent, first_kot_at, kot_no, customer_bill_sent, customer_bill_at, outlet,
         table_label, tax_cgst_pct, tax_ugst_pct, status
     """
     existing = None
@@ -6019,7 +6211,11 @@ def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, ac
     was_kot_sent = bool(existing["kot_sent"]) if existing else False
     next_kot_sent = 1 if (kot_send or was_kot_sent) else 0
     first_kot_at = (existing["first_kot_at"] if existing else "") or ""
-    if kot_send and not first_kot_at:
+    existing_kot_no = ""
+    if existing and "kot_no" in existing.keys():
+        existing_kot_no = str(existing["kot_no"] or "").strip()
+    is_first_kot_send = bool(kot_send and not first_kot_at)
+    if is_first_kot_send:
         first_kot_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     customer_bill = bool(payload.get("customerBill") or payload.get("customer_bill"))
@@ -6229,6 +6425,14 @@ def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, ac
             _pos_mark_table_available(conn, table_label, outlet)
         elif not was_ever_generated:
             _pos_mark_table_occupied(conn, table_label, outlet)
+
+    if next_kot_sent and (is_first_kot_send or not existing_kot_no):
+        ensure_pos_invoice_kot_no(
+            conn,
+            invoice_id,
+            outlet=outlet,
+            order_date=order_date,
+        )
 
     return get_pos_invoice(conn, invoice_id)
 

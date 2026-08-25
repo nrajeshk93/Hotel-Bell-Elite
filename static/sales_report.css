@@ -547,3 +547,62 @@ body.sales-report-module #mi-filter-form #mi-date-range-host{
   width:auto;
   max-width:100%;
 }
+
+/* KOT report — keep every cell on one line; scroll horizontally if needed. */
+body.kot-report-module #kot-report-page #sr-table{
+  width:max-content;
+  min-width:100%;
+  table-layout:auto;
+}
+body.kot-report-module #kot-report-page #sr-table th,
+body.kot-report-module #kot-report-page #sr-table td{
+  white-space:nowrap;
+}
+body.kot-report-module #kot-report-page #sr-table .pl-expense-code,
+body.kot-report-module #kot-report-page #sr-table .kot-status{
+  white-space:nowrap;
+}
+body.kot-report-module #kot-report-page #sr-table td.kot-invoice-cell{
+  white-space:normal;
+}
+body.kot-report-module #kot-report-page #sr-table td.kot-invoice-cell .pl-expense-code{
+  white-space:nowrap;
+}
+body.kot-report-module #kot-report-page #sr-table .kot-cancel-reason{
+  margin-top:4px;
+  max-width:220px;
+  white-space:normal;
+  word-break:break-word;
+  line-height:1.35;
+}
+body.kot-report-module #kot-report-page #sr-table .kot-cancel-reason--solo{
+  margin:0;
+  max-width:none;
+  width:100%;
+  font-size:13px;
+  font-weight:600;
+  color:#475569;
+  line-height:1.4;
+}
+
+/* KOT KPI cards filter the table by status. */
+body.kot-report-module #kot-report-page .kot-kpi{
+  cursor:pointer;
+  transition:border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+body.kot-report-module #kot-report-page .kot-kpi:hover{
+  border-color:rgba(37,99,235,.28);
+  transform:translateY(-1px);
+}
+body.kot-report-module #kot-report-page .kot-kpi.is-active{
+  border-color:rgba(37,99,235,.42);
+  background:#F8FBFF;
+  box-shadow:0 0 0 1px rgba(37,99,235,.1), 0 8px 30px rgba(15,23,42,.04);
+}
+body.kot-report-module #kot-report-page .kot-kpi:focus{
+  outline:none;
+}
+body.kot-report-module #kot-report-page .kot-kpi:focus-visible{
+  outline:2px solid #2563eb;
+  outline-offset:2px;
+}

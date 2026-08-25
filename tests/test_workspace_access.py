@@ -508,6 +508,8 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(get_endpoint_dashboard_module("sales_report_manager_insight_export"), "reports")
         self.assertEqual(get_endpoint_dashboard_module("sales_report_meal_plan"), "reports")
         self.assertEqual(get_endpoint_dashboard_module("sales_report_meal_plan_export"), "reports")
+        self.assertEqual(get_endpoint_dashboard_module("sales_report_kot"), "reports")
+        self.assertEqual(get_endpoint_dashboard_module("sales_report_kot_export"), "reports")
         self.assertEqual(get_endpoint_dashboard_module("sales_report_restaurant"), "reports")
         self.assertEqual(get_endpoint_dashboard_module("sales_report_restaurant_export"), "reports")
         self.assertEqual(get_endpoint_dashboard_module("sales_report_bar"), "reports")

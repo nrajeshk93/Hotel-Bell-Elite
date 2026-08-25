@@ -84,6 +84,7 @@ _REPORTS_SUBMODULES = (
     {"key": "agency_billing", "label": "Agency Ledger"},
     {"key": "manager_insight", "label": "Manager Insight"},
     {"key": "meal_plan", "label": "Meal Plan"},
+    {"key": "kot", "label": "KOT"},
     {"key": "restaurant_sales", "label": "Sales - Restaurant & Bar"},
     {"key": "menu_sales", "label": "Menu Insights"},
     {"key": "customer_insights", "label": "Customer Insights"},
@@ -629,6 +630,10 @@ _REPORTS_ENDPOINT_GROUPS = {
     "meal_plan": {
         "sales_report_meal_plan",
         "sales_report_meal_plan_export",
+    },
+    "kot": {
+        "sales_report_kot",
+        "sales_report_kot_export",
     },
     "restaurant_sales": {
         "sales_report_restaurant",

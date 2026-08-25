@@ -808,7 +808,7 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(pending["tables"][0]["pending_items"], 1)
         self.assertEqual(pending["tables"][0]["pending_qty"], 2)
         self.assertEqual(pending["tables"][0]["order_no"], "ORD-2607-0030")
-        self.assertEqual(pending["tables"][0]["kot_no"], "KOT-2607-0030")
+        self.assertEqual(pending["tables"][0]["kot_no"], "KOT/2607-0030")
         self.assertEqual(pending["tables"][0]["table_status"], "occupied")
         self.assertEqual(pending["tables"][0]["seats"], 4)
         self.assertTrue(pending["tables"][0].get("pending_since"))
@@ -876,7 +876,7 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(tokens["token_count"], 1)
         row = tokens["tables"][0]
         self.assertEqual(row["name"], "T1")
-        self.assertEqual(row["kot_no"], "KOT-2607-0070")
+        self.assertRegex(row["kot_no"], r"^KOT/SPC/\d{2}-\d{2}/\d+$")
         self.assertEqual(row["sent_qty"], 2)
         self.assertTrue(row["lines"])
         self.assertEqual(row["lines"][0]["sent_qty"], 2)
@@ -1062,8 +1062,8 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(len(inv.get("lines") or []), 1)
         self.assertEqual(int((inv["lines"][0].get("qty") or 0)), 2)
 
-    def test_kitchen_sent_lines_editable_before_invoice_without_cancellation(self):
-        """Before Generate Invoice, anyone may reduce or remove kitchen-sent lines."""
+    def test_kitchen_sent_lines_not_reducible_on_invoice_without_cancellation(self):
+        """Create Invoice cannot reduce kitchen-sent qty — use Tables KOT Edit."""
         save = self.client.post(
             "/point-of-sale/api/invoices",
             json=self._payload(
@@ -1096,8 +1096,63 @@ class PosTableOccupancyTests(unittest.TestCase):
 
         conn = db_mod.get_db()
         try:
-            # Drop qty below prior kitchen-sent amount — allowed pre-invoice.
-            cut = db_mod.save_pos_invoice(
+            # Drop qty below prior kitchen-sent amount — blocked without Cancellation.
+            with self.assertRaises(ValueError) as cut:
+                db_mod.save_pos_invoice(
+                    conn,
+                    self._payload(
+                        "ORD-2607-0080",
+                        "T1",
+                        lines=[
+                            {
+                                "uid": "1",
+                                "menuId": None,
+                                "name": "Filter Coffee",
+                                "variant": "",
+                                "rate": 100,
+                                "qty": 1,
+                                "kotSentQty": 1,
+                            },
+                            {
+                                "uid": "2",
+                                "menuId": None,
+                                "name": "Sandwich",
+                                "variant": "",
+                                "rate": 150,
+                                "qty": 1,
+                                "kotSentQty": 1,
+                            },
+                        ],
+                    ),
+                    allow_kot_cancel=False,
+                )
+            self.assertIn("kitchen-sent", str(cut.exception).lower())
+
+            # Remove the kitchen-sent Sandwich line entirely — also blocked.
+            with self.assertRaises(ValueError) as removed:
+                db_mod.save_pos_invoice(
+                    conn,
+                    self._payload(
+                        "ORD-2607-0080",
+                        "T1",
+                        lines=[
+                            {
+                                "uid": "1",
+                                "menuId": None,
+                                "name": "Filter Coffee",
+                                "variant": "",
+                                "rate": 100,
+                                "qty": 2,
+                                "kotSentQty": 2,
+                            }
+                        ],
+                    ),
+                    allow_kot_cancel=False,
+                )
+            self.assertIn("kitchen-sent", str(removed.exception).lower())
+
+            # Increasing above kitchen-sent is still allowed on Create Invoice.
+            bumped = db_mod.save_pos_invoice(
                 conn,
                 self._payload(
                     "ORD-2607-0080",
@@ -1109,8 +1164,8 @@ class PosTableOccupancyTests(unittest.TestCase):
                             "name": "Filter Coffee",
                             "variant": "",
                             "rate": 100,
-                            "qty": 1,
-                            "kotSentQty": 1,
+                            "qty": 3,
+                            "kotSentQty": 2,
                         },
                         {
                             "uid": "2",
@@ -1125,32 +1180,9 @@ class PosTableOccupancyTests(unittest.TestCase):
                 ),
                 allow_kot_cancel=False,
             )
-            coffee = next(l for l in cut["lines"] if l["name"] == "Filter Coffee")
-            self.assertEqual(int(coffee["qty"]), 1)
-            self.assertEqual(int(coffee.get("sent_qty") or 0), 1)
-
-            # Remove the kitchen-sent Sandwich line entirely.
-            removed = db_mod.save_pos_invoice(
-                conn,
-                self._payload(
-                    "ORD-2607-0080",
-                    "T1",
-                    lines=[
-                        {
-                            "uid": "1",
-                            "menuId": None,
-                            "name": "Filter Coffee",
-                            "variant": "",
-                            "rate": 100,
-                            "qty": 1,
-                            "kotSentQty": 1,
-                        }
-                    ],
-                ),
-                allow_kot_cancel=False,
-            )
-            names = [l["name"] for l in removed["lines"]]
-            self.assertEqual(names, ["Filter Coffee"])
+            coffee = next(l for l in bumped["lines"] if l["name"] == "Filter Coffee")
+            self.assertEqual(int(coffee["qty"]), 3)
+            self.assertEqual(int(coffee.get("sent_qty") or 0), 2)
             conn.commit()
         finally:
             conn.close()
@@ -1191,7 +1223,7 @@ class PosTableOccupancyTests(unittest.TestCase):
                 )
             self.assertIn("kitchen-sent", str(cut.exception).lower())
 
-            # Same reduction is allowed when the bill is not yet generated.
+            # Same reduction is allowed with Cancellation (Tables KOT Edit).
             db_mod._enforce_pos_kot_line_protections(
                 conn,
                 invoice_id,
@@ -1204,8 +1236,8 @@ class PosTableOccupancyTests(unittest.TestCase):
                         "sent_qty": 1,
                     }
                 ],
-                allow_kot_cancel=False,
-                customer_bill_sent=False,
+                allow_kot_cancel=True,
+                customer_bill_sent=True,
             )
         finally:
             conn.close()
@@ -1256,7 +1288,8 @@ class PosTableOccupancyTests(unittest.TestCase):
                         "line_id": coffee["id"],
                         "sent_qty": 1,
                     }
-                ]
+                ],
+                "reason": "Guest changed mind on coffee",
             },
         )
         self.assertEqual(reduce.status_code, 200, reduce.get_data(as_text=True))
@@ -1265,10 +1298,12 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(int(body.get("updated_count") or 0), 1)
 
         detail = self.client.get(f"/point-of-sale/api/invoices/{invoice_id}").get_json()
-        inv_lines = {ln["name"]: ln for ln in (detail.get("invoice") or {}).get("lines") or []}
+        inv = detail.get("invoice") or {}
+        inv_lines = {ln["name"]: ln for ln in inv.get("lines") or []}
         self.assertEqual(int(inv_lines["Filter Coffee"]["qty"]), 1)
         self.assertEqual(int(inv_lines["Filter Coffee"]["sent_qty"]), 1)
         self.assertEqual(int(inv_lines["Sandwich"]["qty"]), 1)
+        self.assertEqual(inv.get("cancel_reason"), "Guest changed mind on coffee")
 
         refreshed = {t["name"]: t for t in (body.get("tables") or [])}
         self.assertIn("T1", refreshed)
@@ -1308,6 +1343,95 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(denied.status_code, 403)
         self.assertFalse(denied.get_json().get("ok"))
 
+    def test_kot_tokens_reduce_requires_reason(self):
+        save = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-0085", "T1", kot_send=True),
+        )
+        self.assertEqual(save.status_code, 200, save.get_data(as_text=True))
+        invoice = save.get_json()["invoice"]
+        line_id = invoice["lines"][0]["id"]
+
+        missing = self.client.post(
+            "/point-of-sale/api/kot-tokens/reduce",
+            json={
+                "changes": [
+                    {
+                        "invoice_id": invoice["id"],
+                        "line_id": line_id,
+                        "sent_qty": 1,
+                    }
+                ]
+            },
+        )
+        self.assertEqual(missing.status_code, 400)
+        self.assertFalse(missing.get_json().get("ok"))
+        self.assertIn("reason", (missing.get_json().get("error") or "").lower())
+
+    def test_kot_tokens_increase_api_without_reason(self):
+        save = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                "ORD-2607-0086",
+                "T1",
+                kot_send=True,
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "rate": 100,
+                        "qty": 1,
+                        "kotSentQty": 1,
+                    }
+                ],
+                totals={
+                    "subtotal": 100,
+                    "discount": 0,
+                    "discountType": "pct",
+                    "discountValue": 0,
+                    "gst": 5,
+                    "service": 0,
+                    "serviceType": "pct",
+                    "serviceValue": 0,
+                    "tip": 0,
+                    "roundOff": 0,
+                    "total": 105,
+                },
+            ),
+        )
+        self.assertEqual(save.status_code, 200, save.get_data(as_text=True))
+        invoice = save.get_json()["invoice"]
+        line_id = invoice["lines"][0]["id"]
+
+        bump = self.client.post(
+            "/point-of-sale/api/kot-tokens/reduce",
+            json={
+                "changes": [
+                    {
+                        "invoice_id": invoice["id"],
+                        "line_id": line_id,
+                        "sent_qty": 3,
+                    }
+                ]
+            },
+        )
+        self.assertEqual(bump.status_code, 200, bump.get_data(as_text=True))
+        body = bump.get_json()
+        self.assertTrue(body.get("ok"))
+
+        detail = self.client.get(f"/point-of-sale/api/invoices/{invoice['id']}").get_json()
+        inv = detail.get("invoice") or {}
+        line = (inv.get("lines") or [{}])[0]
+        self.assertEqual(int(line.get("qty") or 0), 3)
+        self.assertEqual(int(line.get("sent_qty") or 0), 3)
+        self.assertFalse(str(inv.get("cancel_reason") or "").strip())
+
+        refreshed = {t["name"]: t for t in (body.get("tables") or [])}
+        self.assertIn("T1", refreshed)
+        self.assertEqual(int(refreshed["T1"]["sent_qty"]), 3)
+
     def test_kot_tokens_reduce_all_to_zero_cancels_order_and_frees_table(self):
         save = self.client.post(
             "/point-of-sale/api/invoices",
@@ -1328,7 +1452,8 @@ class PosTableOccupancyTests(unittest.TestCase):
                         "line_id": line_id,
                         "sent_qty": 0,
                     }
-                ]
+                ],
+                "reason": "Table walked out",
             },
         )
         self.assertEqual(reduce.status_code, 200, reduce.get_data(as_text=True))
@@ -1336,6 +1461,17 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertTrue(body.get("ok"))
         self.assertEqual(int(body.get("cancelled_count") or 0), 1)
         self.assertTrue(any(inv.get("cancelled") for inv in (body.get("invoices") or [])))
+
+        conn = db_mod.get_db()
+        try:
+            row = conn.execute(
+                "SELECT cancel_reason, is_active FROM pos_invoices WHERE id = ?",
+                (invoice_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(row["cancel_reason"], "Table walked out")
+        self.assertEqual(int(row["is_active"]), 0)
 
         detail = self.client.get(f"/point-of-sale/api/invoices/{invoice_id}")
         self.assertIn(detail.status_code, (404, 400))

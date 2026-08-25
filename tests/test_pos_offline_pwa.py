@@ -48,6 +48,9 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("de_workspace_transitions.js", body)
         self.assertIn("de_workspace_shell.css", body)
         self.assertIn("/bar-point-of-sale/invoice", body)
+        # Bare /home must not be filled from partial=main offline snapshots.
+        self.assertIn("Never overwrite the bare navigate URL", body)
+        self.assertIn("Full navigations must not use a partial=main", body)
         self.assertNotIn("client.navigate", body)
         self.assertNotIn(
             "'/point-of-sale/api/floor',\n  '/point-of-sale/api/menu/items'",

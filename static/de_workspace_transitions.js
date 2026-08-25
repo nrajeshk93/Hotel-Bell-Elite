@@ -284,6 +284,23 @@
     return hasWorkspaceShell() || isFullscreenActive() || isFullscreenPreferred();
   }
 
+  /** Sign-in / password forms — soft-submit must request a FULL shell document.
+   *  Partial=main after login left Applications with no left nav until refresh. */
+  function isAuthShellForm(form){
+    if(!form) return false;
+    if(form.id === 'login-form' || form.classList.contains('login-form')) return true;
+    if(document.body && document.body.classList.contains('login-page') && form.closest('.login-panel, .login-shell')){
+      return true;
+    }
+    try{
+      var action = form.getAttribute('action') || '';
+      var path = new URL(action, window.location.href).pathname.replace(/\/$/, '') || '/';
+      return path === '/login' || path === '/change-password';
+    } catch(e){
+      return false;
+    }
+  }
+
   function formToGetUrl(form){
     var url = new URL(form.getAttribute('action') || window.location.href, window.location.href);
     var params = new URLSearchParams();
@@ -422,15 +439,21 @@
     appendSubmitter(fd, submitter);
 
     showSoftNavProgress();
-    var postUrl = withPartialMain(actionUrl);
+    /* Auth (login / change-password) must fetch a full workspace document so
+       swapDocumentInsideFullscreen can restore #ep-workspace + sidebar. */
+    var authShellPost = isAuthShellForm(form);
+    var postUrl = authShellPost ? actionUrl : withPartialMain(actionUrl);
+    var fetchHeaders = {
+      'Accept': 'text/html'
+    };
+    if(!authShellPost){
+      fetchHeaders['X-De-Partial'] = 'main';
+    }
     var fetchOpts = {
       method: 'POST',
       body: fd,
       credentials: 'same-origin',
-      headers: {
-        'Accept': 'text/html',
-        'X-De-Partial': 'main'
-      },
+      headers: fetchHeaders,
       redirect: 'follow',
       cache: 'no-store'
     };
@@ -2291,8 +2314,23 @@
       return;
     }
 
-    /* Login / missing-shell documents: keep <html> / #de-fs-app so fullscreen survives. */
+    /* Login / missing-shell documents: keep <html> / #de-fs-app so fullscreen survives.
+       Never paint a partial=main fragment here — that is only .de-main-wrapper and
+       leaves Applications with no left panel until a hard refresh. */
+    var nextHasShell = !!(
+      doc.querySelector('#ep-workspace') ||
+      doc.querySelector('.de-app-shell')
+    );
     if(shouldKeepFullscreen()){
+      if(nextMain && !nextHasShell){
+        markMainLoading(false);
+        setSoftNavFlag(false);
+        document.documentElement.classList.remove('de-soft-navigating');
+        hideSoftNavProgress();
+        try{ sessionStorage.removeItem(NAV_FLAG); } catch(eFlag){}
+        window.location.assign(stripPartialParam(url));
+        return;
+      }
       swapDocumentInsideFullscreen(doc, url, done, navToken);
       return;
     }

@@ -69,24 +69,76 @@
     });
   }
 
+  function currentKpiFilter(page) {
+    return String(page.getAttribute('data-kpi-filter') || 'total').toLowerCase();
+  }
+
+  function applyRowFilters(page) {
+    var input = $('#sr-search', page);
+    var needle = String((input && input.value) || '')
+      .trim()
+      .toLowerCase();
+    var kpi = currentKpiFilter(page);
+    $all('tr.sr-row', page).forEach(function (row) {
+      var hay = String(row.getAttribute('data-search') || '').toLowerCase();
+      var searchOk = !needle || hay.indexOf(needle) !== -1;
+      var status = String(row.getAttribute('data-status') || '').toLowerCase();
+      var kpiOk = kpi === 'total' || !kpi || status === kpi;
+      row.style.display = searchOk && kpiOk ? '' : 'none';
+    });
+    syncGroupVisibility(page);
+    updateVisibleCount(page);
+  }
+
+  function syncKpiSelection(page) {
+    var kpi = currentKpiFilter(page);
+    $all('.kot-kpi[data-kpi]', page).forEach(function (card) {
+      var on = String(card.getAttribute('data-kpi') || '') === kpi;
+      card.classList.toggle('is-active', on);
+      card.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+
+  function setKpiFilter(page, kpi) {
+    var next = String(kpi || 'total').toLowerCase();
+    if (currentKpiFilter(page) === next && next !== 'total') {
+      next = 'total';
+    }
+    page.setAttribute('data-kpi-filter', next);
+    syncKpiSelection(page);
+    applyRowFilters(page);
+  }
+
+  function bindKpiFilter(page) {
+    if (!page || page.id !== 'kot-report-page') return;
+    if (page.getAttribute('data-kpi-bound') === '1') return;
+    page.setAttribute('data-kpi-bound', '1');
+    page.setAttribute('data-kpi-filter', 'total');
+    syncKpiSelection(page);
+
+    page.addEventListener('click', function (event) {
+      var card = event.target.closest('.kot-kpi[data-kpi]');
+      if (!card || !page.contains(card)) return;
+      event.preventDefault();
+      setKpiFilter(page, card.getAttribute('data-kpi') || 'total');
+    });
+    page.addEventListener('keydown', function (event) {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      var card = event.target.closest('.kot-kpi[data-kpi]');
+      if (!card || !page.contains(card)) return;
+      event.preventDefault();
+      setKpiFilter(page, card.getAttribute('data-kpi') || 'total');
+    });
+  }
+
   function bindClientSearch(page) {
     var input = $('#sr-search', page);
     if (!input || input.getAttribute('data-sr-bound') === '1') return;
     input.setAttribute('data-sr-bound', '1');
-    function apply() {
-      var needle = String(input.value || '')
-        .trim()
-        .toLowerCase();
-      $all('tr.sr-row', page).forEach(function (row) {
-        var hay = String(row.getAttribute('data-search') || '').toLowerCase();
-        var match = !needle || hay.indexOf(needle) !== -1;
-        row.style.display = match ? '' : 'none';
-      });
-      syncGroupVisibility(page);
-      updateVisibleCount(page);
-    }
-    input.addEventListener('input', apply);
-    apply();
+    input.addEventListener('input', function () {
+      applyRowFilters(page);
+    });
+    applyRowFilters(page);
   }
 
   function bindSort(page) {
@@ -334,6 +386,7 @@
     return (
       document.getElementById('sales-report-page') ||
       document.getElementById('meal-plan-report-page') ||
+      document.getElementById('kot-report-page') ||
       document.querySelector('[data-sales-report]')
     );
   }
@@ -342,6 +395,7 @@
     var page = findSalesReportPage();
     if (!page) return;
     formatAmounts(page);
+    bindKpiFilter(page);
     bindClientSearch(page);
     bindSort(page);
     bindStatusFilter(page);

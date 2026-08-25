@@ -1840,10 +1840,12 @@
         var amt = lineDisplayAmount(line);
         var pendingQty = pendingKotQty(line);
         var sentQty = lineKitchenSentQty(line);
-        /* Until Generate Invoice, anyone with POS access may change qty / remove
-           kitchen-sent lines. After the bill is generated the cart stays locked. */
-        var canDecrease = !locked && Number(line.qty) > 1;
-        var canDelete = !locked;
+        /* Kitchen-sent qty is a floor on Create Invoice — reduce only via Tables
+           KOT Edit (with reason). Unsent lines (and extra unsent units) can still
+           be decreased here. Increases are always allowed until the bill locks. */
+        var minQty = Math.max(1, sentQty);
+        var canDecrease = !locked && Number(line.qty) > minQty;
+        var canDelete = !locked && sentQty <= 0;
         var canEditNote = !locked;
         var lineNotes = String(line.notes || '').trim();
         var checked = !!draftSet[String(line.uid)];
@@ -1851,7 +1853,9 @@
           ? 'Finish item selection first'
           : locked
             ? 'Invoice locked — settle to continue'
-            : '';
+            : sentQty > 0 && Number(line.qty) <= minQty
+              ? 'Reduce kitchen-sent items from Tables → Kitchen Order Tokens (Edit)'
+              : '';
         var noteTip = selecting
           ? 'Finish item selection first'
           : locked
@@ -1864,7 +1868,7 @@
           : locked
             ? 'Invoice locked — settle to continue'
             : sentQty > 0
-              ? 'Remove item (kitchen KOT will update on save)'
+              ? 'Remove kitchen-sent items from Tables → Kitchen Order Tokens (Edit)'
               : '';
         return (
           '<tr data-line-id="' +
@@ -1927,11 +1931,16 @@
           '>' +
           '<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>' +
           '</button>' +
-          '<button type="button" class="pos-inv-del" data-del aria-label="Remove item"' +
-          (canDelete && !selecting ? '' : ' disabled title="' + escapeHtml(deleteTip) + '"') +
-          '>' +
-          '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>' +
-          '</button></div></td></tr>'
+          (sentQty > 0
+            ? ''
+            : '<button type="button" class="pos-inv-del" data-del aria-label="Remove item"' +
+              (canDelete && !selecting
+                ? ''
+                : ' disabled title="' + escapeHtml(deleteTip) + '"') +
+              '>' +
+              '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>' +
+              '</button>') +
+          '</div></td></tr>'
         );
       })
       .join('');
@@ -5484,6 +5493,12 @@
       }
       if (e.target.closest('[data-del]')) {
         if (guardInvoiceLocked()) return;
+        if ((Number(line.sentQty) || 0) > 0) {
+          toast(
+            'Remove kitchen-sent items from Tables → Kitchen Order Tokens (Edit).'
+          );
+          return;
+        }
         state.lines = state.lines.filter(function (l) {
           return l.uid !== id;
         });
@@ -5495,10 +5510,19 @@
         if (guardInvoiceLocked()) return;
         if (qtyBtn.disabled) return;
         var delta = Number(qtyBtn.getAttribute('data-qty')) || 0;
-        var nextQty = Math.max(1, (Number(line.qty) || 1) + delta);
+        var curQty = Number(line.qty) || 1;
+        var sentFloor = Math.max(0, Number(line.sentQty) || 0);
+        var minQty = Math.max(1, sentFloor);
+        if (delta < 0 && curQty <= minQty) {
+          toast(
+            'Reduce kitchen-sent items from Tables → Kitchen Order Tokens (Edit).'
+          );
+          return;
+        }
+        var nextQty = curQty + delta;
+        if (delta < 0) nextQty = Math.max(minQty, nextQty);
+        else nextQty = Math.max(1, nextQty);
         line.qty = nextQty;
-        /* Cap kitchen-sent qty so Tables KOT tokens match the bill. */
-        if ((Number(line.sentQty) || 0) > line.qty) line.sentQty = line.qty;
         renderLines(page);
         markOrderDirty(page);
       }

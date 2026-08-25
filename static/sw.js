@@ -3,7 +3,7 @@
  * Cache Storage is a fallback for offline + brief disconnects.
  * Floor APIs are never cached — occupancy must not go stale.
  * POS menu GETs stay network-first; mutation APIs are not intercepted. */
-var CACHE_VERSION = 'hbe-app-v4';
+var CACHE_VERSION = 'hbe-app-v5';
 var PRECACHE = [
   '/home',
   '/point-of-sale/invoice',
@@ -20,7 +20,7 @@ var PRECACHE = [
   '/static/pos_offline.js?v=5',
   '/static/ep_form_listbox.js?v=66',
   '/static/de_workspace_nav.js?v=46',
-  '/static/de_workspace_transitions.js?v=189',
+  '/static/de_workspace_transitions.js?v=190',
   '/static/hbe_table_scroll.js?v=10',
   '/static/hbe_app_toast.js?v=3',
   '/static/de_pwa.js?v=12',
@@ -209,6 +209,13 @@ function putHtmlCache(cache, req, res) {
     var u = new URL(req.url);
     var pathKey = u.pathname + (u.search || '');
     cache.put(pathKey, res.clone());
+    var isPartial = u.searchParams.get('partial') === 'main';
+    if (isPartial) {
+      cache.put(u.pathname + '?partial=main', res.clone());
+      /* Never overwrite the bare navigate URL with a main-only fragment —
+         that painted /home without the left sidebar after login. */
+      return;
+    }
     /* Bare path fallback for navigate without query (POS + home). */
     if (
       u.pathname === '/home' ||
@@ -216,9 +223,6 @@ function putHtmlCache(cache, req, res) {
       u.pathname === '/bar-point-of-sale/invoice'
     ) {
       cache.put(u.pathname, res.clone());
-    }
-    if (u.searchParams.get('partial') === 'main') {
-      cache.put(u.pathname + '?partial=main', res.clone());
     }
   } catch (e) {}
 }
@@ -229,17 +233,17 @@ function matchHtmlCache(req) {
     try {
       var u = new URL(req.url);
       var pathKey = u.pathname + (u.search || '');
+      var wantsPartial = u.searchParams.get('partial') === 'main';
       return caches.match(pathKey).then(function (byPath) {
         if (byPath) return byPath;
-        if (u.searchParams.get('partial') === 'main') {
-          return caches.match(u.pathname).then(function (bare) {
-            if (bare) return bare;
-            return caches.match(u.pathname + '?partial=main');
+        if (wantsPartial) {
+          return caches.match(u.pathname + '?partial=main').then(function (partial) {
+            /* Prefer partial for soft-nav; fall back to full page if needed. */
+            return partial || caches.match(u.pathname);
           });
         }
-        return caches.match(u.pathname + '?partial=main').then(function (partial) {
-          return partial || caches.match(u.pathname);
-        });
+        /* Full navigations must not use a partial=main snapshot. */
+        return caches.match(u.pathname);
       });
     } catch (e) {
       return null;

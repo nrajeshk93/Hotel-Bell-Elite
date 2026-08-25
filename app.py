@@ -290,6 +290,7 @@ from reports import (
 )
 from manager_insight import build_manager_insight
 from meal_plan_report import build_meal_plan_report
+from kot_report import build_kot_report, kot_report_excel_bytes
 from stores import register_stores
 from communication_hub import register_communication_hub
 from back_office_receipt import register_back_office_receipt
@@ -5901,6 +5902,7 @@ def reports():
         "agency_billing",
         "manager_insight",
         "meal_plan",
+        "kot",
         "restaurant_sales",
         "menu_sales",
         "customer_insights",
@@ -7836,6 +7838,107 @@ def sales_report_meal_plan():
 def sales_report_meal_plan_export():
     """Excel export for Meal Plan report."""
     return _meal_plan_export()
+
+
+def _kot_report_filters(args):
+    """Parse KOT report GET filters (page + export)."""
+    base = _sales_report_filters(args)
+    outlet = (args.get("outlet") or "all").strip().lower()
+    if outlet not in ("all", POS_OUTLET_RESTAURANT, POS_OUTLET_BAR):
+        outlet = "all"
+    base["selected_outlet"] = outlet
+    return base
+
+
+def _kot_report_page():
+    filters = _kot_report_filters(request.args)
+    conn = get_db()
+    try:
+        payload = build_kot_report(
+            conn,
+            date_from=filters["date_from"] if filters["date_filter_active"] else None,
+            date_to=filters["date_to"] if filters["date_filter_active"] else None,
+            outlet=filters["selected_outlet"],
+        )
+    finally:
+        conn.close()
+    from_hub = (request.args.get("from_hub") or "").strip().lower()
+    filter_kwargs = {}
+    if from_hub == "reports":
+        filter_kwargs["from_hub"] = "reports"
+    export_kwargs = dict(filter_kwargs)
+    if filters["date_filter_active"] and filters["date_from"] and filters["date_to"]:
+        export_kwargs["date_from"] = filters["date_from"].isoformat()
+        export_kwargs["date_to"] = filters["date_to"].isoformat()
+    if filters["selected_outlet"] != "all":
+        export_kwargs["outlet"] = filters["selected_outlet"]
+    clear_kwargs = dict(filter_kwargs)
+    outlet_labels = _sales_report_outlet_labels()
+    return render_template(
+        "kot_report.html",
+        de_nav_section="report",
+        de_nav_report_view="sales",
+        page_title="KOT",
+        rows=payload["rows"],
+        kpis=payload["kpis"],
+        today_iso=filters["today"].isoformat(),
+        date_from=filters["date_from"].isoformat() if filters["date_from"] else "",
+        date_to=filters["date_to"].isoformat() if filters["date_to"] else "",
+        active_date_filter=filters["date_filter_active"],
+        selected_outlet=filters["selected_outlet"],
+        selected_outlet_label=outlet_labels.get(
+            filters["selected_outlet"], "All"
+        ),
+        filter_form_action=url_for("sales_report_kot", **filter_kwargs),
+        sales_report_clear_url=url_for("sales_report_kot", **clear_kwargs),
+        sales_report_export_url=url_for(
+            "sales_report_kot_export", **export_kwargs
+        ),
+        sales_report_export_filename=report_export_filename(
+            "KOT", filters=filters
+        ),
+        preserve_from_hub=from_hub == "reports",
+        back_href=url_for("reports") if from_hub == "reports" else None,
+        back_label="Back to Reports" if from_hub == "reports" else None,
+    )
+
+
+def _kot_report_export():
+    filters = _kot_report_filters(request.args)
+    conn = get_db()
+    try:
+        payload = build_kot_report(
+            conn,
+            date_from=filters["date_from"] if filters["date_filter_active"] else None,
+            date_to=filters["date_to"] if filters["date_filter_active"] else None,
+            outlet=filters["selected_outlet"],
+        )
+    finally:
+        conn.close()
+    title_date = _sales_report_excel_title_date(filters)
+    buf = kot_report_excel_bytes(payload, title_date=title_date)
+    fname = report_export_filename("KOT", filters=filters)
+    response = send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
+@app.route("/reports/sales/kot", endpoint="sales_report_kot")
+def sales_report_kot():
+    """KOT report — kitchen-sent Restaurant and Bar orders."""
+    return _kot_report_page()
+
+
+@app.route("/reports/sales/kot/export", endpoint="sales_report_kot_export")
+def sales_report_kot_export():
+    """Excel export for KOT report."""
+    return _kot_report_export()
 
 
 @app.route("/reports/sales/restaurant", endpoint="sales_report_restaurant")
@@ -12377,15 +12480,18 @@ def point_of_sale_api_kot_tokens():
     endpoint="bar_point_of_sale_api_kot_tokens_reduce",
 )
 def point_of_sale_api_kot_tokens_reduce():
-    """Persist kitchen-sent qty reductions from the Tables KOT hub (Cancellation)."""
+    """Persist kitchen-sent qty changes from the Tables KOT hub (Cancellation)."""
     outlet = _pos_outlet_from_request()
     user = get_current_user()
     if not user_can_edit_kot_sent_lines(user):
         return jsonify(
-            {"ok": False, "error": "Cancellation is required to reduce kitchen-sent items."}
+            {"ok": False, "error": "Cancellation is required to edit kitchen-sent items."}
         ), 403
     data = request.get_json(silent=True) or {}
     changes = data.get("changes") if isinstance(data, dict) else None
+    reason = ""
+    if isinstance(data, dict):
+        reason = data.get("reason") or data.get("cancelReason") or data.get("cancel_reason") or ""
     created_by = ""
     if user:
         created_by = str(
@@ -12400,6 +12506,7 @@ def point_of_sale_api_kot_tokens_reduce():
                 changes or [],
                 allow_kot_cancel=True,
                 created_by=created_by,
+                reason=reason,
             )
             # Drop any invoice that no longer belongs to this outlet from the response.
             invoices = [

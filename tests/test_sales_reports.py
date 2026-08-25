@@ -135,8 +135,9 @@ class SalesReportsTests(unittest.TestCase):
         self.assertEqual(sales[5]["view_route"], "sales_report_customer_insights")
 
         restaurant = [r for r in REPORT_DEFINITIONS if r.get("category") == "restaurant"]
-        self.assertEqual([r["id"] for r in restaurant], ["menu_margin", "meal_plan"])
+        self.assertEqual([r["id"] for r in restaurant], ["menu_margin", "meal_plan", "kot"])
         self.assertEqual(restaurant[1]["view_route"], "sales_report_meal_plan")
+        self.assertEqual(restaurant[2]["view_route"], "sales_report_kot")
 
         with self.app.test_request_context():
             from flask import url_for
@@ -163,10 +164,10 @@ class SalesReportsTests(unittest.TestCase):
             (s for s in payload["report_sections"] if s["key"] == "restaurant"), None
         )
         self.assertIsNotNone(restaurant_section)
-        self.assertEqual(restaurant_section["count"], 2)
+        self.assertEqual(restaurant_section["count"], 3)
         self.assertEqual(
             [r["name"] for r in restaurant_section["reports"]],
-            ["Menu & Margin", "Meal Plan"],
+            ["Menu & Margin", "Meal Plan", "KOT"],
         )
 
         hub = self.client.get("/reports")
@@ -177,6 +178,8 @@ class SalesReportsTests(unittest.TestCase):
         self.assertIn("Manager Insight", html)
         self.assertIn("Meal Plan", html)
         self.assertIn('data-report-id="meal_plan"', html)
+        self.assertIn("KOT", html)
+        self.assertIn('data-report-id="kot"', html)
         meal_card = html[html.find('data-report-id="meal_plan"') :][:280]
         self.assertIn('data-report-category="restaurant"', meal_card)
         self.assertIn("Sales - Restaurant &amp; Bar", html)
@@ -189,8 +192,9 @@ class SalesReportsTests(unittest.TestCase):
         self.assertIn("/reports/sales/agency-billing", html)
         self.assertIn("/reports/sales/manager-insight", html)
         self.assertIn("/reports/sales/meal-plan", html)
+        self.assertIn("/reports/sales/kot", html)
         self.assertIn("/reports/sales/restaurant", html)
-        self.assertNotIn("/reports/sales/bar", html)
+        self.assertNotIn("/reports/sales/bar\"", html)
         self.assertIn("/reports/sales/menu", html)
         self.assertIn("/reports/sales/customer-insights", html)
 
@@ -873,6 +877,8 @@ class SalesReportsTests(unittest.TestCase):
             "sales_report_manager_insight_export",
             "sales_report_meal_plan",
             "sales_report_meal_plan_export",
+            "sales_report_kot",
+            "sales_report_kot_export",
             "sales_report_restaurant",
             "sales_report_restaurant_export",
             "sales_report_bar",
@@ -908,6 +914,8 @@ class SalesReportsTests(unittest.TestCase):
                 "/reports/sales/manager-insight/export",
                 "/reports/sales/meal-plan",
                 "/reports/sales/meal-plan/export",
+                "/reports/sales/kot",
+                "/reports/sales/kot/export",
                 "/reports/sales/restaurant",
                 "/reports/sales/bar",
                 "/reports/sales/menu",

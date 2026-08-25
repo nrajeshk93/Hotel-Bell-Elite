@@ -11,7 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=55">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_tables.css') }}?v=72">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_tables.css') }}?v=85">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=5">
 <script>
 (function(){
@@ -27,7 +27,7 @@
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_tables.css') }}?v=72">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_tables.css') }}?v=85">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=5">
 {% endif %}
 
@@ -398,7 +398,7 @@
     </div>
   </section>
 
-  <div class="pos-kot-modal" id="pos-kot-tokens-modal" hidden aria-hidden="true">
+  <div class="pos-kot-modal" id="pos-kot-tokens-modal" hidden aria-hidden="true" data-kot-mode="resend">
     <div class="pos-kot-modal-backdrop" data-kot-tokens-close tabindex="-1" aria-hidden="true"></div>
     <div class="pos-kot-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="pos-kot-tokens-title">
       <header class="pos-kot-modal-header">
@@ -411,6 +411,13 @@
           </span>
           <div class="pos-kot-modal-heading-copy">
             <h2 id="pos-kot-tokens-title">Kitchen Order Tokens</h2>
+          </div>
+        </div>
+        <div class="pos-kot-mode-host" id="pos-kot-mode-host">
+          <span class="pos-kot-mode-label" id="pos-kot-mode-label">Mode</span>
+          <div class="pos-kot-mode-tabs" role="tablist" aria-labelledby="pos-kot-mode-label" id="pos-kot-mode-tabs">
+            <button type="button" class="pos-kot-mode-tab is-active" role="tab" data-kot-mode="resend" aria-selected="true">Resend</button>
+            <button type="button" class="pos-kot-mode-tab" role="tab" data-kot-mode="edit" aria-selected="false">Edit</button>
           </div>
         </div>
         <button type="button" class="pos-kot-modal-close" data-kot-tokens-close aria-label="Close">
@@ -440,8 +447,8 @@
       <footer class="pos-kot-modal-footer">
         <p class="pos-kot-modal-meta" id="pos-kot-tokens-meta">Showing 0 tokens</p>
         <div class="pos-kot-modal-footer-actions">
-          <button type="button" class="pos-kot-modal-footer-save" id="pos-kot-tokens-save" data-kot-tokens-save hidden disabled>Save</button>
           <button type="button" class="pos-kot-modal-footer-close" data-kot-tokens-close>Close</button>
+          <button type="button" class="pos-kot-modal-footer-save" id="pos-kot-tokens-save" data-kot-tokens-save hidden disabled>Save</button>
         </div>
       </footer>
     </div>
@@ -556,6 +563,25 @@
     </div>
   </div>
 
+  <div class="pos-inv-modal" id="pos-kot-reduce-reason-modal" hidden>
+    <div class="pos-inv-modal-backdrop" data-kot-reduce-reason-close tabindex="-1" aria-hidden="true"></div>
+    <div class="pos-inv-modal-box pos-cancel-invoice-modal-box" role="dialog" aria-modal="true" aria-labelledby="pos-kot-reduce-reason-title">
+      <h3 id="pos-kot-reduce-reason-title">Edit Kitchen Order</h3>
+      <label class="pos-inv-field">
+        <span>Reason</span>
+        <textarea id="pos-kot-reduce-reason" rows="3" maxlength="500" placeholder="Why are these kitchen items being reduced or cancelled?" autocomplete="off"></textarea>
+      </label>
+      <p class="pos-inv-modal-preview" id="pos-kot-reduce-reason-error" hidden></p>
+      <div class="staff-credit-actions pos-cancel-invoice-actions">
+        <button type="button" class="btn pos-cancel-btn pos-cancel-btn--secondary" data-kot-reduce-reason-close>Back</button>
+        <button type="button" class="btn pos-cancel-btn pos-cancel-btn--danger" id="pos-kot-reduce-reason-confirm">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></svg>
+          <span>Save</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   {% include 'partials/pos_settle_modal.html' %}
 
   <div class="pos-tables-toast" id="pos-tables-toast" role="status" aria-live="polite" hidden></div>
@@ -569,7 +595,7 @@
 <script src="{{ url_for('static', filename='print_agent.js') }}?v=7"></script>
 <script src="{{ url_for('static', filename='pos_printers.js') }}?v=20"></script>
 <script src="{{ url_for('static', filename='pos_settle.js') }}?v=6"></script>
-<script src="{{ url_for('static', filename='pos_tables.js') }}?v=92"></script>
+<script src="{{ url_for('static', filename='pos_tables.js') }}?v=104"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

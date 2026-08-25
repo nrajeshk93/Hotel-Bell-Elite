@@ -2630,6 +2630,121 @@
 
   var currentKotTokens = [];
   var kotTokenExpanded = {};
+  var currentKotMode = 'resend';
+  var pendingKotReduceChanges = null;
+  var KOT_MODAL_SESSION_KEY = 'hbe.pos.kotTokensModal';
+
+  function isPosTablesPath(pathname) {
+    var path = String(pathname || '').replace(/\/$/, '') || '/';
+    return path === '/point-of-sale' || path === '/bar-point-of-sale';
+  }
+
+  function persistKotTokensModalOpen(open) {
+    var mode = getKotMode();
+    try {
+      if (open) {
+        sessionStorage.setItem(
+          KOT_MODAL_SESSION_KEY,
+          JSON.stringify({ open: 1, mode: mode, at: Date.now() })
+        );
+      } else {
+        sessionStorage.removeItem(KOT_MODAL_SESSION_KEY);
+      }
+    } catch (err) {}
+    try {
+      if (!isPosTablesPath(global.location.pathname)) return;
+      var url = new URL(global.location.href);
+      if (open) {
+        url.searchParams.set('kot', '1');
+        if (mode === 'edit') url.searchParams.set('kotMode', 'edit');
+        else url.searchParams.delete('kotMode');
+      } else {
+        url.searchParams.delete('kot');
+        url.searchParams.delete('kotMode');
+      }
+      var qs = url.searchParams.toString();
+      var next = url.pathname + (qs ? '?' + qs : '') + url.hash;
+      var cur =
+        global.location.pathname + global.location.search + global.location.hash;
+      if (next === cur) return;
+      global.history.replaceState(
+        Object.assign({}, global.history.state || {}, { deSoftNav: true }),
+        '',
+        next
+      );
+    } catch (err2) {}
+  }
+
+  function readKotTokensModalResume() {
+    try {
+      var params = new URLSearchParams(global.location.search || '');
+      if (params.get('kot') === '1') {
+        return {
+          open: true,
+          mode: params.get('kotMode') === 'edit' ? 'edit' : 'resend'
+        };
+      }
+    } catch (err) {}
+    try {
+      var raw = sessionStorage.getItem(KOT_MODAL_SESSION_KEY);
+      if (!raw) return null;
+      var data = JSON.parse(raw);
+      if (data && data.open) {
+        return {
+          open: true,
+          mode: data.mode === 'edit' ? 'edit' : 'resend'
+        };
+      }
+    } catch (err2) {}
+    return null;
+  }
+
+  function getKotMode() {
+    var modal = document.getElementById('pos-kot-tokens-modal');
+    var raw = modal
+      ? String(modal.getAttribute('data-kot-mode') || currentKotMode || 'resend')
+      : currentKotMode;
+    return raw === 'edit' ? 'edit' : 'resend';
+  }
+
+  function syncKotModeTabs() {
+    var modal = document.getElementById('pos-kot-tokens-modal');
+    if (!modal) return;
+    var mode = getKotMode();
+    modal.setAttribute('data-kot-mode', mode);
+    modal.querySelectorAll('.pos-kot-mode-tab[data-kot-mode]').forEach(function (tab) {
+      var on = tab.getAttribute('data-kot-mode') === mode;
+      tab.classList.toggle('is-active', on);
+      tab.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+
+  function setKotMode(next, opts) {
+    var mode = next === 'edit' ? 'edit' : 'resend';
+    var force = !!(opts && opts.force);
+    if (!force && mode === getKotMode()) return;
+    if (
+      !force &&
+      getKotMode() === 'edit' &&
+      mode === 'resend' &&
+      collectKotTokenReductions().length
+    ) {
+      if (
+        !window.confirm(
+          'Discard unsaved kitchen quantity changes and switch to Resend?'
+        )
+      ) {
+        syncKotModeTabs();
+        return;
+      }
+    }
+    currentKotMode = mode;
+    var modal = document.getElementById('pos-kot-tokens-modal');
+    if (modal) modal.setAttribute('data-kot-mode', mode);
+    syncKotModeTabs();
+    paintKotTokensModal({ tables: currentKotTokens || [] });
+    if (modal && !modal.hidden) persistKotTokensModalOpen(true);
+  }
 
   function selectedKotTokenLines(tokenIdx) {
     var token = currentKotTokens[tokenIdx];
@@ -2661,14 +2776,25 @@
         name: line.name,
         variant: line.variant,
         qty: customQty,
-        sent_qty: customQty
+        sent_qty: customQty,
+        outlet: line.outlet || ''
       });
     });
     return out;
   }
 
+  var KOT_EDIT_QTY_MAX = 999;
+
   function kotTokenQtyMin() {
+    if (getKotMode() !== 'edit') return 1;
     return canCancelKotLines() ? 0 : 1;
+  }
+
+  function kotTokenLineOrigQty(row) {
+    if (!row) return 0;
+    var orig = Number(row.getAttribute('data-kot-orig-qty'));
+    if (isFinite(orig)) return orig;
+    return Number(row.getAttribute('data-kot-max-qty')) || 0;
   }
 
   function syncKotTokenQtyButtons(row) {
@@ -2676,47 +2802,69 @@
     var qtyEl = row.querySelector('[data-kot-line-qty]');
     if (!qtyEl) return;
     var locked = row.classList.contains('is-locked');
-    var maxQty = Number(row.getAttribute('data-kot-max-qty')) || 1;
+    var editMode = getKotMode() === 'edit';
+    var maxQty = editMode
+      ? KOT_EDIT_QTY_MAX
+      : Number(row.getAttribute('data-kot-max-qty')) || 1;
     var cur = Number(qtyEl.getAttribute('data-kot-line-qty'));
     if (!isFinite(cur)) cur = 1;
     var minQty = kotTokenQtyMin();
     var dec = row.querySelector('[data-kot-qty-dec]');
     var inc = row.querySelector('[data-kot-qty-inc]');
     if (dec) dec.disabled = locked || cur <= minQty;
-    if (inc) inc.disabled = locked || cur >= maxQty;
+    if (inc) {
+      inc.disabled = locked || cur >= maxQty;
+    }
   }
 
   function collectKotTokenReductions() {
     var modal = document.getElementById('pos-kot-tokens-modal');
-    if (!modal) return [];
+    if (!modal || getKotMode() !== 'edit') return [];
     var changes = [];
     modal.querySelectorAll('[data-kot-token-panel]').forEach(function (panel) {
       var tokenIdx = Number(panel.getAttribute('data-kot-token-panel'));
       var token = currentKotTokens[tokenIdx];
       if (!token || !token.invoice_id) return;
-      panel.querySelectorAll('.pos-kot-token-line').forEach(function (row) {
-        var input = row.querySelector('input[data-kot-line-id]');
+      panel.querySelectorAll('.pos-kot-token-line[data-kot-line-id]').forEach(function (row) {
         var qtyEl = row.querySelector('[data-kot-line-qty]');
-        if (!input || !qtyEl) return;
-        var lineId = Number(input.getAttribute('data-kot-line-id'));
-        var maxQty = Number(row.getAttribute('data-kot-max-qty')) || 0;
+        if (!qtyEl) return;
+        var lineId = Number(row.getAttribute('data-kot-line-id'));
+        var origQty = kotTokenLineOrigQty(row);
         var cur = Number(qtyEl.getAttribute('data-kot-line-qty'));
-        if (!isFinite(cur)) cur = maxQty;
-        if (cur + 1e-9 >= maxQty) return;
+        if (!isFinite(cur)) cur = origQty;
+        if (Math.abs(cur - origQty) <= 1e-9) return;
         if (cur < 0) cur = 0;
+        if (cur > KOT_EDIT_QTY_MAX) cur = KOT_EDIT_QTY_MAX;
         changes.push({
           invoice_id: Number(token.invoice_id),
           line_id: lineId,
-          sent_qty: cur
+          sent_qty: cur,
+          orig_sent_qty: origQty
         });
       });
     });
     return changes;
   }
 
+  function kotTokenChangesIncludeReduction(changes) {
+    return (changes || []).some(function (change) {
+      return (
+        Number(change.sent_qty) + 1e-9 <
+        Number(change.orig_sent_qty != null ? change.orig_sent_qty : change.sent_qty)
+      );
+    });
+  }
+
   function syncKotTokensSaveButton() {
     var btn = document.getElementById('pos-kot-tokens-save');
     if (!btn) return;
+    if (getKotMode() !== 'edit' || !canCancelKotLines()) {
+      btn.hidden = true;
+      btn.disabled = true;
+      btn.setAttribute('hidden', '');
+      btn.title = '';
+      return;
+    }
     var changes = collectKotTokenReductions();
     var hasChanges = changes.length > 0;
     btn.hidden = !hasChanges;
@@ -2734,24 +2882,92 @@
     }
   }
 
-  function saveKotTokenReductions() {
-    var btn = document.getElementById('pos-kot-tokens-save');
-    var changes = collectKotTokenReductions();
-    if (!changes.length) {
-      toast('No kitchen quantities were reduced.');
+  function closeKotReduceReasonModal() {
+    var modal = document.getElementById('pos-kot-reduce-reason-modal');
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute('hidden', '');
+    modal.setAttribute('aria-hidden', 'true');
+    pendingKotReduceChanges = null;
+    var reason = document.getElementById('pos-kot-reduce-reason');
+    var err = document.getElementById('pos-kot-reduce-reason-error');
+    var confirmBtn = document.getElementById('pos-kot-reduce-reason-confirm');
+    if (reason) reason.value = '';
+    if (err) {
+      err.hidden = true;
+      err.textContent = '';
+    }
+    if (confirmBtn) confirmBtn.disabled = false;
+    syncKotTokensSaveButton();
+  }
+
+  function openKotReduceReasonModal(changes) {
+    pendingKotReduceChanges = changes || [];
+    var modal = document.getElementById('pos-kot-reduce-reason-modal');
+    var reason = document.getElementById('pos-kot-reduce-reason');
+    var err = document.getElementById('pos-kot-reduce-reason-error');
+    if (!modal) {
+      toast('Could not open the reason dialog. Refresh and try again.');
       return;
     }
-    if (!canCancelKotLines()) {
-      toast('Cancellation is required to reduce kitchen-sent items.');
+    if (reason) reason.value = '';
+    if (err) {
+      err.hidden = true;
+      err.textContent = '';
+    }
+    modal.hidden = false;
+    modal.removeAttribute('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    setTimeout(function () {
+      if (reason) reason.focus();
+    }, 30);
+  }
+
+  function saveKotTokenReductions() {
+    var changes = collectKotTokenReductions();
+    if (!changes.length) {
+      toast('No kitchen quantity changes to save.');
       syncKotTokensSaveButton();
       return;
     }
+    if (!canCancelKotLines()) {
+      toast('Cancellation is required to edit kitchen-sent items.');
+      syncKotTokensSaveButton();
+      return;
+    }
+    if (kotTokenChangesIncludeReduction(changes)) {
+      openKotReduceReasonModal(changes);
+      return;
+    }
+    postKotTokenReductions(changes, '');
+  }
+
+  function bindKotReduceReasonModal() {
+    var reduceModal = document.getElementById('pos-kot-reduce-reason-modal');
+    if (!reduceModal || reduceModal.getAttribute('data-bound') === '1') return;
+    reduceModal.setAttribute('data-bound', '1');
+    reduceModal.addEventListener('click', function (event) {
+      if (event.target.closest('[data-kot-reduce-reason-close]')) {
+        closeKotReduceReasonModal();
+        return;
+      }
+      if (event.target.closest('#pos-kot-reduce-reason-confirm')) {
+        event.preventDefault();
+        submitKotReduceReasonModal();
+      }
+    });
+  }
+
+  function postKotTokenReductions(changes, reason) {
+    var btn = document.getElementById('pos-kot-tokens-save');
+    var confirmBtn = document.getElementById('pos-kot-reduce-reason-confirm');
     if (btn) btn.disabled = true;
+    if (confirmBtn) confirmBtn.disabled = true;
     fetch(resolvePosApiBase() + '/api/kot-tokens/reduce', {
       method: 'POST',
       credentials: 'same-origin',
       headers: apiHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ changes: changes })
+      body: JSON.stringify({ changes: changes, reason: reason })
     })
       .then(function (res) {
         return res.json().catch(function () {
@@ -2762,13 +2978,21 @@
       })
       .then(function (result) {
         if (!result.ok || !(result.data && result.data.ok)) {
-          toast(
+          var err = document.getElementById('pos-kot-reduce-reason-error');
+          var msg =
             (result.data && result.data.error) ||
-              'Could not save kitchen quantity changes.'
-          );
+            'Could not save kitchen quantity changes.';
+          if (err && !document.getElementById('pos-kot-reduce-reason-modal').hidden) {
+            err.hidden = false;
+            err.textContent = msg;
+          } else {
+            toast(msg);
+          }
+          if (confirmBtn) confirmBtn.disabled = false;
           syncKotTokensSaveButton();
           return;
         }
+        closeKotReduceReasonModal();
         var cancelled = Number(result.data.cancelled_count) || 0;
         var invoices = (result.data && result.data.invoices) || [];
         if (!cancelled && invoices.length) {
@@ -2801,8 +3025,29 @@
       })
       .catch(function () {
         toast('Could not save kitchen quantity changes. Check your connection.');
+        if (confirmBtn) confirmBtn.disabled = false;
         syncKotTokensSaveButton();
       });
+  }
+
+  function submitKotReduceReasonModal() {
+    var changes = pendingKotReduceChanges || [];
+    if (!changes.length) {
+      closeKotReduceReasonModal();
+      return;
+    }
+    var reasonEl = document.getElementById('pos-kot-reduce-reason');
+    var err = document.getElementById('pos-kot-reduce-reason-error');
+    var reason = reasonEl ? String(reasonEl.value || '').trim() : '';
+    if (!reason) {
+      if (err) {
+        err.hidden = false;
+        err.textContent = 'Enter a reason for reducing or cancelling kitchen items.';
+      }
+      if (reasonEl) reasonEl.focus();
+      return;
+    }
+    postKotTokenReductions(changes, reason);
   }
 
   function syncKotTokenPanelActions(tokenIdx) {
@@ -2830,6 +3075,9 @@
     var metaEl = document.getElementById('pos-kot-tokens-meta');
     var tables = (payload && Array.isArray(payload.tables) ? payload.tables : []) || [];
     var count = tables.length;
+    var mode = getKotMode();
+    var editMode = mode === 'edit';
+    syncKotModeTabs();
 
     if (metaEl) {
       metaEl.textContent =
@@ -2851,17 +3099,18 @@
     if (wrap) wrap.hidden = false;
     if (emptyEl) emptyEl.hidden = true;
 
-    var chevronDownSvg =
-      '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
-    var chevronUpSvg =
-      '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>';
-    /* Refresh arrows — clearer “resend” than a notification bell */
     var resendSvg =
       '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
       '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>' +
       '<path d="M21 3v5h-5"/>' +
       '<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>' +
       '<path d="M8 16H3v5"/>' +
+      '</svg>';
+
+    var tableIconSvg =
+      '<svg class="pos-kot-table-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+      '<rect x="3" y="8" width="18" height="3" rx="1"/>' +
+      '<path d="M5 11v7M19 11v7M9 11v7M15 11v7"/>' +
       '</svg>';
 
     rowsEl.innerHTML = tables
@@ -2873,6 +3122,8 @@
         var expanded = !!kotTokenExpanded[idx];
         var billSent = !!t.customer_bill_sent;
         var linesLocked = kotTokenLinesLocked(t);
+        var editLocked = linesLocked || (editMode && !canCancelKotLines());
+        var themeClass = 'pos-kot-theme-' + (idx % 3);
         var lineChecks = lines
           .map(function (line) {
             var qty = Number(line.sent_qty != null ? line.sent_qty : line.qty) || 0;
@@ -2881,10 +3132,58 @@
               (line.variant ? ' (' + line.variant + ')' : '') +
               ' × ' +
               qty;
+            var minQty = editMode ? kotTokenQtyMin() : 1;
+            var resendMax = qty;
+            var incEnabled = editMode
+              ? !editLocked && qty < KOT_EDIT_QTY_MAX
+              : !linesLocked && qty < resendMax;
+            var decEnabled = editMode
+              ? !editLocked && qty > minQty
+              : !linesLocked && qty > minQty;
+            var stepper =
+              '<span class="pos-kot-token-qty-stepper" data-kot-qty-stepper>' +
+              '<button type="button" class="pos-kot-token-qty-btn" data-kot-qty-dec' +
+              (decEnabled ? '' : ' disabled') +
+              ' aria-label="Decrease quantity">−</button>' +
+              '<span class="pos-kot-token-line-qty" data-kot-line-qty="' +
+              escapeHtml(qty) +
+              '">' +
+              escapeHtml(qty) +
+              '</span>' +
+              '<button type="button" class="pos-kot-token-qty-btn" data-kot-qty-inc' +
+              (incEnabled ? '' : ' disabled') +
+              ' aria-label="Increase quantity">+</button>' +
+              '</span>';
+            if (editMode) {
+              return (
+                '<div class="pos-kot-token-line' +
+                (editLocked ? ' is-locked' : '') +
+                '" data-kot-line-id="' +
+                escapeHtml(line.id) +
+                '" data-kot-orig-qty="' +
+                escapeHtml(qty) +
+                '" data-kot-max-qty="' +
+                escapeHtml(KOT_EDIT_QTY_MAX) +
+                '">' +
+                '<span class="pos-kot-token-line-name">' +
+                escapeHtml(line.name || 'Item') +
+                (line.variant
+                  ? '<small>' + escapeHtml(line.variant) + '</small>'
+                  : '') +
+                '</span>' +
+                '<span class="pos-sr-only">' +
+                escapeHtml(label) +
+                '</span>' +
+                stepper +
+                '</div>'
+              );
+            }
             return (
               '<div class="pos-kot-token-line' +
               (linesLocked ? ' is-locked' : '') +
               '" data-kot-max-qty="' +
+              escapeHtml(qty) +
+              '" data-kot-orig-qty="' +
               escapeHtml(qty) +
               '">' +
               '<label class="pos-kot-token-line-check">' +
@@ -2904,34 +3203,81 @@
               escapeHtml(label) +
               '</span>' +
               '</label>' +
-              '<span class="pos-kot-token-qty-stepper" data-kot-qty-stepper>' +
-              '<button type="button" class="pos-kot-token-qty-btn" data-kot-qty-dec' +
-              (linesLocked || qty <= kotTokenQtyMin() ? ' disabled' : '') +
-              ' aria-label="Decrease quantity">−</button>' +
-              '<span class="pos-kot-token-line-qty" data-kot-line-qty="' +
-              escapeHtml(qty) +
-              '">' +
-              escapeHtml(qty) +
-              '</span>' +
-              '<button type="button" class="pos-kot-token-qty-btn" data-kot-qty-inc' +
-              ' disabled' +
-              ' aria-label="Increase quantity">+</button>' +
-              '</span>' +
+              stepper +
               '</div>'
             );
           })
           .join('');
 
+        var lockNote = '';
+        if (editMode) {
+          if (!canCancelKotLines()) {
+            lockNote =
+              '<p class="pos-kot-token-bill-lock">Cancellation is required to edit kitchen quantities.</p>';
+          } else if (linesLocked) {
+            lockNote =
+              '<p class="pos-kot-token-bill-lock">Bill sent — kitchen edit disabled</p>';
+          } else if (billSent) {
+            lockNote =
+              '<p class="pos-kot-token-bill-lock is-soft">Bill sent — Cancellation can still edit</p>';
+          }
+        } else if (linesLocked) {
+          lockNote =
+            '<p class="pos-kot-token-bill-lock">Bill sent — resend disabled</p>';
+        } else if (billSent) {
+          lockNote =
+            '<p class="pos-kot-token-bill-lock is-soft">Bill sent — Cancellation can still edit</p>';
+        }
+
+        var tools = editMode
+          ? ''
+          : '<div class="pos-kot-token-panel-tools pos-kot-resend-only">' +
+            '<button type="button" class="pos-kot-token-link" data-kot-select-all="' +
+            idx +
+            '"' +
+            (linesLocked ? ' disabled' : '') +
+            '>Select all</button>' +
+            '<button type="button" class="pos-kot-token-link" data-kot-clear-all="' +
+            idx +
+            '"' +
+            (linesLocked ? ' disabled' : '') +
+            '>Clear</button>' +
+            '<span class="pos-kot-token-selected" data-kot-selected-count>' +
+            (linesLocked ? '0' : lines.length) +
+            ' of ' +
+            lines.length +
+            ' selected</span>' +
+            '</div>';
+
+        var footer = editMode
+          ? ''
+          : '<div class="pos-kot-token-panel-footer pos-kot-resend-only">' +
+            '<button type="button" class="pos-kot-row-send" data-kot-resend-selected="' +
+            idx +
+            '"' +
+            (linesLocked || !lines.length ? ' disabled' : '') +
+            (linesLocked ? ' title="Bill sent — resend disabled"' : '') +
+            '>' +
+            resendSvg +
+            '<span>Resend</span></button>' +
+            '</div>';
+
         return (
-          '<tr class="pos-kot-token-summary' +
+          '<tr class="pos-kot-token-summary ' +
+          themeClass +
           (expanded ? ' is-expanded' : '') +
           (billSent ? ' is-bill-sent' : '') +
           '" data-kot-token-idx="' +
           idx +
+          '" aria-expanded="' +
+          (expanded ? 'true' : 'false') +
           '">' +
           '<td>' +
           '<div class="pos-kot-table-cell-name">' +
+          tableIconSvg +
+          '<span>' +
           escapeHtml(t.name || 'Table') +
+          '</span>' +
           '</div>' +
           (billSent
             ? '<span class="pos-kot-table-bill-lock">Bill sent</span>'
@@ -2945,37 +3291,33 @@
           (items === 1 ? ' item' : ' items') +
           '</span></td>' +
           '<td><div class="pos-kot-table-time">' +
+          '<span class="pos-kot-table-time-clock">' +
           escapeHtml(when.time) +
-          (when.date ? '<small>' + escapeHtml(when.date) + '</small>' : '') +
+          '</span>' +
+          (when.date
+            ? '<small class="pos-kot-table-time-date">' +
+              escapeHtml(when.date) +
+              '</small>'
+            : '') +
           '</div></td>' +
           '<td class="pos-kot-token-actions-cell">' +
           '<div class="pos-kot-token-actions act-grp">' +
-          '<button type="button" class="act-btn pos-kot-token-toggle' +
-          (expanded ? ' is-open' : '') +
-          '" data-kot-toggle-idx="' +
-          idx +
-          '" aria-expanded="' +
-          (expanded ? 'true' : 'false') +
-          '" data-tip="' +
-          (expanded ? 'Hide items' : 'Select items') +
-          '" aria-label="' +
-          (expanded ? 'Hide items' : 'Select items') +
-          '">' +
-          (expanded ? chevronUpSvg : chevronDownSvg) +
-          '</button>' +
-          '<button type="button" class="act-btn pos-kot-token-resend-all" data-kot-resend-all-idx="' +
-          idx +
-          '"' +
-          (linesLocked
-            ? ' disabled data-tip="Bill sent — resend disabled" aria-label="Bill sent — resend disabled"'
-            : ' data-tip="Resend all" aria-label="Resend every item on this token"') +
-          '>' +
-          resendSvg +
-          '</button>' +
+          (editMode
+            ? ''
+            : '<button type="button" class="act-btn pos-kot-token-resend-all pos-kot-resend-only" data-kot-resend-all-idx="' +
+              idx +
+              '"' +
+              (linesLocked
+                ? ' disabled data-tip="Bill sent — resend disabled" aria-label="Bill sent — resend disabled"'
+                : ' data-tip="Resend all" aria-label="Resend every item on this token"') +
+              '>' +
+              resendSvg +
+              '</button>') +
           '</div>' +
           '</td>' +
           '</tr>' +
-          '<tr class="pos-kot-token-detail' +
+          '<tr class="pos-kot-token-detail ' +
+          themeClass +
           (expanded ? ' is-open' : '') +
           '" data-kot-token-detail="' +
           idx +
@@ -2985,46 +3327,18 @@
           '<td colspan="5">' +
           '<div class="pos-kot-token-panel' +
           (billSent ? ' is-bill-sent' : '') +
+          (editMode ? ' is-edit-mode' : '') +
           (linesLocked ? '' : billSent ? ' is-cancel-unlocked' : '') +
           '" data-kot-token-panel="' +
           idx +
           '">' +
-          (linesLocked
-            ? '<p class="pos-kot-token-bill-lock">Bill sent — resend disabled</p>'
-            : billSent
-              ? '<p class="pos-kot-token-bill-lock is-soft">Bill sent — Cancellation can still edit</p>'
-              : '') +
-          '<div class="pos-kot-token-panel-tools">' +
-          '<button type="button" class="pos-kot-token-link" data-kot-select-all="' +
-          idx +
-          '"' +
-          (linesLocked ? ' disabled' : '') +
-          '>Select all</button>' +
-          '<button type="button" class="pos-kot-token-link" data-kot-clear-all="' +
-          idx +
-          '"' +
-          (linesLocked ? ' disabled' : '') +
-          '>Clear</button>' +
-          '<span class="pos-kot-token-selected" data-kot-selected-count>' +
-          (linesLocked ? '0' : lines.length) +
-          ' of ' +
-          lines.length +
-          ' selected</span>' +
-          '</div>' +
+          lockNote +
+          tools +
           '<div class="pos-kot-token-lines">' +
           (lineChecks ||
             '<p class="pos-kot-token-lines-empty">No sent items on this token.</p>') +
           '</div>' +
-          '<div class="pos-kot-token-panel-footer">' +
-          '<button type="button" class="pos-kot-row-send" data-kot-resend-selected="' +
-          idx +
-          '"' +
-          (linesLocked || !lines.length ? ' disabled' : '') +
-          (linesLocked ? ' title="Bill sent — resend disabled"' : '') +
-          '>' +
-          resendSvg +
-          '<span>Resend selected</span></button>' +
-          '</div>' +
+          footer +
           '</div>' +
           '</td>' +
           '</tr>'
@@ -3042,19 +3356,34 @@
   function closeKotTokensModal() {
     var modal = document.getElementById('pos-kot-tokens-modal');
     if (!modal || modal.hidden) return;
+    closeKotReduceReasonModal();
     modal.hidden = true;
     modal.setAttribute('hidden', '');
     modal.setAttribute('aria-hidden', 'true');
     kotTokenExpanded = {};
+    currentKotMode = 'resend';
+    modal.setAttribute('data-kot-mode', 'resend');
+    syncKotModeTabs();
+    persistKotTokensModalOpen(false);
   }
 
-  function openKotTokensModal() {
+  function openKotTokensModal(opts) {
+    opts = opts || {};
     var modal = document.getElementById('pos-kot-tokens-modal');
     if (!modal) return;
-    kotTokenExpanded = {};
+    var restore = !!opts.restore;
+    if (!restore) {
+      kotTokenExpanded = {};
+      currentKotMode = 'resend';
+    } else {
+      currentKotMode = opts.mode === 'edit' ? 'edit' : 'resend';
+    }
+    modal.setAttribute('data-kot-mode', currentKotMode);
+    syncKotModeTabs();
     modal.hidden = false;
     modal.removeAttribute('hidden');
     modal.setAttribute('aria-hidden', 'false');
+    persistKotTokensModalOpen(true);
     paintKotTokensModal({ tables: currentKotTokens || [] });
     fetch(resolvePosApiBase() + '/api/kot-tokens', {
       method: 'GET',
@@ -3081,6 +3410,15 @@
     if (closeBtn) closeBtn.focus();
   }
 
+  function maybeRestoreKotTokensModal() {
+    if (!document.getElementById('pos-tables-page')) return;
+    var modal = document.getElementById('pos-kot-tokens-modal');
+    if (!modal || !modal.hidden) return;
+    var pref = readKotTokensModalResume();
+    if (!pref || !pref.open) return;
+    openKotTokensModal({ restore: true, mode: pref.mode });
+  }
+
   function bindKotTokensModal() {
     var openBtn = document.getElementById('pos-quick-kot-tokens');
     if (openBtn && openBtn.getAttribute('data-bound') !== '1') {
@@ -3090,9 +3428,22 @@
       });
     }
 
+    /* Bind independently of the KOT modal data-bound gate (soft-nav safe). */
+    bindKotReduceReasonModal();
+    var saveBtnEl = document.getElementById('pos-kot-tokens-save');
+    if (saveBtnEl && saveBtnEl.getAttribute('data-save-bound') !== '1') {
+      saveBtnEl.setAttribute('data-save-bound', '1');
+      saveBtnEl.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (saveBtnEl.disabled || getKotMode() !== 'edit') return;
+        saveKotTokenReductions();
+      });
+    }
+
     var modal = document.getElementById('pos-kot-tokens-modal');
-    if (!modal || modal.getAttribute('data-bound') === '1') return;
-    modal.setAttribute('data-bound', '1');
+    if (modal && modal.getAttribute('data-bound') !== '1') {
+      modal.setAttribute('data-bound', '1');
 
     modal.addEventListener('click', function (event) {
       if (event.target.closest('[data-kot-tokens-close]')) {
@@ -3100,13 +3451,27 @@
         return;
       }
 
-      var toggle = event.target.closest('[data-kot-toggle-idx]');
-      if (toggle && modal.contains(toggle)) {
+      var modeTab = event.target.closest('.pos-kot-mode-tab[data-kot-mode]');
+      if (modeTab && modal.contains(modeTab)) {
         event.preventDefault();
-        var tIdx = Number(toggle.getAttribute('data-kot-toggle-idx'));
-        kotTokenExpanded[tIdx] = !kotTokenExpanded[tIdx];
-        paintKotTokensModal({ tables: currentKotTokens });
+        setKotMode(modeTab.getAttribute('data-kot-mode') || 'resend');
         return;
+      }
+
+      var summaryRow = event.target.closest(
+        'tr.pos-kot-token-summary[data-kot-token-idx]'
+      );
+      if (summaryRow && modal.contains(summaryRow)) {
+        /* Resend-all is its own action — don't treat it as expand/collapse. */
+        if (!event.target.closest('[data-kot-resend-all-idx]')) {
+          event.preventDefault();
+          var tIdx = Number(summaryRow.getAttribute('data-kot-token-idx'));
+          var willExpand = !kotTokenExpanded[tIdx];
+          kotTokenExpanded = {};
+          if (willExpand) kotTokenExpanded[tIdx] = true;
+          paintKotTokensModal({ tables: currentKotTokens });
+          return;
+        }
       }
 
       var qtyDec = event.target.closest('[data-kot-qty-dec]');
@@ -3121,25 +3486,35 @@
         if (!qtyRow || !qtyPanel) return;
         var qtyTokenIdx = Number(qtyPanel.getAttribute('data-kot-token-panel'));
         var qtyToken = currentKotTokens[qtyTokenIdx];
-        if (kotTokenLinesLocked(qtyToken)) return;
+        if (getKotMode() === 'edit') {
+          if (!canCancelKotLines() || kotTokenLinesLocked(qtyToken)) return;
+        } else if (kotTokenLinesLocked(qtyToken)) {
+          return;
+        }
         var qtyEl = qtyRow.querySelector('[data-kot-line-qty]');
         if (!qtyEl) return;
-        var maxQty = Number(qtyRow.getAttribute('data-kot-max-qty')) || 1;
+        var editQty = getKotMode() === 'edit';
+        var maxQty = editQty
+          ? KOT_EDIT_QTY_MAX
+          : Number(qtyRow.getAttribute('data-kot-max-qty')) || 1;
         var cur = Number(qtyEl.getAttribute('data-kot-line-qty'));
-        if (!isFinite(cur)) cur = maxQty;
+        if (!isFinite(cur)) {
+          cur = editQty ? kotTokenLineOrigQty(qtyRow) : maxQty;
+        }
         if (qtyInc) cur = Math.min(maxQty, cur + 1);
         if (qtyDec) cur = Math.max(kotTokenQtyMin(), cur - 1);
         qtyEl.setAttribute('data-kot-line-qty', String(cur));
         qtyEl.textContent = String(cur);
         syncKotTokenQtyButtons(qtyRow);
-        syncKotTokensSaveButton();
+        if (getKotMode() === 'edit') syncKotTokensSaveButton();
+        else syncKotTokenPanelActions(qtyTokenIdx);
         return;
       }
 
       var saveBtn = event.target.closest('[data-kot-tokens-save]');
       if (saveBtn && modal.contains(saveBtn)) {
         event.preventDefault();
-        if (saveBtn.disabled) return;
+        if (saveBtn.disabled || getKotMode() !== 'edit') return;
         saveKotTokenReductions();
         return;
       }
@@ -3147,7 +3522,7 @@
       var selectAll = event.target.closest('[data-kot-select-all]');
       if (selectAll && modal.contains(selectAll)) {
         event.preventDefault();
-        if (selectAll.disabled) return;
+        if (selectAll.disabled || getKotMode() !== 'resend') return;
         var sIdx = Number(selectAll.getAttribute('data-kot-select-all'));
         if (kotTokenLinesLocked(currentKotTokens[sIdx])) return;
         var sPanel = modal.querySelector('[data-kot-token-panel="' + sIdx + '"]');
@@ -3163,7 +3538,7 @@
       var clearAll = event.target.closest('[data-kot-clear-all]');
       if (clearAll && modal.contains(clearAll)) {
         event.preventDefault();
-        if (clearAll.disabled) return;
+        if (clearAll.disabled || getKotMode() !== 'resend') return;
         var cIdx = Number(clearAll.getAttribute('data-kot-clear-all'));
         if (kotTokenLinesLocked(currentKotTokens[cIdx])) return;
         var cPanel = modal.querySelector('[data-kot-token-panel="' + cIdx + '"]');
@@ -3180,7 +3555,7 @@
       if (resendAll && modal.contains(resendAll)) {
         event.preventDefault();
         event.stopPropagation();
-        if (resendAll.disabled) return;
+        if (resendAll.disabled || getKotMode() !== 'resend') return;
         var aIdx = Number(resendAll.getAttribute('data-kot-resend-all-idx'));
         var aToken = currentKotTokens[aIdx];
         if (!aToken) {
@@ -3201,7 +3576,7 @@
       if (resendSel && modal.contains(resendSel)) {
         event.preventDefault();
         event.stopPropagation();
-        if (resendSel.disabled) return;
+        if (resendSel.disabled || getKotMode() !== 'resend') return;
         var rIdx = Number(resendSel.getAttribute('data-kot-resend-selected'));
         var rToken = currentKotTokens[rIdx];
         if (!rToken) {
@@ -3239,6 +3614,11 @@
       document.__posKotTokensEscBound = true;
       document.addEventListener('keydown', function (event) {
         if (event.key !== 'Escape') return;
+        var reduceOpen = document.getElementById('pos-kot-reduce-reason-modal');
+        if (reduceOpen && !reduceOpen.hidden) {
+          closeKotReduceReasonModal();
+          return;
+        }
         var settleOpen = document.getElementById('pos-inv-settle-modal');
         if (settleOpen && !settleOpen.hidden) return;
         var invoicesOpen = document.getElementById('pos-today-invoices-modal');
@@ -3250,6 +3630,9 @@
         if (open && !open.hidden) closeKotTokensModal();
       });
     }
+    }
+
+    maybeRestoreKotTokensModal();
   }
 
   var currentTodayInvoices = [];

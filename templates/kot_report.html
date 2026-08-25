@@ -1,0 +1,286 @@
+{% set de_soft_body_class = 'de-open su-module sales-report-module kot-report-module' %}
+{% set de_soft_page_title = page_title ~ ' | Reports | Hotel Bell Elite' %}
+{% if not is_partial_main %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>{{ page_title }} | Reports | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=29">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=55">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=55">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=25">
+<link rel="stylesheet" href="{{ url_for('static', filename='reports_page_scroll.css') }}?v=5">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module sales-report-module kot-report-module">
+{% endif %}
+{% include 'partials/de_workspace_shell_open.html' %}
+{% if is_partial_main %}
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=29">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=55">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=25">
+<link rel="stylesheet" href="{{ url_for('static', filename='reports_page_scroll.css') }}?v=5">
+{% endif %}
+
+<div class="main-wrapper" id="kot-report-page"
+     data-sales-report
+     data-report-kind="kot">
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          {% include 'partials/su_page_back.html' with context %}
+          <button class="sb-pin-btn de-sb-pin-btn de-sidebar-pin-btn" type="button" onclick="toggleDeSidebarExpandedPin()" title="Pin sidebar expanded" aria-label="Pin sidebar expanded" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <h1>{{ page_title }}</h1>
+          </div>
+        </div>
+      </div>
+      <div class="su-header-tools">
+        <a class="btn btn-primary" href="{{ sales_report_export_url }}" download="{{ sales_report_export_filename }}">Export</a>
+      </div>
+    </div>
+    <div class="se-sales-header-card">
+      <div class="se-sales-header-filters">
+        <form id="sr-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="KOT report filters"
+              data-clear-url="{{ sales_report_clear_url }}">
+          {% if preserve_from_hub %}
+          <input type="hidden" name="from_hub" value="reports">
+          {% endif %}
+          <input type="hidden" id="sr-date-from" name="date_from" value="{{ date_from }}">
+          <input type="hidden" id="sr-date-to" name="date_to" value="{{ date_to }}">
+
+          <div class="se-filter-chip se-filter-chip--search pl-search-chip pl-header-field-listbox pl-header-field" id="sr-search-chip">
+            <label class="se-filter-chip-label" for="sr-search">Search</label>
+            <div class="se-filter-chip-control">
+              <input type="search" id="sr-search" class="pl-search-input pl-header-search" value="" placeholder="KOT, table, captain, invoice…" autocomplete="off" aria-label="Search KOT rows">
+            </div>
+          </div>
+
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-change="srOutletChanged" id="sr-outlet-listbox">
+            <span class="se-filter-chip-label" id="sr-outlet-label">Outlet</span>
+            <div class="se-filter-chip-control">
+              <input type="hidden" id="sr-outlet" name="outlet" value="{{ selected_outlet }}">
+              <button type="button" class="se-filter-chip-trigger" id="sr-outlet-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="sr-outlet-list" aria-labelledby="sr-outlet-label sr-outlet-value">
+                <span class="se-filter-chip-value" id="sr-outlet-value">{{ selected_outlet_label }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="sr-outlet-list" role="listbox" aria-labelledby="sr-outlet-label" hidden>
+              <button type="button" class="se-filter-listbox-option{% if selected_outlet == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-label="All" aria-selected="{{ 'true' if selected_outlet == 'all' else 'false' }}">All</button>
+              <button type="button" class="se-filter-listbox-option{% if selected_outlet == 'restaurant' %} is-selected{% endif %}" role="option" data-value="restaurant" data-label="Restaurant" aria-selected="{{ 'true' if selected_outlet == 'restaurant' else 'false' }}">Restaurant</button>
+              <button type="button" class="se-filter-listbox-option{% if selected_outlet == 'bar' %} is-selected{% endif %}" role="option" data-value="bar" data-label="Bar" aria-selected="{{ 'true' if selected_outlet == 'bar' else 'false' }}">Bar</button>
+            </div>
+          </div>
+
+          <div class="se-filter-chip-date-host pl-date-range-host pl-header-field" id="sr-date-range-host">
+            <span class="se-filter-chip-label" id="sr-date-range-label">Date</span>
+            <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range pl-header-field-listbox ep-form-listbox{% if active_date_filter %} is-filtered{% endif %}">
+              <div class="se-filter-chip-control">
+                <div class="an-range-wrap an-range-wrap--sales" id="sr-date-range-wrap" data-max-date="{{ today_iso }}">
+                  <button type="button" class="an-range-trigger se-filter-chip-trigger" id="sr-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="sr-date-range-panel" aria-labelledby="sr-date-range-label sr-date-range-display">
+                    <span class="an-range-trigger-label">
+                      <span id="sr-date-range-display">{% if active_date_filter %}{{ date_from|report_date }} – {{ date_to|report_date }}{% else %}Select date…{% endif %}</span>
+                    </span>
+                  </button>
+                  <div class="an-range-backdrop" id="sr-date-range-backdrop" aria-hidden="true"></div>
+                  <div class="an-range-panel" id="sr-date-range-panel" role="dialog" aria-labelledby="sr-date-range-panel-title" hidden>
+                    <div class="an-range-panel-inner">
+                      <div class="an-range-panel-h" id="sr-date-range-panel-title">Date range</div>
+                      <div class="an-cal-dual">
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <button type="button" class="an-cal-nav-btn" id="sr-cal-prev" aria-label="Previous month">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                            </button>
+                            <h4 class="an-cal-month-title" id="sr-cal-title0">—</h4>
+                            <button type="button" class="an-cal-nav-btn" id="sr-cal-next" aria-label="Next month">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                            </button>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="sr-cal-grid0"></div>
+                        </div>
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <h4 class="an-cal-month-title" id="sr-cal-title1">—</h4>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="sr-cal-grid1"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="an-range-actions">
+                      <button type="button" class="btn" id="sr-date-range-today">Today</button>
+                      <button type="button" class="btn" id="sr-date-range-clear">Clear</button>
+                      <button type="button" class="btn btn-primary" id="sr-date-range-apply">Apply</button>
+                    </div>
+                  </div>
+                </div>
+                <span class="se-filter-chip-chev" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </header>
+
+  <section class="content se-content">
+    <div class="pl-summary-row kot-kpi-row" aria-label="KOT summary">
+      <article class="card pl-summary-card hbe-kpi-card kot-kpi is-active" data-kpi="total" role="button" tabindex="0" aria-pressed="true" aria-label="Show all KOTs" title="Show all KOTs">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Total KOTs</div>
+            <div class="pl-summary-value" id="kot-kpi-total">{{ kpis.total }}</div>
+            <div class="pl-summary-meta">{{ kpis.sent_qty }} item{{ '' if kpis.sent_qty == 1 else 's' }} sent</div>
+          </div>
+        </div>
+      </article>
+      <article class="card pl-summary-card hbe-kpi-card kot-kpi" data-kpi="open" role="button" tabindex="0" aria-pressed="false" aria-label="Filter open KOTs" title="Filter open KOTs">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Open</div>
+            <div class="pl-summary-value" id="kot-kpi-open">{{ kpis.open }}</div>
+            <div class="pl-summary-meta">Bill not generated</div>
+          </div>
+        </div>
+      </article>
+      <article class="card pl-summary-card hbe-kpi-card kot-kpi" data-kpi="invoice_generated" role="button" tabindex="0" aria-pressed="false" aria-label="Filter invoice generated KOTs" title="Filter invoice generated KOTs">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Invoice generated</div>
+            <div class="pl-summary-value" id="kot-kpi-invoice">{{ kpis.invoice_generated }}</div>
+            <div class="pl-summary-meta">Customer bill sent</div>
+          </div>
+        </div>
+      </article>
+      <article class="card pl-summary-card hbe-kpi-card kot-kpi" data-kpi="cancelled" role="button" tabindex="0" aria-pressed="false" aria-label="Filter cancelled KOTs" title="Filter cancelled KOTs">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--purple" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Cancelled</div>
+            <div class="pl-summary-value" id="kot-kpi-cancelled">{{ kpis.cancelled }}</div>
+            <div class="pl-summary-meta">Restaurant {{ kpis.restaurant }} · Bar {{ kpis.bar }}</div>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel" aria-label="Kitchen Order Tokens">
+      <div class="card-hdr">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          <span>Kitchen Order Tokens</span>
+        </div>
+        <span class="pl-count" id="sr-entry-count">{{ rows|length }} entr{{ 'y' if rows|length == 1 else 'ies' }}</span>
+      </div>
+      <div class="card-body pl-card-body--flush">
+        {% if rows %}
+        <div class="pl-table-wrap" tabindex="0" aria-label="KOT report, scroll for more">
+          <table class="pl-table" id="sr-table" aria-label="KOT entries">
+            <thead>
+              <tr>
+                <th class="pl-sortable" data-sort="time" scope="col" tabindex="0" aria-sort="none" title="Click to sort">KOT time</th>
+                <th class="pl-sortable" data-sort="outlet" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Outlet</th>
+                <th class="pl-sortable" data-sort="kot" scope="col" tabindex="0" aria-sort="none" title="Click to sort">KOT no</th>
+                <th class="pl-sortable" data-sort="table" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Table</th>
+                <th class="pl-sortable" data-sort="captain" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Captain</th>
+                <th class="pl-sortable pl-col-amount" data-sort="items" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Items</th>
+                <th class="pl-sortable pl-col-amount" data-sort="qty" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Qty</th>
+                <th class="pl-sortable" data-sort="status" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Status</th>
+                <th class="pl-sortable" data-sort="invoice" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Invoice no</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in rows %}
+              <tr class="sr-row pl-expense-row"
+                  data-sort-row
+                  data-status="{{ row.status }}"
+                  data-search="{{ [row.kot_no or '', row.order_no or '', row.table_label or '', row.captain or '', row.outlet_label or '', row.status_label or '', row.invoice_no or '', row.cancel_reason or '']|join(' ')|lower }}">
+                <td class="pl-col-date" data-sort-value="{{ row.first_kot_at or row.activity_date or '' }}">{{ row.first_kot_at_display or '—' }}</td>
+                <td data-sort-value="{{ row.outlet_label or '' }}">{{ row.outlet_label or '—' }}</td>
+                <td class="pl-col-code" data-sort-value="{{ row.kot_no or '' }}"><span class="pl-expense-code">{{ row.kot_no or '—' }}</span></td>
+                <td data-sort-value="{{ row.table_label or '' }}">{{ row.table_label or '—' }}</td>
+                <td data-sort-value="{{ row.captain or '' }}">{{ row.captain or '—' }}</td>
+                <td class="pl-col-amount" data-sort-value="{{ row.sent_item_count }}">{{ row.sent_item_count }}</td>
+                <td class="pl-col-amount" data-sort-value="{{ row.sent_qty }}">{{ row.sent_qty_display }}</td>
+                <td data-sort-value="{{ row.status_label or '' }}">
+                  <span class="kot-status kot-status--{{ row.status }}">{{ row.status_label }}</span>
+                </td>
+                <td class="pl-col-code kot-invoice-cell" data-sort-value="{{ row.invoice_no or row.cancel_reason or '' }}">
+                  {% if row.invoice_no %}
+                  <span class="pl-expense-code">{{ row.invoice_no }}</span>
+                  {% if row.cancel_reason %}<div class="pl-meta kot-cancel-reason">{{ row.cancel_reason }}</div>{% endif %}
+                  {% elif row.cancel_reason %}
+                  <div class="kot-cancel-reason kot-cancel-reason--solo">{{ row.cancel_reason }}</div>
+                  {% else %}
+                  <span class="pl-expense-code">—</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="pl-empty">No kitchen order tokens match these filters.</div>
+        {% endif %}
+      </div>
+    </article>
+  </section>
+</div>
+
+<script src="{{ url_for('static', filename='format_inr.js') }}"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=17"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=57"></script>
+<script src="{{ url_for('static', filename='sales_report.js') }}?v=9"></script>
+{% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
+</body>
+</html>
+{% endif %}

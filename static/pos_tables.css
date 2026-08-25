@@ -419,8 +419,386 @@ html.de-soft-navigating .de-main-wrapper .pos-kot-pending-banner--attention .pos
 #pos-kot-tokens-modal .pos-kot-modal-heading{
   align-items:center;
 }
+#pos-kot-tokens-modal .pos-kot-modal-dialog{
+  width:min(880px,100%);
+  max-height:min(90vh,760px);
+  border:1px solid #Dbeafe;
+  border-radius:22px;
+  box-shadow:0 28px 72px rgba(15,23,42,.18);
+}
+#pos-kot-tokens-modal .pos-kot-modal-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px 16px;
+  padding:22px 24px 18px;
+  background:#fff;
+  border-bottom:1px solid #EEF2F7;
+}
+#pos-kot-tokens-modal .pos-kot-modal-heading{
+  justify-self:start;
+  flex:1 1 auto;
+  min-width:0;
+  gap:12px;
+}
 #pos-kot-tokens-modal .pos-kot-modal-heading-copy h2{
   line-height:1.2;
+  font-size:19px;
+  font-weight:780;
+  color:#0F172A;
+  letter-spacing:-.02em;
+}
+#pos-kot-tokens-modal .pos-kot-modal-sub{
+  margin:4px 0 0;
+  font-size:12.5px;
+  font-weight:500;
+  color:#94A3B8;
+  line-height:1.35;
+}
+#pos-kot-tokens-modal .pos-kot-mode-host{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:6px;
+  flex:0 0 auto;
+  min-width:0;
+  margin:0 4px 0 auto;
+}
+#pos-kot-tokens-modal .pos-kot-modal-close{
+  flex:0 0 auto;
+  margin-left:0;
+  width:34px;
+  height:34px;
+  border-radius:10px;
+  color:#94A3B8;
+}
+#pos-kot-tokens-modal .pos-kot-mode-label{
+  display:block;
+  font-size:10px;
+  font-weight:750;
+  color:#94A3B8;
+  text-transform:uppercase;
+  letter-spacing:.55px;
+  line-height:1;
+  text-align:left;
+  padding-left:4px;
+}
+#pos-kot-tokens-modal .pos-kot-mode-tabs{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  height:40px;
+  min-height:40px;
+  margin:0;
+  padding:4px;
+  box-sizing:border-box;
+  background:#F1F5F9;
+  border:1px solid #E2E8F0;
+  border-radius:12px;
+}
+#pos-kot-tokens-modal .pos-kot-mode-tab{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  height:32px;
+  padding:0 16px;
+  border:0;
+  border-radius:9px;
+  background:transparent;
+  color:#64748B;
+  font:700 12.5px Inter,system-ui,sans-serif;
+  cursor:pointer;
+  white-space:nowrap;
+}
+#pos-kot-tokens-modal .pos-kot-mode-tab:hover{
+  color:#0F172A;
+  background:rgba(255,255,255,.7);
+}
+#pos-kot-tokens-modal .pos-kot-mode-tab.is-active{
+  background:#fff;
+  color:#2563EB;
+  box-shadow:0 1px 3px rgba(37,99,235,.18), inset 0 0 0 1px #BFDBFE;
+}
+#pos-kot-tokens-modal[data-kot-mode="edit"] .pos-kot-resend-only{
+  display:none !important;
+}
+#pos-kot-tokens-modal .pos-kot-modal-body{
+  padding:0 10px 4px;
+  overflow:auto;
+  background:#fff;
+}
+#pos-kot-tokens-modal .pos-kot-modal-table-wrap{
+  overflow:visible;
+}
+#pos-kot-tokens-modal .pos-kot-modal-table{
+  min-width:0;
+  border-collapse:separate;
+  border-spacing:0;
+}
+#pos-kot-tokens-modal .pos-kot-modal-table th{
+  padding:14px 16px 12px;
+  font-size:10.5px;
+  letter-spacing:.08em;
+  color:#94A3B8;
+  background:#fff;
+  border-bottom:1px solid #EEF2F7;
+}
+#pos-kot-tokens-modal .pos-kot-modal-table td{
+  padding:16px;
+  border-bottom:1px solid #F1F5F9;
+  font-size:13.5px;
+}
+#pos-kot-tokens-modal .pos-kot-token-summary{
+  cursor:pointer;
+}
+#pos-kot-tokens-modal .pos-kot-token-summary td:first-child{
+  position:relative;
+  padding-left:22px;
+}
+#pos-kot-tokens-modal .pos-kot-token-summary td:first-child::before{
+  content:'';
+  position:absolute;
+  left:8px;
+  top:12px;
+  bottom:12px;
+  width:4px;
+  border-radius:999px;
+  background:#94A3B8;
+}
+#pos-kot-tokens-modal .pos-kot-table-cell-name{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  font-weight:750;
+  color:#0F172A;
+}
+#pos-kot-tokens-modal .pos-kot-table-icon{
+  width:16px;
+  height:16px;
+  flex:0 0 auto;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+#pos-kot-tokens-modal .pos-kot-table-kot{
+  font-weight:700;
+  color:#334155;
+  letter-spacing:-.01em;
+}
+#pos-kot-tokens-modal .pos-kot-table-items{
+  font-weight:600;
+  color:#64748B;
+}
+#pos-kot-tokens-modal .pos-kot-table-time{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:2px;
+  white-space:normal;
+}
+#pos-kot-tokens-modal .pos-kot-table-time-clock{
+  font-weight:750;
+  color:#0F172A;
+  line-height:1.2;
+}
+#pos-kot-tokens-modal .pos-kot-table-time-date,
+#pos-kot-tokens-modal .pos-kot-table-time small{
+  display:block;
+  margin:0;
+  font-size:12px;
+  font-weight:550;
+  color:#94A3B8;
+  line-height:1.2;
+}
+#pos-kot-tokens-modal .pos-kot-token-actions.act-grp{
+  background:transparent;
+  border:0;
+  padding:0;
+  gap:0;
+}
+#pos-kot-tokens-modal .pos-kot-token-actions .act-btn{
+  width:30px;
+  height:30px;
+  border-radius:8px;
+  background:#F1F5F9;
+  color:#64748B;
+}
+#pos-kot-tokens-modal .pos-kot-token-actions .pos-kot-token-toggle.is-open,
+#pos-kot-tokens-modal .pos-kot-token-actions .pos-kot-token-toggle:hover{
+  background:#EFF6FF;
+  color:#2563EB;
+}
+#pos-kot-tokens-modal .pos-kot-token-summary.is-expanded td{
+  border-bottom-color:transparent;
+}
+#pos-kot-tokens-modal .pos-kot-token-detail td{
+  padding:0 12px 14px !important;
+  border-bottom:1px solid #F1F5F9;
+  background:transparent;
+}
+#pos-kot-tokens-modal .pos-kot-token-panel{
+  margin-left:14px;
+  border:0;
+  border-radius:14px;
+  background:#F8FAFC;
+  padding:10px 12px;
+}
+#pos-kot-tokens-modal .pos-kot-token-lines{
+  gap:0;
+  max-height:none;
+}
+#pos-kot-tokens-modal .pos-kot-token-line{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px 4px;
+  border:0;
+  border-radius:0;
+  border-bottom:1px dotted #CBD5E1;
+  background:transparent;
+}
+#pos-kot-tokens-modal .pos-kot-token-line .pos-kot-token-line-check{
+  flex:1 1 auto;
+  min-width:0;
+}
+#pos-kot-tokens-modal .pos-kot-token-line .pos-kot-token-qty-stepper{
+  flex:0 0 auto;
+  margin-left:auto;
+}
+#pos-kot-tokens-modal .pos-kot-token-line:last-child{
+  border-bottom:0;
+}
+#pos-kot-tokens-modal .pos-kot-token-line:hover{
+  border-color:#CBD5E1;
+  background:transparent;
+}
+#pos-kot-tokens-modal .pos-kot-token-line-name{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-start;
+  column-gap:8px;
+  row-gap:2px;
+  font-weight:750;
+  font-size:12.5px;
+  letter-spacing:.02em;
+  text-transform:uppercase;
+  color:#0F172A;
+}
+#pos-kot-tokens-modal .pos-kot-token-line-name small{
+  flex:1 0 100%;
+  padding-left:15px;
+  text-transform:none;
+  letter-spacing:0;
+}
+#pos-kot-tokens-modal[data-kot-mode="edit"] .pos-kot-token-line-name::before{
+  content:'';
+  width:7px;
+  height:7px;
+  margin-top:4px;
+  border-radius:999px;
+  flex:0 0 auto;
+  background:#94A3B8;
+}
+#pos-kot-tokens-modal .pos-kot-token-qty-stepper{
+  flex:0 0 auto;
+  display:inline-flex;
+  align-items:center;
+  gap:2px;
+  height:30px;
+  padding:2px;
+  border-radius:999px;
+  background:#fff;
+  border:1px solid #E2E8F0;
+  box-shadow:0 1px 2px rgba(15,23,42,.04);
+}
+#pos-kot-tokens-modal .pos-kot-token-qty-btn{
+  width:26px;
+  height:26px;
+  border:0;
+  border-radius:999px;
+  background:transparent;
+  color:#64748B;
+  font:700 14px Inter,system-ui,sans-serif;
+  cursor:pointer;
+}
+#pos-kot-tokens-modal .pos-kot-token-qty-btn:hover:not(:disabled){
+  background:#F1F5F9;
+  color:#0F172A;
+}
+#pos-kot-tokens-modal .pos-kot-token-line-qty{
+  min-width:18px;
+  text-align:center;
+  font:750 12.5px Inter,system-ui,sans-serif;
+  color:#0F172A;
+}
+#pos-kot-tokens-modal .pos-kot-modal-footer{
+  padding:14px 24px 18px;
+  background:#fff;
+  border-top:1px solid #EEF2F7;
+}
+#pos-kot-tokens-modal .pos-kot-modal-footer-close{
+  min-width:88px;
+  border-radius:12px;
+  border-color:#E2E8F0;
+  background:#F8FAFC;
+  color:#334155;
+  font-weight:650;
+}
+#pos-kot-tokens-modal .pos-kot-modal-footer-close:hover{
+  background:#F8FAFC;
+  border-color:#CBD5E1;
+}
+
+/* Per-token accent themes (cycle green / blue / purple) */
+#pos-kot-tokens-modal .pos-kot-theme-0 td:first-child::before{background:#22C55E}
+#pos-kot-tokens-modal .pos-kot-theme-0 .pos-kot-table-cell-name{color:#15803D}
+#pos-kot-tokens-modal .pos-kot-theme-0 .pos-kot-token-actions .pos-kot-token-toggle.is-open,
+#pos-kot-tokens-modal .pos-kot-theme-0 .pos-kot-token-actions .pos-kot-token-toggle:hover{
+  background:#DCFCE7;
+  color:#15803D;
+}
+#pos-kot-tokens-modal .pos-kot-theme-0 .pos-kot-token-panel{background:#F0FDF4}
+#pos-kot-tokens-modal .pos-kot-theme-0.pos-kot-token-detail .pos-kot-token-line-name::before{background:#22C55E}
+
+#pos-kot-tokens-modal .pos-kot-theme-1 td:first-child::before{background:#3B82F6}
+#pos-kot-tokens-modal .pos-kot-theme-1 .pos-kot-table-cell-name{color:#1D4ED8}
+#pos-kot-tokens-modal .pos-kot-theme-1 .pos-kot-token-actions .pos-kot-token-toggle.is-open,
+#pos-kot-tokens-modal .pos-kot-theme-1 .pos-kot-token-actions .pos-kot-token-toggle:hover{
+  background:#DBEAFE;
+  color:#2563EB;
+}
+#pos-kot-tokens-modal .pos-kot-theme-1 .pos-kot-token-panel{background:#EFF6FF}
+#pos-kot-tokens-modal .pos-kot-theme-1.pos-kot-token-detail .pos-kot-token-line-name::before{background:#3B82F6}
+
+#pos-kot-tokens-modal .pos-kot-theme-2 td:first-child::before{background:#A855F7}
+#pos-kot-tokens-modal .pos-kot-theme-2 .pos-kot-table-cell-name{color:#7E22CE}
+#pos-kot-tokens-modal .pos-kot-theme-2 .pos-kot-token-actions .pos-kot-token-toggle.is-open,
+#pos-kot-tokens-modal .pos-kot-theme-2 .pos-kot-token-actions .pos-kot-token-toggle:hover{
+  background:#F3E8FF;
+  color:#7E22CE;
+}
+#pos-kot-tokens-modal .pos-kot-theme-2 .pos-kot-token-panel{background:#FAF5FF}
+#pos-kot-tokens-modal .pos-kot-theme-2.pos-kot-token-detail .pos-kot-token-line-name::before{background:#A855F7}
+
+@media (max-width:760px){
+  #pos-kot-tokens-modal .pos-kot-modal-header{
+    flex-wrap:wrap;
+  }
+  #pos-kot-tokens-modal .pos-kot-modal-heading{
+    flex:1 1 calc(100% - 48px);
+  }
+  #pos-kot-tokens-modal .pos-kot-mode-host{
+    order:3;
+    margin:0 0 0 auto;
+    width:auto;
+  }
+}
+#pos-kot-tokens-modal .pos-kot-modal-icon{
+  background:#DBEAFE;
+  border-color:#BFDBFE;
+  color:#1D4ED8;
 }
 .pos-kot-modal-icon{
   flex:0 0 auto;
@@ -571,16 +949,17 @@ html.de-soft-navigating .de-main-wrapper .pos-kot-pending-banner--attention .pos
   font-weight:500;
   color:#64748B;
 }
-/* Kitchen Order Tokens — keep sent time + date on one line */
+/* Kitchen Order Tokens — stacked time over date (matches redesign) */
 #pos-kot-tokens-modal .pos-kot-table-time{
-  display:inline-flex;
-  align-items:baseline;
-  flex-wrap:nowrap;
-  gap:6px;
-  white-space:nowrap;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:2px;
+  white-space:normal;
 }
-#pos-kot-tokens-modal .pos-kot-table-time small{
-  display:inline;
+#pos-kot-tokens-modal .pos-kot-table-time small,
+#pos-kot-tokens-modal .pos-kot-table-time-date{
+  display:block;
   margin-top:0;
 }
 .pos-kot-row-send{
@@ -2040,7 +2419,8 @@ html.de-soft-navigating .de-main-wrapper .pos-table-tile--attention .pos-table-b
   left:50%;
   bottom:32px;
   transform:translateX(-50%) translateY(8px);
-  z-index:80;
+  /* Above KOT / invoices / cancel / reduce-reason modals (up to 5300). */
+  z-index:5400;
   max-width:min(420px,90vw);
   padding:12px 18px;
   border-radius:var(--pos-radius-sm,10px);
@@ -2196,7 +2576,12 @@ html.de-soft-navigating .de-main-wrapper .pos-table-tile--attention .pos-table-b
   /* Above Today's Invoices (.pos-kot-modal z-index:120) and table chrome. */
   z-index:5200;
 }
-#pos-cancel-invoice-modal .pos-inv-field textarea{
+#pos-kot-reduce-reason-modal{
+  /* Above Kitchen Order Tokens modal while editing quantities. */
+  z-index:5300;
+}
+#pos-cancel-invoice-modal .pos-inv-field textarea,
+#pos-kot-reduce-reason-modal .pos-inv-field textarea{
   width:100%;
   min-height:84px;
   resize:vertical;
@@ -2208,13 +2593,15 @@ html.de-soft-navigating .de-main-wrapper .pos-table-tile--attention .pos-table-b
   color:#0F172A;
   background:#fff;
 }
-#pos-cancel-invoice-modal .pos-inv-field textarea:focus{
+#pos-cancel-invoice-modal .pos-inv-field textarea:focus,
+#pos-kot-reduce-reason-modal .pos-inv-field textarea:focus{
   outline:none;
   border-color:#93C5FD;
   box-shadow:0 0 0 3px rgba(37,99,235,.15);
 }
 /* Expense-ledger style footer (staff-credit-actions + .btn). */
-#pos-cancel-invoice-modal .pos-cancel-invoice-actions{
+#pos-cancel-invoice-modal .pos-cancel-invoice-actions,
+#pos-kot-reduce-reason-modal .pos-cancel-invoice-actions{
   display:flex;
   justify-content:flex-end;
   align-items:center;
@@ -2223,7 +2610,8 @@ html.de-soft-navigating .de-main-wrapper .pos-table-tile--attention .pos-table-b
   padding-top:16px;
   border-top:1px solid #EEF2F7;
 }
-#pos-cancel-invoice-modal .pos-cancel-btn{
+#pos-cancel-invoice-modal .pos-cancel-btn,
+#pos-kot-reduce-reason-modal .pos-cancel-btn{
   display:inline-flex;
   align-items:center;
   justify-content:center;
@@ -2241,7 +2629,8 @@ html.de-soft-navigating .de-main-wrapper .pos-table-tile--attention .pos-table-b
   cursor:pointer;
   transition:background .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease;
 }
-#pos-cancel-invoice-modal .pos-cancel-btn svg{
+#pos-cancel-invoice-modal .pos-cancel-btn svg,
+#pos-kot-reduce-reason-modal .pos-cancel-btn svg{
   width:16px;
   height:16px;
   stroke:currentColor;
@@ -2252,23 +2641,27 @@ html.de-soft-navigating .de-main-wrapper .pos-table-tile--attention .pos-table-b
   flex-shrink:0;
   pointer-events:none;
 }
-#pos-cancel-invoice-modal .pos-cancel-btn--secondary:hover{
+#pos-cancel-invoice-modal .pos-cancel-btn--secondary:hover,
+#pos-kot-reduce-reason-modal .pos-cancel-btn--secondary:hover{
   background:#F1F5F9;
   color:#0F172A;
   border-color:#CBD5E1;
 }
-#pos-cancel-invoice-modal .pos-cancel-btn--danger{
+#pos-cancel-invoice-modal .pos-cancel-btn--danger,
+#pos-kot-reduce-reason-modal .pos-cancel-btn--danger{
   background:#DC2626;
   border-color:#DC2626;
   color:#fff;
   box-shadow:0 4px 12px rgba(220,38,38,.22);
 }
-#pos-cancel-invoice-modal .pos-cancel-btn--danger:hover{
+#pos-cancel-invoice-modal .pos-cancel-btn--danger:hover,
+#pos-kot-reduce-reason-modal .pos-cancel-btn--danger:hover{
   background:#B91C1C;
   border-color:#B91C1C;
   color:#fff;
 }
-#pos-cancel-invoice-modal .pos-cancel-btn--danger:disabled{
+#pos-cancel-invoice-modal .pos-cancel-btn--danger:disabled,
+#pos-kot-reduce-reason-modal .pos-cancel-btn--danger:disabled{
   opacity:.55;
   cursor:not-allowed;
   box-shadow:none;

@@ -132,7 +132,7 @@ def format_report_datetime(value, empty="—"):
 
 REPORT_CATEGORY_LABELS = {
     "all": "All",
-    "restaurant": "Restaurant",
+    "restaurant": "Restaurant and Bar",
     "accounts": "Accounts",
     "hr": "Employee Payroll",
     "sales": "Sales",
@@ -261,6 +261,17 @@ REPORT_DEFINITIONS = [
         "category": "restaurant",
         "view_route": "sales_report_meal_plan",
         "download_route": "sales_report_meal_plan_export",
+        "downloadable": True,
+    },
+    {
+        "id": "kot",
+        "name": "KOT",
+        "description": "Kitchen Order Tokens for Restaurant and Bar — open, invoice generated, or cancelled.",
+        "icon": "invoice",
+        "icon_tone": "violet",
+        "category": "restaurant",
+        "view_route": "sales_report_kot",
+        "download_route": "sales_report_kot_export",
         "downloadable": True,
     },
     {
