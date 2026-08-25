@@ -10641,8 +10641,6 @@ def hotel_room_invoice_page(room_id):
     try:
         ensure_hotel_rooms_schema(conn)
         room = get_hotel_room(conn, room_id)
-        if room:
-            enrich_hotel_room_merge_fields(room)
         conn.commit()
     finally:
         conn.close()

@@ -13680,6 +13680,7 @@ _HOTEL_MERGE_SHARED_BILL_KEYS = (
     "invoiceGenerated",
     "invoiceGeneratedAt",
     "invoiceEditOpen",
+    "invoiceHistory",
     "payments",
     "extraBedQty",
     "extraBedRate",
@@ -13702,6 +13703,17 @@ _HOTEL_MERGE_SHARED_BILL_KEYS = (
     "discountAmount",
     "discountReason",
     "estimatedTotal",
+    "hotelInvoicedBillableNights",
+    "hotelInvoicedEstimatedTotal",
+    "hotelInvoicedExtraBedAmount",
+    "hotelInvoicedEarlyCheckinAmount",
+    "hotelInvoicedLateCheckoutAmount",
+    "fbTransferInvoiceNumber",
+    "fbTransferInvoiceGenerated",
+    "fbTransferInvoiceGeneratedAt",
+    "fbTransferTotal",
+    "fbTransferBalance",
+    "fbTransferPayments",
 )
 
 
@@ -13755,10 +13767,46 @@ def _hotel_copy_stay_fields(dest, source, keys):
         return dest
     for key in keys:
         val = source.get(key)
-        if val in (None, "", [], {}):
+        # Skip empties and False so overlay never wipes member billed* / bool locks.
+        if val in (None, "", [], {}, False):
             continue
         dest[key] = val
     return dest
+
+
+def _hotel_lock_invoiced_snapshots_to_current(stay):
+    """Align hotelInvoiced* with current billable totals on an already-minted stay.
+
+    Used when a merge successor inherits the primary bill after checkout so the UI
+    does not invent a false 'Generate Additional Room Invoice' from date overstay.
+    """
+    if not isinstance(stay, dict):
+        return stay
+    inv = _hotel_str(stay.get("invoiceNumber") or stay.get("invoice_number"), 60)
+    if not inv or not (
+        stay.get("invoiceGenerated")
+        if "invoiceGenerated" in stay
+        else stay.get("invoice_generated")
+    ):
+        return stay
+    out = dict(stay)
+    out["hotelInvoicedBillableNights"] = max(
+        1, int(_hotel_num(out.get("billableNights"), 1))
+    )
+    try:
+        out["hotelInvoicedEstimatedTotal"] = round(float(out.get("estimatedTotal") or 0), 2)
+    except (TypeError, ValueError):
+        out["hotelInvoicedEstimatedTotal"] = 0.0
+    for src, dest in (
+        ("extraBedAmount", "hotelInvoicedExtraBedAmount"),
+        ("earlyCheckinAmount", "hotelInvoicedEarlyCheckinAmount"),
+        ("lateCheckoutAmount", "hotelInvoicedLateCheckoutAmount"),
+    ):
+        try:
+            out[dest] = round(float(out.get(src) or 0), 2)
+        except (TypeError, ValueError):
+            out[dest] = 0.0
+    return out
 
 
 def _hotel_sync_merge_group_shared_data(rooms, tariff_rates=None):
@@ -14782,6 +14830,34 @@ def _normalize_hotel_room_stay(stay, tax_rates=None):
             if "invoiceEditOpen" in stay
             else stay.get("invoice_edit_open")
         ),
+        "billedInvoiceNumber": _hotel_str(
+            stay.get("billedInvoiceNumber") or stay.get("billed_invoice_number"), 60
+        ),
+        "billedInvoiceGenerated": bool(
+            stay.get("billedInvoiceGenerated")
+            if "billedInvoiceGenerated" in stay
+            else stay.get("billed_invoice_generated")
+        ),
+        "billedInvoiceGeneratedAt": _hotel_str(
+            stay.get("billedInvoiceGeneratedAt")
+            or stay.get("billed_invoice_generated_at"),
+            40,
+        ),
+        "billedFbTransferInvoiceNumber": _hotel_str(
+            stay.get("billedFbTransferInvoiceNumber")
+            or stay.get("billed_fb_transfer_invoice_number"),
+            60,
+        ),
+        "billedFbTransferInvoiceGenerated": bool(
+            stay.get("billedFbTransferInvoiceGenerated")
+            if "billedFbTransferInvoiceGenerated" in stay
+            else stay.get("billed_fb_transfer_invoice_generated")
+        ),
+        "billedFbTransferInvoiceGeneratedAt": _hotel_str(
+            stay.get("billedFbTransferInvoiceGeneratedAt")
+            or stay.get("billed_fb_transfer_invoice_generated_at"),
+            40,
+        ),
         "payments": [],
         "specialRequests": special,
         "additionalRequests": _hotel_str(
@@ -15153,6 +15229,21 @@ def _normalize_hotel_room_stay(stay, tax_rates=None):
         out["invoiceGenerated"] = False
         out["invoiceEditOpen"] = False
 
+    if out["billedInvoiceNumber"]:
+        out["billedInvoiceGenerated"] = True
+    elif out["billedInvoiceGenerated"] and not out["billedInvoiceNumber"]:
+        out["billedInvoiceGenerated"] = False
+        out["billedInvoiceGeneratedAt"] = ""
+
+    if out["billedFbTransferInvoiceNumber"]:
+        out["billedFbTransferInvoiceGenerated"] = True
+    elif (
+        out["billedFbTransferInvoiceGenerated"]
+        and not out["billedFbTransferInvoiceNumber"]
+    ):
+        out["billedFbTransferInvoiceGenerated"] = False
+        out["billedFbTransferInvoiceGeneratedAt"] = ""
+
     # Fill expected check-out when only nights were provided.
     if not out["checkOutDate"] and out["checkInDate"]:
         in_date = _hotel_parse_iso_date(out["checkInDate"])
@@ -15295,11 +15386,26 @@ def _normalize_hotel_room_stay(stay, tax_rates=None):
     out["fbTransferPayments"] = cleaned_fb_payments
     out["fbTransferBalance"] = fb_unsettled
     # Merge members are display-only for money — billing lives on primary.
+    # Preserve billed* locks so siblings stay "already invoiced" after primary generate.
     if out.get("mergeRole") == "member" or out.get("billingRoomId"):
         out["mergeRole"] = "member"
+        billed_no = out.get("billedInvoiceNumber") or ""
+        billed_gen = bool(out.get("billedInvoiceGenerated") or billed_no)
+        billed_at = out.get("billedInvoiceGeneratedAt") or ""
+        billed_fb_no = out.get("billedFbTransferInvoiceNumber") or ""
+        billed_fb_gen = bool(out.get("billedFbTransferInvoiceGenerated") or billed_fb_no)
+        billed_fb_at = out.get("billedFbTransferInvoiceGeneratedAt") or ""
         out["invoiceNumber"] = ""
         out["invoiceGenerated"] = False
         out["invoiceGeneratedAt"] = ""
+        out["billedInvoiceNumber"] = billed_no if billed_gen else ""
+        out["billedInvoiceGenerated"] = bool(billed_gen and billed_no)
+        out["billedInvoiceGeneratedAt"] = billed_at if out["billedInvoiceGenerated"] else ""
+        out["billedFbTransferInvoiceNumber"] = billed_fb_no if billed_fb_gen else ""
+        out["billedFbTransferInvoiceGenerated"] = bool(billed_fb_gen and billed_fb_no)
+        out["billedFbTransferInvoiceGeneratedAt"] = (
+            billed_fb_at if out["billedFbTransferInvoiceGenerated"] else ""
+        )
         out["discountType"] = "pct"
         out["discountValue"] = 0.0
         out["discountAmount"] = 0.0
@@ -16655,6 +16761,7 @@ def generate_hotel_room_invoice(
     _hotel_snapshot_merge_rooms_on_stay(room, rooms)
     stay = _normalize_hotel_room_stay(room.get("stay") or {})
     room["stay"] = stay
+    _hotel_stamp_merge_peers_billed_invoice(rooms, room)
     saved = save_hotel_rooms_layout(conn, layout.get("floors") or [], rooms)
     for item in saved.get("rooms") or []:
         if item.get("id") == target or item.get("number") == target:
@@ -17826,6 +17933,53 @@ def _hotel_rooms_in_merge_group(rooms, group_id):
     ]
 
 
+def _hotel_stamp_merge_peers_billed_invoice(rooms, primary_room):
+    """Mark merge members as billed via the primary's shared invoice (no separate HBE).
+
+    Ledger rows stay on the primary only. Members keep a durable billed* lock so
+    Generate is hidden even when live invoiceNumber is cleared on members.
+    """
+    if not isinstance(primary_room, dict):
+        return
+    group_id = _hotel_room_merge_group_id(primary_room)
+    if not group_id:
+        return
+    pstay = primary_room.get("stay") if isinstance(primary_room.get("stay"), dict) else {}
+    inv_no = _hotel_str(pstay.get("invoiceNumber"), 60)
+    inv_at = _hotel_str(pstay.get("invoiceGeneratedAt"), 40)
+    inv_gen = bool(pstay.get("invoiceGenerated") and inv_no)
+    fb_no = _hotel_str(pstay.get("fbTransferInvoiceNumber"), 60)
+    fb_at = _hotel_str(pstay.get("fbTransferInvoiceGeneratedAt"), 40)
+    fb_gen = bool(
+        (pstay.get("fbTransferInvoiceGenerated") or False) and fb_no
+    ) or bool(fb_no)
+    if not inv_gen and not fb_gen:
+        return
+    primary_id = str(primary_room.get("id") or "")
+    for peer in _hotel_rooms_in_merge_group(rooms, group_id):
+        if not isinstance(peer, dict):
+            continue
+        if str(peer.get("id") or "") == primary_id:
+            continue
+        mstay = peer.get("stay") if isinstance(peer.get("stay"), dict) else None
+        if not mstay:
+            continue
+        mstay = dict(mstay)
+        if inv_gen:
+            mstay["billedInvoiceNumber"] = inv_no
+            mstay["billedInvoiceGenerated"] = True
+            mstay["billedInvoiceGeneratedAt"] = inv_at or datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+        if fb_gen:
+            mstay["billedFbTransferInvoiceNumber"] = fb_no
+            mstay["billedFbTransferInvoiceGenerated"] = True
+            mstay["billedFbTransferInvoiceGeneratedAt"] = fb_at or datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+        peer["stay"] = _normalize_hotel_room_stay(mstay)
+
+
 def _hotel_clear_room_merge_fields(room):
     if not isinstance(room, dict):
         return
@@ -17845,6 +17999,12 @@ def _hotel_member_stay_from_occupied(stay, billing_room_id):
     member["invoiceNumber"] = ""
     member["invoiceGenerated"] = False
     member["invoiceGeneratedAt"] = ""
+    member["billedInvoiceNumber"] = ""
+    member["billedInvoiceGenerated"] = False
+    member["billedInvoiceGeneratedAt"] = ""
+    member["billedFbTransferInvoiceNumber"] = ""
+    member["billedFbTransferInvoiceGenerated"] = False
+    member["billedFbTransferInvoiceGeneratedAt"] = ""
     member["independentBilling"] = False
     # Room rate kept for display on board; normalize zeros money via mergeRole.
     return _normalize_hotel_room_stay(member)
@@ -18920,7 +19080,14 @@ def _hotel_reassign_merge_primary(rooms, new_primary, old_primary):
         moved.pop("checked_in_at", None)
     moved["billingRoomId"] = ""
     moved["mergeRole"] = "primary"
-    new_primary["stay"] = _normalize_hotel_room_stay(moved)
+    moved_stay = _normalize_hotel_room_stay(moved)
+    if moved_stay.get("invoiceGenerated") and moved_stay.get("invoiceNumber"):
+        # Successor inherits an already-minted merge bill — lock snapshots so
+        # date overstay does not surface as "Generate Additional Room Invoice".
+        moved_stay = _normalize_hotel_room_stay(
+            _hotel_lock_invoiced_snapshots_to_current(moved_stay)
+        )
+    new_primary["stay"] = moved_stay
     new_primary["mergeGroupId"] = group_id
     new_primary["mergePrimary"] = True
 
@@ -18937,6 +19104,7 @@ def _hotel_reassign_merge_primary(rooms, new_primary, old_primary):
         pstay["mergeRole"] = "member"
         peer["stay"] = _normalize_hotel_room_stay(pstay)
         peer["mergePrimary"] = False
+    _hotel_stamp_merge_peers_billed_invoice(rooms, new_primary)
     return old_stay
 
 

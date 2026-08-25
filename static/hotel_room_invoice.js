@@ -474,7 +474,7 @@
         cur.qty += 1;
         cur.nights = cur.qty;
         cur.dateEnd = day;
-        cur.amount = roundInvoiceMoney(cur.rate * cur.qty);
+        cur.amount = roundInvoiceMoney(cur.rate * cur.qty * rooms);
         return;
       }
       if (cur) out.push(cur);
@@ -486,7 +486,7 @@
         nights: 1,
         rooms: rooms,
         rate: rate,
-        amount: rate,
+        amount: roundInvoiceMoney(rate * rooms),
         lineKind: 'tariff'
       };
     });
@@ -504,37 +504,135 @@
     return start;
   }
 
-  function stayInvoiceRoomCount(room) {
-    var stay = (room && room.stay) || {};
-    var numbers = stay.mergeRoomNumbers || stay.merge_room_numbers || (room && room.mergeRoomNumbers);
-    if (Array.isArray(numbers) && numbers.length) {
-      var cleaned = [];
-      numbers.forEach(function (n) {
-        var s = String(n || '').trim();
-        if (s && cleaned.indexOf(s) === -1) cleaned.push(s);
-      });
-      if (cleaned.length) return cleaned.length;
+  function normalizeRatePlan(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase();
+  }
+
+  function ratesMatch(a, b) {
+    return Math.abs(Number(a || 0) - Number(b || 0)) <= 0.02;
+  }
+
+  function plansMatch(a, b) {
+    var left = normalizeRatePlan(a);
+    var right = normalizeRatePlan(b);
+    /* Empty plan on either side is treated as compatible (folio lines rarely store plan). */
+    if (!left || !right) return true;
+    return left === right;
+  }
+
+  function isMergeStayFolio(item) {
+    if (!item) return false;
+    var src = String(item.source || '').toLowerCase();
+    return src === 'merged_room_rate' || src === 'room_merge';
+  }
+
+  function primaryTariffKey(stay) {
+    stay = stay || {};
+    var rate = Math.max(0, Number(stay.roomRate || 0));
+    var plan = normalizeRatePlan(stay.ratePlan);
+    var mergeRates = Array.isArray(stay.mergeRoomRates) ? stay.mergeRoomRates : [];
+    for (var i = 0; i < mergeRates.length; i++) {
+      var row = mergeRates[i];
+      if (!row || !(row.isPrimary || row.is_primary)) continue;
+      rate = Math.max(0, Number(row.roomRate != null ? row.roomRate : rate));
+      plan = normalizeRatePlan(row.ratePlan || plan);
+      break;
     }
-    if (
-      room &&
-      room.isMergePrimary &&
-      Array.isArray(room.mergePartnerNumbers) &&
-      room.mergePartnerNumbers.length
-    ) {
-      return 1 + room.mergePartnerNumbers.filter(function (n) {
-        return String(n || '').trim();
-      }).length;
-    }
-    var label = String(
-      stay.mergeRoomLabel || stay.merge_room_label || (room && room.mergeRoomLabel) || ''
+    return { rate: roundInvoiceMoney(rate), plan: plan };
+  }
+
+  function mergeFolioEffectiveRate(item, billableNights) {
+    var amount = Number((item && item.amount) || 0);
+    var nights = Math.max(1, Math.floor(Number(billableNights) || 1));
+    if (!(amount > 0)) return 0;
+    return roundInvoiceMoney(amount / nights);
+  }
+
+  function mergeMemberMatchesPrimary(stay, item, billableNights, primary) {
+    stay = stay || {};
+    primary = primary || primaryTariffKey(stay);
+    var mergeRates = Array.isArray(stay.mergeRoomRates) ? stay.mergeRoomRates : [];
+    var rid = String((item && (item.sourceRoomId || item.source_room_id)) || '').trim();
+    var num = String(
+      (item && (item.sourceRoomNumber || item.source_room_number)) || ''
     ).trim();
-    if (label && label.indexOf('+') >= 0) {
-      var parts = label.split('+').map(function (p) {
-        return String(p || '').trim();
-      }).filter(Boolean);
-      if (parts.length > 1) return parts.length;
+    for (var i = 0; i < mergeRates.length; i++) {
+      var row = mergeRates[i];
+      if (!row || row.isPrimary || row.is_primary) continue;
+      var rowId = String(row.roomId || row.room_id || '').trim();
+      var rowNum = String(row.number || row.roomNumber || '').trim();
+      var idMatch = rid && rowId && rid === rowId;
+      var numMatch = num && rowNum && num === rowNum;
+      if (!idMatch && !numMatch) continue;
+      var rowRate = Math.max(0, Number(row.roomRate != null ? row.roomRate : 0));
+      var rowPlan = normalizeRatePlan(row.ratePlan);
+      if (rowRate > 0 && ratesMatch(rowRate, primary.rate) && plansMatch(rowPlan, primary.plan)) {
+        return true;
+      }
+      /* Rate row found but does not match — still allow folio amount fallback. */
+      break;
     }
-    return 1;
+    var eff = mergeFolioEffectiveRate(item, billableNights);
+    if (ratesMatch(eff, primary.rate)) return true;
+    /* Absorb lines sometimes store a flat stay total equal to rate × nights. */
+    var amount = Number((item && item.amount) || 0);
+    var expected = roundInvoiceMoney(primary.rate * Math.max(1, billableNights));
+    if (ratesMatch(amount, expected) || ratesMatch(amount, primary.rate)) return true;
+    return false;
+  }
+
+  /**
+   * Rooms that share the primary tariff + meal plan fold into one print line.
+   * Returns 1 (primary) + matching merge members.
+   */
+  function matchingMergeRoomCount(room) {
+    var stay = (room && room.stay) || {};
+    var primary = primaryTariffKey(stay);
+    if (!(primary.rate > 0)) return 1;
+    var billableNights = billableNightsFromStay(stay, room);
+    var counted = {};
+    var extra = 0;
+
+    function mark(key) {
+      key = String(key || '').trim();
+      if (!key || counted[key]) return;
+      counted[key] = true;
+      extra += 1;
+    }
+
+    var mergeRates = Array.isArray(stay.mergeRoomRates) ? stay.mergeRoomRates : [];
+    mergeRates.forEach(function (row) {
+      if (!row || row.isPrimary || row.is_primary) return;
+      var rowRate = Math.max(0, Number(row.roomRate != null ? row.roomRate : 0));
+      var rowPlan = normalizeRatePlan(row.ratePlan);
+      if (!(rowRate > 0) || !ratesMatch(rowRate, primary.rate) || !plansMatch(rowPlan, primary.plan)) {
+        return;
+      }
+      mark(row.roomId || row.room_id || row.number || row.roomNumber);
+    });
+
+    /* Always also scan folio so absorb lines fold even when mergeRoomRates is incomplete. */
+    var folio = Array.isArray(stay.folioCharges) ? stay.folioCharges : [];
+    folio.forEach(function (item) {
+      if (!isMergeStayFolio(item)) return;
+      if (!mergeMemberMatchesPrimary(stay, item, billableNights, primary)) return;
+      mark(
+        item.sourceRoomId ||
+          item.source_room_id ||
+          item.sourceRoomNumber ||
+          item.source_room_number ||
+          item.id
+      );
+    });
+
+    return 1 + extra;
+  }
+
+  function shouldFoldMergeFolioLine(stay, item, billableNights, primary) {
+    if (!isMergeStayFolio(item)) return false;
+    return mergeMemberMatchesPrimary(stay, item, billableNights, primary);
   }
 
   function buildInvoiceLines(room) {
@@ -545,7 +643,9 @@
     var overstayNights = overstayNightsFromStay(stay, room);
     var billableNights = billableNightsFromStay(stay, room);
     var roomRate = Math.max(0, Number(stay.roomRate || 0));
-    var roomsCount = stayInvoiceRoomCount(room);
+    var primaryKey = primaryTariffKey(stay);
+    if (primaryKey.rate > 0) roomRate = primaryKey.rate;
+    var roomsCount = matchingMergeRoomCount(room);
     var nightlyRates = Array.isArray(stay.nightlyRates) ? stay.nightlyRates : [];
     var nightlyByDate = {};
     nightlyRates.forEach(function (row) {
@@ -593,7 +693,7 @@
             : nightlyRates[nightlyRates.length - 1];
         if (row && row.ratePlan) return String(row.ratePlan);
       }
-      return String(stay.ratePlan || '').trim();
+      return String(stay.ratePlan || primaryKey.plan || '').trim();
     }
 
     if ((roomRate > 0 || nightlyRates.length) && checkIn) {
@@ -621,22 +721,32 @@
         nights: billableNights,
         rooms: roomsCount,
         rate: roomRate,
-        amount: roundInvoiceMoney(roomRate * billableNights),
+        amount: roundInvoiceMoney(roomRate * billableNights * roomsCount),
         lineKind: 'tariff'
       });
     }
 
     var extras = [
-      { key: 'extra_bed', label: 'Extra Bed', amount: Number(stay.extraBedAmount || 0) },
+      {
+        key: 'extra_bed',
+        label: 'Extra Bed',
+        amount: Number(stay.extraBedAmount || 0),
+        nights: Math.max(1, Math.floor(Number(stay.extraBedNights || billableNights || 1))),
+        rooms: Math.max(1, Math.floor(Number(stay.extraBedQty || 1)))
+      },
       {
         key: 'early_checkin',
         label: 'Early Check-in',
-        amount: Number(stay.earlyCheckinAmount || 0)
+        amount: Number(stay.earlyCheckinAmount || 0),
+        nights: Math.max(1, Math.floor(Number(stay.earlyCheckinNights || 1))),
+        rooms: Math.max(1, Math.floor(Number(stay.earlyCheckinQty || 1)))
       },
       {
         key: 'late_checkout',
         label: 'Late Check-out',
-        amount: Number(stay.lateCheckoutAmount || 0)
+        amount: Number(stay.lateCheckoutAmount || 0),
+        nights: Math.max(1, Math.floor(Number(stay.lateCheckoutNights || 1))),
+        rooms: Math.max(1, Math.floor(Number(stay.lateCheckoutQty || 1)))
       }
     ];
     var chargeLabels =
@@ -645,13 +755,16 @@
         : {};
     extras.forEach(function (row) {
       if (!(row.amount > 0)) return;
+      var unit = roundInvoiceMoney(
+        row.amount / Math.max(1, Number(row.nights || 1) * Number(row.rooms || 1))
+      );
       lines.push({
         description: chargeLabels[row.key] || row.label,
         date: checkIn,
         qty: 1,
-        nights: null,
-        rooms: null,
-        rate: row.amount,
+        nights: row.nights,
+        rooms: row.rooms,
+        rate: unit,
         amount: row.amount,
         lineKind: 'other'
       });
@@ -664,14 +777,26 @@
       if (kind === 'restaurant_room_transfer' || kind === 'bar_room_transfer') return;
       var amount = Number(item.amount || 0);
       if (!(amount > 0)) return;
+      if (shouldFoldMergeFolioLine(stay, item, billableNights, primaryKey)) {
+        return;
+      }
       var at = toDateISO(item.at) || checkIn;
+      var src = String(item.source || '').toLowerCase();
+      var isMergeRate = src === 'merged_room_rate';
+      var isMergeAbsorb = src === 'room_merge';
+      var lineNights = isMergeRate || isMergeAbsorb ? billableNights : 1;
+      var lineRooms = 1;
+      var lineRate =
+        isMergeRate || isMergeAbsorb
+          ? roundInvoiceMoney(amount / Math.max(1, billableNights))
+          : roundInvoiceMoney(amount / Math.max(1, lineNights * lineRooms));
       lines.push({
         description: folioChargeDisplayLabel(item),
         date: at,
         qty: 1,
-        nights: null,
-        rooms: null,
-        rate: amount,
+        nights: lineNights,
+        rooms: lineRooms,
+        rate: lineRate,
         amount: amount,
         lineKind: 'other'
       });

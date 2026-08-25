@@ -1343,7 +1343,13 @@
   }
 
   function pendingHotelChargeLinesFromStay(stay, room) {
-    var primary = String((stay && stay.invoiceNumber) || '').trim();
+    var primary = String(
+      (stay &&
+        (stay.invoiceNumber ||
+          stay.billedInvoiceNumber ||
+          stay.billed_invoice_number)) ||
+        ''
+    ).trim();
     if (!primary) return chargeLinesFromStay(stay, room);
     var lines = [];
     var bookedNights = Math.max(1, Number((stay && stay.nights) || 1));
@@ -1798,8 +1804,15 @@
     var estimated = summary.estimated;
     var advance = summary.advance;
     var balance = summary.balance;
-    var invoiceGenerated = !!(stay.invoiceGenerated || stay.invoiceNumber);
-    var invoiceNumber = String(stay.invoiceNumber || '').trim();
+    var invoiceGenerated = !!(
+      stay.invoiceGenerated ||
+      stay.invoiceNumber ||
+      stay.billedInvoiceGenerated ||
+      stay.billedInvoiceNumber
+    );
+    var invoiceNumber = String(
+      stay.invoiceNumber || stay.billedInvoiceNumber || ''
+    ).trim();
 
     if (invoiceNoEl) {
       setClickableInvoiceNo(invoiceNoEl, '');
@@ -2030,7 +2043,19 @@
       room.isMergeMember ||
       (stay && (stay.mergeRole === 'member' || stay.billingRoomId))
     );
-    if (isMember) {
+    var billedViaPrimary = !!(
+      (stay && (stay.billedInvoiceGenerated || stay.billedInvoiceNumber)) ||
+      (stay &&
+        (stay.billedFbTransferInvoiceGenerated || stay.billedFbTransferInvoiceNumber))
+    );
+    var mergeNums = Array.isArray(stay && stay.mergeRoomNumbers)
+      ? stay.mergeRoomNumbers
+      : [];
+    var sharedMergeAlreadyInvoiced = !!(
+      mergeNums.length > 1 &&
+      (stay.invoiceGenerated || stay.invoiceNumber || billedViaPrimary)
+    );
+    if (isMember || billedViaPrimary || sharedMergeAlreadyInvoiced) {
       if (genBtn) genBtn.hidden = true;
       if (genHotelBtn) {
         genHotelBtn.hidden = true;
@@ -2040,9 +2065,18 @@
         genFbBtn.hidden = true;
         genFbBtn.disabled = true;
       }
-      if (payBtn) payBtn.hidden = true;
+      if (payBtn) {
+        /* Members / billed-via-primary never pay here; successor holding the
+           shared merge invoice can still settle an open balance. */
+        payBtn.hidden = !(
+          sharedMergeAlreadyInvoiced &&
+          !isMember &&
+          !billedViaPrimary &&
+          summary.combinedBalance > 0
+        );
+      }
       var billNo = room.billingRoomNumber || stay.billingRoomId || '';
-      if (emptyEl && (!lines.length || estimated <= 0)) {
+      if (isMember && emptyEl && (!lines.length || estimated <= 0)) {
         emptyEl.textContent =
           'Billing is on Room ' + (billNo || '—') + '. Open that room to invoice.';
         setVisible(emptyEl, true);
@@ -2426,10 +2460,14 @@
   function stayNeedsInvoiceForCheckout(room) {
     var stay = (room && room.stay) || null;
     if (!stay) return false;
+    var mergeNums = Array.isArray(stay.mergeRoomNumbers) ? stay.mergeRoomNumbers : [];
     if (
       (room && room.isMergeMember) ||
       stay.mergeRole === 'member' ||
-      stay.billingRoomId
+      stay.billingRoomId ||
+      stay.billedInvoiceGenerated ||
+      stay.billedInvoiceNumber ||
+      (mergeNums.length > 1 && (stay.invoiceGenerated || stay.invoiceNumber))
     ) {
       return false;
     }

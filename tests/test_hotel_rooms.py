@@ -3593,6 +3593,27 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(gen_stay.get("mergeRoomLabel"), "101 + 102")
         self.assertEqual(gen_stay.get("mergeRoomNumbers"), ["101", "102"])
 
+        # Sibling merge members are stamped billed via primary — no separate Generate.
+        member_after = self.client.get("/hotel/api/rooms/room-102").get_json()["room"]
+        self.assertTrue(member_after.get("isMergeMember"))
+        mstay = member_after.get("stay") or {}
+        self.assertTrue(mstay.get("billedInvoiceGenerated"), mstay)
+        self.assertEqual(mstay.get("billedInvoiceNumber"), gen_stay["invoiceNumber"])
+        # Overlay may also mirror live invoice flags from primary for display.
+        self.assertTrue(mstay.get("invoiceGenerated") or mstay.get("invoiceNumber"))
+        blocked_again = self.client.put(
+            "/hotel/api/rooms/room-102",
+            json={"action": "generate_invoice", "amount": 0},
+        )
+        self.assertEqual(blocked_again.status_code, 400)
+        self.assertIn("primary", blocked_again.get_json().get("error", "").lower())
+        # Single shared invoice remains on the primary (ledger sync target).
+        primary_after = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]
+        self.assertEqual(
+            primary_after["stay"]["invoiceNumber"], gen_stay["invoiceNumber"]
+        )
+        self.assertTrue(primary_after["stay"].get("invoiceGenerated"))
+
     def test_merge_promotes_guest_onto_vacant_primary(self):
         """Occupied member guest becomes the primary bill guest for board/invoice."""
         self.client.put(
@@ -5082,6 +5103,24 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(member_after["status"], "occupied")
         self.assertTrue(member_after.get("isMergePrimary") or not member_after.get("isMergeMember"))
         self.assertIn("stay", member_after)
+        # Inherited merge bill must stay locked — no phantom "Generate Additional".
+        mstay = member_after["stay"]
+        self.assertTrue(mstay.get("invoiceGenerated"))
+        self.assertEqual(mstay.get("invoiceNumber"), inv_no)
+        self.assertGreaterEqual(
+            int(mstay.get("hotelInvoicedBillableNights") or 0),
+            int(mstay.get("billableNights") or 0),
+        )
+        untagged = [
+            f
+            for f in (mstay.get("folioCharges") or [])
+            if isinstance(f, dict)
+            and float(f.get("amount") or 0) > 0
+            and not str(f.get("invoicedInvoiceNumber") or "").strip()
+            and str(f.get("kind") or "")
+            not in ("restaurant_room_transfer", "bar_room_transfer")
+        ]
+        self.assertEqual(untagged, [])
 
         api = self.client.get(f"/hotel/invoice-ledger/api/{inv_no}")
         self.assertEqual(api.status_code, 200, api.get_data(as_text=True))

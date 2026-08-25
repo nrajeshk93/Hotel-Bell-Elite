@@ -192,6 +192,40 @@
     return (stay && (stay.invoiceNumber || stay.invoice_number)) || '';
   }
 
+  function isMergeMemberRoom(room, stay) {
+    stay = stay || (room && room.stay) || null;
+    return !!(
+      (room && room.isMergeMember) ||
+      (stay &&
+        (String(stay.mergeRole || '').toLowerCase() === 'member' ||
+          stay.billingRoomId ||
+          stay.billing_room_id))
+    );
+  }
+
+  function stayBilledViaPrimary(stay) {
+    if (!stay) return false;
+    return !!(
+      stay.billedInvoiceGenerated ||
+      stay.billedInvoiceNumber ||
+      stay.billed_invoice_generated ||
+      stay.billed_invoice_number ||
+      stay.billedFbTransferInvoiceGenerated ||
+      stay.billedFbTransferInvoiceNumber ||
+      stay.billed_fb_transfer_invoice_generated ||
+      stay.billed_fb_transfer_invoice_number
+    );
+  }
+
+  function billingRoomLabel(room, stay) {
+    stay = stay || (room && room.stay) || null;
+    return String(
+      (room && (room.billingRoomNumber || room.billingRoomId)) ||
+        (stay && (stay.billingRoomId || stay.billing_room_id)) ||
+        ''
+    ).trim();
+  }
+
   function stayEditUnlocked(stay) {
     if (!stay || typeof stay !== 'object') return false;
     return !!(stay.invoiceEditOpen || stay.invoice_edit_open);
@@ -206,6 +240,21 @@
   function invoiceLocked(stay, root) {
     if (chargesEditable(stay, root)) return false;
     var kind = invoiceKindFromPage(root);
+    if (isMergeMemberRoom(lastRoom, stay) && stayBilledViaPrimary(stay)) {
+      if (kind === 'fb') {
+        return !!(
+          stay.billedFbTransferInvoiceGenerated ||
+          stay.billedFbTransferInvoiceNumber ||
+          stay.fbTransferInvoiceGenerated ||
+          stay.fbTransferInvoiceNumber
+        );
+      }
+      return !!(
+        stay.billedInvoiceGenerated ||
+        stay.billedInvoiceNumber ||
+        (stay.invoiceGenerated && invoiceNumber(stay))
+      );
+    }
     if (kind === 'fb') {
       if (!stay) return true;
       var hasFbe = !!(
@@ -747,9 +796,39 @@
     if (genBtn) {
       var genLabel = generateInvoiceLabel(root);
       genBtn.title = generateInvoiceTitle(root);
+      var memberRoom = isMergeMemberRoom(room, stay);
+      var billedViaPrimary = stayBilledViaPrimary(stay);
+      var mergeNums = Array.isArray(stay && stay.mergeRoomNumbers)
+        ? stay.mergeRoomNumbers
+        : [];
+      var sharedMergeAlreadyInvoiced = !!(
+        mergeNums.length > 1 &&
+        (billedViaPrimary ||
+          (stay && stay.invoiceGenerated && invoiceNumber(stay)))
+      );
       if (!stay) {
         genBtn.disabled = true;
         genBtn.textContent = genLabel;
+      } else if (memberRoom || sharedMergeAlreadyInvoiced) {
+        genBtn.disabled = true;
+        if (
+          billedViaPrimary ||
+          sharedMergeAlreadyInvoiced ||
+          invoiceLocked(stay, root)
+        ) {
+          genBtn.title = 'Invoice already generated on the billing primary';
+          genBtn.innerHTML =
+            '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 12 3 3 5-6"/><circle cx="12" cy="12" r="9"/></svg> Invoice Generated';
+        } else {
+          var billLabel = billingRoomLabel(room, stay) || '—';
+          genBtn.title =
+            'This room is merged for billing. Open Room ' +
+            billLabel +
+            ' to generate the invoice.';
+          genBtn.innerHTML =
+            '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"/></svg> Billing on Room ' +
+            escapeHtml(billLabel);
+        }
       } else if (invoiceLocked(stay, root)) {
         genBtn.disabled = true;
         genBtn.innerHTML =
@@ -1692,6 +1771,17 @@
 
   function generateInvoice(root) {
     /* Page access is enough to mint. Edit Access only gates folio mutations. */
+    if (isMergeMemberRoom(lastRoom, lastRoom && lastRoom.stay)) {
+      var bill = billingRoomLabel(lastRoom, lastRoom && lastRoom.stay) || '—';
+      var memberErr = new Error(
+        'This room is merged for billing. Open Room ' +
+          bill +
+          ' to generate the invoice.'
+      );
+      memberErr.code = 'merged_member';
+      showToast(memberErr.message, true);
+      return Promise.reject(memberErr);
+    }
     var genBtn = $('#hri-generate', root);
     if (genBtn) genBtn.disabled = true;
     var note = (($('#hri-notes', root) || {}).value || '').trim();
@@ -1733,8 +1823,10 @@
         return result.data.room;
       })
       .catch(function (err) {
-        showToast(err.message || 'Could not generate invoice.', true);
-        paintRoom(root, lastRoom);
+        if (!(err && err.code === 'merged_member')) {
+          showToast(err.message || 'Could not generate invoice.', true);
+          paintRoom(root, lastRoom);
+        }
         throw err;
       });
   }
