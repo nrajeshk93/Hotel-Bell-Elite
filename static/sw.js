@@ -3,11 +3,16 @@
  * Cache Storage is a fallback for offline + brief disconnects.
  * Floor APIs are never cached — occupancy must not go stale.
  * POS menu GETs stay network-first; mutation APIs are not intercepted. */
-var CACHE_VERSION = 'hbe-app-v5';
+var CACHE_VERSION = 'hbe-app-v6';
 var PRECACHE = [
   '/home',
   '/point-of-sale/invoice',
   '/bar-point-of-sale/invoice',
+  '/static/offline_login.html',
+  '/static/login_premium.css?v=12',
+  '/static/login_hero.jpg?v=2',
+  '/static/hbe_mark_sm.png',
+  '/static/hbe_mark_form_sm.png?v=3',
   '/static/manifest.webmanifest',
   '/static/de_workspace_shell.css?v=55',
   '/static/ep_form_listbox.css?v=29',
@@ -132,7 +137,7 @@ function isAppCachedStatic(url) {
   if (PRECACHE.indexOf(key) !== -1 || PRECACHE.indexOf(url.pathname) !== -1) return true;
   /* Runtime network-first for page CSS/JS — keeps offline soft-nav usable. */
   if (/\.(css|js)$/i.test(url.pathname)) return true;
-  if (/\.(png|ico|webp|svg)$/i.test(url.pathname) && url.pathname.indexOf('/static/') === 0) {
+  if (/\.(png|ico|webp|svg|jpe?g)$/i.test(url.pathname) && url.pathname.indexOf('/static/') === 0) {
     return true;
   }
   return false;
@@ -216,8 +221,9 @@ function putHtmlCache(cache, req, res) {
          that painted /home without the left sidebar after login. */
       return;
     }
-    /* Bare path fallback for navigate without query (POS + home). */
+    /* Bare path fallback for navigate without query (POS + home + sign-in). */
     if (
+      u.pathname === '/' ||
       u.pathname === '/home' ||
       u.pathname === '/point-of-sale/invoice' ||
       u.pathname === '/bar-point-of-sale/invoice'
@@ -225,6 +231,43 @@ function putHtmlCache(cache, req, res) {
       cache.put(u.pathname, res.clone());
     }
   } catch (e) {}
+}
+
+function isLoginShellPath(pathname) {
+  return pathname === '/' || pathname === '/login';
+}
+
+function responseLooksLikeLogin(res) {
+  if (!res) return Promise.resolve(false);
+  var ct = '';
+  try {
+    ct = String(res.headers.get('Content-Type') || res.headers.get('content-type') || '');
+  } catch (e) {}
+  if (ct && ct.indexOf('text/html') === -1) return Promise.resolve(false);
+  return res
+    .clone()
+    .text()
+    .then(function (html) {
+      return (
+        html.indexOf('login-panel') !== -1 ||
+        html.indexOf('login-shell') !== -1
+      );
+    })
+    .catch(function () {
+      return false;
+    });
+}
+
+function matchLoginShellOffline() {
+  return caches.match('/').then(function (cachedRoot) {
+    if (!cachedRoot) {
+      return caches.match('/static/offline_login.html');
+    }
+    return responseLooksLikeLogin(cachedRoot).then(function (ok) {
+      if (ok) return cachedRoot;
+      return caches.match('/static/offline_login.html');
+    });
+  });
 }
 
 function matchHtmlCache(req) {
@@ -252,6 +295,10 @@ function matchHtmlCache(req) {
 }
 
 function networkFirstHtml(req) {
+  var pathname = '/';
+  try {
+    pathname = new URL(req.url).pathname;
+  } catch (e) {}
   return fetch(req, { cache: 'no-store' })
     .then(function (res) {
       if (res && res.ok) {
@@ -263,11 +310,19 @@ function networkFirstHtml(req) {
       return res;
     })
     .catch(function () {
+      /* Sign-in: prefer a real login shell, never a stale /home snapshot. */
+      if (isLoginShellPath(pathname)) {
+        return matchLoginShellOffline().then(function (login) {
+          return login || Response.error();
+        });
+      }
       return matchHtmlCache(req).then(function (cached) {
         if (cached) return cached;
         return caches.match('/home').then(function (home) {
           return home || caches.match('/point-of-sale/invoice').then(function (pos) {
-            return pos || Response.error();
+            return pos || matchLoginShellOffline().then(function (login) {
+              return login || Response.error();
+            });
           });
         });
       });

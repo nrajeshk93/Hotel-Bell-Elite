@@ -18,7 +18,7 @@
   var CGST_RATE = 0.025;
   var UGST_RATE = 0.025;
   var SGST_RATE = UGST_RATE;
-  var CSS_HREF = '/static/hotel_room_invoice.css?v=10';
+  var CSS_HREF = '/static/hotel_room_invoice.css?v=16';
 
   function absoluteAssetUrl(path) {
     var raw = String(path || '').trim();
@@ -37,6 +37,68 @@
      depend on a stale stylesheet — prefer an inline copy fetched with no-store. */
   var _invoiceCssText = '';
   var _invoiceCssTextPromise = null;
+
+  function invoiceFontLinksHtml() {
+    return (
+      '<link rel="preconnect" href="https://fonts.googleapis.com">' +
+      '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
+      '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">'
+    );
+  }
+
+  /** Overlay View must match print/PDF — no second Close/Print bar inside the sheet. */
+  function htmlForEmbedPreview(html) {
+    var out = String(html || '');
+    out = out.replace(/<body([^>]*)>/i, function (_m, attrs) {
+      attrs = attrs || '';
+      var classMatch = attrs.match(/\bclass\s*=\s*(["'])(.*?)\1/i);
+      if (classMatch) {
+        var cls = classMatch[2] || '';
+        if ((' ' + cls + ' ').indexOf(' hri-embed ') === -1) {
+          cls = (cls + ' hri-embed').trim();
+        }
+        attrs = attrs.replace(/\bclass\s*=\s*(["'])(.*?)\1/i, 'class="' + cls + '"');
+      } else {
+        attrs = ' class="hri-embed"' + attrs;
+      }
+      return '<body' + attrs + '>';
+    });
+    out = out.replace(/<div class="hri-toolbar">[\s\S]*?<\/div>\s*/i, '');
+    return out;
+  }
+
+  /**
+   * Blank document.title during print so browser headers do not show
+   * "Invoice HBE/… | Hotel Bell Elite". Date/URL still depend on the
+   * print dialog "Headers and footers" checkbox.
+   */
+  function printWithBlankTitle(win) {
+    var target = win || global;
+    if (!target || typeof target.print !== 'function') return;
+    var doc = target.document;
+    var prev = '';
+    try {
+      prev = doc && doc.title != null ? String(doc.title) : '';
+      if (doc) doc.title = '\u00a0';
+    } catch (err) {}
+    function restore() {
+      try {
+        if (doc) doc.title = prev;
+      } catch (err2) {}
+      try {
+        target.removeEventListener('afterprint', restore);
+      } catch (err3) {}
+    }
+    try {
+      target.addEventListener('afterprint', restore);
+    } catch (err4) {}
+    try {
+      target.print();
+    } catch (err5) {
+      restore();
+    }
+    setTimeout(restore, 2000);
+  }
 
   function invoiceStylesheetHtml(cssText) {
     if (cssText) {
@@ -954,18 +1016,38 @@
     return room;
   }
 
+  function invoiceSignatoryHtml() {
+    return (
+      '<div class="hri-sign"><div class="hri-sign-box"><div class="hri-sign-line"></div><div class="hri-sign-title">Authorised Signatory</div><div class="hri-sign-sub">Hotel Bell Elite</div></div></div>'
+    );
+  }
+
   function invoiceClosingHtml() {
     return (
       '<div class="hri-closing">' +
       '<div class="hri-thanks">Thank You &amp; Safe Travels!</div>' +
-      '<div class="hri-values">' +
+      '<div class="hri-values-bar"><div class="hri-values">' +
       '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></div>Comfortable Stay</div>' +
       '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><polygon points="12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9"/></svg></div>Quality Service</div>' +
       '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><path d="M5 16c0-4 3-7 7-7s7 3 7 7"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/><path d="M4 16h16v4H4z"/></svg></div>Memorable Experience</div>' +
       '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-8 10-4.5-2.5-8-5-8-10V6l8-3 8 3z"/></svg></div>We Value You</div>' +
-      '</div>' +
-      '<div class="hri-sign"><div class="hri-sign-box"><div class="hri-sign-line"></div><div class="hri-sign-title">Authorised Signatory</div><div class="hri-sign-sub">Hotel Bell Elite</div></div></div>' +
+      '</div></div>' +
       '</div>'
+    );
+  }
+
+  function formatInvoiceDescriptionHtml(description) {
+    var raw = String(description == null ? '' : description);
+    var parts = raw.split(/\s·\s/);
+    if (parts.length < 2) {
+      return '<span class="hri-desc">' + escapeHtml(raw) + '</span>';
+    }
+    return (
+      '<span class="hri-desc">' +
+      escapeHtml(parts[0]) +
+      ' <span class="hri-desc-sub">· ' +
+      escapeHtml(parts.slice(1).join(' · ')) +
+      '</span></span>'
     );
   }
 
@@ -1066,7 +1148,7 @@
     var roomNumber = hotelInvoiceRoomLabel(room);
     var cancelled = cancelledInvoiceParts(room, opts);
 
-    var minRows = 4;
+    var minRows = 2;
     function lineNightsDisplay(row) {
       if (row && row.nights != null && isFinite(Number(row.nights))) {
         return String(Math.max(0, Math.floor(Number(row.nights))));
@@ -1091,7 +1173,7 @@
           (idx + 1) +
           '</td>' +
           '<td>' +
-          escapeHtml(row.description) +
+          formatInvoiceDescriptionHtml(row.description) +
           '</td>' +
           '<td class="center">' +
           escapeHtml(lineNightsDisplay(row)) +
@@ -1173,6 +1255,7 @@
       '</span><span class="v">' +
       escapeHtml(roomNumber || '—') +
       '</span></li>' +
+      '<li class="hri-meta-rule" aria-hidden="true"></li>' +
       '<li><span class="k">Check In</span><span class="v">' +
       escapeHtml(prettyDate(checkIn)) +
       '</span></li>' +
@@ -1233,22 +1316,22 @@
       '<div class="hri-words">Amount in Words: <strong>' +
       escapeHtml(amountInWords(total)) +
       '</strong></div>' +
-      '</section></div>';
+      '</section></div>' +
+      invoiceSignatoryHtml();
 
     return (
       '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
       '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-      '<title>Invoice ' +
-      escapeHtml(invoiceNo) +
-      ' | Hotel Bell Elite</title>' +
+      '<title>\u00a0</title>' +
+      invoiceFontLinksHtml() +
       invoiceStylesheetHtml('') +
-      '<style>.muted{color:#5b6b7c;font-weight:500}</style>' +
+      '<style>.muted{color:#64748b;font-weight:500}</style>' +
       '</head><body' +
       (cancelled.isCancelled ? ' class="is-cancelled"' : '') +
       '>' +
       '<div class="hri-toolbar">' +
       '<button type="button" onclick="window.close()">Close</button>' +
-      '<button type="button" class="hri-print" onclick="window.print()">Print Invoice</button>' +
+      '<button type="button" class="hri-print">Print Invoice</button>' +
       '</div>' +
       '<article class="hri-sheet">' +
       cancelled.mark +
@@ -1259,12 +1342,12 @@
       mastheadHtml +
       '</td></tr>' +
       '<tr class="hri-colhead">' +
-      '<th class="center" style="width:58px">Sl. No.</th>' +
-      '<th>Description</th>' +
-      '<th class="center" style="width:72px">Nights</th>' +
-      '<th class="center" style="width:72px">Rooms</th>' +
-      '<th class="num" style="width:100px">Rate (₹)</th>' +
-      '<th class="num" style="width:110px">Amount (₹)</th>' +
+      '<th class="center hri-col-sl">Sl. No.</th>' +
+      '<th class="hri-col-desc">Description</th>' +
+      '<th class="center hri-col-nights">Nights</th>' +
+      '<th class="center hri-col-rooms">Rooms</th>' +
+      '<th class="num hri-col-rate">Rate (₹)</th>' +
+      '<th class="num hri-col-amt">Amount (₹)</th>' +
       '</tr>' +
       '</thead>' +
       '<tbody>' +
@@ -1278,7 +1361,9 @@
       '</table>' +
       '</div>' +
       invoiceClosingHtml() +
-      '</article></body></html>'
+      '</article>' +
+      '<script>(function(){function blankPrint(){var p=document.title;document.title="\\u00a0";function r(){document.title=p;window.removeEventListener("afterprint",r);}window.addEventListener("afterprint",r);window.print();setTimeout(r,2000);}var b=document.querySelector(".hri-print");if(b)b.addEventListener("click",blankPrint);})();</script>' +
+      '</body></html>'
     );
   }
 
@@ -1289,6 +1374,7 @@
 
   function openHtmlPreviewOverlay(html, title, autoPrint) {
     closeHtmlPreviewOverlay();
+    var embedHtml = htmlForEmbedPreview(html);
     var overlay = document.createElement('div');
     overlay.id = 'hri-preview-overlay';
     overlay.className = 'hri-preview-overlay';
@@ -1308,7 +1394,7 @@
       '</div>';
     document.body.appendChild(overlay);
     var frame = overlay.querySelector('.hri-preview-frame');
-    if (frame) frame.srcdoc = html;
+    if (frame) frame.srcdoc = embedHtml;
     var closeBtn = overlay.querySelector('.hri-preview-close');
     if (closeBtn) {
       closeBtn.addEventListener('click', closeHtmlPreviewOverlay);
@@ -1317,7 +1403,7 @@
     if (printBtn) {
       printBtn.addEventListener('click', function () {
         try {
-          if (frame && frame.contentWindow) frame.contentWindow.print();
+          if (frame && frame.contentWindow) printWithBlankTitle(frame.contentWindow);
         } catch (err) {}
       });
     }
@@ -1336,7 +1422,7 @@
     if (autoPrint) {
       setTimeout(function () {
         try {
-          if (frame && frame.contentWindow) frame.contentWindow.print();
+          if (frame && frame.contentWindow) printWithBlankTitle(frame.contentWindow);
         } catch (err) {}
       }, 400);
     }
@@ -1357,7 +1443,7 @@
           setTimeout(function () {
             try {
               blobWin.focus();
-              if (autoPrint) blobWin.print();
+              if (autoPrint) printWithBlankTitle(blobWin);
             } catch (err) {}
             setTimeout(function () {
               URL.revokeObjectURL(url);
@@ -1378,7 +1464,7 @@
           if (autoPrint) {
             setTimeout(function () {
               try {
-                win.print();
+                printWithBlankTitle(win);
               } catch (err) {}
             }, 350);
           }
@@ -1396,7 +1482,7 @@
       if (!finalHtml || finalHtml === html) return;
       var frame = document.querySelector('#hri-preview-overlay .hri-preview-frame');
       if (frame) {
-        frame.srcdoc = finalHtml;
+        frame.srcdoc = htmlForEmbedPreview(finalHtml);
         return;
       }
     });
@@ -1538,7 +1624,7 @@
     var roomNumber = hotelInvoiceRoomLabel(room);
     var cancelled = cancelledInvoiceParts(room, opts);
 
-    var minRows = 4;
+    var minRows = 2;
     var rowsHtml = lines
       .map(function (row, idx) {
         return (
@@ -1547,7 +1633,7 @@
           (idx + 1) +
           '</td>' +
           '<td>' +
-          escapeHtml(row.description) +
+          formatInvoiceDescriptionHtml(row.description) +
           '</td>' +
           '<td>' +
           escapeHtml(prettyDate(row.date)) +
@@ -1712,22 +1798,22 @@
       '<div class="hri-words">Amount in Words: <strong>' +
       escapeHtml(amountInWords(total)) +
       '</strong></div>' +
-      '</section></div>';
+      '</section></div>' +
+      invoiceSignatoryHtml();
 
     return (
       '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
       '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-      '<title>Tax Invoice ' +
-      escapeHtml(invoiceNo) +
-      ' | Hotel Bell Elite</title>' +
+      '<title>\u00a0</title>' +
+      invoiceFontLinksHtml() +
       invoiceStylesheetHtml('') +
-      '<style>.muted{color:#5b6b7c;font-weight:500}</style>' +
+      '<style>.muted{color:#64748b;font-weight:500}</style>' +
       '</head><body' +
       (cancelled.isCancelled ? ' class="is-cancelled"' : '') +
       '>' +
       '<div class="hri-toolbar">' +
       '<button type="button" onclick="window.close()">Close</button>' +
-      '<button type="button" class="hri-print" onclick="window.print()">Print Invoice</button>' +
+      '<button type="button" class="hri-print">Print Invoice</button>' +
       '</div>' +
       '<article class="hri-sheet">' +
       cancelled.mark +
@@ -1738,12 +1824,12 @@
       mastheadHtml +
       '</td></tr>' +
       '<tr class="hri-colhead">' +
-      '<th class="center" style="width:58px">Sl. No.</th>' +
-      '<th>Description</th>' +
-      '<th style="width:110px">Date</th>' +
-      '<th class="center" style="width:56px">Qty</th>' +
-      '<th class="num" style="width:100px">Rate (₹)</th>' +
-      '<th class="num" style="width:110px">Amount (₹)</th>' +
+      '<th class="center hri-col-sl">Sl. No.</th>' +
+      '<th class="hri-col-desc">Description</th>' +
+      '<th class="hri-col-date">Date</th>' +
+      '<th class="center hri-col-rooms">Qty</th>' +
+      '<th class="num hri-col-rate">Rate (₹)</th>' +
+      '<th class="num hri-col-amt">Amount (₹)</th>' +
       '</tr>' +
       '</thead>' +
       '<tbody>' +
@@ -1757,7 +1843,9 @@
       '</table>' +
       '</div>' +
       invoiceClosingHtml() +
-      '</article></body></html>'
+      '</article>' +
+      '<script>(function(){function blankPrint(){var p=document.title;document.title="\\u00a0";function r(){document.title=p;window.removeEventListener("afterprint",r);}window.addEventListener("afterprint",r);window.print();setTimeout(r,2000);}var b=document.querySelector(".hri-print");if(b)b.addEventListener("click",blankPrint);})();</script>' +
+      '</body></html>'
     );
   }
 

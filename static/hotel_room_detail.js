@@ -663,6 +663,22 @@
     }, 3200);
   }
 
+  /**
+   * Fullscreen blocks native window.confirm (returns false). Prefer deConfirm
+   * so checkout and other destructive actions stay usable in app fullscreen.
+   */
+  function confirmAction(message) {
+    var text = message == null ? '' : String(message);
+    if (typeof global.deConfirm === 'function') {
+      return global.deConfirm(text);
+    }
+    try {
+      return Promise.resolve(!!global.confirm(text));
+    } catch (err) {
+      return Promise.resolve(false);
+    }
+  }
+
   function apiHeaders(extra) {
     var headers = {
       Accept: 'application/json',
@@ -2474,11 +2490,16 @@
       return Promise.resolve(null);
     }
     if (status === 'dirty' && (current === 'occupied' || hasStay)) {
-      var okDirty = global.confirm(
+      return confirmAction(
         'Mark this room Dirty? The guest will be checked out and the stay cleared.'
-      );
-      if (!okDirty) return Promise.resolve(null);
+      ).then(function (okDirty) {
+        if (!okDirty) return null;
+        return putStatusUpdate();
+      });
     }
+    return putStatusUpdate();
+
+    function putStatusUpdate() {
     var body = { status: status };
     if (status === 'reserved') {
       var asOf = todayISO();
@@ -2519,6 +2540,7 @@
         showToast(err.message || 'Failed to update room.', true);
         throw err;
       });
+    }
   }
 
   function stayNeedsInvoiceForCheckout(room) {
@@ -2631,46 +2653,47 @@
       openCheckoutInvoiceModal(root);
       return Promise.resolve(null);
     }
+    var confirmPromise = Promise.resolve(true);
     if (isPrimary) {
       var partners = (lastRoom.mergePartnerNumbers || []).join(', ');
-      var okGroup = global.confirm(
+      confirmPromise = confirmAction(
         'This is the billing primary' +
           (partners ? ' (merged with Room ' + partners + ')' : '') +
           '. Checkout applies to this room only. Continue?'
       );
-      if (!okGroup) return Promise.resolve(null);
     } else if (isMember) {
-      var okMember = global.confirm(
+      confirmPromise = confirmAction(
         'This room will leave the shared bill on Room ' +
           (lastRoom.billingRoomNumber || '—') +
           '. Continue checkout?'
       );
-      if (!okMember) return Promise.resolve(null);
     } else if (balance > 0.009) {
-      var ok = global.confirm(
+      confirmPromise = confirmAction(
         'Balance due ' + moneyText(balance) + ' — check out anyway?'
       );
-      if (!ok) return Promise.resolve(null);
     }
-    return putRoomAction(root, { action: 'checkout' })
-      .then(function (result) {
-        if (!result.ok || !result.data || !result.data.ok) {
-          var errMsg =
-            (result.data && result.data.error) || 'Checkout failed.';
-          if (/generate invoice to check out|additional invoice/i.test(errMsg)) {
-            openCheckoutInvoiceModal(root);
-            return null;
+    return confirmPromise.then(function (ok) {
+      if (!ok) return null;
+      return putRoomAction(root, { action: 'checkout' })
+        .then(function (result) {
+          if (!result.ok || !result.data || !result.data.ok) {
+            var errMsg =
+              (result.data && result.data.error) || 'Checkout failed.';
+            if (/generate invoice to check out|additional invoice/i.test(errMsg)) {
+              openCheckoutInvoiceModal(root);
+              return null;
+            }
+            throw new Error(errMsg);
           }
-          throw new Error(errMsg);
-        }
-        paintRoom(root, result.data.room);
-        showToast('Guest checked out. Room is dirty.');
-        return result.data.room;
-      })
-      .catch(function (err) {
-        showToast(err.message || 'Checkout failed.', true);
-        throw err;
-      });
+          paintRoom(root, result.data.room);
+          showToast('Guest checked out. Room is dirty.');
+          return result.data.room;
+        })
+        .catch(function (err) {
+          showToast(err.message || 'Checkout failed.', true);
+          throw err;
+        });
+    });
   }
 
   function checkoutMergeGroup(root) {
@@ -2686,31 +2709,32 @@
     var partners = ((lastRoom && lastRoom.mergePartnerNumbers) || []).join(', ');
     var here = (lastRoom && lastRoom.number) || '';
     var rooms = [here].concat(partners ? partners.split(/,\s*/) : []).filter(Boolean);
-    var ok = global.confirm(
+    return confirmAction(
       'Check out all rooms in this merge' +
         (rooms.length ? ' (' + rooms.join(', ') + ')' : '') +
         '? Each occupied room will be marked dirty.'
-    );
-    if (!ok) return Promise.resolve(null);
-    return putRoomAction(root, { action: 'checkout_group' })
-      .then(function (result) {
-        if (!result.ok || !result.data || !result.data.ok) {
-          var errMsg =
-            (result.data && result.data.error) || 'Checkout failed.';
-          if (/generate invoice to check out|additional invoice/i.test(errMsg)) {
-            openCheckoutInvoiceModal(root);
-            return null;
+    ).then(function (ok) {
+      if (!ok) return null;
+      return putRoomAction(root, { action: 'checkout_group' })
+        .then(function (result) {
+          if (!result.ok || !result.data || !result.data.ok) {
+            var errMsg =
+              (result.data && result.data.error) || 'Checkout failed.';
+            if (/generate invoice to check out|additional invoice/i.test(errMsg)) {
+              openCheckoutInvoiceModal(root);
+              return null;
+            }
+            throw new Error(errMsg);
           }
-          throw new Error(errMsg);
-        }
-        paintRoom(root, result.data.room);
-        showToast('All merged rooms checked out. Rooms are dirty.');
-        return result.data.room;
-      })
-      .catch(function (err) {
-        showToast(err.message || 'Checkout failed.', true);
-        throw err;
-      });
+          paintRoom(root, result.data.room);
+          showToast('All merged rooms checked out. Rooms are dirty.');
+          return result.data.room;
+        })
+        .catch(function (err) {
+          showToast(err.message || 'Checkout failed.', true);
+          throw err;
+        });
+    });
   }
 
   function closeInvoiceModal(root) {
@@ -9042,12 +9066,17 @@
       return;
     }
     if (replaceMode && roomStatus === 'reserved') {
-      var okReplace = global.confirm(
+      confirmAction(
         'This will clear the current reservation and save a new one for different dates. Continue?'
-      );
-      if (!okReplace) return;
+      ).then(function (okReplace) {
+        if (!okReplace) return;
+        submitReserveSave();
+      });
+      return;
     }
+    submitReserveSave();
 
+    function submitReserveSave() {
     var additionalRequests = form.elements.additionalRequests
       ? String(form.elements.additionalRequests.value || '').trim()
       : '';
@@ -9118,6 +9147,7 @@
       .then(function () {
         syncReserveSaveEnabled(root, form);
       });
+    }
   }
 
   function fillVacantRoomOptions(listboxRoot, rooms, currentId) {
@@ -9804,8 +9834,9 @@
       scopeKey === 'group'
         ? 'Unmerge all rooms in this billing group? Each room will bill on its own.'
         : 'Unmerge this room from the shared bill? This room will bill on its own.';
-    if (!global.confirm(msg)) return Promise.resolve(null);
-    return fetch(api, {
+    return confirmAction(msg).then(function (ok) {
+      if (!ok) return null;
+      return fetch(api, {
       method: 'PUT',
       credentials: 'same-origin',
       headers: apiHeaders({ 'Content-Type': 'application/json' }),
@@ -9828,6 +9859,7 @@
         showToast(err.message || 'Unmerge failed.', true);
         throw err;
       });
+    });
   }
 
   function setMergePrimary(root) {
@@ -9836,14 +9868,11 @@
       showToast('Room API unavailable.', true);
       return Promise.reject(new Error('missing api'));
     }
-    if (
-      !global.confirm(
-        'Make this room the billing primary? The shared folio and invoice will move here.'
-      )
-    ) {
-      return Promise.resolve(null);
-    }
-    return fetch(api, {
+    return confirmAction(
+      'Make this room the billing primary? The shared folio and invoice will move here.'
+    ).then(function (ok) {
+      if (!ok) return null;
+      return fetch(api, {
       method: 'PUT',
       credentials: 'same-origin',
       headers: apiHeaders({ 'Content-Type': 'application/json' }),
@@ -9866,6 +9895,7 @@
         showToast(err.message || 'Could not change primary.', true);
         throw err;
       });
+    });
   }
 
   function collectStay(form) {
@@ -11035,15 +11065,15 @@
       } else {
         var otherList = readOtherCustomCharges(form);
         if (otherList.length) {
-          var ok = true;
-          try {
-            ok = window.confirm('Remove all other special request charges?');
-          } catch (err) {}
-          if (!ok) {
-            event.target.checked = true;
-            return;
-          }
-          clearOtherCustomCharges(form);
+          confirmAction('Remove all other special request charges?').then(function (ok) {
+            if (!ok) {
+              event.target.checked = true;
+              return;
+            }
+            clearOtherCustomCharges(form);
+            scheduleCheckinDraftSave(root, form);
+          });
+          return;
         }
         scheduleCheckinDraftSave(root, form);
       }

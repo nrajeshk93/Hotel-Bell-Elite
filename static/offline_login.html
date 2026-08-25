@@ -4,20 +4,20 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Hotel Bell Elite — Sign In</title>
-  {% include 'partials/de_android_head.html' %}
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='login_premium.css') }}?v=12" />
+  <meta name="theme-color" content="#0061FF">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+  <link rel="stylesheet" href="/static/login_premium.css?v=12" />
 </head>
 <body class="login-page">
   <div class="login-shell">
     <aside class="login-brand" aria-hidden="false">
-      <div class="login-brand-media" style="--login-hero:url('{{ url_for('static', filename='login_hero.jpg') }}?v=2')"></div>
+      <div class="login-brand-media" style="--login-hero:url('/static/login_hero.jpg?v=2')"></div>
       <div class="login-brand-veil" aria-hidden="true"></div>
       <div class="login-brand-inner">
         <div class="login-brand-top">
-          <img class="login-mark login-mark--on-dark" src="{{ url_for('static', filename='hbe_mark_sm.png') }}" width="72" height="72" alt="" />
+          <img class="login-mark login-mark--on-dark" src="/static/hbe_mark_sm.png" width="72" height="72" alt="" />
           <h1 class="login-brand-name">Hotel Bell Elite</h1>
           <p class="login-brand-tag">Experience excellence</p>
         </div>
@@ -54,27 +54,21 @@
     <main class="login-panel">
       <div class="login-panel-card">
         <div class="login-panel-head">
-          <img class="login-mark login-mark--badge" src="{{ url_for('static', filename='hbe_mark_form_sm.png') }}?v=3" width="88" height="88" alt="Hotel Bell Elite" />
+          <img class="login-mark login-mark--badge" src="/static/hbe_mark_form_sm.png?v=3" width="88" height="88" alt="Hotel Bell Elite" />
           <h2 class="login-panel-title">Hotel Bell Elite</h2>
           <p class="login-panel-sub">Sign in to access your account</p>
         </div>
 
-        {% if notice %}
-          <div class="login-notice">{{ notice }}</div>
-        {% endif %}
-        {% if error %}
-          <div class="login-error">{{ error }}</div>
-        {% endif %}
         <div id="login-offline-notice" class="login-notice" hidden>You're offline. Reconnect to sign in.</div>
 
-        <form method="POST" action="{{ url_for('login') }}" class="login-form" autocomplete="on" id="login-form">
+        <form method="POST" action="/login" class="login-form" autocomplete="on" id="login-form">
           <div class="form-group">
             <label for="username">Username</label>
             <div class="login-field">
               <span class="login-field-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.8-3.5 4.4-5.2 7-5.2S17.2 15.5 19 19"/></svg>
               </span>
-              <input type="text" id="username" name="username" placeholder="Enter your username" autocomplete="username" value="{{ username or '' }}" required />
+              <input type="text" id="username" name="username" placeholder="Enter your username" autocomplete="username" required />
             </div>
           </div>
           <div class="form-group">
@@ -90,48 +84,24 @@
               </button>
             </div>
           </div>
-          {% if show_captcha %}
-          <div class="form-group login-captcha-group">
-            <label for="captcha">CAPTCHA</label>
-            <div class="login-captcha-row">
-              <img class="login-captcha-img" src="{{ url_for('login_captcha') }}" alt="CAPTCHA image" width="160" height="56">
-              <button type="button" class="login-captcha-refresh" id="login-captcha-refresh" aria-label="Refresh CAPTCHA">↻</button>
-            </div>
-            <input type="text" id="captcha" name="captcha" placeholder="Enter the characters above" autocomplete="off" autocapitalize="characters" spellcheck="false" required />
-          </div>
-          {% endif %}
           <button type="submit" class="login-btn">Sign In</button>
         </form>
-
-        {% if account_locked %}
-        <form method="POST" action="{{ url_for('login_resend_unlock') }}" class="login-resend-form">
-          <input type="hidden" name="username" value="{{ username or '' }}">
-          <button type="submit" class="login-resend-btn">Resend unlock email</button>
-        </form>
-        {% endif %}
       </div>
     </main>
   </div>
 
-  <script src="{{ url_for('static', filename='de_pwa.js') }}?v=12"></script>
+  <script src="/static/de_pwa.js?v=12"></script>
   <script>
-  (function(){
+  (function () {
     var eye = document.getElementById('login-toggle-password');
     var pass = document.getElementById('password');
     if (eye && pass) {
-      eye.addEventListener('click', function(){
+      eye.addEventListener('click', function () {
         var show = pass.type === 'password';
         pass.type = show ? 'text' : 'password';
         eye.classList.toggle('is-revealed', show);
         eye.setAttribute('aria-pressed', show ? 'true' : 'false');
         eye.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
-      });
-    }
-    var btn = document.getElementById('login-captcha-refresh');
-    var img = document.querySelector('.login-captcha-img');
-    if (btn && img) {
-      btn.addEventListener('click', function(){
-        img.src = {{ url_for('login_captcha')|tojson }} + '?t=' + Date.now();
       });
     }
 
@@ -151,8 +121,7 @@
 
     function hideOfflineNotice() {
       if (!notice) return;
-      /* Keep server-rendered notices; only clear our offline banner text. */
-      if (notice.textContent === OFFLINE_MSG) notice.hidden = true;
+      notice.hidden = true;
     }
 
     function syncOfflineBanner() {

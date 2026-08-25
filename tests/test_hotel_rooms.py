@@ -5441,6 +5441,84 @@ class HotelRoomsTests(unittest.TestCase):
         )
         self.assertIn("102", ledger_room.get("mergeRoomLabel") or "")
 
+    def test_ledger_room_label_stays_frozen_after_member_checkout(self):
+        """Invoice ROOM column keeps all merge rooms after a member leaves."""
+        check_in, check_out = self._stay_window(nights=1)
+        for rid, rate, mobile in (
+            ("room-101", 4200, "9000000401"),
+            ("room-102", 4200, "9000000402"),
+            ("room-103", 4200, "9000000403"),
+        ):
+            res = self.client.put(
+                f"/hotel/api/rooms/{rid}",
+                json={
+                    "action": "checkin",
+                    "stay": {
+                        "firstName": "Merge",
+                        "lastName": rid[-3:],
+                        "mobile": mobile,
+                        "checkInDate": check_in,
+                        "checkOutDate": check_out,
+                        "nights": 1,
+                        "roomRate": rate,
+                        "advancePaid": rate,
+                    },
+                },
+            )
+            self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        self.client.put(
+            "/hotel/api/rooms/room-102",
+            json={
+                "action": "merge_rooms",
+                "fromRoomId": "room-102",
+                "toRoomId": "room-101",
+            },
+        )
+        self.client.put(
+            "/hotel/api/rooms/room-103",
+            json={
+                "action": "merge_rooms",
+                "fromRoomId": "room-103",
+                "toRoomId": "room-101",
+            },
+        )
+        gen = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "generate_invoice", "payment_splits": []},
+        )
+        self.assertEqual(gen.status_code, 200, gen.get_data(as_text=True))
+        inv_no = gen.get_json()["room"]["stay"]["invoiceNumber"]
+        before = self.client.get(f"/hotel/invoice-ledger/api/{inv_no}").get_json()
+        before_rooms = [
+            p.strip()
+            for p in str(before["invoice"]["room_number"] or "").split("+")
+            if p.strip()
+        ]
+        self.assertCountEqual(before_rooms, ["101", "102", "103"])
+
+        closed = self.client.put(
+            "/hotel/api/rooms/room-102",
+            json={"action": "checkout"},
+        )
+        self.assertEqual(closed.status_code, 200, closed.get_data(as_text=True))
+
+        # Payment sync / ledger refresh must not drop checked-out room from ROOM.
+        after = self.client.get(f"/hotel/invoice-ledger/api/{inv_no}").get_json()
+        after_rooms = [
+            p.strip()
+            for p in str(after["invoice"]["room_number"] or "").split("+")
+            if p.strip()
+        ]
+        self.assertCountEqual(after_rooms, ["101", "102", "103"])
+        page = self.client.get("/hotel/invoice-ledger")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn(inv_no, html)
+        self.assertTrue(
+            ("101" in html and "102" in html and "103" in html),
+            "ledger HTML should still list all invoice rooms",
+        )
+
     def test_normalize_nightly_rates_sum_and_fill(self):
         stay = db_mod._normalize_hotel_room_stay(
             {

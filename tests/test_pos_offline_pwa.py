@@ -48,6 +48,10 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("de_workspace_transitions.js", body)
         self.assertIn("de_workspace_shell.css", body)
         self.assertIn("/bar-point-of-sale/invoice", body)
+        self.assertIn("offline_login.html", body)
+        self.assertIn("login_premium.css", body)
+        self.assertIn("matchLoginShellOffline", body)
+        self.assertIn("isLoginShellPath", body)
         # Bare /home must not be filled from partial=main offline snapshots.
         self.assertIn("Never overwrite the bare navigate URL", body)
         self.assertIn("Full navigations must not use a partial=main", body)
@@ -58,6 +62,29 @@ class AppShellPwaTests(unittest.TestCase):
         )
         self.assertIn("/point-of-sale/api/menu/items", body)
         self.assertIn("/point-of-sale/api/floor", body)
+
+    def test_offline_login_shell_is_public(self):
+        resp = self.client.get("/static/offline_login.html")
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        resp.close()
+        self.assertIn("login-panel", html)
+        self.assertIn("login-shell", html)
+        self.assertIn("You're offline. Reconnect to sign in.", html)
+        self.assertIn("navigator.onLine", html)
+        self.assertIn('action="/login"', html)
+        self.assertIn("de_pwa.js", html)
+
+    def test_sign_in_page_registers_pwa_and_offline_guard(self):
+        resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        resp.close()
+        self.assertIn("login-panel", html)
+        self.assertIn("de_pwa.js", html)
+        self.assertIn("login-offline-notice", html)
+        self.assertIn("You're offline. Reconnect to sign in.", html)
+        self.assertIn("navigator.onLine", html)
 
     def test_de_pwa_prunes_app_and_legacy_pos_caches(self):
         resp = self.client.get("/static/de_pwa.js")

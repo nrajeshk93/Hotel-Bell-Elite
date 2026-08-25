@@ -10068,7 +10068,7 @@ def _hotel_get_invoice_ledger_row(conn, invoice_number):
     return conn.execute(
         """
         SELECT invoice_number, status, payload_json, estimated_total, advance_paid,
-               balance_amount, invoice_generated_at
+               balance_amount, invoice_generated_at, room_number
         FROM hotel_room_invoices
         WHERE invoice_number = ?
         """,
@@ -10988,6 +10988,78 @@ def _hotel_invoice_guest_name(stay):
     return f"{first} {last}".strip()
 
 
+def _hotel_invoice_frozen_room_display(existing_row, stay, room):
+    """Ledger ROOM column is fixed at mint — never shrink when peers check out."""
+    column_label = ""
+    payload_label = ""
+    if existing_row is not None:
+        try:
+            column_label = _hotel_str(existing_row["room_number"], 80)
+        except (KeyError, IndexError, TypeError):
+            column_label = ""
+        try:
+            payload = json.loads(existing_row["payload_json"] or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError, KeyError, IndexError):
+            payload = {}
+        if isinstance(payload, dict):
+            payload_label = _hotel_str(
+                payload.get("mergeRoomLabel")
+                or (payload.get("stay") or {}).get("mergeRoomLabel"),
+                80,
+            )
+    # Prefer the broader invoice-time roster (heals rows already shrunk by checkout).
+    if payload_label and column_label:
+        if payload_label.count("+") > column_label.count("+") or (
+            len(payload_label) > len(column_label)
+            and "+" in payload_label
+        ):
+            return payload_label
+        return column_label
+    if column_label:
+        return column_label
+    if payload_label:
+        return payload_label
+    return _hotel_str(
+        (stay or {}).get("mergeRoomLabel") or (room or {}).get("number"), 80
+    ) or _hotel_str((room or {}).get("number"), 20)
+
+
+def _hotel_preserve_invoice_merge_roster(payload, stay):
+    """Keep invoice-time merge rooms on the payload when live peers shrink."""
+    if not isinstance(payload, dict):
+        payload = {}
+    prev_nums = payload.get("mergeRoomNumbers") or []
+    if not isinstance(prev_nums, list):
+        prev_nums = []
+    prev_label = _hotel_str(payload.get("mergeRoomLabel"), 120)
+    live_nums = []
+    if isinstance(stay, dict):
+        raw = stay.get("mergeRoomNumbers") or []
+        if isinstance(raw, list):
+            for item in raw[:20]:
+                num = _hotel_str(item, 20)
+                if num and num not in live_nums:
+                    live_nums.append(num)
+        live_label = _hotel_str(stay.get("mergeRoomLabel"), 120)
+    else:
+        live_label = ""
+    kept = []
+    for item in prev_nums[:20]:
+        num = _hotel_str(item, 20)
+        if num and num not in kept:
+            kept.append(num)
+    # Prefer the broader invoice-time roster over a shrunken live merge.
+    if len(kept) > 1 or (prev_label and "+" in prev_label):
+        payload["mergeRoomNumbers"] = kept or live_nums
+        payload["mergeRoomLabel"] = prev_label or (
+            " + ".join(kept) if kept else live_label
+        )
+    elif live_nums or live_label:
+        payload["mergeRoomNumbers"] = live_nums
+        payload["mergeRoomLabel"] = live_label or " + ".join(live_nums)
+    return payload
+
+
 def upsert_hotel_room_invoice_from_room(
     conn, room, invoice_number=None, snapshot_stay=None, estimated_total=None
 ):
@@ -11051,8 +11123,7 @@ def upsert_hotel_room_invoice_from_room(
             ):
                 if room.get(key) is not None:
                     payload[key] = room.get(key)
-            payload["mergeRoomNumbers"] = list(stay.get("mergeRoomNumbers") or [])
-            payload["mergeRoomLabel"] = stay.get("mergeRoomLabel") or ""
+            payload = _hotel_preserve_invoice_merge_roster(payload, stay)
             payload["stay"] = stay
             estimated = round(
                 float(stay.get("estimatedTotal") or existing["estimated_total"] or 0),
@@ -11083,9 +11154,6 @@ def upsert_hotel_room_invoice_from_room(
             _hotel_merge_live_payments_into_payload({"stay": snap}, stay).get("stay")
             or snap
         )
-        room_number_display = _hotel_str(
-            stay.get("mergeRoomLabel") or room.get("number"), 80
-        ) or _hotel_str(room.get("number"), 20)
         payload = {
             "id": room.get("id") or "",
             "number": room.get("number") or "",
@@ -11101,9 +11169,7 @@ def upsert_hotel_room_invoice_from_room(
         }
         blob = json.dumps(payload, separators=(",", ":"))
 
-    room_number_display = _hotel_str(
-        stay.get("mergeRoomLabel") or room.get("number"), 80
-    ) or _hotel_str(room.get("number"), 20)
+    room_number_display = _hotel_invoice_frozen_room_display(existing, stay, room)
     conn.execute(
         """
         INSERT INTO hotel_room_invoices (
@@ -11397,9 +11463,7 @@ def upsert_fb_combined_transfer_invoice(conn, room, invoice_number=None, transfe
         blob = json.dumps(payload, separators=(",", ":"))
 
     guest_name = _hotel_invoice_guest_name(stay)
-    room_number_display = _hotel_str(
-        stay.get("mergeRoomLabel") or room.get("number"), 80
-    ) or _hotel_str(room.get("number"), 20)
+    room_number_display = _hotel_invoice_frozen_room_display(existing, stay, room)
     conn.execute(
         """
         INSERT INTO hotel_room_invoices (

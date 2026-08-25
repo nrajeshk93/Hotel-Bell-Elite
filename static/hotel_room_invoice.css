@@ -1,16 +1,17 @@
-/* Hotel Bell Elite — branded room stay invoice (A4 print preview) */
-@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Manrope:wght@500;600;700&display=swap");
+/* Hotel Bell Elite — branded room stay invoice (A4 print preview)
+ * Visual reference: navy #142A4A + gold #C89B3C, Inter, clean A4 layout. */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
 
 :root {
-  --hri-navy: #0b1f3a;
-  --hri-gold: #c9a24a;
+  --hri-navy: #142a4a;
+  --hri-gold: #c89b3c;
   --hri-gold-soft: #e8d5a3;
-  --hri-muted: #5b6b7c;
-  --hri-line: #e5e7eb;
-  --hri-row: #f7f8fa;
-  --hri-ink: #111827;
-  --hri-title-font: "Cormorant Garamond", Georgia, "Times New Roman", serif;
-  --hri-tag-font: Manrope, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --hri-muted: #64748b;
+  --hri-line: #e2e8f0;
+  --hri-row: #f8fafc;
+  --hri-card: #f8fafc;
+  --hri-ink: #0f172a;
+  --hri-font: Inter, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -20,7 +21,8 @@ html, body {
   padding: 0;
   background: #e8edf3;
   color: var(--hri-ink);
-  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--hri-font);
+  -webkit-font-smoothing: antialiased;
 }
 
 .hri-toolbar {
@@ -41,7 +43,7 @@ html, body {
   border: 1px solid #cbd5e1;
   background: #fff;
   color: var(--hri-navy);
-  font: 600 13px/1 inherit;
+  font: 600 13px/1 var(--hri-font);
   padding: 10px 16px;
   border-radius: 8px;
   cursor: pointer;
@@ -55,33 +57,40 @@ html, body {
 
 .hri-sheet {
   position: relative;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-content: stretch;
   width: 210mm;
   min-height: 297mm;
   margin: 18px auto 32px;
-  padding: 18mm 16mm 14mm;
+  padding: 16mm 15mm 12mm;
   background: #fff;
   box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12);
   color: var(--hri-ink);
 }
 
 .hri-sheet-body {
-  flex: 1 1 auto;
+  grid-row: 1;
+  grid-column: 1;
   min-height: 0;
   width: 100%;
 }
 
 .hri-closing {
-  flex: 0 0 auto;
-  margin-top: auto;
-  padding-top: 18px;
+  grid-row: 2;
+  grid-column: 1;
+  align-self: end;
+  margin-top: 0;
+  padding-top: 16px;
   width: 100%;
 }
 
 .hri-cancelled-watermark{
   position:absolute;
   inset:0;
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
   display:flex;
   align-items:center;
   justify-content:center;
@@ -91,7 +100,7 @@ html, body {
 }
 .hri-cancelled-watermark span{
   display:inline-block;
-  font-family:Arial,Helvetica,sans-serif;
+  font-family: var(--hri-font);
   font-size:54px;
   font-weight:800;
   letter-spacing:.14em;
@@ -104,13 +113,14 @@ html, body {
   white-space:nowrap;
 }
 
+/* —— Header —— */
 .hri-header {
   display: flex;
   justify-content: space-between;
-  gap: 24px;
+  gap: 28px;
   align-items: flex-start;
   padding-bottom: 14px;
-  border-bottom: 2px solid var(--hri-gold);
+  border-bottom: 1.5px solid var(--hri-gold);
 }
 
 .hri-brand {
@@ -121,8 +131,8 @@ html, body {
 }
 
 .hri-mark {
-  width: 72px;
-  height: 72px;
+  width: 64px;
+  height: 64px;
   object-fit: contain;
   flex: 0 0 auto;
   background: #fff;
@@ -130,56 +140,35 @@ html, body {
 
 .hri-brand-copy {
   min-width: 0;
-  width: max-content;
-  max-width: 100%;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
+  gap: 4px;
 }
 
 .hri-brand-name {
   margin: 0;
-  font-family: var(--hri-title-font);
-  font-size: 28px;
-  letter-spacing: 0.06em;
+  font-family: var(--hri-font);
+  font-size: 22px;
+  letter-spacing: 0.08em;
   color: var(--hri-navy);
-  font-weight: 600;
-  line-height: 1.05;
+  font-weight: 800;
+  line-height: 1.15;
   text-transform: uppercase;
 }
 
 .hri-brand-rule {
-  position: relative;
-  width: 100%;
-  max-width: 100%;
-  height: 1px;
-  margin: 8px 0 7px;
-  background: var(--hri-gold);
-}
-
-.hri-brand-rule-ornament {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 7px;
-  height: 7px;
-  margin: 0;
-  background: #fff;
-  border: 1.5px solid var(--hri-gold);
-  transform: translate(-50%, -50%) rotate(45deg);
-  box-sizing: border-box;
+  display: none;
 }
 
 .hri-brand-tag {
   margin: 0;
-  font-family: var(--hri-tag-font);
+  font-family: var(--hri-font);
   font-size: 10px;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--hri-gold);
-  font-weight: 500;
-  line-height: 1.3;
-  white-space: nowrap;
+  font-weight: 600;
+  line-height: 1.35;
 }
 
 .hri-contact {
@@ -187,7 +176,7 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 5px;
+  gap: 6px;
   font-size: 11px;
   line-height: 1.45;
   color: var(--hri-muted);
@@ -206,12 +195,10 @@ html, body {
   align-items: start;
   width: 100%;
   margin: 0;
-  text-align: left;
 }
 
 .hri-contact-row span {
   min-width: 0;
-  text-align: left;
   word-break: break-word;
 }
 
@@ -219,28 +206,29 @@ html, body {
   width: 12px;
   height: 12px;
   min-width: 12px;
-  max-width: 12px;
   margin-top: 2px;
   justify-self: center;
   color: var(--hri-gold);
 }
 
+/* —— Invoice + Bill To —— */
 .hri-meta-row {
   display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
-  gap: 22px;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 24px;
   margin-top: 18px;
   align-items: start;
 }
 
 .hri-title {
-  margin: 0 0 12px;
-  font-family: var(--hri-title-font);
-  font-size: 34px;
-  color: var(--hri-gold);
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  margin: 0 0 14px;
+  font-family: var(--hri-font);
+  font-size: 28px;
+  color: var(--hri-navy);
+  font-weight: 800;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  line-height: 1;
 }
 
 .hri-meta-list {
@@ -248,27 +236,37 @@ html, body {
   padding: 0;
   list-style: none;
   font-size: 12.5px;
-  line-height: 1.7;
+  line-height: 1.65;
 }
 
 .hri-meta-list li {
   display: grid;
-  grid-template-columns: 108px 1fr;
-  gap: 8px;
+  grid-template-columns: 110px 1fr;
+  gap: 10px;
+  align-items: baseline;
 }
 
 .hri-meta-list .k {
-  color: var(--hri-muted);
-  font-weight: 600;
-}
-
-.hri-meta-list .v {
   color: var(--hri-navy);
   font-weight: 700;
 }
 
+.hri-meta-list .v {
+  color: var(--hri-ink);
+  font-weight: 500;
+}
+
+.hri-meta-list li.hri-meta-rule {
+  display: block;
+  height: 0;
+  margin: 10px 0;
+  border: 0;
+  border-top: 1px solid var(--hri-line);
+  padding: 0;
+}
+
 .hri-billto {
-  border: 1px solid #d7dee8;
+  border: 1px solid #d8dee8;
   border-radius: 10px;
   overflow: hidden;
   background: #fff;
@@ -278,18 +276,25 @@ html, body {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: var(--hri-navy);
-  color: #fff;
+  background: transparent;
+  color: var(--hri-navy);
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 800;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  padding: 8px 14px;
-  border-radius: 0 0 10px 0;
+  padding: 12px 14px 0;
+  border-radius: 0;
+}
+
+.hri-billto-head .hri-contact-ico,
+.hri-billto-head svg {
+  color: var(--hri-gold);
+  width: 14px;
+  height: 14px;
 }
 
 .hri-billto-body {
-  padding: 12px 14px 14px;
+  padding: 8px 14px 14px;
   font-size: 12.5px;
   line-height: 1.55;
   color: var(--hri-navy);
@@ -297,7 +302,9 @@ html, body {
 
 .hri-billto-body .name {
   font-weight: 800;
-  margin-bottom: 4px;
+  font-size: 15px;
+  margin-bottom: 6px;
+  color: var(--hri-navy);
 }
 
 .hri-billto-body .muted {
@@ -305,13 +312,7 @@ html, body {
   font-weight: 500;
 }
 
-.hri-table-wrap {
-  margin-top: 20px;
-  border: 1px solid #d7dee8;
-  border-radius: 10px;
-  overflow: hidden;
-}
-
+/* —— Items table —— */
 .hri-doc {
   width: 100%;
   border-collapse: collapse;
@@ -320,13 +321,13 @@ html, body {
 }
 
 .hri-doc-masthead {
-  padding: 0 0 12px;
+  padding: 0 0 14px;
   border: 0;
   vertical-align: top;
 }
 
 .hri-doc-foot {
-  padding: 12px 0 0;
+  padding: 14px 0 0;
   border: 0;
   vertical-align: top;
 }
@@ -336,7 +337,6 @@ html, body {
 }
 
 .hri-doc tfoot {
-  /* Keep totals/signatory once at the end — do not repeat on every page. */
   display: table-row-group;
 }
 
@@ -344,22 +344,20 @@ html, body {
   background: var(--hri-navy);
   color: #fff;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: 10.5px;
   padding: 11px 10px;
   text-align: left;
-  border-top: 1px solid #d7dee8;
+  border: 0;
 }
 
 .hri-doc .hri-colhead th:first-child {
-  border-left: 1px solid #d7dee8;
-  border-radius: 10px 0 0 0;
+  border-radius: 6px 0 0 6px;
 }
 
 .hri-doc .hri-colhead th:last-child {
-  border-right: 1px solid #d7dee8;
-  border-radius: 0 10px 0 0;
+  border-radius: 0 6px 6px 0;
 }
 
 .hri-doc th.num,
@@ -374,16 +372,13 @@ html, body {
 }
 
 .hri-doc tbody td {
-  padding: 10px;
-  border-bottom: 1px solid #eef1f5;
-  border-left: 1px solid #d7dee8;
-  border-right: 1px solid #d7dee8;
-  color: var(--hri-navy);
-  vertical-align: top;
-}
-
-.hri-doc tbody td + td {
+  padding: 11px 10px;
+  border-bottom: 1px solid var(--hri-line);
   border-left: 0;
+  border-right: 0;
+  color: var(--hri-ink);
+  vertical-align: top;
+  font-weight: 500;
 }
 
 .hri-doc tbody tr:nth-child(even) td {
@@ -391,17 +386,50 @@ html, body {
 }
 
 .hri-doc tbody tr:last-child td {
-  border-bottom: 1px solid #d7dee8;
+  border-bottom: 1px solid var(--hri-line);
 }
 
-.hri-doc tbody tr.hri-line:last-of-type td:first-child,
-.hri-doc tbody tr.hri-pad-row:last-child td:first-child {
-  border-radius: 0 0 0 10px;
+.hri-col-sl {
+  width: 48px;
+  max-width: 48px;
+}
+.hri-col-desc {
+  width: auto;
+}
+.hri-col-nights,
+.hri-col-rooms {
+  width: 52px;
+  max-width: 52px;
+}
+.hri-col-date {
+  width: 78px;
+  max-width: 78px;
+}
+.hri-col-rate {
+  width: 88px;
+  max-width: 88px;
+}
+.hri-col-amt {
+  width: 96px;
+  max-width: 96px;
 }
 
-.hri-doc tbody tr.hri-line:last-of-type td:last-child,
-.hri-doc tbody tr.hri-pad-row:last-child td:last-child {
-  border-radius: 0 0 10px 0;
+.hri-desc {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  line-height: 1.35;
+  max-height: 2.7em;
+}
+
+.hri-desc-sub {
+  display: inline;
+  margin-top: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--hri-muted);
 }
 
 .hri-table {
@@ -414,9 +442,9 @@ html, body {
   background: var(--hri-navy);
   color: #fff;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: 10.5px;
   padding: 11px 10px;
   text-align: left;
 }
@@ -433,9 +461,9 @@ html, body {
 }
 
 .hri-table tbody td {
-  padding: 10px;
-  border-bottom: 1px solid #eef1f5;
-  color: var(--hri-navy);
+  padding: 11px 10px;
+  border-bottom: 1px solid var(--hri-line);
+  color: var(--hri-ink);
   vertical-align: top;
 }
 
@@ -447,19 +475,27 @@ html, body {
   border-bottom: 0;
 }
 
+/* —— Notes + Totals —— */
 .hri-bottom {
   display: grid;
   grid-template-columns: 1fr 0.95fr;
-  gap: 18px;
-  margin-top: 18px;
+  gap: 20px;
+  margin-top: 16px;
   align-items: start;
 }
 
-.hri-notes,
-.hri-totals {
-  border: 1px solid #d7dee8;
+.hri-notes {
+  border: 1px solid #d8dee8;
   border-radius: 10px;
   overflow: hidden;
+  background: #fff;
+}
+
+.hri-totals {
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
 }
 
 .hri-notes-head,
@@ -476,16 +512,29 @@ html, body {
   gap: 8px;
   font-weight: 800;
   color: var(--hri-navy);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  border-bottom: 1px solid #eef1f5;
+  border-bottom: 0;
+  padding-bottom: 4px;
+}
+
+.hri-notes-head .hri-contact-ico,
+.hri-notes-head svg {
+  color: var(--hri-gold);
+  width: 14px;
+  height: 14px;
 }
 
 .hri-notes-body {
-  padding: 12px 14px 14px;
+  padding: 4px 14px 14px;
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--hri-muted);
+}
+
+.hri-totals-row {
+  padding: 7px 0;
+  border-bottom: 0;
 }
 
 .hri-totals-row .k {
@@ -500,89 +549,41 @@ html, body {
 }
 
 .hri-totals-row.is-total {
-  background: var(--hri-gold);
-  color: var(--hri-navy);
+  background: var(--hri-navy);
+  color: #fff;
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin-top: 6px;
 }
 
 .hri-totals-row.is-total .k,
 .hri-totals-row.is-total .v {
-  color: var(--hri-navy);
+  color: #fff;
   font-weight: 800;
+  letter-spacing: 0.02em;
 }
 
 .hri-words {
-  padding: 10px 14px 12px;
-  border-top: 1px solid #eef1f5;
+  padding: 10px 2px 0;
+  border-top: 0;
   font-size: 11.5px;
   color: var(--hri-muted);
+  font-style: italic;
 }
 
 .hri-words strong {
   color: var(--hri-navy);
-}
-
-.hri-thanks {
-  margin: 0 0 10px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  color: var(--hri-gold);
-  font-family: Georgia, "Times New Roman", serif;
   font-style: italic;
-  font-size: 22px;
-  justify-content: center;
+  font-weight: 600;
 }
 
-.hri-thanks::before,
-.hri-thanks::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--hri-gold-soft), transparent);
-}
-
-.hri-values {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-  margin: 8px 0 18px;
-  text-align: center;
-}
-
-.hri-value {
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--hri-muted);
-  font-weight: 700;
-}
-
-.hri-value-ico {
-  width: 28px;
-  height: 28px;
-  margin: 0 auto 6px;
-  border: 1.5px solid var(--hri-gold);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--hri-gold);
-}
-
-.hri-value-ico svg {
-  width: 14px;
-  height: 14px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
+/* —— Signatory (under totals) + page footer —— */
 .hri-sign {
   display: flex;
   justify-content: flex-end;
-  margin-top: 8px;
+  margin-top: 18px;
+  page-break-inside: avoid;
+  break-inside: avoid;
 }
 
 .hri-sign-box {
@@ -592,7 +593,7 @@ html, body {
 
 .hri-sign-line {
   height: 48px;
-  border-bottom: 1px solid #94a3b8;
+  border-bottom: 1.5px solid var(--hri-gold);
   margin-bottom: 8px;
 }
 
@@ -606,6 +607,74 @@ html, body {
   font-size: 11px;
   color: var(--hri-muted);
   margin-top: 2px;
+  font-weight: 500;
+}
+
+.hri-thanks {
+  margin: 18px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--hri-gold);
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-size: 22px;
+  justify-content: center;
+  font-weight: 600;
+}
+
+.hri-thanks::before,
+.hri-thanks::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--hri-gold-soft), transparent);
+}
+
+.hri-values-bar {
+  background: var(--hri-card);
+  border-radius: 8px;
+  padding: 14px 10px 12px;
+  margin: 0;
+}
+
+.hri-values {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 0;
+  text-align: center;
+}
+
+.hri-value {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--hri-navy);
+  font-weight: 700;
+}
+
+.hri-value-ico {
+  width: 30px;
+  height: 30px;
+  margin: 0 auto 7px;
+  border: 1.5px solid var(--hri-gold);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--hri-gold);
+  background: #fff;
+}
+
+.hri-value-ico svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 @media print {
@@ -617,10 +686,11 @@ html, body {
     display: none !important;
   }
   .hri-sheet {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
     width: auto;
-    /* Fill one A4 printable area when content is short so closing sits at the foot. */
+    /* Fill one A4 content box so closing (sign + thank-you) stays page footer. */
     min-height: calc(297mm - 16mm);
     height: auto;
     margin: 0;
@@ -628,12 +698,16 @@ html, body {
     box-shadow: none;
   }
   .hri-sheet-body {
-    flex: 1 1 auto;
+    grid-row: 1;
+    grid-column: 1;
+    min-height: 0;
   }
   .hri-closing {
-    flex: 0 0 auto;
-    margin-top: auto;
-    padding-top: 12px;
+    grid-row: 2;
+    grid-column: 1;
+    align-self: end;
+    margin-top: 0;
+    padding-top: 8px;
     page-break-inside: avoid;
     break-inside: avoid;
   }
@@ -646,7 +720,6 @@ html, body {
     margin: 8mm 9mm;
   }
 
-  /* Repeat hotel masthead + column headers on every printed page. */
   .hri-doc {
     page-break-inside: auto;
     width: 100%;
@@ -669,6 +742,7 @@ html, body {
   }
   .hri-thanks,
   .hri-values,
+  .hri-values-bar,
   .hri-sign {
     page-break-inside: avoid;
     break-inside: avoid;
@@ -677,12 +751,12 @@ html, body {
     display: none !important;
   }
 
-  /* Compact A4 so typical stays fit on one page. */
+  /* Compact density so typical invoices stay on one A4 page. */
   .hri-doc-masthead {
-    padding-bottom: 6px;
+    padding-bottom: 8px;
   }
   .hri-header {
-    gap: 14px;
+    gap: 16px;
     padding-bottom: 8px;
   }
   .hri-mark {
@@ -690,29 +764,25 @@ html, body {
     height: 48px;
   }
   .hri-brand-name {
-    font-size: 22px;
+    font-size: 18px;
   }
   .hri-brand-tag {
-    font-size: 9px;
-    letter-spacing: 0.16em;
-  }
-  .hri-brand-rule {
-    margin: 5px 0 4px;
+    font-size: 8.5px;
+    letter-spacing: 0.14em;
   }
   .hri-contact {
-    gap: 3px;
-    font-size: 9.5px;
+    gap: 4px;
+    font-size: 10px;
     line-height: 1.35;
     flex-basis: 260px;
   }
   .hri-meta-row {
-    margin-top: 8px;
-    gap: 12px;
+    margin-top: 10px;
+    gap: 14px;
   }
   .hri-title {
-    margin: 0 0 6px;
-    font-size: 24px;
-    letter-spacing: 0.06em;
+    margin: 0 0 8px;
+    font-size: 22px;
   }
   .hri-meta-list {
     font-size: 11px;
@@ -722,50 +792,80 @@ html, body {
     grid-template-columns: 92px 1fr;
     gap: 6px;
   }
+  .hri-meta-list li.hri-meta-rule {
+    margin: 5px 0;
+  }
   .hri-billto-head {
-    padding: 6px 10px;
+    padding: 7px 10px 0;
     font-size: 10px;
   }
   .hri-billto-body {
-    padding: 8px 10px 10px;
-    font-size: 11px;
-    line-height: 1.4;
+    padding: 4px 10px 8px;
+    font-size: 11.5px;
+    line-height: 1.35;
+  }
+  .hri-billto-body .name {
+    font-size: 13px;
   }
   .hri-doc .hri-colhead th {
-    padding: 7px 8px;
-    font-size: 10px;
+    padding: 6px 7px;
+    font-size: 9.5px;
   }
   .hri-doc tbody td {
-    padding: 5px 8px;
+    padding: 5px 7px;
     font-size: 11px;
+  }
+  .hri-desc {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    max-height: 2.6em;
+    line-height: 1.3;
+  }
+  .hri-desc-sub {
+    font-size: 10px;
   }
   .hri-doc-foot {
     padding-top: 8px;
   }
   .hri-bottom {
     margin-top: 8px;
-    gap: 10px;
+    gap: 12px;
   }
-  .hri-notes-head,
-  .hri-totals-row {
-    padding: 6px 10px;
-    font-size: 11px;
+  .hri-notes-head {
+    padding: 6px 10px 2px;
+    font-size: 10.5px;
   }
   .hri-notes-body {
-    padding: 8px 10px 10px;
+    padding: 2px 10px 8px;
     font-size: 11px;
   }
+  .hri-totals-row {
+    padding: 4px 0;
+    font-size: 11.5px;
+  }
+  .hri-totals-row.is-total {
+    padding: 8px 10px;
+    background: var(--hri-navy);
+    color: #fff;
+  }
+  .hri-totals-row.is-total .k,
+  .hri-totals-row.is-total .v {
+    color: #fff;
+  }
   .hri-words {
-    padding: 6px 10px 8px;
-    font-size: 10px;
+    padding: 6px 2px 0;
+    font-size: 10.5px;
   }
   .hri-thanks {
-    margin: 0 0 4px;
+    margin: 8px 0 6px;
     font-size: 16px;
     gap: 10px;
   }
+  .hri-values-bar {
+    padding: 8px 6px;
+  }
   .hri-values {
-    margin: 2px 0 8px;
+    margin: 0;
     gap: 6px;
   }
   .hri-value {
@@ -774,24 +874,25 @@ html, body {
   .hri-value-ico {
     width: 22px;
     height: 22px;
-    margin-bottom: 3px;
+    margin-bottom: 4px;
   }
   .hri-value-ico svg {
     width: 11px;
     height: 11px;
   }
   .hri-sign {
-    margin-top: 2px;
+    margin-top: 12px;
   }
   .hri-sign-line {
     height: 36px;
     margin-bottom: 4px;
+    border-bottom-color: var(--hri-gold);
   }
   .hri-sign-title {
-    font-size: 11px;
+    font-size: 11.5px;
   }
   .hri-sign-sub {
-    font-size: 10px;
+    font-size: 10.5px;
   }
 }
 
@@ -827,7 +928,7 @@ html, body {
   background: #fff;
 }
 .hri-preview-title {
-  font: 600 14px/1.3 Manrope, "Segoe UI", sans-serif;
+  font: 600 14px/1.3 var(--hri-font);
   color: var(--hri-navy);
 }
 .hri-preview-actions {
@@ -840,7 +941,7 @@ html, body {
   border-radius: 8px;
   background: #fff;
   color: var(--hri-ink);
-  font: 600 13px/1 Manrope, "Segoe UI", sans-serif;
+  font: 600 13px/1 var(--hri-font);
   padding: 8px 14px;
   cursor: pointer;
 }
@@ -855,4 +956,17 @@ html, body {
   min-height: 0;
   border: 0;
   background: #e8edf3;
+}
+
+/* Embedded ledger View: same canvas as print/PDF (no inner Close/Print bar). */
+body.hri-embed {
+  background: #e8edf3;
+}
+body.hri-embed .hri-toolbar {
+  display: none !important;
+}
+body.hri-embed .hri-sheet {
+  margin: 16px auto 24px;
+  min-height: 297mm;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.1);
 }
