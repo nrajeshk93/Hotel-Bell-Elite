@@ -4834,6 +4834,20 @@ def service_worker():
     return response
 
 
+@app.after_request
+def _no_cache_offline_auth_shell(response):
+    """Keep offline Sign In HTML/JS from being pinned by CDN/browser year-long caches."""
+    path = request.path or ""
+    if (
+        path == "/static/offline_login.html"
+        or path.startswith("/static/offline_auth.js")
+        or path.startswith("/static/de_pwa.js")
+    ):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
 @app.route("/")
 def index():
     if get_current_user():

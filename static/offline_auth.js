@@ -636,9 +636,9 @@
         });
         // #endregion
         try {
-          global.location.replace('/static/offline_login.html');
+          global.location.replace('/static/offline_login.html?v=7');
         } catch (err) {
-          global.location.href = '/static/offline_login.html';
+          global.location.href = '/static/offline_login.html?v=7';
         }
       },
       true

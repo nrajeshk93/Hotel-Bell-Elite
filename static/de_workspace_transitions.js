@@ -2141,7 +2141,7 @@
         }
       } catch(eSess){}
       /* `/static/offline_login.html` is the versioned offline Sign In shell. */
-      window.location.replace('/static/offline_login.html');
+      window.location.replace('/static/offline_login.html?v=7');
     }
 
     if(typeof navigator !== 'undefined' && navigator.onLine === false){

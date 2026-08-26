@@ -102,6 +102,21 @@
   }
 
   function register() {
+    var onAuthShell =
+      /\/(login)?$/.test(window.location.pathname || '') ||
+      String(window.location.pathname || '').indexOf('offline_login') !== -1;
+
+    if (onAuthShell && !window.__hbeSwReloadBound) {
+      window.__hbeSwReloadBound = true;
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (window.__hbeSwReloaded) return;
+        window.__hbeSwReloaded = true;
+        try {
+          window.location.reload();
+        } catch (e) {}
+      });
+    }
+
     navigator.serviceWorker
       .register('/sw.js', { scope: '/' })
       .then(function (reg) {

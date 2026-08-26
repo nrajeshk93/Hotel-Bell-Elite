@@ -55,7 +55,10 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("logoutNav", body)
         self.assertIn("login_premium.css", body)
         self.assertIn("matchLoginShellOffline", body)
+        self.assertIn("OFFLINE_LOGIN_URL", body)
+        self.assertIn("syntheticOfflineLoginResponse", body)
         self.assertIn("responseLooksLikeModernOfflineLogin", body)
+        self.assertIn("offline_login.html?v=7", body)
         self.assertIn("isLoginShellPath", body)
         self.assertIn("offlineNavigateFallback", body)
         # Bare /home must not be filled from partial=main offline snapshots.
@@ -81,6 +84,7 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("You can still sign in with your password on this device.", html)
         self.assertIn('action="/login"', html)
         self.assertIn("de_pwa.js", html)
+        self.assertIn("offline_login.html?v=7", html)
         self.assertNotIn("Reconnect to sign in.", html)
 
     def test_get_login_serves_sign_in_page(self):
@@ -106,7 +110,7 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertNotIn("Reconnect to sign in.", html)
 
     def test_offline_auth_module_exposes_local_unlock(self):
-        resp = self.client.get("/static/offline_auth.js?v=6")
+        resp = self.client.get("/static/offline_auth.js?v=7")
         self.assertEqual(resp.status_code, 200)
         body = resp.get_data(as_text=True)
         resp.close()

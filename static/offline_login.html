@@ -90,10 +90,16 @@
     </main>
   </div>
 
-  <script src="/static/de_pwa.js?v=12"></script>
-  <script src="/static/offline_auth.js?v=6"></script>
+  <script src="/static/de_pwa.js?v=13"></script>
+  <script src="/static/offline_auth.js?v=7"></script>
   <script>
   (function () {
+    /* Escape hatch: stale SW shells still showing Reconnect must not block Sign In. */
+    var notice = document.getElementById('login-offline-notice');
+    if (notice && /Reconnect to sign in/i.test(notice.textContent || '')) {
+      window.location.replace('/static/offline_login.html?v=7');
+      return;
+    }
     var eye = document.getElementById('login-toggle-password');
     var pass = document.getElementById('password');
     if (eye && pass) {
@@ -106,7 +112,6 @@
       });
     }
 
-    var notice = document.getElementById('login-offline-notice');
     var form = document.getElementById('login-form');
     if (window.HbeOfflineAuth && form) {
       window.HbeOfflineAuth.bindLoginForm(form, { noticeEl: notice });
