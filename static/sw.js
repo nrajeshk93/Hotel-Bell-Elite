@@ -3,9 +3,9 @@
  * Cache Storage is a fallback for offline + brief disconnects.
  * Floor APIs are never cached — occupancy must not go stale.
  * POS menu GETs stay network-first; mutation APIs are not intercepted. */
-var CACHE_VERSION = 'hbe-app-v16';
+var CACHE_VERSION = 'hbe-app-v17';
 var OFFLINE_LOGIN_URL = '/static/offline_login.html?v=9';
-var OFFLINE_AUTH_URL = '/static/offline_auth.js?v=10';
+var OFFLINE_AUTH_URL = '/static/offline_auth.js?v=11';
 var PRECACHE = [
   '/home',
   '/point-of-sale/invoice',
@@ -18,8 +18,11 @@ var PRECACHE = [
   '/static/login_hero.jpg?v=2',
   '/static/hbe_mark_sm.png',
   '/static/hbe_mark_form_sm.png?v=3',
+  '/static/hbe_logo_sm.png',
+  '/static/hbe_logo_sm.webp',
   '/static/manifest.webmanifest',
   '/static/de_workspace_shell.css?v=55',
+  '/static/hbe_home_premium.css?v=20',
   '/static/ep_form_listbox.css?v=29',
   '/static/hbe_table_scroll.css?v=2',
   '/static/hbe_kpi.css?v=13',
@@ -33,6 +36,7 @@ var PRECACHE = [
   '/static/de_workspace_transitions.js?v=193',
   '/static/hbe_table_scroll.js?v=10',
   '/static/hbe_app_toast.js?v=3',
+  '/static/print_agent.js?v=7',
   '/static/de_pwa.js?v=14',
   '/static/pwa-icon-192.png',
   '/static/pwa-icon-512.png',
@@ -612,20 +616,88 @@ function networkFirstHtml(req) {
     });
 }
 
+function matchStaticCache(req) {
+  var pathKey = '';
+  var fullUrl = '';
+  try {
+    var u = new URL(req.url);
+    pathKey = u.pathname + (u.search || '');
+    fullUrl = u.href;
+  } catch (e) {}
+  return caches.match(req).then(function (hit) {
+    if (hit) return { hit: hit, via: 'request' };
+    if (!pathKey) return { hit: null, via: 'none' };
+    return caches.match(pathKey).then(function (byPath) {
+      if (byPath) return { hit: byPath, via: 'pathKey' };
+      if (!fullUrl || fullUrl === pathKey) return { hit: null, via: 'none' };
+      return caches.match(fullUrl).then(function (byHref) {
+        return { hit: byHref || null, via: byHref ? 'href' : 'none' };
+      });
+    });
+  });
+}
+
 function networkFirstStatic(req) {
+  var pathKey = '';
+  var isCss = false;
+  try {
+    var u = new URL(req.url);
+    pathKey = u.pathname + (u.search || '');
+    isCss = /\.css$/i.test(u.pathname);
+  } catch (e) {}
+
   return fetch(req, { cache: 'no-cache' })
     .then(function (res) {
+      /* Stylesheet requests are often mode=no-cors (opaque, !ok). Still cache
+         a CORS re-fetch by URL so offline document.write shells stay styled. */
       if (res && res.ok) {
         var copy = res.clone();
         caches.open(CACHE_VERSION).then(function (cache) {
           cache.put(req, copy);
+          if (pathKey) cache.put(pathKey, res.clone());
         });
+        return res;
+      }
+      if (res && res.type === 'opaque' && pathKey) {
+        fetch(pathKey, { credentials: 'same-origin', cache: 'no-cache' })
+          .then(function (corsRes) {
+            if (!corsRes || !corsRes.ok) return;
+            caches.open(CACHE_VERSION).then(function (cache) {
+              cache.put(pathKey, corsRes.clone());
+              cache.put(req, corsRes.clone());
+            });
+          })
+          .catch(function () {});
       }
       return res;
     })
     .catch(function () {
-      return caches.match(req).then(function (cached) {
-        return cached || Response.error();
+      return matchStaticCache(req).then(function (found) {
+        // #region agent log
+        if (isCss || !found.hit) {
+          try {
+            fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
+              body: JSON.stringify({
+                sessionId: '74a6ba',
+                runId: 'css-miss',
+                hypothesisId: found.hit ? 'H6-hit' : 'H6',
+                location: 'sw.js:networkFirstStatic',
+                message: found.hit ? 'static cache hit offline' : 'static cache MISS offline',
+                data: {
+                  pathKey: pathKey,
+                  via: found.via,
+                  mode: req.mode,
+                  cacheVersion: CACHE_VERSION
+                },
+                timestamp: Date.now()
+              })
+            }).catch(function () {});
+          } catch (eLog) {}
+        }
+        // #endregion
+        return found.hit || Response.error();
       });
     });
 }

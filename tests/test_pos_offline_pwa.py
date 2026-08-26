@@ -62,7 +62,9 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("OFFLINE_LOGIN_URL", body)
         self.assertIn("syntheticOfflineLoginResponse", body)
         self.assertIn("responseLooksLikeModernOfflineLogin", body)
-        self.assertIn("offline_login.html?v=9", body)
+        self.assertIn("hbe_home_premium.css", body)
+        self.assertIn("matchStaticCache", body)
+        self.assertIn("hbe_logo_sm.png", body)
         self.assertIn("isLoginShellPath", body)
         self.assertIn("offlineNavigateFallback", body)
         # Bare /home must not be filled from partial=main offline snapshots.
@@ -114,7 +116,7 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertNotIn("Reconnect to sign in.", html)
 
     def test_offline_auth_module_exposes_local_unlock(self):
-        resp = self.client.get("/static/offline_auth.js?v=10")
+        resp = self.client.get("/static/offline_auth.js?v=11")
         self.assertEqual(resp.status_code, 200)
         body = resp.get_data(as_text=True)
         resp.close()

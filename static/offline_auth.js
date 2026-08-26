@@ -337,6 +337,51 @@
     });
   }
 
+  function warmStaticAssetsFromHtml(html, cache) {
+    var body = String(html || '');
+    var found = {};
+    var re = /(?:href|src)=["'](\/static\/[^"']+)["']/gi;
+    var m;
+    while ((m = re.exec(body))) {
+      found[m[1]] = true;
+    }
+    var urls = Object.keys(found);
+    // #region agent log
+    dbgLog('H6', 'offline_auth.js:warmStatic', 'warm static from html', {
+      count: urls.length,
+      sample: urls.slice(0, 8)
+    });
+    // #endregion
+    if (!cache || !urls.length) return Promise.resolve(0);
+    return Promise.all(
+      urls.map(function (url) {
+        return cache
+          .add(url)
+          .then(function () {
+            return 1;
+          })
+          .catch(function () {
+            return fetch(url, { credentials: 'same-origin', cache: 'no-cache' })
+              .then(function (res) {
+                if (!res || !res.ok) return 0;
+                return cache.put(url, res).then(function () {
+                  return 1;
+                });
+              })
+              .catch(function () {
+                return 0;
+              });
+          });
+      })
+    ).then(function (flags) {
+      var n = 0;
+      flags.forEach(function (f) {
+        n += f;
+      });
+      return n;
+    });
+  }
+
   function putCachedHtml(path, html) {
     if (!global.caches || !htmlLooksLikeAppShell(html)) return Promise.resolve(false);
     var key = String(path || HOME_PATH);
@@ -354,9 +399,19 @@
           return Promise.all([
             cache.put(key, res.clone()),
             cache.put(new Request(key, { credentials: 'same-origin' }), res)
-          ]).then(function () {
-            return true;
-          });
+          ])
+            .then(function () {
+              return warmStaticAssetsFromHtml(html, cache);
+            })
+            .then(function (warmed) {
+              // #region agent log
+              dbgLog('H6', 'offline_auth.js:putCachedHtml', 'cached home + static', {
+                path: key,
+                warmed: warmed
+              });
+              // #endregion
+              return true;
+            });
         });
       })
       .catch(function () {
