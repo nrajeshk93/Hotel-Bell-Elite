@@ -361,7 +361,13 @@
    */
   function goHome() {
     markOfflineSession();
+    // #region agent log
+    fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'74a6ba'},body:JSON.stringify({sessionId:'74a6ba',runId:'pre-fix',hypothesisId:'C',location:'offline_auth.js:goHome:entry',message:'goHome called',data:{online:typeof navigator!=='undefined'?navigator.onLine:null,hasSW:!!(global.navigator&&global.navigator.serviceWorker&&global.navigator.serviceWorker.controller)},timestamp:Date.now()})}).catch(function(){});
+    // #endregion
     return findCachedAppShell().then(function (found) {
+      // #region agent log
+      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'74a6ba'},body:JSON.stringify({sessionId:'74a6ba',runId:'pre-fix',hypothesisId:'C',location:'offline_auth.js:goHome:result',message:'cached shell lookup',data:{found:!!(found&&found.html),path:found&&found.path||null,htmlLen:found&&found.html?found.html.length:0},timestamp:Date.now()})}).catch(function(){});
+      // #endregion
       if (found && found.html) {
         try {
           global.history.replaceState(null, '', found.path || HOME_PATH);
@@ -448,6 +454,9 @@
       var password = passInput ? passInput.value : '';
       var submitBtn = form.querySelector('button[type="submit"], .login-btn');
       if (submitBtn) submitBtn.disabled = true;
+      // #region agent log
+      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'74a6ba'},body:JSON.stringify({sessionId:'74a6ba',runId:'pre-fix',hypothesisId:'D',location:'offline_auth.js:submit',message:'login submit',data:{offline:isBrowserOffline(),path:String(global.location&&global.location.pathname||''),hasUser:!!String(username||'').trim(),swCtrl:!!(global.navigator&&global.navigator.serviceWorker&&global.navigator.serviceWorker.controller)},timestamp:Date.now()})}).catch(function(){});
+      // #endregion
 
       function done() {
         if (submitBtn) submitBtn.disabled = false;
@@ -455,6 +464,9 @@
 
       function unlockLocal() {
         return verifyCredentials(username, password).then(function (ok) {
+          // #region agent log
+          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'74a6ba'},body:JSON.stringify({sessionId:'74a6ba',runId:'pre-fix',hypothesisId:'C',location:'offline_auth.js:unlockLocal',message:'local verify result',data:{ok:!!ok},timestamp:Date.now()})}).catch(function(){});
+          // #endregion
           if (!ok) {
             return hasAnyCredentials().then(function (has) {
               showNotice(notice, has ? MSG_BAD : MSG_NO_LOCAL);
@@ -462,6 +474,9 @@
             });
           }
           return goHome().then(function (opened) {
+            // #region agent log
+            fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'74a6ba'},body:JSON.stringify({sessionId:'74a6ba',runId:'pre-fix',hypothesisId:'C',location:'offline_auth.js:unlockLocal:nav',message:'goHome opened',data:{opened:!!opened},timestamp:Date.now()})}).catch(function(){});
+            // #endregion
             if (opened) return;
             showNotice(notice, MSG_NO_SHELL);
             done();

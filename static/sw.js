@@ -3,13 +3,13 @@
  * Cache Storage is a fallback for offline + brief disconnects.
  * Floor APIs are never cached — occupancy must not go stale.
  * POS menu GETs stay network-first; mutation APIs are not intercepted. */
-var CACHE_VERSION = 'hbe-app-v8';
+var CACHE_VERSION = 'hbe-app-v9';
 var PRECACHE = [
   '/home',
   '/point-of-sale/invoice',
   '/bar-point-of-sale/invoice',
   '/static/offline_login.html',
-  '/static/offline_auth.js?v=2',
+  '/static/offline_auth.js?v=3',
   '/static/login_premium.css?v=12',
   '/static/login_hero.jpg?v=2',
   '/static/hbe_mark_sm.png',
@@ -154,6 +154,39 @@ self.addEventListener('fetch', function (event) {
   } catch (e) {
     return;
   }
+
+  // #region agent log
+  try {
+    var _authSkip = isAuthOrSystemPath(url);
+    var _isNav = req.mode === 'navigate';
+    var _ws = false;
+    try {
+      _ws = isWorkspaceHtml(url, req);
+    } catch (e2) {}
+    if (_isNav || _authSkip || url.pathname === '/' || url.pathname === '/login' || url.pathname === '/home') {
+      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
+        body: JSON.stringify({
+          sessionId: '74a6ba',
+          runId: 'pre-fix',
+          hypothesisId: _authSkip ? 'A' : 'B',
+          location: 'sw.js:fetch',
+          message: 'SW fetch decision',
+          data: {
+            path: url.pathname,
+            mode: req.mode,
+            authSkip: _authSkip,
+            workspaceHtml: _ws,
+            cacheVersion: CACHE_VERSION,
+            willIntercept: !!(isFloorApi(url) || isApiGet(url) || _ws || (url.pathname.indexOf('/static/') === 0 && isAppCachedStatic(url)))
+          },
+          timestamp: Date.now()
+        })
+      }).catch(function () {});
+    }
+  } catch (e3) {}
+  // #endregion
 
   /* Floor: network-only while online; offline fallback only. Never put into Cache API. */
   if (isFloorApi(url)) {
