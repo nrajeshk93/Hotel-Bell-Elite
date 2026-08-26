@@ -3,14 +3,14 @@
  * Cache Storage is a fallback for offline + brief disconnects.
  * Floor APIs are never cached — occupancy must not go stale.
  * POS menu GETs stay network-first; mutation APIs are not intercepted. */
-var CACHE_VERSION = 'hbe-app-v10';
+var CACHE_VERSION = 'hbe-app-v11';
 var PRECACHE = [
   '/home',
   '/point-of-sale/invoice',
   '/bar-point-of-sale/invoice',
   '/login',
   '/static/offline_login.html',
-  '/static/offline_auth.js?v=4',
+  '/static/offline_auth.js?v=5',
   '/static/login_premium.css?v=12',
   '/static/login_hero.jpg?v=2',
   '/static/hbe_mark_sm.png',
@@ -27,7 +27,7 @@ var PRECACHE = [
   '/static/pos_offline.js?v=5',
   '/static/ep_form_listbox.js?v=66',
   '/static/de_workspace_nav.js?v=46',
-  '/static/de_workspace_transitions.js?v=190',
+  '/static/de_workspace_transitions.js?v=191',
   '/static/hbe_table_scroll.js?v=10',
   '/static/hbe_app_toast.js?v=3',
   '/static/de_pwa.js?v=12',
@@ -157,11 +157,13 @@ self.addEventListener('fetch', function (event) {
   }
 
   var loginNav = req.mode === 'navigate' && url.pathname === '/login';
+  var logoutNav = req.mode === 'navigate' && url.pathname === '/logout';
+  var authShellNav = loginNav || logoutNav;
   var willIntercept = !!(
     isFloorApi(url) ||
     isApiGet(url) ||
     isWorkspaceHtml(url, req) ||
-    loginNav ||
+    authShellNav ||
     (url.pathname.indexOf('/static/') === 0 && isAppCachedStatic(url))
   );
 
@@ -173,14 +175,14 @@ self.addEventListener('fetch', function (event) {
     try {
       _ws = isWorkspaceHtml(url, req);
     } catch (e2) {}
-    if (_isNav || _authSkip || url.pathname === '/' || url.pathname === '/login' || url.pathname === '/home') {
+    if (_isNav || _authSkip || url.pathname === '/' || url.pathname === '/login' || url.pathname === '/logout' || url.pathname === '/home') {
       fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
         body: JSON.stringify({
           sessionId: '74a6ba',
           runId: 'post-fix',
-          hypothesisId: loginNav ? 'A-fix' : _authSkip ? 'A' : 'B',
+          hypothesisId: authShellNav ? 'A-fix' : _authSkip ? 'A' : 'B',
           location: 'sw.js:fetch',
           message: 'SW fetch decision',
           data: {
@@ -188,6 +190,7 @@ self.addEventListener('fetch', function (event) {
             mode: req.mode,
             authSkip: _authSkip,
             loginNav: loginNav,
+            logoutNav: logoutNav,
             workspaceHtml: _ws,
             cacheVersion: CACHE_VERSION,
             willIntercept: willIntercept
@@ -210,8 +213,8 @@ self.addEventListener('fetch', function (event) {
     return;
   }
 
-  /* GET /login navigate: offline login shell (POST /login stays network-only above). */
-  if (loginNav) {
+  /* GET /login or /logout navigate: offline Sign In shell (POST auth stays network-only). */
+  if (authShellNav) {
     event.respondWith(networkFirstHtml(req));
     return;
   }
@@ -286,7 +289,11 @@ function putHtmlCache(cache, req, res) {
 }
 
 function isLoginShellPath(pathname) {
-  return pathname === '/' || pathname === '/login';
+  return (
+    pathname === '/' ||
+    pathname === '/login' ||
+    pathname === '/logout'
+  );
 }
 
 function responseLooksLikeLogin(res) {

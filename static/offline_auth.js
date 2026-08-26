@@ -626,6 +626,20 @@
         var a = t.closest('a[href*="logout"], button[formaction*="logout"], .de-logout-btn');
         if (!a) return;
         maybeClear(a.getAttribute('href') || a.getAttribute('formaction') || '/logout');
+        if (!isBrowserOffline()) return;
+        /* Avoid hard-nav to /logout while offline (Chrome dinosaur page). */
+        event.preventDefault();
+        event.stopPropagation();
+        // #region agent log
+        dbgLog('A-fix', 'offline_auth.js:logout', 'offline logout → /', {
+          path: String((global.location && global.location.pathname) || '')
+        });
+        // #endregion
+        try {
+          global.location.replace('/');
+        } catch (err) {
+          global.location.href = '/';
+        }
       },
       true
     );
@@ -636,6 +650,7 @@
     verifyCredentials: verifyCredentials,
     hasAnyCredentials: hasAnyCredentials,
     clearAllVerifiers: clearAllVerifiers,
+    clearOfflineSessionFlag: clearOfflineSessionFlag,
     putCachedHtml: putCachedHtml,
     findCachedAppShell: findCachedAppShell,
     goHome: goHome,

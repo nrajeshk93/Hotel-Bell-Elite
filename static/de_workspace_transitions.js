@@ -2127,6 +2127,28 @@
     try{ history.pushState({ deSoftNav: true }, '', '/'); } catch(ePush){}
     keepFullscreenGesture();
     showSoftNavProgress();
+
+    function finishOfflineLogout(){
+      markMainLoading(false);
+      setSoftNavFlag(false);
+      hideSoftNavProgress();
+      try{ sessionStorage.removeItem(NAV_FLAG); } catch(eFlag){}
+      try{
+        if(window.HbeOfflineAuth && typeof window.HbeOfflineAuth.clearOfflineSessionFlag === 'function'){
+          window.HbeOfflineAuth.clearOfflineSessionFlag();
+        } else {
+          sessionStorage.removeItem('hbe_offline_session');
+        }
+      } catch(eSess){}
+      /* `/` is SW-intercepted offline → Sign In shell (never /logout network). */
+      window.location.replace('/');
+    }
+
+    if(typeof navigator !== 'undefined' && navigator.onLine === false){
+      finishOfflineLogout();
+      return;
+    }
+
     fetch(logoutUrl, {
       method: 'POST',
       credentials: 'same-origin',
@@ -2155,11 +2177,7 @@
       var doc = new DOMParser().parseFromString(result.html, 'text/html');
       swapDocumentInsideFullscreen(doc, result.url || '/', hideSoftNavProgress, nav.token);
     }).catch(function(){
-      markMainLoading(false);
-      setSoftNavFlag(false);
-      hideSoftNavProgress();
-      try{ sessionStorage.removeItem(NAV_FLAG); } catch(eFlag){}
-      window.location.href = logoutUrl;
+      finishOfflineLogout();
     });
   }
 

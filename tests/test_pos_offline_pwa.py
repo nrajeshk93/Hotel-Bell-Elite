@@ -52,6 +52,7 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("offline_auth.js", body)
         self.assertIn("'/login'", body)
         self.assertIn("loginNav", body)
+        self.assertIn("logoutNav", body)
         self.assertIn("login_premium.css", body)
         self.assertIn("matchLoginShellOffline", body)
         self.assertIn("isLoginShellPath", body)
@@ -104,7 +105,7 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertNotIn("Reconnect to sign in.", html)
 
     def test_offline_auth_module_exposes_local_unlock(self):
-        resp = self.client.get("/static/offline_auth.js?v=4")
+        resp = self.client.get("/static/offline_auth.js?v=5")
         self.assertEqual(resp.status_code, 200)
         body = resp.get_data(as_text=True)
         resp.close()
@@ -116,7 +117,7 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("clearAllVerifiers", body)
         self.assertIn("putCachedHtml", body)
         self.assertIn("findCachedAppShell", body)
-        self.assertIn("ERR_INTERNET_DISCONNECTED", body)
+        self.assertIn("offline logout", body)
         self.assertIn("/home", body)
 
     def test_de_pwa_prunes_app_and_legacy_pos_caches(self):
