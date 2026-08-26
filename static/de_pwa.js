@@ -110,6 +110,8 @@
       window.__hbeSwReloadBound = true;
       navigator.serviceWorker.addEventListener('controllerchange', function () {
         if (window.__hbeSwReloaded) return;
+        /* Reloading while offline paints Chrome's dinosaur on /login. */
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
         window.__hbeSwReloaded = true;
         try {
           window.location.reload();

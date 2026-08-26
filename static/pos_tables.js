@@ -471,6 +471,48 @@
     return null;
   }
 
+  function floorLocalStorageKey() {
+    return FLOOR_SESSION_KEY + '_local';
+  }
+
+  function readFloorLocalSnapshot() {
+    try {
+      var raw = localStorage.getItem(floorLocalStorageKey());
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      if (
+        parsed &&
+        Array.isArray(parsed.areas) &&
+        Array.isArray(parsed.tables)
+      ) {
+        return { areas: parsed.areas, tables: parsed.tables };
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function writeFloorLocalSnapshot(data) {
+    if (!data || !Array.isArray(data.areas) || !Array.isArray(data.tables)) return;
+    try {
+      localStorage.setItem(
+        floorLocalStorageKey(),
+        JSON.stringify({ areas: data.areas, tables: data.tables, savedAt: Date.now() })
+      );
+    } catch (e) {}
+  }
+
+  function rememberFloorOfflineCatalog(data) {
+    var api = global.HbePosOffline;
+    if (!api || !api.loadCatalog || !api.saveCatalog) return;
+    api.loadCatalog().then(function (snap) {
+      api.saveCatalog({
+        floor: data,
+        menuItems: snap && snap.menuItems,
+        menuCategories: snap && snap.menuCategories
+      });
+    });
+  }
+
   function writeFloorSessionSnapshot(data) {
     if (!data || !Array.isArray(data.areas) || !Array.isArray(data.tables)) return;
     try {
@@ -494,6 +536,15 @@
       return {
         areas: snap.areas,
         tables: snap.tables
+      };
+    }
+    var local = readFloorLocalSnapshot();
+    if (local) {
+      currentFloor = local;
+      writeFloorSessionSnapshot(local);
+      return {
+        areas: local.areas,
+        tables: local.tables
       };
     }
     clearLegacyFloor();
@@ -558,26 +609,55 @@
       .then(function (data) {
         clearLegacyFloor();
         var payload;
-        if (data && data.ok && Array.isArray(data.areas) && Array.isArray(data.tables)) {
+        var offlineFail =
+          !data ||
+          data.ok === false ||
+          data.offline === true ||
+          !Array.isArray(data.areas) ||
+          !Array.isArray(data.tables);
+        // #region agent log
+        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'74a6ba'},body:JSON.stringify({sessionId:'74a6ba',runId:'post-fix',hypothesisId:'H1',location:'pos_tables.js:loadFloorFromApi',message:'floor api result',data:{offlineFail:!!offlineFail,ok:!!(data&&data.ok),offlineFlag:!!(data&&data.offline),tableCount:data&&Array.isArray(data.tables)?data.tables.length:-1,navOnline:typeof navigator!=='undefined'?navigator.onLine:null},timestamp:Date.now()})}).catch(function(){});
+        // #endregion
+        if (!offlineFail) {
           payload = { areas: data.areas, tables: data.tables };
           currentFloor = payload;
           writeFloorSessionSnapshot(payload);
+          writeFloorLocalSnapshot(payload);
+          rememberFloorOfflineCatalog(payload);
           paintKotPendingBanner(data.kot_pending);
           paintInvoiceKpis(document.getElementById('pos-tables-page'), data);
         } else {
-          payload = emptyFloor();
-          currentFloor = payload;
-          paintKotPendingBanner(emptyKotPending());
-          paintInvoiceKpis(document.getElementById('pos-tables-page'), {
-            sales_count: 0,
-            sales_total: 0,
-            unsettled_count: 0,
-            unsettled_total: 0
-          });
+          var fallback = readFloorSessionSnapshot() || readFloorLocalSnapshot();
+          if (fallback && Array.isArray(fallback.tables) && fallback.tables.length) {
+            payload = fallback;
+            currentFloor = payload;
+            // #region agent log
+            fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'74a6ba'},body:JSON.stringify({sessionId:'74a6ba',runId:'post-fix',hypothesisId:'H1',location:'pos_tables.js:loadFloorFromApi:fallback',message:'using cached floor',data:{tableCount:fallback.tables.length,areaCount:fallback.areas?fallback.areas.length:0},timestamp:Date.now()})}).catch(function(){});
+            // #endregion
+          } else {
+            payload = emptyFloor();
+            currentFloor = payload;
+            paintKotPendingBanner(emptyKotPending());
+            paintInvoiceKpis(document.getElementById('pos-tables-page'), {
+              sales_count: 0,
+              sales_total: 0,
+              unsettled_count: 0,
+              unsettled_total: 0
+            });
+          }
         }
         if (typeof done === 'function') done(payload);
       })
       .catch(function () {
+        var fallback = readFloorSessionSnapshot() || readFloorLocalSnapshot() || loadFloorDataCached();
+        // #region agent log
+        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'74a6ba'},body:JSON.stringify({sessionId:'74a6ba',runId:'post-fix',hypothesisId:'H1',location:'pos_tables.js:loadFloorFromApi:catch',message:'floor fetch catch',data:{tableCount:fallback&&fallback.tables?fallback.tables.length:0},timestamp:Date.now()})}).catch(function(){});
+        // #endregion
+        if (fallback && Array.isArray(fallback.tables) && fallback.tables.length) {
+          currentFloor = fallback;
+          if (typeof done === 'function') done(fallback);
+          return;
+        }
         paintKotPendingBanner(emptyKotPending());
         if (typeof done === 'function') done(emptyFloor());
       });

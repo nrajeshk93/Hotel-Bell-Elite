@@ -21,7 +21,7 @@
   function dbgLog(hypothesisId, location, message, data) {
     var payload = {
       sessionId: '74a6ba',
-      runId: 'post-fix',
+      runId: 'login-dino',
       hypothesisId: hypothesisId,
       location: location,
       message: message,
@@ -475,6 +475,13 @@
   function bindLoginForm(form, opts) {
     opts = opts || {};
     var notice = opts.noticeEl || null;
+    // #region agent log
+    dbgLog('H1', 'offline_auth.js:bindLoginForm', 'bind attempt', {
+      hasForm: !!form,
+      already: !!(form && form.getAttribute('data-hbe-offline-auth') === '1'),
+      path: String((global.location && global.location.pathname) || '')
+    });
+    // #endregion
     if (!form || form.getAttribute('data-hbe-offline-auth') === '1') return;
     form.setAttribute('data-hbe-offline-auth', '1');
 
@@ -507,97 +514,165 @@
       });
     }
 
-    form.addEventListener('submit', function (event) {
-      event.preventDefault();
-      var userInput = form.querySelector('#username, [name="username"]');
-      var passInput = form.querySelector('#password, [name="password"]');
-      var username = userInput ? userInput.value : '';
-      var password = passInput ? passInput.value : '';
-      var submitBtn = form.querySelector('button[type="submit"], .login-btn');
-      if (submitBtn) submitBtn.disabled = true;
-      // #region agent log
-      dbgLog('D', 'offline_auth.js:submit', 'login submit', {
-        offline: isBrowserOffline(),
-        path: String((global.location && global.location.pathname) || ''),
-        hasUser: !!String(username || '').trim(),
-        swCtrl: !!(global.navigator && global.navigator.serviceWorker && global.navigator.serviceWorker.controller)
+    /* Prefer the inline capture-phase guard (prevents native POST). Only bind
+       submit here when that guard is absent (e.g. older cached HTML). */
+    if (form.getAttribute('data-hbe-offline-capture') !== '1') {
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        handleLoginSubmit(form, { noticeEl: notice });
       });
-      // #endregion
-
-      function done() {
-        if (submitBtn) submitBtn.disabled = false;
-      }
-
-      function unlockLocal() {
-        return verifyCredentials(username, password).then(function (ok) {
-          // #region agent log
-          dbgLog('C', 'offline_auth.js:unlockLocal', 'local verify result', { ok: !!ok });
-          // #endregion
-          if (!ok) {
-            return hasAnyCredentials().then(function (has) {
-              showNotice(notice, has ? MSG_BAD : MSG_NO_LOCAL);
-              done();
-            });
-          }
-          return goHome().then(function (opened) {
-            // #region agent log
-            dbgLog('C', 'offline_auth.js:unlockLocal:nav', 'goHome opened', { opened: !!opened });
-            dbgFlush();
-            // #endregion
-            if (opened) return;
-            showNotice(notice, MSG_NO_SHELL);
-            done();
-          });
-        });
-      }
-
-      if (isBrowserOffline()) {
-        unlockLocal().catch(function () {
-          showNotice(notice, MSG_NO_LOCAL);
-          done();
-        });
-        return;
-      }
-
-      tryServerLogin(form)
-        .then(function (payload) {
-          var res = payload.res;
-          var html = payload.html;
-          if (loginLooksSuccessful(res, html)) {
-            return saveCredentials(username, password).then(function () {
-              clearOfflineSessionFlag();
-              var dest = HOME_PATH;
-              try {
-                var u = String(res.url || '');
-                if (u.indexOf('/change-password') !== -1) dest = '/change-password';
-                else if (u.indexOf('/home') !== -1) dest = '/home';
-              } catch (err) {}
-              var warm =
-                dest === HOME_PATH || dest.indexOf('/home') !== -1
-                  ? putCachedHtml(HOME_PATH, html)
-                  : Promise.resolve(false);
-              return warm.then(function () {
-                global.location.assign(dest);
-              });
-            });
-          }
-          if (!replaceDocument(html)) {
-            showNotice(notice, MSG_BAD);
-            done();
-          }
-        })
-        .catch(function () {
-          /* Server unreachable — fall back to local unlock. */
-          unlockLocal().catch(function () {
-            showNotice(notice, MSG_NO_LOCAL);
-            done();
-          });
-        });
-    });
+    }
 
     global.addEventListener('offline', syncBanner);
     global.addEventListener('online', syncBanner);
     syncBanner();
+  }
+
+  /**
+   * Core Sign In handler — also callable from an inline capture listener
+   * so a missing/late script never lets the browser POST /login offline.
+   */
+  function handleLoginSubmit(form, opts) {
+    opts = opts || {};
+    var notice = opts.noticeEl || null;
+    if (!form) return Promise.resolve(false);
+
+    var MSG_BAD = 'Invalid username or password.';
+    var MSG_NO_LOCAL =
+      "Offline sign-in isn't set up on this device yet. Connect once, sign in, then try again offline.";
+    var MSG_NO_SHELL =
+      'Password OK, but no cached workspace is on this device yet. Connect, sign in, open Home once, then try offline again.';
+
+    var userInput = form.querySelector('#username, [name="username"]');
+    var passInput = form.querySelector('#password, [name="password"]');
+    var username = userInput ? userInput.value : '';
+    var password = passInput ? passInput.value : '';
+    var submitBtn = form.querySelector('button[type="submit"], .login-btn');
+    if (submitBtn) submitBtn.disabled = true;
+    // #region agent log
+    dbgLog('D', 'offline_auth.js:submit', 'login submit', {
+      offline: isBrowserOffline(),
+      path: String((global.location && global.location.pathname) || ''),
+      hasUser: !!String(username || '').trim(),
+      swCtrl: !!(
+        global.navigator &&
+        global.navigator.serviceWorker &&
+        global.navigator.serviceWorker.controller
+      )
+    });
+    // #endregion
+
+    function done() {
+      if (submitBtn) submitBtn.disabled = false;
+    }
+
+    function unlockLocal() {
+      return verifyCredentials(username, password).then(function (ok) {
+        // #region agent log
+        dbgLog('C', 'offline_auth.js:unlockLocal', 'local verify result', { ok: !!ok });
+        // #endregion
+        if (!ok) {
+          return hasAnyCredentials().then(function (has) {
+            showNotice(notice, has ? MSG_BAD : MSG_NO_LOCAL);
+            done();
+          });
+        }
+        return goHome().then(function (opened) {
+          // #region agent log
+          dbgLog('C', 'offline_auth.js:unlockLocal:nav', 'goHome opened', { opened: !!opened });
+          dbgFlush();
+          // #endregion
+          if (opened) return;
+          showNotice(notice, MSG_NO_SHELL);
+          done();
+        });
+      });
+    }
+
+    if (isBrowserOffline()) {
+      return unlockLocal().catch(function () {
+        showNotice(notice, MSG_NO_LOCAL);
+        done();
+      });
+    }
+
+    return tryServerLogin(form)
+      .then(function (payload) {
+        var res = payload.res;
+        var html = payload.html;
+        if (loginLooksSuccessful(res, html)) {
+          return saveCredentials(username, password).then(function () {
+            clearOfflineSessionFlag();
+            var dest = HOME_PATH;
+            try {
+              var u = String(res.url || '');
+              if (u.indexOf('/change-password') !== -1) dest = '/change-password';
+              else if (u.indexOf('/home') !== -1) dest = '/home';
+            } catch (err) {}
+            var warm =
+              dest === HOME_PATH || dest.indexOf('/home') !== -1
+                ? putCachedHtml(HOME_PATH, html)
+                : Promise.resolve(false);
+            return warm.then(function (warmed) {
+              // #region agent log
+              dbgLog('H2', 'offline_auth.js:assign', 'post-login navigation', {
+                dest: dest,
+                warmed: !!warmed,
+                online: !isBrowserOffline(),
+                swCtrl: !!(
+                  global.navigator &&
+                  global.navigator.serviceWorker &&
+                  global.navigator.serviceWorker.controller
+                ),
+                path: String((global.location && global.location.pathname) || ''),
+                inPlace: htmlLooksLikeAppShell(html)
+              });
+              dbgFlush();
+              // #endregion
+              /* Prefer in-place shell — avoids Chrome dinosaur if the next navigate is offline. */
+              if (htmlLooksLikeAppShell(html)) {
+                try {
+                  global.history.replaceState(null, '', dest);
+                } catch (err2) {}
+                if (replaceDocument(html)) return true;
+              }
+              if (isBrowserOffline()) {
+                return goHome().then(function (opened) {
+                  if (!opened) {
+                    showNotice(notice, MSG_NO_SHELL);
+                    done();
+                  }
+                });
+              }
+              global.location.assign(dest);
+              return true;
+            });
+          });
+        }
+        // #region agent log
+        dbgLog('H5', 'offline_auth.js:loginFailDoc', 'server login not successful', {
+          resUrl: String((res && res.url) || ''),
+          htmlLen: html ? html.length : 0,
+          looksShell: htmlLooksLikeAppShell(html)
+        });
+        // #endregion
+        if (!replaceDocument(html)) {
+          showNotice(notice, MSG_BAD);
+          done();
+        }
+      })
+      .catch(function (err) {
+        // #region agent log
+        dbgLog('H2', 'offline_auth.js:serverCatch', 'server login failed → unlockLocal', {
+          err: String((err && err.message) || err || 'fail'),
+          online: !isBrowserOffline()
+        });
+        // #endregion
+        return unlockLocal().catch(function () {
+          showNotice(notice, MSG_NO_LOCAL);
+          done();
+        });
+      });
   }
 
   function bindLogoutClearing(root) {
@@ -643,9 +718,9 @@
         });
         // #endregion
         try {
-          global.location.replace('/static/offline_login.html?v=7');
+          global.location.replace('/static/offline_login.html?v=9');
         } catch (err) {
-          global.location.href = '/static/offline_login.html?v=7';
+          global.location.href = '/static/offline_login.html?v=9';
         }
       },
       true
@@ -662,9 +737,31 @@
     findCachedAppShell: findCachedAppShell,
     goHome: goHome,
     bindLoginForm: bindLoginForm,
+    handleLoginSubmit: handleLoginSubmit,
     bindLogoutClearing: bindLogoutClearing,
     isBrowserOffline: isBrowserOffline
   };
+
+  // #region agent log
+  dbgLog('H1', 'offline_auth.js:boot', 'offline_auth loaded', {
+    path: String((global.location && global.location.pathname) || ''),
+    online: typeof navigator !== 'undefined' ? navigator.onLine : null,
+    swCtrl: !!(
+      global.navigator &&
+      global.navigator.serviceWorker &&
+      global.navigator.serviceWorker.controller
+    ),
+    readyState: global.document ? global.document.readyState : null
+  });
+  if (global.addEventListener) {
+    global.addEventListener('pagehide', function () {
+      dbgLog('H4', 'offline_auth.js:pagehide', 'page hiding', {
+        path: String((global.location && global.location.pathname) || ''),
+        online: typeof navigator !== 'undefined' ? navigator.onLine : null
+      });
+    });
+  }
+  // #endregion
 
   if (global.document && global.document.readyState === 'loading') {
     global.document.addEventListener('DOMContentLoaded', function () {

@@ -90,14 +90,14 @@
     </main>
   </div>
 
-  <script src="/static/de_pwa.js?v=13"></script>
-  <script src="/static/offline_auth.js?v=8"></script>
+  <script src="/static/de_pwa.js?v=14"></script>
+  <script src="/static/offline_auth.js?v=10"></script>
   <script>
   (function () {
     /* Escape hatch: stale SW shells still showing Reconnect must not block Sign In. */
     var notice = document.getElementById('login-offline-notice');
     if (notice && /Reconnect to sign in/i.test(notice.textContent || '')) {
-      window.location.replace('/static/offline_login.html?v=7');
+      window.location.replace('/static/offline_login.html?v=9');
       return;
     }
     var eye = document.getElementById('login-toggle-password');
@@ -113,6 +113,22 @@
     }
 
     var form = document.getElementById('login-form');
+    if (form && !form.getAttribute('data-hbe-offline-capture')) {
+      form.setAttribute('data-hbe-offline-capture', '1');
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (window.HbeOfflineAuth && typeof window.HbeOfflineAuth.handleLoginSubmit === 'function') {
+          window.HbeOfflineAuth.handleLoginSubmit(form, { noticeEl: notice });
+          return;
+        }
+        if (notice) {
+          notice.hidden = false;
+          notice.textContent =
+            "Sign-in script didn't load. Reconnect once, refresh this page, then try offline again.";
+        }
+      }, true);
+    }
     if (window.HbeOfflineAuth && form) {
       window.HbeOfflineAuth.bindLoginForm(form, { noticeEl: notice });
     }

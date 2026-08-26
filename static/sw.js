@@ -3,9 +3,9 @@
  * Cache Storage is a fallback for offline + brief disconnects.
  * Floor APIs are never cached — occupancy must not go stale.
  * POS menu GETs stay network-first; mutation APIs are not intercepted. */
-var CACHE_VERSION = 'hbe-app-v14';
-var OFFLINE_LOGIN_URL = '/static/offline_login.html?v=7';
-var OFFLINE_AUTH_URL = '/static/offline_auth.js?v=8';
+var CACHE_VERSION = 'hbe-app-v16';
+var OFFLINE_LOGIN_URL = '/static/offline_login.html?v=9';
+var OFFLINE_AUTH_URL = '/static/offline_auth.js?v=10';
 var PRECACHE = [
   '/home',
   '/point-of-sale/invoice',
@@ -30,10 +30,10 @@ var PRECACHE = [
   '/static/pos_offline.js?v=5',
   '/static/ep_form_listbox.js?v=66',
   '/static/de_workspace_nav.js?v=46',
-  '/static/de_workspace_transitions.js?v=192',
+  '/static/de_workspace_transitions.js?v=193',
   '/static/hbe_table_scroll.js?v=10',
   '/static/hbe_app_toast.js?v=3',
-  '/static/de_pwa.js?v=13',
+  '/static/de_pwa.js?v=14',
   '/static/pwa-icon-192.png',
   '/static/pwa-icon-512.png',
   '/static/favicon-32.png'
@@ -150,12 +150,77 @@ function isAppCachedStatic(url) {
 
 self.addEventListener('fetch', function (event) {
   var req = event.request;
-  if (req.method !== 'GET') return;
 
   var url;
   try {
     url = new URL(req.url);
   } catch (e) {
+    return;
+  }
+
+  // #region agent log
+  /* Non-GET /login = native form POST (offline_auth did not intercept) → Chrome dinosaur. */
+  if (req.method !== 'GET' && (url.pathname === '/login' || url.pathname === '/')) {
+    try {
+      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
+        body: JSON.stringify({
+          sessionId: '74a6ba',
+          runId: 'login-dino',
+          hypothesisId: 'H1',
+          location: 'sw.js:fetch:nonGet',
+          message: 'Non-GET auth request (native submit?)',
+          data: {
+            path: url.pathname,
+            method: req.method,
+            mode: req.mode,
+            cacheVersion: CACHE_VERSION
+          },
+          timestamp: Date.now()
+        })
+      }).catch(function () {});
+    } catch (eNonGet) {}
+  }
+  // #endregion
+
+  if (req.method !== 'GET') {
+    /* Form POST to Sign In is mode=navigate. If offline_auth failed to bind,
+       the browser POSTs /login and Chrome shows the dinosaur unless we catch it. */
+    var loginPostNav =
+      req.mode === 'navigate' &&
+      (url.pathname === '/login' || url.pathname === '/');
+    if (loginPostNav && String(req.method || '').toUpperCase() === 'POST') {
+      // #region agent log
+      try {
+        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
+          body: JSON.stringify({
+            sessionId: '74a6ba',
+            runId: 'login-dino',
+            hypothesisId: 'H1-fix',
+            location: 'sw.js:loginPostNav',
+            message: 'Intercepting POST navigate to login',
+            data: { path: url.pathname, cacheVersion: CACHE_VERSION },
+            timestamp: Date.now()
+          })
+        }).catch(function () {});
+      } catch (ePost) {}
+      // #endregion
+      event.respondWith(
+        fetch(req)
+          .then(function (res) {
+            return res;
+          })
+          .catch(function () {
+            return matchLoginShellOffline().then(function (login) {
+              return login || offlineNavigateFallback();
+            });
+          })
+      );
+      return;
+    }
     return;
   }
 
@@ -185,8 +250,8 @@ self.addEventListener('fetch', function (event) {
         headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
         body: JSON.stringify({
           sessionId: '74a6ba',
-          runId: 'post-fix',
-          hypothesisId: logoutNav ? 'G-fix' : loginNav ? 'A-fix' : _authSkip ? 'A' : 'B',
+          runId: 'login-dino',
+          hypothesisId: logoutNav ? 'G-fix' : loginNav ? 'H3' : _authSkip ? 'H3' : 'H4',
           location: 'sw.js:fetch',
           message: 'SW fetch decision',
           data: {
@@ -224,6 +289,21 @@ self.addEventListener('fetch', function (event) {
 
   /* GET /login navigate: offline login shell (POST /login stays network-only). */
   if (loginNav) {
+    // #region agent log
+    fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
+      body: JSON.stringify({
+        sessionId: '74a6ba',
+        runId: 'login-dino',
+        hypothesisId: 'H3',
+        location: 'sw.js:loginNav',
+        message: 'Serving login via networkFirstHtml',
+        data: { path: url.pathname, cacheVersion: CACHE_VERSION },
+        timestamp: Date.now()
+      })
+    }).catch(function () {});
+    // #endregion
     event.respondWith(networkFirstHtml(req));
     return;
   }
@@ -241,15 +321,53 @@ self.addEventListener('fetch', function (event) {
 });
 
 function networkOnlyFloor(req) {
+  /* GET: network-first with cache fallback so offline Tables can show layout.
+     Occupancy may be slightly stale offline — better than an empty floor. */
+  if (req.method && String(req.method).toUpperCase() !== 'GET') {
+    return fetch(req, { cache: 'no-store' })
+      .then(function (res) {
+        return res;
+      })
+      .catch(function () {
+        return Response.json(
+          { ok: false, error: 'offline', offline: true },
+          { status: 503 }
+        );
+      });
+  }
   return fetch(req, { cache: 'no-store' })
     .then(function (res) {
+      if (res && res.ok) {
+        var copy = res.clone();
+        caches.open(CACHE_VERSION).then(function (cache) {
+          cache.put(req, copy);
+          try {
+            cache.put(new URL(req.url).pathname, res.clone());
+          } catch (e) {}
+        });
+      }
       return res;
     })
     .catch(function () {
-      return Response.json(
-        { ok: false, error: 'offline', offline: true },
-        { status: 503 }
-      );
+      return caches.match(req).then(function (cached) {
+        if (cached) return cached;
+        try {
+          return caches.match(new URL(req.url).pathname).then(function (byPath) {
+            return (
+              byPath ||
+              Response.json(
+                { ok: false, error: 'offline', offline: true },
+                { status: 503 }
+              )
+            );
+          });
+        } catch (e2) {
+          return Response.json(
+            { ok: false, error: 'offline', offline: true },
+            { status: 503 }
+          );
+        }
+      });
     });
 }
 
@@ -337,11 +455,11 @@ function syntheticOfflineLoginResponse() {
     '<div class="form-group"><label for="password">Password</label>' +
     '<input type="password" id="password" name="password" autocomplete="current-password" required></div>' +
     '<button type="submit" class="login-btn">Sign In</button></form></div></main></div>' +
-    '<script src="/static/de_pwa.js?v=13"><\/script>' +
+    '<script src="/static/de_pwa.js?v=14"><\/script>' +
     '<script src="' +
     OFFLINE_AUTH_URL +
     '"><\/script>' +
-    '<script>(function(){var n=document.getElementById("login-offline-notice");var f=document.getElementById("login-form");if(window.HbeOfflineAuth&&f){window.HbeOfflineAuth.bindLoginForm(f,{noticeEl:n});}})();<\/script>' +
+    '<script>(function(){var n=document.getElementById("login-offline-notice");var f=document.getElementById("login-form");if(f&&!f.getAttribute("data-hbe-offline-capture")){f.setAttribute("data-hbe-offline-capture","1");f.addEventListener("submit",function(e){e.preventDefault();e.stopPropagation();if(window.HbeOfflineAuth&&window.HbeOfflineAuth.handleLoginSubmit){window.HbeOfflineAuth.handleLoginSubmit(f,{noticeEl:n});}else if(n){n.hidden=false;n.textContent="Sign-in script didn\'t load. Reconnect once, refresh, then try offline again.";}},true);}if(window.HbeOfflineAuth&&f){window.HbeOfflineAuth.bindLoginForm(f,{noticeEl:n});}})();<\/script>' +
     '</body></html>';
   return new Response(html, {
     status: 200,
@@ -366,7 +484,7 @@ function matchLoginShellOffline() {
         headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
         body: JSON.stringify({
           sessionId: '74a6ba',
-          runId: 'post-fix',
+          runId: 'login-dino',
           hypothesisId: 'F',
           location: 'sw.js:matchLoginShellOffline',
           message: 'login shell match',
@@ -381,6 +499,21 @@ function matchLoginShellOffline() {
       // #endregion
       if (!shell) return fromKeys(i + 1);
       return responseLooksLikeModernOfflineLogin(shell).then(function (ok) {
+        // #region agent log
+        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
+          body: JSON.stringify({
+            sessionId: '74a6ba',
+            runId: 'login-dino',
+            hypothesisId: 'H3',
+            location: 'sw.js:matchLoginShellOffline:ok',
+            message: 'login shell quality',
+            data: { key: keys[i], ok: !!ok, cacheVersion: CACHE_VERSION },
+            timestamp: Date.now()
+          })
+        }).catch(function () {});
+        // #endregion
         return ok ? shell : fromKeys(i + 1);
       });
     });

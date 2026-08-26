@@ -149,10 +149,17 @@
         areas: data.areas,
         tables: data.tables
       }));
-      return true;
     } catch(e){
       return false;
     }
+    try{
+      localStorage.setItem(key + '_local', JSON.stringify({
+        areas: data.areas,
+        tables: data.tables,
+        savedAt: Date.now()
+      }));
+    } catch(e2){}
+    return true;
   }
 
   /** Fetch Tables floor JSON and persist for sync paint on first soft-nav (avoids empty SSR). */
@@ -2141,7 +2148,7 @@
         }
       } catch(eSess){}
       /* `/static/offline_login.html` is the versioned offline Sign In shell. */
-      window.location.replace('/static/offline_login.html?v=7');
+      window.location.replace('/static/offline_login.html?v=9');
     }
 
     if(typeof navigator !== 'undefined' && navigator.onLine === false){
