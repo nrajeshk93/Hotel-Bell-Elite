@@ -91,7 +91,7 @@
   </div>
 
   <script src="/static/de_pwa.js?v=14"></script>
-  <script src="/static/offline_auth.js?v=11"></script>
+  <script src="/static/offline_auth.js?v=12"></script>
   <script>
   (function () {
     /* Escape hatch: stale SW shells still showing Reconnect must not block Sign In. */
@@ -127,7 +127,7 @@
         }
         if (runSubmit()) return;
         var s = document.createElement('script');
-        s.src = '/static/offline_auth.js?v=11';
+        s.src = '/static/offline_auth.js?v=12';
         s.onload = function () {
           if (!runSubmit() && notice) {
             notice.hidden = false;

@@ -54,8 +54,7 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("'/login'", body)
         self.assertIn("loginNav", body)
         self.assertIn("loginPostNav", body)
-        self.assertIn("Intercepting POST navigate to login", body)
-        self.assertIn("logoutPassthrough", body)
+        self.assertIn("Form POST to Sign In is mode=navigate", body)
         self.assertIn("Do NOT intercept /logout", body)
         self.assertIn("login_premium.css", body)
         self.assertIn("matchLoginShellOffline", body)
@@ -118,7 +117,7 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertNotIn("Reconnect to sign in.", html)
 
     def test_offline_auth_module_exposes_local_unlock(self):
-        resp = self.client.get("/static/offline_auth.js?v=11")
+        resp = self.client.get("/static/offline_auth.js?v=12")
         self.assertEqual(resp.status_code, 200)
         body = resp.get_data(as_text=True)
         resp.close()

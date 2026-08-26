@@ -2523,6 +2523,12 @@
           throw new Error((result.data && result.data.error) || 'Failed to update room.');
         }
         paintRoom(root, result.data.room);
+        if (
+          status === 'dirty' &&
+          (current === 'occupied' || hasStay)
+        ) {
+          clearCheckinDraft(root);
+        }
         var toastMsg =
           successMessage ||
           'Room updated to ' + (STATUS_LABELS[status] || status) + '.';
@@ -2686,6 +2692,7 @@
             throw new Error(errMsg);
           }
           paintRoom(root, result.data.room);
+          clearCheckinDraft(root);
           showToast('Guest checked out. Room is dirty.');
           return result.data.room;
         })
@@ -2727,6 +2734,7 @@
             throw new Error(errMsg);
           }
           paintRoom(root, result.data.room);
+          clearCheckinDraft(root);
           showToast('All merged rooms checked out. Rooms are dirty.');
           return result.data.room;
         })
@@ -6349,6 +6357,9 @@
       if (digits.length < 8) return;
       var first = firstInput ? String(firstInput.value || '').trim() : '';
       var last = lastInput ? String(lastInput.value || '').trim() : '';
+      /* Never auto-fill from mobile alone — empty names would match any
+         saved profile (incl. cashier test stays) and overwrite a blank form. */
+      if (!first && !last) return;
       var cacheKey = currentLookupKey(digits);
       if (cacheKey === form._hrdLastGuestLookup) return;
       form._hrdLastGuestLookup = cacheKey;
@@ -6376,6 +6387,7 @@
           var guest = result.data.guest;
           var liveFirst = firstInput ? String(firstInput.value || '').trim() : '';
           var liveLast = lastInput ? String(lastInput.value || '').trim() : '';
+          if (!liveFirst && !liveLast) return;
           var namesOk =
             result.data.nameMatch !== false &&
             guestNamesMatch(guest, liveFirst, liveLast);
@@ -8149,26 +8161,29 @@
 
     if (staySource) {
       var resumeDraft = readCheckinDraft(root);
-      /* Prefer open draft (refresh) or any new-check-in draft over reserved stay seed. */
-      if (
-        resumeDraft &&
-        resumeDraft.stay &&
-        (resumeDraft.open || !editing)
-      ) {
+      /* Only an open draft (page refresh / soft-nav) may override the stay seed.
+         Closed drafts must not re-fill New Check-In after cancel or checkout. */
+      if (resumeDraft && resumeDraft.stay && resumeDraft.open) {
         applyStayDraft(
           form,
           !editing ? stripStayMealPlans(resumeDraft.stay) : resumeDraft.stay
         );
       } else {
+        if (resumeDraft && !resumeDraft.open && !editing) {
+          clearCheckinDraft(root);
+        }
         applyStayDraft(form, !editing ? stripStayMealPlans(staySource) : staySource);
       }
       if (staySource.bookingNumber && form.bookingNumber) {
         form.bookingNumber.value = staySource.bookingNumber;
       }
-    } else {
+    } else if (!editing) {
       var draft = readCheckinDraft(root);
-      if (draft && draft.stay) {
+      if (draft && draft.stay && draft.open) {
         applyStayDraft(form, stripStayMealPlans(draft.stay));
+      } else if (draft) {
+        /* Stale closed draft from a prior cancel/edit — start blank. */
+        clearCheckinDraft(root);
       }
     }
 

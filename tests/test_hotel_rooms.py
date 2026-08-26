@@ -1139,6 +1139,10 @@ class HotelRoomsTests(unittest.TestCase):
         html = detail.get_data(as_text=True)
         self.assertIn("New Check-In", html)
         self.assertIn("hrd-checkin-modal", html)
+        self.assertIn('id="hrd-checkin-form"', html)
+        self.assertIn('autocomplete="off"', html)
+        self.assertNotIn('autocomplete="given-name"', html)
+        self.assertNotIn('autocomplete="tel"', html)
         self.assertIn('data-se-listbox-change="hrdCiMobileCountryChanged"', html)
         self.assertIn("Indonesia", html)
 

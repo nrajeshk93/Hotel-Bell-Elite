@@ -615,9 +615,6 @@
           data.offline === true ||
           !Array.isArray(data.areas) ||
           !Array.isArray(data.tables);
-        // #region agent log
-        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'74a6ba'},body:JSON.stringify({sessionId:'74a6ba',runId:'post-fix',hypothesisId:'H1',location:'pos_tables.js:loadFloorFromApi',message:'floor api result',data:{offlineFail:!!offlineFail,ok:!!(data&&data.ok),offlineFlag:!!(data&&data.offline),tableCount:data&&Array.isArray(data.tables)?data.tables.length:-1,navOnline:typeof navigator!=='undefined'?navigator.onLine:null},timestamp:Date.now()})}).catch(function(){});
-        // #endregion
         if (!offlineFail) {
           payload = { areas: data.areas, tables: data.tables };
           currentFloor = payload;
@@ -631,9 +628,6 @@
           if (fallback && Array.isArray(fallback.tables) && fallback.tables.length) {
             payload = fallback;
             currentFloor = payload;
-            // #region agent log
-            fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'74a6ba'},body:JSON.stringify({sessionId:'74a6ba',runId:'post-fix',hypothesisId:'H1',location:'pos_tables.js:loadFloorFromApi:fallback',message:'using cached floor',data:{tableCount:fallback.tables.length,areaCount:fallback.areas?fallback.areas.length:0},timestamp:Date.now()})}).catch(function(){});
-            // #endregion
           } else {
             payload = emptyFloor();
             currentFloor = payload;
@@ -650,9 +644,6 @@
       })
       .catch(function () {
         var fallback = readFloorSessionSnapshot() || readFloorLocalSnapshot() || loadFloorDataCached();
-        // #region agent log
-        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'74a6ba'},body:JSON.stringify({sessionId:'74a6ba',runId:'post-fix',hypothesisId:'H1',location:'pos_tables.js:loadFloorFromApi:catch',message:'floor fetch catch',data:{tableCount:fallback&&fallback.tables?fallback.tables.length:0},timestamp:Date.now()})}).catch(function(){});
-        // #endregion
         if (fallback && Array.isArray(fallback.tables) && fallback.tables.length) {
           currentFloor = fallback;
           if (typeof done === 'function') done(fallback);

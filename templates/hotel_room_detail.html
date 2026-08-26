@@ -556,7 +556,7 @@
       <div class="hrd-modal-head-actions"></div>
     </header>
 
-    <form class="hrd-modal-form" id="hrd-checkin-form" novalidate data-de-hard-nav>
+    <form class="hrd-modal-form" id="hrd-checkin-form" novalidate data-de-hard-nav autocomplete="off">
       <div class="hrd-modal-body">
       <div class="hrd-modal-cols">
         <div class="hrd-modal-col">
@@ -572,24 +572,24 @@
                 <span>Mobile Number <em>*</em></span>
                 <span class="hrd-input-split">
                   {{ ep_listbox('mobileCountry', 'Code', phone_country_code_options|default([('+91', 'India', '+91')]), '+91', placeholder='+91', searchable=true, combobox=false, search_placeholder='Search country or code', field_id='hrd-ci-mobile-country', extra_class='hrd-form-listbox hrd-form-listbox--code', change_handler='hrdCiMobileCountryChanged') }}
-                  <input type="tel" name="mobile" id="hrd-ci-mobile" required autocomplete="tel" placeholder="Mobile number" inputmode="numeric" maxlength="10" aria-autocomplete="list" aria-controls="hrd-ci-customer-suggest" aria-expanded="false">
+                  <input type="tel" name="mobile" id="hrd-ci-mobile" required autocomplete="off" placeholder="Mobile number" inputmode="numeric" maxlength="10" aria-autocomplete="list" aria-controls="hrd-ci-customer-suggest" aria-expanded="false">
                 </span>
                 <div class="hrd-customer-suggest" id="hrd-ci-customer-suggest" role="listbox" hidden></div>
               </div>
               <label class="hrd-field">
                 <span>Email Address</span>
-                <input type="email" name="email" id="hrd-ci-email" autocomplete="email" placeholder="name@example.com">
+                <input type="email" name="email" id="hrd-ci-email" autocomplete="off" placeholder="name@example.com">
               </label>
             </div>
             <div class="hrd-form-grid hrd-form-grid--3">
               {{ ep_listbox('title', 'Title', [('', 'Select'), ('Mr', 'Mr'), ('Mrs', 'Mrs'), ('Ms', 'Ms'), ('Dr', 'Dr')], '', placeholder='Select', field_id='hrd-ci-title', extra_class='hrd-form-listbox') }}
               <label class="hrd-field">
                 <span>First Name <em>*</em></span>
-                <input type="text" name="firstName" required autocomplete="given-name" placeholder="First name">
+                <input type="text" name="firstName" required autocomplete="off" placeholder="First name">
               </label>
               <label class="hrd-field">
                 <span>Last Name <em>*</em></span>
-                <input type="text" name="lastName" required autocomplete="family-name" placeholder="Last name">
+                <input type="text" name="lastName" required autocomplete="off" placeholder="Last name">
               </label>
             </div>
             <div class="hrd-form-grid hrd-form-grid--3">
@@ -642,7 +642,7 @@
               <div class="hrd-form-grid hrd-form-grid--2 hrd-guest-line hrd-guest-line--primary">
                 <div class="hrd-field hrd-field--customer-name">
                   <span>Customer Name</span>
-                  <input type="text" name="idNumber" id="hrd-ci-customer-name" placeholder="Customer name" autocomplete="name" readonly>
+                  <input type="text" name="idNumber" id="hrd-ci-customer-name" placeholder="Customer name" autocomplete="off" readonly>
                 </div>
                 <div class="hrd-field hrd-field--id-type-actions">
                   <div class="hrd-id-type-row">

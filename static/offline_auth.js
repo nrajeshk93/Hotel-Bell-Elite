@@ -15,60 +15,6 @@
   var SESSION_FLAG = 'hbe_offline_session';
 
   var dbPromise = null;
-  var _dbgQueue = [];
-
-  // #region agent log
-  function dbgLog(hypothesisId, location, message, data) {
-    var payload = {
-      sessionId: '74a6ba',
-      runId: 'login-dino',
-      hypothesisId: hypothesisId,
-      location: location,
-      message: message,
-      data: data || {},
-      timestamp: Date.now()
-    };
-    function send() {
-      return fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
-        body: JSON.stringify(payload)
-      }).then(function () {
-        return true;
-      }).catch(function () {
-        return false;
-      });
-    }
-    send().then(function (ok) {
-      if (ok) return;
-      _dbgQueue.push(payload);
-      try {
-        global.sessionStorage.setItem('hbe_dbg_74a6ba', JSON.stringify(_dbgQueue.slice(-20)));
-      } catch (err) {}
-    });
-  }
-  function dbgFlush() {
-    var queued = _dbgQueue.slice();
-    try {
-      var raw = global.sessionStorage.getItem('hbe_dbg_74a6ba');
-      if (raw) queued = queued.concat(JSON.parse(raw) || []);
-    } catch (err) {}
-    _dbgQueue = [];
-    try {
-      global.sessionStorage.removeItem('hbe_dbg_74a6ba');
-    } catch (err2) {}
-    queued.forEach(function (payload) {
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
-        body: JSON.stringify(payload)
-      }).catch(function () {});
-    });
-  }
-  if (global.addEventListener) {
-    global.addEventListener('online', dbgFlush);
-  }
-  // #endregion
 
   function openDb() {
     if (dbPromise) return dbPromise;
@@ -346,12 +292,6 @@
       found[m[1]] = true;
     }
     var urls = Object.keys(found);
-    // #region agent log
-    dbgLog('H6', 'offline_auth.js:warmStatic', 'warm static from html', {
-      count: urls.length,
-      sample: urls.slice(0, 8)
-    });
-    // #endregion
     if (!cache || !urls.length) return Promise.resolve(0);
     return Promise.all(
       urls.map(function (url) {
@@ -403,13 +343,7 @@
             .then(function () {
               return warmStaticAssetsFromHtml(html, cache);
             })
-            .then(function (warmed) {
-              // #region agent log
-              dbgLog('H6', 'offline_auth.js:putCachedHtml', 'cached home + static', {
-                path: key,
-                warmed: warmed
-              });
-              // #endregion
+            .then(function () {
               return true;
             });
         });
@@ -470,20 +404,7 @@
    */
   function goHome() {
     markOfflineSession();
-    // #region agent log
-    dbgLog('C', 'offline_auth.js:goHome:entry', 'goHome called', {
-      online: typeof navigator !== 'undefined' ? navigator.onLine : null,
-      hasSW: !!(global.navigator && global.navigator.serviceWorker && global.navigator.serviceWorker.controller)
-    });
-    // #endregion
     return findCachedAppShell().then(function (found) {
-      // #region agent log
-      dbgLog('C', 'offline_auth.js:goHome:result', 'cached shell lookup', {
-        found: !!(found && found.html),
-        path: (found && found.path) || null,
-        htmlLen: found && found.html ? found.html.length : 0
-      });
-      // #endregion
       if (found && found.html) {
         try {
           global.history.replaceState(null, '', found.path || HOME_PATH);
@@ -530,13 +451,6 @@
   function bindLoginForm(form, opts) {
     opts = opts || {};
     var notice = opts.noticeEl || null;
-    // #region agent log
-    dbgLog('H1', 'offline_auth.js:bindLoginForm', 'bind attempt', {
-      hasForm: !!form,
-      already: !!(form && form.getAttribute('data-hbe-offline-auth') === '1'),
-      path: String((global.location && global.location.pathname) || '')
-    });
-    // #endregion
     if (!form || form.getAttribute('data-hbe-offline-auth') === '1') return;
     form.setAttribute('data-hbe-offline-auth', '1');
 
@@ -604,18 +518,6 @@
     var password = passInput ? passInput.value : '';
     var submitBtn = form.querySelector('button[type="submit"], .login-btn');
     if (submitBtn) submitBtn.disabled = true;
-    // #region agent log
-    dbgLog('D', 'offline_auth.js:submit', 'login submit', {
-      offline: isBrowserOffline(),
-      path: String((global.location && global.location.pathname) || ''),
-      hasUser: !!String(username || '').trim(),
-      swCtrl: !!(
-        global.navigator &&
-        global.navigator.serviceWorker &&
-        global.navigator.serviceWorker.controller
-      )
-    });
-    // #endregion
 
     function done() {
       if (submitBtn) submitBtn.disabled = false;
@@ -623,9 +525,6 @@
 
     function unlockLocal() {
       return verifyCredentials(username, password).then(function (ok) {
-        // #region agent log
-        dbgLog('C', 'offline_auth.js:unlockLocal', 'local verify result', { ok: !!ok });
-        // #endregion
         if (!ok) {
           return hasAnyCredentials().then(function (has) {
             showNotice(notice, has ? MSG_BAD : MSG_NO_LOCAL);
@@ -633,10 +532,6 @@
           });
         }
         return goHome().then(function (opened) {
-          // #region agent log
-          dbgLog('C', 'offline_auth.js:unlockLocal:nav', 'goHome opened', { opened: !!opened });
-          dbgFlush();
-          // #endregion
           if (opened) return;
           showNotice(notice, MSG_NO_SHELL);
           done();
@@ -668,22 +563,7 @@
               dest === HOME_PATH || dest.indexOf('/home') !== -1
                 ? putCachedHtml(HOME_PATH, html)
                 : Promise.resolve(false);
-            return warm.then(function (warmed) {
-              // #region agent log
-              dbgLog('H2', 'offline_auth.js:assign', 'post-login navigation', {
-                dest: dest,
-                warmed: !!warmed,
-                online: !isBrowserOffline(),
-                swCtrl: !!(
-                  global.navigator &&
-                  global.navigator.serviceWorker &&
-                  global.navigator.serviceWorker.controller
-                ),
-                path: String((global.location && global.location.pathname) || ''),
-                inPlace: htmlLooksLikeAppShell(html)
-              });
-              dbgFlush();
-              // #endregion
+            return warm.then(function () {
               /* Prefer in-place shell — avoids Chrome dinosaur if the next navigate is offline. */
               if (htmlLooksLikeAppShell(html)) {
                 try {
@@ -704,25 +584,12 @@
             });
           });
         }
-        // #region agent log
-        dbgLog('H5', 'offline_auth.js:loginFailDoc', 'server login not successful', {
-          resUrl: String((res && res.url) || ''),
-          htmlLen: html ? html.length : 0,
-          looksShell: htmlLooksLikeAppShell(html)
-        });
-        // #endregion
         if (!replaceDocument(html)) {
           showNotice(notice, MSG_BAD);
           done();
         }
       })
-      .catch(function (err) {
-        // #region agent log
-        dbgLog('H2', 'offline_auth.js:serverCatch', 'server login failed → unlockLocal', {
-          err: String((err && err.message) || err || 'fail'),
-          online: !isBrowserOffline()
-        });
-        // #endregion
+      .catch(function () {
         return unlockLocal().catch(function () {
           showNotice(notice, MSG_NO_LOCAL);
           done();
@@ -757,21 +624,11 @@
         if (!a) return;
         maybeClear(a.getAttribute('href') || a.getAttribute('formaction') || '/logout');
         if (!isBrowserOffline()) {
-          // #region agent log
-          dbgLog('G-fix', 'offline_auth.js:logout', 'online logout allow default', {
-            path: String((global.location && global.location.pathname) || '')
-          });
-          // #endregion
           return;
         }
         /* Avoid hard-nav to /logout while offline (Chrome dinosaur page). */
         event.preventDefault();
         event.stopPropagation();
-        // #region agent log
-        dbgLog('A-fix', 'offline_auth.js:logout', 'offline logout → offline_login', {
-          path: String((global.location && global.location.pathname) || '')
-        });
-        // #endregion
         try {
           global.location.replace('/static/offline_login.html?v=10');
         } catch (err) {
@@ -796,27 +653,6 @@
     bindLogoutClearing: bindLogoutClearing,
     isBrowserOffline: isBrowserOffline
   };
-
-  // #region agent log
-  dbgLog('H1', 'offline_auth.js:boot', 'offline_auth loaded', {
-    path: String((global.location && global.location.pathname) || ''),
-    online: typeof navigator !== 'undefined' ? navigator.onLine : null,
-    swCtrl: !!(
-      global.navigator &&
-      global.navigator.serviceWorker &&
-      global.navigator.serviceWorker.controller
-    ),
-    readyState: global.document ? global.document.readyState : null
-  });
-  if (global.addEventListener) {
-    global.addEventListener('pagehide', function () {
-      dbgLog('H4', 'offline_auth.js:pagehide', 'page hiding', {
-        path: String((global.location && global.location.pathname) || ''),
-        online: typeof navigator !== 'undefined' ? navigator.onLine : null
-      });
-    });
-  }
-  // #endregion
 
   if (global.document && global.document.readyState === 'loading') {
     global.document.addEventListener('DOMContentLoaded', function () {

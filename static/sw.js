@@ -3,12 +3,12 @@
  * Cache Storage is a fallback for offline + brief disconnects.
  * Floor APIs are never cached — occupancy must not go stale.
  * POS menu GETs stay network-first; mutation APIs are not intercepted. */
-var CACHE_VERSION = 'hbe-app-v18';
+var CACHE_VERSION = 'hbe-app-v19';
 var OFFLINE_LOGIN_URL = '/static/offline_login.html?v=10';
-var OFFLINE_AUTH_URL = '/static/offline_auth.js?v=11';
+var OFFLINE_AUTH_URL = '/static/offline_auth.js?v=12';
 var CRITICAL_STATIC_ALIASES = {
   '/static/offline_auth.js': [
-    OFFLINE_AUTH_URL,
+    '/static/offline_auth.js?v=12',
     '/static/offline_auth.js?v=11',
     '/static/offline_auth.js?v=10',
     '/static/offline_auth.js?v=9',
@@ -205,32 +205,6 @@ self.addEventListener('fetch', function (event) {
     return;
   }
 
-  // #region agent log
-  /* Non-GET /login = native form POST (offline_auth did not intercept) → Chrome dinosaur. */
-  if (req.method !== 'GET' && (url.pathname === '/login' || url.pathname === '/')) {
-    try {
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
-        body: JSON.stringify({
-          sessionId: '74a6ba',
-          runId: 'login-dino',
-          hypothesisId: 'H1',
-          location: 'sw.js:fetch:nonGet',
-          message: 'Non-GET auth request (native submit?)',
-          data: {
-            path: url.pathname,
-            method: req.method,
-            mode: req.mode,
-            cacheVersion: CACHE_VERSION
-          },
-          timestamp: Date.now()
-        })
-      }).catch(function () {});
-    } catch (eNonGet) {}
-  }
-  // #endregion
-
   if (req.method !== 'GET') {
     /* Form POST to Sign In is mode=navigate. If offline_auth failed to bind,
        the browser POSTs /login and Chrome shows the dinosaur unless we catch it. */
@@ -238,23 +212,6 @@ self.addEventListener('fetch', function (event) {
       req.mode === 'navigate' &&
       (url.pathname === '/login' || url.pathname === '/');
     if (loginPostNav && String(req.method || '').toUpperCase() === 'POST') {
-      // #region agent log
-      try {
-        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
-          body: JSON.stringify({
-            sessionId: '74a6ba',
-            runId: 'login-dino',
-            hypothesisId: 'H1-fix',
-            location: 'sw.js:loginPostNav',
-            message: 'Intercepting POST navigate to login',
-            data: { path: url.pathname, cacheVersion: CACHE_VERSION },
-            timestamp: Date.now()
-          })
-        }).catch(function () {});
-      } catch (ePost) {}
-      // #endregion
       event.respondWith(
         fetch(req)
           .then(function (res) {
@@ -275,49 +232,6 @@ self.addEventListener('fetch', function (event) {
   /* Do NOT intercept /logout. SW re-fetch loses Sec-Fetch-Mode: navigate,
      Flask returns 204 (prefetch guard) and the session is never cleared. */
   var logoutNav = req.mode === 'navigate' && url.pathname === '/logout';
-  var willIntercept = !!(
-    isFloorApi(url) ||
-    isApiGet(url) ||
-    isWorkspaceHtml(url, req) ||
-    loginNav ||
-    (url.pathname.indexOf('/static/') === 0 && isAppCachedStatic(url))
-  );
-
-  // #region agent log
-  try {
-    var _authSkip = isAuthOrSystemPath(url);
-    var _isNav = req.mode === 'navigate';
-    var _ws = false;
-    try {
-      _ws = isWorkspaceHtml(url, req);
-    } catch (e2) {}
-    if (_isNav || _authSkip || url.pathname === '/' || url.pathname === '/login' || url.pathname === '/logout' || url.pathname === '/home') {
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
-        body: JSON.stringify({
-          sessionId: '74a6ba',
-          runId: 'login-dino',
-          hypothesisId: logoutNav ? 'G-fix' : loginNav ? 'H3' : _authSkip ? 'H3' : 'H4',
-          location: 'sw.js:fetch',
-          message: 'SW fetch decision',
-          data: {
-            path: url.pathname,
-            mode: req.mode,
-            authSkip: _authSkip,
-            loginNav: loginNav,
-            logoutNav: logoutNav,
-            logoutPassthrough: !!logoutNav,
-            workspaceHtml: _ws,
-            cacheVersion: CACHE_VERSION,
-            willIntercept: willIntercept
-          },
-          timestamp: Date.now()
-        })
-      }).catch(function () {});
-    }
-  } catch (e3) {}
-  // #endregion
 
   /* Floor: network-only while online; offline fallback only. Never put into Cache API. */
   if (isFloorApi(url)) {
@@ -336,21 +250,6 @@ self.addEventListener('fetch', function (event) {
 
   /* GET /login navigate: offline login shell (POST /login stays network-only). */
   if (loginNav) {
-    // #region agent log
-    fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
-      body: JSON.stringify({
-        sessionId: '74a6ba',
-        runId: 'login-dino',
-        hypothesisId: 'H3',
-        location: 'sw.js:loginNav',
-        message: 'Serving login via networkFirstHtml',
-        data: { path: url.pathname, cacheVersion: CACHE_VERSION },
-        timestamp: Date.now()
-      })
-    }).catch(function () {});
-    // #endregion
     event.respondWith(networkFirstHtml(req));
     return;
   }
@@ -525,42 +424,8 @@ function matchLoginShellOffline() {
       });
     }
     return caches.match(keys[i]).then(function (shell) {
-      // #region agent log
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
-        body: JSON.stringify({
-          sessionId: '74a6ba',
-          runId: 'login-dino',
-          hypothesisId: 'F',
-          location: 'sw.js:matchLoginShellOffline',
-          message: 'login shell match',
-          data: {
-            key: keys[i],
-            hasShell: !!shell,
-            cacheVersion: CACHE_VERSION
-          },
-          timestamp: Date.now()
-        })
-      }).catch(function () {});
-      // #endregion
       if (!shell) return fromKeys(i + 1);
       return responseLooksLikeModernOfflineLogin(shell).then(function (ok) {
-        // #region agent log
-        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
-          body: JSON.stringify({
-            sessionId: '74a6ba',
-            runId: 'login-dino',
-            hypothesisId: 'H3',
-            location: 'sw.js:matchLoginShellOffline:ok',
-            message: 'login shell quality',
-            data: { key: keys[i], ok: !!ok, cacheVersion: CACHE_VERSION },
-            timestamp: Date.now()
-          })
-        }).catch(function () {});
-        // #endregion
         return ok ? shell : fromKeys(i + 1);
       });
     });
@@ -698,11 +563,9 @@ function matchStaticCache(req) {
 
 function networkFirstStatic(req) {
   var pathKey = '';
-  var isCss = false;
   try {
     var u = new URL(req.url);
     pathKey = u.pathname + (u.search || '');
-    isCss = /\.css$/i.test(u.pathname);
   } catch (e) {}
 
   return fetch(req, { cache: 'no-cache' })
@@ -732,30 +595,6 @@ function networkFirstStatic(req) {
     })
     .catch(function () {
       return matchStaticCache(req).then(function (found) {
-        // #region agent log
-        if (isCss || !found.hit) {
-          try {
-            fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
-              body: JSON.stringify({
-                sessionId: '74a6ba',
-                runId: 'css-miss',
-                hypothesisId: found.hit ? 'H6-hit' : 'H6',
-                location: 'sw.js:networkFirstStatic',
-                message: found.hit ? 'static cache hit offline' : 'static cache MISS offline',
-                data: {
-                  pathKey: pathKey,
-                  via: found.via,
-                  mode: req.mode,
-                  cacheVersion: CACHE_VERSION
-                },
-                timestamp: Date.now()
-              })
-            }).catch(function () {});
-          } catch (eLog) {}
-        }
-        // #endregion
         return found.hit || Response.error();
       });
     });
