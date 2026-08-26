@@ -626,7 +626,14 @@
         var a = t.closest('a[href*="logout"], button[formaction*="logout"], .de-logout-btn');
         if (!a) return;
         maybeClear(a.getAttribute('href') || a.getAttribute('formaction') || '/logout');
-        if (!isBrowserOffline()) return;
+        if (!isBrowserOffline()) {
+          // #region agent log
+          dbgLog('G-fix', 'offline_auth.js:logout', 'online logout allow default', {
+            path: String((global.location && global.location.pathname) || '')
+          });
+          // #endregion
+          return;
+        }
         /* Avoid hard-nav to /logout while offline (Chrome dinosaur page). */
         event.preventDefault();
         event.stopPropagation();

@@ -3,9 +3,9 @@
  * Cache Storage is a fallback for offline + brief disconnects.
  * Floor APIs are never cached — occupancy must not go stale.
  * POS menu GETs stay network-first; mutation APIs are not intercepted. */
-var CACHE_VERSION = 'hbe-app-v13';
+var CACHE_VERSION = 'hbe-app-v14';
 var OFFLINE_LOGIN_URL = '/static/offline_login.html?v=7';
-var OFFLINE_AUTH_URL = '/static/offline_auth.js?v=7';
+var OFFLINE_AUTH_URL = '/static/offline_auth.js?v=8';
 var PRECACHE = [
   '/home',
   '/point-of-sale/invoice',
@@ -160,13 +160,14 @@ self.addEventListener('fetch', function (event) {
   }
 
   var loginNav = req.mode === 'navigate' && url.pathname === '/login';
+  /* Do NOT intercept /logout. SW re-fetch loses Sec-Fetch-Mode: navigate,
+     Flask returns 204 (prefetch guard) and the session is never cleared. */
   var logoutNav = req.mode === 'navigate' && url.pathname === '/logout';
-  var authShellNav = loginNav || logoutNav;
   var willIntercept = !!(
     isFloorApi(url) ||
     isApiGet(url) ||
     isWorkspaceHtml(url, req) ||
-    authShellNav ||
+    loginNav ||
     (url.pathname.indexOf('/static/') === 0 && isAppCachedStatic(url))
   );
 
@@ -185,7 +186,7 @@ self.addEventListener('fetch', function (event) {
         body: JSON.stringify({
           sessionId: '74a6ba',
           runId: 'post-fix',
-          hypothesisId: authShellNav ? 'A-fix' : _authSkip ? 'A' : 'B',
+          hypothesisId: logoutNav ? 'G-fix' : loginNav ? 'A-fix' : _authSkip ? 'A' : 'B',
           location: 'sw.js:fetch',
           message: 'SW fetch decision',
           data: {
@@ -194,6 +195,7 @@ self.addEventListener('fetch', function (event) {
             authSkip: _authSkip,
             loginNav: loginNav,
             logoutNav: logoutNav,
+            logoutPassthrough: !!logoutNav,
             workspaceHtml: _ws,
             cacheVersion: CACHE_VERSION,
             willIntercept: willIntercept
@@ -216,8 +218,12 @@ self.addEventListener('fetch', function (event) {
     return;
   }
 
-  /* GET /login or /logout navigate: offline Sign In shell (POST auth stays network-only). */
-  if (authShellNav) {
+  if (logoutNav) {
+    return;
+  }
+
+  /* GET /login navigate: offline login shell (POST /login stays network-only). */
+  if (loginNav) {
     event.respondWith(networkFirstHtml(req));
     return;
   }
@@ -292,11 +298,7 @@ function putHtmlCache(cache, req, res) {
 }
 
 function isLoginShellPath(pathname) {
-  return (
-    pathname === '/' ||
-    pathname === '/login' ||
-    pathname === '/logout'
-  );
+  return pathname === '/' || pathname === '/login';
 }
 
 function responseLooksLikeModernOfflineLogin(res) {
