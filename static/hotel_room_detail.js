@@ -5570,15 +5570,15 @@
         stay.returningGuest || 'No'
       );
       resetListboxValue('hrd-ci-id-type', stay.idType || '', 'Select');
-      resetListboxValue(
-        'hrd-ci-adults',
-        stay.adults != null && String(stay.adults).trim() !== ''
-          ? String(stay.adults)
-          : '',
-        stay.adults != null && String(stay.adults).trim() !== ''
-          ? String(stay.adults)
-          : 'Select'
-      );
+      /* Adults is mandatory and must stay blank until the user picks a count.
+         Ignore 0 / missing / backend defaults of 1 from stay shells. */
+      var adultsNum = Number(stay.adults);
+      var adultsOk = isFinite(adultsNum) && adultsNum >= 1;
+      if (adultsOk) {
+        resetListboxValue('hrd-ci-adults', String(adultsNum), String(adultsNum));
+      } else {
+        resetListboxValue('hrd-ci-adults', '', 'Select');
+      }
       resetListboxValue(
         'hrd-ci-children',
         String(stay.children != null ? stay.children : 0),
@@ -8208,6 +8208,15 @@
         /* Stale closed draft from a prior cancel/edit — start blank. */
         clearCheckinDraft(root);
       }
+    }
+
+    /* New Check-In: Adults must always start blank (mandatory user selection).
+       Stay/reservation/draft shells often carry adults=1 from the server. */
+    if (!editing) {
+      resetListbox('hrd-ci-adults', '', 'Select');
+      if (form.elements.adults) form.elements.adults.value = '';
+      var adultsClearBox = form.querySelector('#hrd-ci-adults-listbox');
+      if (adultsClearBox) adultsClearBox.classList.remove('is-invalid');
     }
 
     /* Reserved stay notes win over an empty draft / blank field. */
