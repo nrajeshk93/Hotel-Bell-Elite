@@ -54,6 +54,7 @@ _POS_SUBMODULES = (
     {"key": "tables", "label": "Tables"},
     {"key": "invoice", "label": "POS"},
     {"key": "invoice_ledger", "label": "Invoice Ledger"},
+    {"key": "kot_cancellation", "label": "KOT Cancellation"},
     {"key": "sales_update", "label": "Sales Update"},
     {"key": "menu", "label": "Menu"},
     {"key": "settings", "label": "Settings"},
@@ -210,7 +211,7 @@ _WORKSPACE_MODULE_REGISTRY = (
     {
         "key": "cancellation_access",
         "label": "Cancellation",
-        # Module-level grant: cancel unsettled invoices; Tables KOT edits after send.
+        # Module-level grant: cancel unsettled POS and Hotel invoices.
         "permission_scope": None,
         "permission_field": None,
         "permission_children": (),
@@ -300,7 +301,8 @@ _ACCESS_MODULE_UI_META = {
         "description": (
             "Counter billing and invoice workspace for guest sales. "
             "Kitchen-sent lines can be edited until Generate Invoice; "
-            "after that, Cancellation is required for KOT changes on Tables."
+            "after that, Restaurant → KOT Cancellation is required to "
+            "reduce or cancel Kitchen Order Tokens on Tables."
         ),
     },
     "point_of_sale_bar": {
@@ -308,7 +310,8 @@ _ACCESS_MODULE_UI_META = {
         "description": (
             "Bar counter billing and invoice workspace. "
             "Kitchen-sent lines can be edited until Generate Invoice; "
-            "after that, Cancellation is required for KOT changes on Tables."
+            "after that, Bar → KOT Cancellation is required to "
+            "reduce or cancel Kitchen Order Tokens on Tables."
         ),
     },
 
@@ -346,9 +349,10 @@ _ACCESS_MODULE_UI_META = {
     "cancellation_access": {
         "icon": "ban",
         "description": (
-            "Cancel unsettled POS and Hotel invoices; "
-            "edit Kitchen Order Tokens on the Tables page after a KOT is sent. "
-            "Only a Super Administrator can grant this module to a role."
+            "Cancel unsettled POS and Hotel invoices. "
+            "Only a Super Administrator can grant this module to a role. "
+            "KOT reduce/cancel on Tables is granted separately under "
+            "Restaurant or Bar → KOT Cancellation."
         ),
     },
     "edit_access": {
@@ -1775,13 +1779,32 @@ def is_system_administrator(user):
     return username in {"admin", "admin_rajeshkumar"}
 
 
-def user_can_edit_kot_sent_lines(user):
-    """True when the user may change Kitchen Order Tokens on Tables after KOT.
+def user_can_cancel_invoices(user):
+    """True when the user may cancel unsettled POS or Hotel invoices.
 
     Granted via the Cancellation module (administrators include all modules).
-    POS Create Invoice allows line edits until Generate Invoice without this.
     """
     return user_can_access_dashboard(user, "cancellation_access")
+
+
+def user_can_edit_kot_sent_lines(user, outlet=None):
+    """True when the user may reduce/cancel kitchen-sent KOT lines on Tables.
+
+    Granted via Restaurant or Bar → KOT Cancellation (administrators include all).
+    Create Invoice still allows line edits until Generate Invoice without this.
+    """
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
+    outlet_key = str(outlet or "").strip().lower()
+    if outlet_key in ("bar", "point_of_sale_bar"):
+        return user_can_access_point_of_sale_bar_submodule(user, "kot_cancellation")
+    if outlet_key in ("restaurant", "point_of_sale"):
+        return user_can_access_point_of_sale_submodule(user, "kot_cancellation")
+    return user_can_access_point_of_sale_submodule(
+        user, "kot_cancellation"
+    ) or user_can_access_point_of_sale_bar_submodule(user, "kot_cancellation")
 
 
 def user_can_edit_unsettled_invoices(user):

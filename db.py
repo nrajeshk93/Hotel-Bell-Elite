@@ -4867,12 +4867,12 @@ def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, cre
     ``changes`` is a list of {invoice_id, line_id, sent_qty} where sent_qty is the
     new kitchen-sent amount (0 removes that sent portion / line when qty hits 0;
     values above the previous sent qty increase both kitchen-sent and bill qty).
-    Requires Cancellation (allow_kot_cancel=True). A non-empty reason is required
+    Requires KOT Cancellation (allow_kot_cancel=True). A non-empty reason is required
     only when any line is reduced (or the order is fully cancelled).
     """
     ensure_pos_schema(conn)
     if not allow_kot_cancel:
-        raise ValueError("Cancellation is required to edit kitchen-sent items.")
+        raise ValueError("KOT Cancellation is required to edit kitchen-sent items.")
     if not isinstance(changes, list) or not changes:
         raise ValueError("No quantity changes to save.")
     reason_text = " ".join(str(reason or "").split()).strip()
@@ -5952,7 +5952,7 @@ def _enforce_pos_kot_line_protections(
 def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, actor_is_admin=False):
     """Create or update a POS invoice by order_no. Returns the saved invoice dict.
 
-    Kitchen-sent line reductions/removals require allow_kot_cancel (Cancellation /
+    Kitchen-sent line reductions/removals require allow_kot_cancel (KOT Cancellation /
     Tables KOT Edit). Create Invoice may increase qty or change unsent units only.
     After Generate Invoice, normal saves are blocked once the invoice is generated.
     Banquet-only CGST/UGST percent overrides are stored only when actor_is_admin.

@@ -585,6 +585,13 @@
     if (dateWrapId && global.SalesDateRangePicker && typeof global.SalesDateRangePicker.closeIfOpen === 'function') {
       global.SalesDateRangePicker.closeIfOpen(dateWrapId);
     }
+    /* Avoid Adults/Children menus stacking over hotel date/time panels in check-in. */
+    if (typeof global.closeHotelDatePickers === 'function') {
+      global.closeHotelDatePickers();
+    }
+    if (typeof global.closeHotelTimePickers === 'function') {
+      global.closeHotelTimePickers();
+    }
     closeAllListboxes(root);
     try {
       document.dispatchEvent(new CustomEvent('ep-listbox-opened', { detail: { root: root } }));

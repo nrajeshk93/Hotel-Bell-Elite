@@ -2093,6 +2093,10 @@ button.hrd-ci-nightly-date:focus-visible{
   border-color:#FCA5A5;
   box-shadow:0 0 0 3px rgba(220,38,38,.14);
 }
+#hrd-ci-adults-listbox.is-invalid .se-filter-chip-control{
+  border-color:#FCA5A5;
+  box-shadow:0 0 0 3px rgba(220,38,38,.14);
+}
 .hrd-field input[readonly]{
   background:#F8FAFC;
   color:#64748B;

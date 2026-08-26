@@ -32,7 +32,7 @@
 {% endif %}
 {% from 'partials/ep_form_listbox_macros.html' import ep_toolbar_listbox, ep_listbox %}
 
-<div class="de-main-inner pos-invoice-page" id="pos-invoice-page" data-pos-invoice data-pos-is-admin="{{ '1' if current_user and current_user.is_admin else '0' }}" data-pos-can-cancel-kot="{{ '1' if current_user and user_can_edit_kot_sent_lines(current_user) else '0' }}"
+<div class="de-main-inner pos-invoice-page" id="pos-invoice-page" data-pos-invoice data-pos-is-admin="{{ '1' if current_user and current_user.is_admin else '0' }}" data-pos-can-cancel-kot="{{ '1' if current_user and user_can_edit_kot_sent_lines(current_user, pos_outlet|default('restaurant')) else '0' }}"
      data-tip-company="{{ tip_company }}"
      data-tip-location="{{ tip_location }}"
      data-tip-add-url="{{ tip_add_url }}"

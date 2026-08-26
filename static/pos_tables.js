@@ -44,7 +44,7 @@
     return outlet;
   }
 
-  /** Cancellation (module tree) — edit KOT lines even after bill sent. */
+  /** Restaurant/Bar → KOT Cancellation — edit KOT lines even after bill sent. */
   function canCancelKotLines() {
     var root =
       document.getElementById('pos-tables-page') ||
@@ -3002,7 +3002,7 @@
       return;
     }
     if (!canCancelKotLines()) {
-      toast('Cancellation is required to edit kitchen-sent items.');
+      toast('KOT Cancellation is required to edit kitchen-sent items.');
       syncKotTokensSaveButton();
       return;
     }
@@ -3284,7 +3284,7 @@
         if (editMode) {
           if (!canCancelKotLines()) {
             lockNote =
-              '<p class="pos-kot-token-bill-lock">Cancellation is required to edit kitchen quantities.</p>';
+              '<p class="pos-kot-token-bill-lock">KOT Cancellation is required to edit kitchen quantities.</p>';
           } else if (linesLocked) {
             lockNote =
               '<p class="pos-kot-token-bill-lock">Bill sent — kitchen edit disabled</p>';

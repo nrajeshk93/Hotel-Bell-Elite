@@ -775,7 +775,7 @@
                 <span>Number of Nights</span>
                 <input type="number" name="nights" min="1" value="1">
               </label>
-              {{ ep_listbox('adults', 'Adults', [('1', '1'), ('2', '2'), ('3', '3'), ('4', '4')], '1', placeholder='1', field_id='hrd-ci-adults', extra_class='hrd-form-listbox') }}
+              {{ ep_listbox('adults', 'Adults *', [('', 'Select'), ('1', '1'), ('2', '2'), ('3', '3'), ('4', '4')], '', placeholder='Select', field_id='hrd-ci-adults', extra_class='hrd-form-listbox', change_handler='hrdCiAdultsChanged') }}
               {{ ep_listbox('children', 'Children', [('0', '0'), ('1', '1'), ('2', '2'), ('3', '3')], '0', placeholder='0', field_id='hrd-ci-children', extra_class='hrd-form-listbox') }}
             </div>
           </section>

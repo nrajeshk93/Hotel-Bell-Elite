@@ -250,6 +250,7 @@ from workspace_access import (
     user_can_access_supplier_master,
     user_can_access_user_access_submodule,
     user_can_edit_kot_sent_lines,
+    user_can_cancel_invoices,
     user_can_edit_unsettled_invoices,
     user_can_approve_transactions,
     user_has_assigned_access_role,
@@ -985,6 +986,7 @@ def inject_auth_context():
         "has_agency_master_access": lambda: user_can_access_agency_master(user),
         "has_user_access_submodule": lambda key: user_can_access_user_access_submodule(user, key),
         "user_can_edit_kot_sent_lines": user_can_edit_kot_sent_lines,
+        "user_can_cancel_invoices": user_can_cancel_invoices,
         "user_can_edit_unsettled_invoices": user_can_edit_unsettled_invoices,
         "user_can_approve_transactions": user_can_approve_transactions,
         "dashboard_module_labels": _DASHBOARD_MODULE_LABELS,
@@ -9642,7 +9644,7 @@ def hotel_invoice_ledger():
         room_transfer_ledger=False,
         is_popup=False,
         hotel_payment_amount_columns=HOTEL_PAYMENT_AMOUNT_COLUMNS,
-        can_cancel_invoices=user_can_edit_kot_sent_lines(get_current_user()),
+        can_cancel_invoices=user_can_cancel_invoices(get_current_user()),
         can_edit_invoices=user_can_edit_unsettled_invoices(get_current_user()),
     )
 
@@ -9860,7 +9862,7 @@ def hotel_room_transfer_invoices():
         page_dom_id="hotel-room-transfer-ledger-page",
         room_transfer_ledger=True,
         is_popup=False,
-        can_cancel_invoices=user_can_edit_kot_sent_lines(get_current_user()),
+        can_cancel_invoices=user_can_cancel_invoices(get_current_user()),
         can_edit_invoices=user_can_edit_unsettled_invoices(get_current_user()),
     )
 
@@ -10088,7 +10090,7 @@ def hotel_invoice_ledger_settle_api(invoice_number):
 def hotel_invoice_ledger_cancel_api(invoice_number):
     """Cancel an unsettled hotel invoice (Cancellation)."""
     user = get_current_user()
-    if not user_can_edit_kot_sent_lines(user):
+    if not user_can_cancel_invoices(user):
         return jsonify(
             {"ok": False, "error": "Cancellation is required to cancel invoices."}
         ), 403
@@ -11866,7 +11868,7 @@ def point_of_sale_invoice_ledger():
     filters = _pos_invoice_ledger_filters(request.args)
 
     user = get_current_user()
-    can_cancel = user_can_edit_kot_sent_lines(user)
+    can_cancel = user_can_cancel_invoices(user)
     can_edit = user_can_edit_unsettled_invoices(user)
 
     conn = get_db()
@@ -12187,7 +12189,7 @@ def point_of_sale_api_invoices_save():
                 conn,
                 data,
                 created_by=created_by,
-                allow_kot_cancel=user_can_edit_kot_sent_lines(user),
+                allow_kot_cancel=user_can_edit_kot_sent_lines(user, outlet),
                 actor_is_admin=bool(user and user.get("is_admin")),
             )
             sync_pos_floor_occupancy_from_open_orders(conn, outlet)
@@ -12501,12 +12503,15 @@ def point_of_sale_api_kot_tokens():
     endpoint="bar_point_of_sale_api_kot_tokens_reduce",
 )
 def point_of_sale_api_kot_tokens_reduce():
-    """Persist kitchen-sent qty changes from the Tables KOT hub (Cancellation)."""
+    """Persist kitchen-sent qty changes from the Tables KOT hub (KOT Cancellation)."""
     outlet = _pos_outlet_from_request()
     user = get_current_user()
-    if not user_can_edit_kot_sent_lines(user):
+    if not user_can_edit_kot_sent_lines(user, outlet):
         return jsonify(
-            {"ok": False, "error": "Cancellation is required to edit kitchen-sent items."}
+            {
+                "ok": False,
+                "error": "KOT Cancellation is required to edit kitchen-sent items.",
+            }
         ), 403
     data = request.get_json(silent=True) or {}
     changes = data.get("changes") if isinstance(data, dict) else None
@@ -12611,7 +12616,7 @@ def point_of_sale_api_invoice_delete(invoice_id):
     """
     outlet = _pos_outlet_from_request()
     user = get_current_user()
-    if not user_can_edit_kot_sent_lines(user):
+    if not user_can_cancel_invoices(user):
         return jsonify(
             {"ok": False, "error": "Cancellation is required to cancel invoices."}
         ), 403

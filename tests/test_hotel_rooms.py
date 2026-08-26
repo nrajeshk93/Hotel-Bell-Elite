@@ -1141,8 +1141,17 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertIn("hrd-checkin-modal", html)
         self.assertIn('id="hrd-checkin-form"', html)
         self.assertIn('autocomplete="off"', html)
-        self.assertNotIn('autocomplete="given-name"', html)
-        self.assertNotIn('autocomplete="tel"', html)
+        self.assertIn('id="hrd-ci-mobile"', html)
+        self.assertIn(
+            'id="hrd-ci-mobile" required autocomplete="off"',
+            html.replace("  ", " "),
+        )
+        self.assertIn('name="firstName" required autocomplete="off"', html)
+        self.assertIn('name="lastName" required autocomplete="off"', html)
+        self.assertNotIn('name="firstName" required autocomplete="given-name"', html)
+        self.assertIn('id="hrd-ci-adults"', html)
+        self.assertIn('id="hrd-ci-adults" name="adults" value=""', html)
+        self.assertIn("Adults *", html)
         self.assertIn('data-se-listbox-change="hrdCiMobileCountryChanged"', html)
         self.assertIn("Indonesia", html)
 

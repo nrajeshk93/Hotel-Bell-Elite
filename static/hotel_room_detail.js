@@ -5325,6 +5325,17 @@
     scheduleCheckinDraftSave(root, form);
   };
 
+  global.hrdCiAdultsChanged = function () {
+    var root = pageRoot();
+    var form = root && $('#hrd-checkin-form', root);
+    var box = form && form.querySelector('#hrd-ci-adults-listbox');
+    var hidden = form && form.elements.adults;
+    if (box && hidden && String(hidden.value || '').trim()) {
+      box.classList.remove('is-invalid');
+    }
+    if (form) scheduleCheckinDraftSave(root, form);
+  };
+
   function countryNameFromMobileOption(listboxRoot, option) {
     if (option && option.getAttribute) {
       var fromOption = String(
@@ -5561,8 +5572,12 @@
       resetListboxValue('hrd-ci-id-type', stay.idType || '', 'Select');
       resetListboxValue(
         'hrd-ci-adults',
-        String(stay.adults != null ? stay.adults : 1),
-        String(stay.adults != null ? stay.adults : 1)
+        stay.adults != null && String(stay.adults).trim() !== ''
+          ? String(stay.adults)
+          : '',
+        stay.adults != null && String(stay.adults).trim() !== ''
+          ? String(stay.adults)
+          : 'Select'
       );
       resetListboxValue(
         'hrd-ci-children',
@@ -5767,6 +5782,12 @@
     if (!form) return;
     var host = extraGuestsHost(form);
     var extraCount = host ? host.querySelectorAll('[data-extra-guest]').length : 0;
+    var current = form.elements.adults
+      ? String(form.elements.adults.value || '').trim()
+      : '';
+    /* New check-in starts with Adults blank — do not force "1" until the user
+       selects a value or adds additional guests. */
+    if (!current && extraCount === 0) return;
     var total = Math.max(1, 1 + extraCount);
     resetListbox('hrd-ci-adults', String(total), String(total));
     if (form.elements.adults) form.elements.adults.value = String(total);
@@ -8126,9 +8147,11 @@
     resetListbox('hrd-ci-vip', 'Regular', 'Regular');
     resetListbox('hrd-ci-returning', 'No', 'No');
     resetListbox('hrd-ci-id-type', '', 'Select');
-    resetListbox('hrd-ci-adults', '1', '1');
+    resetListbox('hrd-ci-adults', '', 'Select');
     resetListbox('hrd-ci-children', '0', '0');
     resetListbox('hrd-ci-payment', '', 'Select');
+    var adultsBox = form.querySelector('#hrd-ci-adults-listbox');
+    if (adultsBox) adultsBox.classList.remove('is-invalid');
     var stayForRates = staySource;
     if (!editing && stayForRates) {
       stayForRates = stripStayMealPlans(stayForRates);
@@ -9990,7 +10013,7 @@
       checkOutDate: val('checkOutDate'),
       checkOutTime: val('checkOutTime') || '11:00',
       nights: Number(val('nights') || 1),
-      adults: Number(val('adults') || 1),
+      adults: Number(val('adults') || 0),
       children: Number(val('children') || 0),
       ratePlan: primaryMergeRatePlan(form),
       roomRate: primaryMergeRoomRate(form),
@@ -10103,6 +10126,17 @@
     }
     if (!stay.checkInDate) {
       showToast('Check-in date is required.', true);
+      return Promise.reject(new Error('validation'));
+    }
+    if (form.getAttribute('data-id-only') !== '1' && !(Number(stay.adults) >= 1)) {
+      showToast('Adults is required.', true);
+      var adultsBox = form.querySelector('#hrd-ci-adults-listbox');
+      if (adultsBox) adultsBox.classList.add('is-invalid');
+      var adultsTrigger =
+        adultsBox && adultsBox.querySelector('.se-filter-chip-trigger');
+      try {
+        if (adultsTrigger) adultsTrigger.focus();
+      } catch (err) {}
       return Promise.reject(new Error('validation'));
     }
     if (form.getAttribute('data-id-only') !== '1') {

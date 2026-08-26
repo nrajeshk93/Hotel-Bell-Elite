@@ -344,7 +344,7 @@
   }
 
   function closeAll(except) {
-    document.querySelectorAll('.hotel-date.is-open').forEach(function (chip) {
+    document.querySelectorAll('.hotel-date.is-open:not([data-hotel-time])').forEach(function (chip) {
       if (chip !== except) closeChip(chip);
     });
   }
@@ -409,6 +409,14 @@
     panel.style.width = '';
   }
 
+  function closeOverlappingFormPopups() {
+    /* Date/time panels and ep listboxes share the modal stacking context;
+       keep only one popup family open so Adults/etc. cannot paint over the panel. */
+    if (typeof global.closeAllEpListboxes === 'function') {
+      global.closeAllEpListboxes();
+    }
+  }
+
   function openChip(chip) {
     if (!chip) return;
     var panel = chip.querySelector('.hotel-date-panel');
@@ -418,6 +426,7 @@
     if (!panel) return;
     closeAll(chip);
     closeAllTimeChips(null);
+    closeOverlappingFormPopups();
     setViewFromISO(chip, input && input.value);
     renderPicker(chip);
     chip.classList.add('is-open');
@@ -903,6 +912,7 @@
     if (!panel) return;
     closeAll(null);
     closeAllTimeChips(chip);
+    closeOverlappingFormPopups();
     draftFromValue(chip, input && input.value);
     renderTimeWheels(chip);
     chip.classList.add('is-open');
@@ -1030,6 +1040,11 @@
     document.__hotelTimePickerDocBound = true;
     document.addEventListener('keydown', function (event) {
       if (event.key !== 'Escape') return;
+      closeAllTimeChips(null);
+    });
+    /* Listbox open (Adults/Children/etc.) must dismiss date/time panels. */
+    document.addEventListener('ep-listbox-opened', function () {
+      closeAll(null);
       closeAllTimeChips(null);
     });
   }

@@ -1309,7 +1309,7 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertIn("T1", refreshed)
         self.assertEqual(int(refreshed["T1"]["sent_qty"]), 2)
 
-    def test_kot_tokens_reduce_api_requires_cancellation_access(self):
+    def test_kot_tokens_reduce_api_requires_kot_cancellation_access(self):
         save = self.client.post(
             "/point-of-sale/api/invoices",
             json=self._payload("ORD-2607-0083", "T1", kot_send=True),
@@ -1325,6 +1325,14 @@ class PosTableOccupancyTests(unittest.TestCase):
             "is_admin": False,
             "is_active": True,
             "dashboard_access": {"point_of_sale"},
+            "point_of_sale_access": {
+                "tables",
+                "invoice",
+                "invoice_ledger",
+                "sales_update",
+                "menu",
+                "settings",
+            },
             "stores_access": set(),
         }
         with mock.patch.object(self.app_mod, "get_current_user", return_value=locked):
@@ -1337,11 +1345,34 @@ class PosTableOccupancyTests(unittest.TestCase):
                             "line_id": line_id,
                             "sent_qty": 1,
                         }
-                    ]
+                    ],
+                    "reason": "Wrong item",
                 },
             )
         self.assertEqual(denied.status_code, 403)
         self.assertFalse(denied.get_json().get("ok"))
+        self.assertIn("KOT Cancellation", denied.get_json().get("error") or "")
+
+        unlocked = dict(locked)
+        unlocked["point_of_sale_access"] = set(locked["point_of_sale_access"]) | {
+            "kot_cancellation"
+        }
+        with mock.patch.object(self.app_mod, "get_current_user", return_value=unlocked):
+            ok = self.client.post(
+                "/point-of-sale/api/kot-tokens/reduce",
+                json={
+                    "changes": [
+                        {
+                            "invoice_id": invoice["id"],
+                            "line_id": line_id,
+                            "sent_qty": 1,
+                        }
+                    ],
+                    "reason": "Wrong item",
+                },
+            )
+        self.assertEqual(ok.status_code, 200, ok.get_data(as_text=True))
+        self.assertTrue(ok.get_json().get("ok"))
 
     def test_kot_tokens_reduce_requires_reason(self):
         save = self.client.post(
@@ -1484,7 +1515,7 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertNotIn("T1", names)
         self.assertEqual(self._floor_status("T1"), "available")
 
-    def test_cancellation_access_can_edit_kitchen_sent_and_updates_kot_token(self):
+    def test_kot_cancellation_can_edit_kitchen_sent_and_updates_kot_token(self):
         save = self.client.post(
             "/point-of-sale/api/invoices",
             json=self._payload(
@@ -2368,6 +2399,14 @@ class PosTableOccupancyTests(unittest.TestCase):
         locked = dict(self.user)
         locked["is_admin"] = False
         locked["dashboard_access"] = {"point_of_sale"}
+        locked["point_of_sale_access"] = {
+            "tables",
+            "invoice",
+            "invoice_ledger",
+            "sales_update",
+            "menu",
+            "settings",
+        }
         with mock.patch.object(self.app_mod, "get_current_user", return_value=locked):
             denied = self.client.post(f"/point-of-sale/api/invoices/{invoice_id}/delete")
         self.assertEqual(denied.status_code, 403)
@@ -2375,6 +2414,7 @@ class PosTableOccupancyTests(unittest.TestCase):
         unlocked = dict(self.user)
         unlocked["is_admin"] = False
         unlocked["dashboard_access"] = {"point_of_sale", "cancellation_access"}
+        unlocked["point_of_sale_access"] = set(locked["point_of_sale_access"])
         with mock.patch.object(self.app_mod, "get_current_user", return_value=unlocked):
             missing_reason = self.client.post(
                 f"/point-of-sale/api/invoices/{invoice_id}/delete",

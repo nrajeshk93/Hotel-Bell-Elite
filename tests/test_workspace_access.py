@@ -138,7 +138,8 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(cancellation["icon"], "ban")
         self.assertEqual(cancellation["children"], [])
         self.assertTrue(cancellation.get("superAdminOnly"))
-        self.assertIn("Kitchen Order", cancellation.get("description") or "")
+        self.assertIn("invoices", (cancellation.get("description") or "").lower())
+        self.assertIn("KOT Cancellation", cancellation.get("description") or "")
         self.assertIn("Super Administrator", cancellation.get("description") or "")
         edit = next(node for node in tree if node["label"] == "Edit")
         self.assertEqual(edit["id"], "edit_access")
@@ -164,15 +165,45 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(pos["dashboardKey"], "point_of_sale")
         self.assertEqual(
             [child["label"] for child in pos["children"]],
-            ["Tables", "POS", "Invoice Ledger", "Sales Update", "Menu", "Settings"],
+            [
+                "Tables",
+                "POS",
+                "Invoice Ledger",
+                "KOT Cancellation",
+                "Sales Update",
+                "Menu",
+                "Settings",
+            ],
         )
         self.assertEqual(pos["children"][0]["fieldName"], "point_of_sale_modules")
+        self.assertEqual(
+            next(
+                child
+                for child in pos["children"]
+                if child["label"] == "KOT Cancellation"
+            )["id"],
+            "point_of_sale.kot_cancellation",
+        )
         bar = next(node for node in tree if node["label"] == "Bar")
         self.assertEqual(
             [child["label"] for child in bar["children"]],
-            ["Tables", "POS", "Invoice Ledger", "Sales Update", "Menu", "Settings"],
+            [
+                "Tables",
+                "POS",
+                "Invoice Ledger",
+                "KOT Cancellation",
+                "Sales Update",
+                "Menu",
+                "Settings",
+            ],
         )
         self.assertEqual(bar["children"][0]["fieldName"], "point_of_sale_bar_modules")
+        self.assertEqual(
+            next(
+                child for child in bar["children"] if child["label"] == "KOT Cancellation"
+            )["id"],
+            "point_of_sale_bar.kot_cancellation",
+        )
         hotel = next(node for node in tree if node["label"] == "Hotel")
         self.assertEqual(
             [child["label"] for child in hotel["children"]],
@@ -208,27 +239,53 @@ class WorkspaceAccessTests(unittest.TestCase):
                 "Agency Ledger",
                 "Manager Insight",
                 "Meal Plan",
+                "KOT",
                 "Sales - Restaurant & Bar",
                 "Menu Insights",
                 "Customer Insights",
             ],
         )
 
-    def test_cancellation_access_unlocks_kot_sent_line_edits(self):
+    def test_kot_cancellation_unlocks_kot_sent_line_edits(self):
         locked = {
             "id": 11,
             "is_admin": False,
             "dashboard_access": {"point_of_sale"},
+            "point_of_sale_access": {"tables", "invoice"},
         }
         unlocked = {
             "id": 12,
             "is_admin": False,
-            "dashboard_access": {"point_of_sale", "cancellation_access"},
+            "dashboard_access": {"point_of_sale"},
+            "point_of_sale_access": {"tables", "kot_cancellation"},
+        }
+        bar_only = {
+            "id": 15,
+            "is_admin": False,
+            "dashboard_access": {"point_of_sale_bar"},
+            "point_of_sale_bar_access": {"tables", "kot_cancellation"},
         }
         admin = {"id": 1, "is_admin": True, "dashboard_access": set()}
         self.assertFalse(user_can_edit_kot_sent_lines(locked))
-        self.assertTrue(user_can_edit_kot_sent_lines(unlocked))
+        self.assertFalse(user_can_edit_kot_sent_lines(locked, "restaurant"))
+        self.assertTrue(user_can_edit_kot_sent_lines(unlocked, "restaurant"))
+        self.assertFalse(user_can_edit_kot_sent_lines(unlocked, "bar"))
+        self.assertTrue(user_can_edit_kot_sent_lines(bar_only, "bar"))
+        self.assertFalse(user_can_edit_kot_sent_lines(bar_only, "restaurant"))
         self.assertTrue(user_can_edit_kot_sent_lines(admin))
+        self.assertTrue(user_can_edit_kot_sent_lines(admin, "bar"))
+
+    def test_cancellation_access_unlocks_invoice_cancel_not_kot(self):
+        from workspace_access import user_can_cancel_invoices
+
+        cancel_only = {
+            "id": 16,
+            "is_admin": False,
+            "dashboard_access": {"point_of_sale", "cancellation_access"},
+            "point_of_sale_access": {"tables", "invoice_ledger"},
+        }
+        self.assertTrue(user_can_cancel_invoices(cancel_only))
+        self.assertFalse(user_can_edit_kot_sent_lines(cancel_only, "restaurant"))
 
     def test_edit_access_unlocks_unsettled_invoice_edits(self):
         locked = {

@@ -8,6 +8,12 @@
 .hotel-date.is-open{
   z-index:80;
 }
+/* Fixed modal panels must outrank sibling fields (e.g. Adults listbox is-open).
+   Otherwise the panel stays trapped in this chip's stacking context and siblings paint over it. */
+.hotel-date.is-open.is-fixed-panel,
+.hotel-time.is-open.is-fixed-panel{
+  z-index:12050;
+}
 .hotel-date-label{
   display:block;
   margin-bottom:5px;

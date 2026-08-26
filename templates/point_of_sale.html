@@ -54,7 +54,7 @@
   {% set areas = derived_areas %}
 {% endif %}
 
-<div class="de-main-inner pos-tables-page" id="pos-tables-page" data-pos-tables data-pos-outlet="{{ pos_outlet|default('restaurant') }}" data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}" data-pos-can-cancel-kot="{{ '1' if current_user and user_can_edit_kot_sent_lines(current_user) else '0' }}" data-pos-can-edit="{{ '1' if current_user and user_can_edit_unsettled_invoices(current_user) else '0' }}">
+<div class="de-main-inner pos-tables-page" id="pos-tables-page" data-pos-tables data-pos-outlet="{{ pos_outlet|default('restaurant') }}" data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}" data-pos-can-cancel-kot="{{ '1' if current_user and user_can_edit_kot_sent_lines(current_user, pos_outlet|default('restaurant')) else '0' }}" data-pos-can-edit="{{ '1' if current_user and user_can_edit_unsettled_invoices(current_user) else '0' }}">
   <header class="pos-tables-header">
     <div class="pos-tables-header-copy">
       <h1>Tables</h1>
