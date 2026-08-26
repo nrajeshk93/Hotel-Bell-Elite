@@ -2140,8 +2140,8 @@
           sessionStorage.removeItem('hbe_offline_session');
         }
       } catch(eSess){}
-      /* `/` is SW-intercepted offline → Sign In shell (never /logout network). */
-      window.location.replace('/');
+      /* `/static/offline_login.html` is the versioned offline Sign In shell. */
+      window.location.replace('/static/offline_login.html');
     }
 
     if(typeof navigator !== 'undefined' && navigator.onLine === false){

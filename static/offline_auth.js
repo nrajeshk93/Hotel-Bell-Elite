@@ -631,14 +631,14 @@
         event.preventDefault();
         event.stopPropagation();
         // #region agent log
-        dbgLog('A-fix', 'offline_auth.js:logout', 'offline logout → /', {
+        dbgLog('A-fix', 'offline_auth.js:logout', 'offline logout → offline_login', {
           path: String((global.location && global.location.pathname) || '')
         });
         // #endregion
         try {
-          global.location.replace('/');
+          global.location.replace('/static/offline_login.html');
         } catch (err) {
-          global.location.href = '/';
+          global.location.href = '/static/offline_login.html';
         }
       },
       true

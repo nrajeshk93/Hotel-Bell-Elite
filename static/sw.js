@@ -3,14 +3,14 @@
  * Cache Storage is a fallback for offline + brief disconnects.
  * Floor APIs are never cached — occupancy must not go stale.
  * POS menu GETs stay network-first; mutation APIs are not intercepted. */
-var CACHE_VERSION = 'hbe-app-v11';
+var CACHE_VERSION = 'hbe-app-v12';
 var PRECACHE = [
   '/home',
   '/point-of-sale/invoice',
   '/bar-point-of-sale/invoice',
   '/login',
   '/static/offline_login.html',
-  '/static/offline_auth.js?v=5',
+  '/static/offline_auth.js?v=6',
   '/static/login_premium.css?v=12',
   '/static/login_hero.jpg?v=2',
   '/static/hbe_mark_sm.png',
@@ -27,7 +27,7 @@ var PRECACHE = [
   '/static/pos_offline.js?v=5',
   '/static/ep_form_listbox.js?v=66',
   '/static/de_workspace_nav.js?v=46',
-  '/static/de_workspace_transitions.js?v=191',
+  '/static/de_workspace_transitions.js?v=192',
   '/static/hbe_table_scroll.js?v=10',
   '/static/hbe_app_toast.js?v=3',
   '/static/de_pwa.js?v=12',
@@ -296,21 +296,19 @@ function isLoginShellPath(pathname) {
   );
 }
 
-function responseLooksLikeLogin(res) {
+function responseLooksLikeModernOfflineLogin(res) {
   if (!res) return Promise.resolve(false);
-  var ct = '';
-  try {
-    ct = String(res.headers.get('Content-Type') || res.headers.get('content-type') || '');
-  } catch (e) {}
-  if (ct && ct.indexOf('text/html') === -1) return Promise.resolve(false);
   return res
     .clone()
     .text()
     .then(function (html) {
-      return (
-        html.indexOf('login-panel') !== -1 ||
-        html.indexOf('login-shell') !== -1
-      );
+      if (!html) return false;
+      if (html.indexOf('Reconnect to sign in') !== -1) return false;
+      if (html.indexOf('offline_auth.js') === -1) return false;
+      if (html.indexOf('login-panel') === -1 && html.indexOf('login-shell') === -1) {
+        return false;
+      }
+      return true;
     })
     .catch(function () {
       return false;
@@ -318,15 +316,47 @@ function responseLooksLikeLogin(res) {
 }
 
 function matchLoginShellOffline() {
-  return caches.match('/').then(function (cachedRoot) {
-    if (!cachedRoot) {
-      return caches.match('/static/offline_login.html');
+  /* Always prefer the precached offline Sign In shell. A stale caches.match('/')
+     snapshot can still contain the old "Reconnect to sign in" guard that
+     blocks submit offline. */
+  return caches.match('/static/offline_login.html').then(function (shell) {
+    // #region agent log
+    fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
+      body: JSON.stringify({
+        sessionId: '74a6ba',
+        runId: 'post-fix',
+        hypothesisId: 'F',
+        location: 'sw.js:matchLoginShellOffline',
+        message: 'login shell match',
+        data: { hasPrecacheShell: !!shell, cacheVersion: CACHE_VERSION },
+        timestamp: Date.now()
+      })
+    }).catch(function () {});
+    // #endregion
+    if (shell) {
+      return responseLooksLikeModernOfflineLogin(shell).then(function (ok) {
+        if (ok) return shell;
+        return matchLegacyLoginShell();
+      });
     }
-    return responseLooksLikeLogin(cachedRoot).then(function (ok) {
-      if (ok) return cachedRoot;
-      return caches.match('/static/offline_login.html');
-    });
+    return matchLegacyLoginShell();
   });
+}
+
+function matchLegacyLoginShell() {
+  var keys = ['/login', '/'];
+  function next(i) {
+    if (i >= keys.length) return Promise.resolve(null);
+    return caches.match(keys[i]).then(function (cached) {
+      if (!cached) return next(i + 1);
+      return responseLooksLikeModernOfflineLogin(cached).then(function (ok) {
+        return ok ? cached : next(i + 1);
+      });
+    });
+  }
+  return next(0);
 }
 
 function matchHtmlCache(req) {
