@@ -53,6 +53,7 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("login_premium.css", body)
         self.assertIn("matchLoginShellOffline", body)
         self.assertIn("isLoginShellPath", body)
+        self.assertIn("offlineNavigateFallback", body)
         # Bare /home must not be filled from partial=main offline snapshots.
         self.assertIn("Never overwrite the bare navigate URL", body)
         self.assertIn("Full navigations must not use a partial=main", body)
@@ -92,7 +93,7 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertNotIn("Reconnect to sign in.", html)
 
     def test_offline_auth_module_exposes_local_unlock(self):
-        resp = self.client.get("/static/offline_auth.js?v=1")
+        resp = self.client.get("/static/offline_auth.js?v=2")
         self.assertEqual(resp.status_code, 200)
         body = resp.get_data(as_text=True)
         resp.close()
@@ -102,6 +103,9 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("bindLoginForm", body)
         self.assertIn("PBKDF2", body)
         self.assertIn("clearAllVerifiers", body)
+        self.assertIn("putCachedHtml", body)
+        self.assertIn("findCachedAppShell", body)
+        self.assertIn("ERR_INTERNET_DISCONNECTED", body)
         self.assertIn("/home", body)
 
     def test_de_pwa_prunes_app_and_legacy_pos_caches(self):

@@ -3,13 +3,13 @@
  * Cache Storage is a fallback for offline + brief disconnects.
  * Floor APIs are never cached — occupancy must not go stale.
  * POS menu GETs stay network-first; mutation APIs are not intercepted. */
-var CACHE_VERSION = 'hbe-app-v7';
+var CACHE_VERSION = 'hbe-app-v8';
 var PRECACHE = [
   '/home',
   '/point-of-sale/invoice',
   '/bar-point-of-sale/invoice',
   '/static/offline_login.html',
-  '/static/offline_auth.js?v=1',
+  '/static/offline_auth.js?v=2',
   '/static/login_premium.css?v=12',
   '/static/login_hero.jpg?v=2',
   '/static/hbe_mark_sm.png',
@@ -295,6 +295,26 @@ function matchHtmlCache(req) {
   });
 }
 
+function offlineNavigateFallback() {
+  return matchLoginShellOffline().then(function (login) {
+    if (login) return login;
+    return new Response(
+      '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
+        '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+        '<title>Hotel Bell Elite</title></head><body style="font-family:system-ui;padding:24px">' +
+        '<h1>You\'re offline</h1>' +
+        '<p>Open Sign In and unlock with your password, or reconnect to load the workspace.</p>' +
+        '<p><a href="/">Go to Sign In</a></p>' +
+        '</body></html>',
+      {
+        status: 503,
+        statusText: 'Offline',
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      }
+    );
+  });
+}
+
 function networkFirstHtml(req) {
   var pathname = '/';
   try {
@@ -314,16 +334,14 @@ function networkFirstHtml(req) {
       /* Sign-in: prefer a real login shell, never a stale /home snapshot. */
       if (isLoginShellPath(pathname)) {
         return matchLoginShellOffline().then(function (login) {
-          return login || Response.error();
+          return login || offlineNavigateFallback();
         });
       }
       return matchHtmlCache(req).then(function (cached) {
         if (cached) return cached;
         return caches.match('/home').then(function (home) {
           return home || caches.match('/point-of-sale/invoice').then(function (pos) {
-            return pos || matchLoginShellOffline().then(function (login) {
-              return login || Response.error();
-            });
+            return pos || offlineNavigateFallback();
           });
         });
       });

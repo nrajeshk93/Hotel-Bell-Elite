@@ -218,15 +218,130 @@
     } catch (err) {}
   }
 
-  function goHome() {
-    markOfflineSession();
-    global.location.assign(HOME_PATH);
+  function htmlLooksLikeAppShell(html) {
+    var body = String(html || '');
+    if (!body) return false;
+    if (body.indexOf('login-panel') !== -1 || body.indexOf('login-shell') !== -1) {
+      return false;
+    }
+    return body.indexOf('de-app-shell') !== -1 || body.indexOf('ep-workspace') !== -1;
   }
 
-  function showNotice(el, message) {
-    if (!el) return;
-    el.textContent = String(message || '');
-    el.hidden = !message;
+  function resolveAppCacheName() {
+    return new Promise(function (resolve) {
+      function fromKeys() {
+        if (!global.caches || !caches.keys) {
+          resolve('hbe-app-offline');
+          return;
+        }
+        caches.keys().then(function (keys) {
+          var best = '';
+          var bestN = -1;
+          (keys || []).forEach(function (key) {
+            var m = String(key).match(/^hbe-app-v(\d+)$/);
+            if (!m) return;
+            var n = parseInt(m[1], 10);
+            if (n > bestN) {
+              bestN = n;
+              best = key;
+            }
+          });
+          resolve(best || 'hbe-app-offline');
+        }).catch(function () {
+          resolve('hbe-app-offline');
+        });
+      }
+
+      var worker =
+        global.navigator &&
+        global.navigator.serviceWorker &&
+        global.navigator.serviceWorker.controller;
+      if (!worker || !worker.postMessage) {
+        fromKeys();
+        return;
+      }
+      var done = false;
+      var timer = setTimeout(function () {
+        if (done) return;
+        done = true;
+        fromKeys();
+      }, 800);
+      try {
+        var channel = new MessageChannel();
+        channel.port1.onmessage = function (event) {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          var ver = String((event.data && event.data.cacheVersion) || '').trim();
+          resolve(ver || 'hbe-app-offline');
+        };
+        worker.postMessage({ type: 'GET_CACHE_VERSION' }, [channel.port2]);
+      } catch (err) {
+        clearTimeout(timer);
+        fromKeys();
+      }
+    });
+  }
+
+  function putCachedHtml(path, html) {
+    if (!global.caches || !htmlLooksLikeAppShell(html)) return Promise.resolve(false);
+    var key = String(path || HOME_PATH);
+    return resolveAppCacheName()
+      .then(function (name) {
+        return caches.open(name || 'hbe-app-offline').then(function (cache) {
+          var res = new Response(html, {
+            status: 200,
+            statusText: 'OK',
+            headers: {
+              'Content-Type': 'text/html; charset=utf-8',
+              'X-Hbe-Offline-Shell': '1'
+            }
+          });
+          return Promise.all([
+            cache.put(key, res.clone()),
+            cache.put(new Request(key, { credentials: 'same-origin' }), res)
+          ]).then(function () {
+            return true;
+          });
+        });
+      })
+      .catch(function () {
+        return false;
+      });
+  }
+
+  function readCachedHtml(path) {
+    if (!global.caches || !caches.match) return Promise.resolve(null);
+    var key = String(path || '');
+    return caches
+      .match(key)
+      .then(function (res) {
+        if (res) return res;
+        return caches.match(new Request(key, { credentials: 'same-origin' }));
+      })
+      .then(function (res) {
+        if (!res) return null;
+        return res.text().then(function (html) {
+          if (!htmlLooksLikeAppShell(html)) return null;
+          return { path: key, html: html };
+        });
+      })
+      .catch(function () {
+        return null;
+      });
+  }
+
+  function findCachedAppShell() {
+    var paths = [HOME_PATH, '/point-of-sale/invoice', '/bar-point-of-sale/invoice'];
+    var i = 0;
+    function next() {
+      if (i >= paths.length) return Promise.resolve(null);
+      var path = paths[i++];
+      return readCachedHtml(path).then(function (found) {
+        return found || next();
+      });
+    }
+    return next();
   }
 
   function replaceDocument(html) {
@@ -240,6 +355,29 @@
     }
   }
 
+  /**
+   * Open cached workspace without relying on a network navigation
+   * (which shows Chrome's ERR_INTERNET_DISCONNECTED dinosaur).
+   */
+  function goHome() {
+    markOfflineSession();
+    return findCachedAppShell().then(function (found) {
+      if (found && found.html) {
+        try {
+          global.history.replaceState(null, '', found.path || HOME_PATH);
+        } catch (err) {}
+        if (replaceDocument(found.html)) return true;
+      }
+      return false;
+    });
+  }
+
+  function showNotice(el, message) {
+    if (!el) return;
+    el.textContent = String(message || '');
+    el.hidden = !message;
+  }
+
   function loginLooksSuccessful(res, html) {
     try {
       var url = String((res && res.url) || '');
@@ -248,13 +386,7 @@
         return true;
       }
     } catch (err) {}
-    var body = String(html || '');
-    if (!body) return false;
-    if (body.indexOf('login-panel') !== -1 || body.indexOf('login-shell') !== -1) {
-      return false;
-    }
-    if (body.indexOf('login-error') !== -1) return false;
-    return body.indexOf('de-app-shell') !== -1 || body.indexOf('ep-workspace') !== -1;
+    return htmlLooksLikeAppShell(html);
   }
 
   function tryServerLogin(form) {
@@ -283,10 +415,11 @@
       "You're offline. You can still sign in with your password on this device.";
     var MSG_OFFLINE_NEED_ONLINE =
       "You're offline. Sign in once while online on this device to enable offline access.";
-    var MSG_BAD =
-      'Invalid username or password.';
+    var MSG_BAD = 'Invalid username or password.';
     var MSG_NO_LOCAL =
       "Offline sign-in isn't set up on this device yet. Connect once, sign in, then try again offline.";
+    var MSG_NO_SHELL =
+      'Password OK, but no cached workspace is on this device yet. Connect, sign in, open Home once, then try offline again.';
 
     function syncBanner() {
       if (!notice) return;
@@ -295,7 +428,8 @@
           notice.textContent === MSG_OFFLINE_READY ||
           notice.textContent === MSG_OFFLINE_NEED_ONLINE ||
           notice.textContent === MSG_NO_LOCAL ||
-          notice.textContent === MSG_BAD
+          notice.textContent === MSG_BAD ||
+          notice.textContent === MSG_NO_SHELL
         ) {
           notice.hidden = true;
         }
@@ -321,12 +455,15 @@
 
       function unlockLocal() {
         return verifyCredentials(username, password).then(function (ok) {
-          if (ok) {
-            goHome();
-            return;
+          if (!ok) {
+            return hasAnyCredentials().then(function (has) {
+              showNotice(notice, has ? MSG_BAD : MSG_NO_LOCAL);
+              done();
+            });
           }
-          return hasAnyCredentials().then(function (has) {
-            showNotice(notice, has ? MSG_BAD : MSG_NO_LOCAL);
+          return goHome().then(function (opened) {
+            if (opened) return;
+            showNotice(notice, MSG_NO_SHELL);
             done();
           });
         });
@@ -353,7 +490,13 @@
                 if (u.indexOf('/change-password') !== -1) dest = '/change-password';
                 else if (u.indexOf('/home') !== -1) dest = '/home';
               } catch (err) {}
-              global.location.assign(dest);
+              var warm =
+                dest === HOME_PATH || dest.indexOf('/home') !== -1
+                  ? putCachedHtml(HOME_PATH, html)
+                  : Promise.resolve(false);
+              return warm.then(function () {
+                global.location.assign(dest);
+              });
             });
           }
           if (!replaceDocument(html)) {
@@ -411,6 +554,9 @@
     verifyCredentials: verifyCredentials,
     hasAnyCredentials: hasAnyCredentials,
     clearAllVerifiers: clearAllVerifiers,
+    putCachedHtml: putCachedHtml,
+    findCachedAppShell: findCachedAppShell,
+    goHome: goHome,
     bindLoginForm: bindLoginForm,
     bindLogoutClearing: bindLogoutClearing,
     isBrowserOffline: isBrowserOffline
