@@ -50,6 +50,8 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("/bar-point-of-sale/invoice", body)
         self.assertIn("offline_login.html", body)
         self.assertIn("offline_auth.js", body)
+        self.assertIn("'/login'", body)
+        self.assertIn("loginNav", body)
         self.assertIn("login_premium.css", body)
         self.assertIn("matchLoginShellOffline", body)
         self.assertIn("isLoginShellPath", body)
@@ -79,6 +81,15 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("de_pwa.js", html)
         self.assertNotIn("Reconnect to sign in.", html)
 
+    def test_get_login_serves_sign_in_page(self):
+        self.client.get("/logout", follow_redirects=False)
+        resp = self.client.get("/login")
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        resp.close()
+        self.assertIn("login-panel", html)
+        self.assertIn("offline_auth.js", html)
+
     def test_sign_in_page_registers_pwa_and_offline_guard(self):
         resp = self.client.get("/")
         self.assertEqual(resp.status_code, 200)
@@ -93,7 +104,7 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertNotIn("Reconnect to sign in.", html)
 
     def test_offline_auth_module_exposes_local_unlock(self):
-        resp = self.client.get("/static/offline_auth.js?v=3")
+        resp = self.client.get("/static/offline_auth.js?v=4")
         self.assertEqual(resp.status_code, 200)
         body = resp.get_data(as_text=True)
         resp.close()

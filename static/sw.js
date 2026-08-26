@@ -3,13 +3,14 @@
  * Cache Storage is a fallback for offline + brief disconnects.
  * Floor APIs are never cached — occupancy must not go stale.
  * POS menu GETs stay network-first; mutation APIs are not intercepted. */
-var CACHE_VERSION = 'hbe-app-v9';
+var CACHE_VERSION = 'hbe-app-v10';
 var PRECACHE = [
   '/home',
   '/point-of-sale/invoice',
   '/bar-point-of-sale/invoice',
+  '/login',
   '/static/offline_login.html',
-  '/static/offline_auth.js?v=3',
+  '/static/offline_auth.js?v=4',
   '/static/login_premium.css?v=12',
   '/static/login_hero.jpg?v=2',
   '/static/hbe_mark_sm.png',
@@ -155,6 +156,15 @@ self.addEventListener('fetch', function (event) {
     return;
   }
 
+  var loginNav = req.mode === 'navigate' && url.pathname === '/login';
+  var willIntercept = !!(
+    isFloorApi(url) ||
+    isApiGet(url) ||
+    isWorkspaceHtml(url, req) ||
+    loginNav ||
+    (url.pathname.indexOf('/static/') === 0 && isAppCachedStatic(url))
+  );
+
   // #region agent log
   try {
     var _authSkip = isAuthOrSystemPath(url);
@@ -169,17 +179,18 @@ self.addEventListener('fetch', function (event) {
         headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
         body: JSON.stringify({
           sessionId: '74a6ba',
-          runId: 'pre-fix',
-          hypothesisId: _authSkip ? 'A' : 'B',
+          runId: 'post-fix',
+          hypothesisId: loginNav ? 'A-fix' : _authSkip ? 'A' : 'B',
           location: 'sw.js:fetch',
           message: 'SW fetch decision',
           data: {
             path: url.pathname,
             mode: req.mode,
             authSkip: _authSkip,
+            loginNav: loginNav,
             workspaceHtml: _ws,
             cacheVersion: CACHE_VERSION,
-            willIntercept: !!(isFloorApi(url) || isApiGet(url) || _ws || (url.pathname.indexOf('/static/') === 0 && isAppCachedStatic(url)))
+            willIntercept: willIntercept
           },
           timestamp: Date.now()
         })
@@ -196,6 +207,12 @@ self.addEventListener('fetch', function (event) {
 
   if (isApiGet(url)) {
     event.respondWith(networkFirst(req));
+    return;
+  }
+
+  /* GET /login navigate: offline login shell (POST /login stays network-only above). */
+  if (loginNav) {
+    event.respondWith(networkFirstHtml(req));
     return;
   }
 
@@ -258,6 +275,7 @@ function putHtmlCache(cache, req, res) {
     /* Bare path fallback for navigate without query (POS + home + sign-in). */
     if (
       u.pathname === '/' ||
+      u.pathname === '/login' ||
       u.pathname === '/home' ||
       u.pathname === '/point-of-sale/invoice' ||
       u.pathname === '/bar-point-of-sale/invoice'

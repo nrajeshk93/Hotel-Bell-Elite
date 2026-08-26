@@ -659,6 +659,7 @@ _SETTINGS_ENDPOINTS = {
 _PUBLIC_ENDPOINTS = {
     "index",
     "login",
+    "login_get",
     "login_captcha",
     "login_resend_unlock",
     "unlock_account",

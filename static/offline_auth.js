@@ -15,6 +15,60 @@
   var SESSION_FLAG = 'hbe_offline_session';
 
   var dbPromise = null;
+  var _dbgQueue = [];
+
+  // #region agent log
+  function dbgLog(hypothesisId, location, message, data) {
+    var payload = {
+      sessionId: '74a6ba',
+      runId: 'post-fix',
+      hypothesisId: hypothesisId,
+      location: location,
+      message: message,
+      data: data || {},
+      timestamp: Date.now()
+    };
+    function send() {
+      return fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
+        body: JSON.stringify(payload)
+      }).then(function () {
+        return true;
+      }).catch(function () {
+        return false;
+      });
+    }
+    send().then(function (ok) {
+      if (ok) return;
+      _dbgQueue.push(payload);
+      try {
+        global.sessionStorage.setItem('hbe_dbg_74a6ba', JSON.stringify(_dbgQueue.slice(-20)));
+      } catch (err) {}
+    });
+  }
+  function dbgFlush() {
+    var queued = _dbgQueue.slice();
+    try {
+      var raw = global.sessionStorage.getItem('hbe_dbg_74a6ba');
+      if (raw) queued = queued.concat(JSON.parse(raw) || []);
+    } catch (err) {}
+    _dbgQueue = [];
+    try {
+      global.sessionStorage.removeItem('hbe_dbg_74a6ba');
+    } catch (err2) {}
+    queued.forEach(function (payload) {
+      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '74a6ba' },
+        body: JSON.stringify(payload)
+      }).catch(function () {});
+    });
+  }
+  if (global.addEventListener) {
+    global.addEventListener('online', dbgFlush);
+  }
+  // #endregion
 
   function openDb() {
     if (dbPromise) return dbPromise;
@@ -362,11 +416,18 @@
   function goHome() {
     markOfflineSession();
     // #region agent log
-    fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'74a6ba'},body:JSON.stringify({sessionId:'74a6ba',runId:'pre-fix',hypothesisId:'C',location:'offline_auth.js:goHome:entry',message:'goHome called',data:{online:typeof navigator!=='undefined'?navigator.onLine:null,hasSW:!!(global.navigator&&global.navigator.serviceWorker&&global.navigator.serviceWorker.controller)},timestamp:Date.now()})}).catch(function(){});
+    dbgLog('C', 'offline_auth.js:goHome:entry', 'goHome called', {
+      online: typeof navigator !== 'undefined' ? navigator.onLine : null,
+      hasSW: !!(global.navigator && global.navigator.serviceWorker && global.navigator.serviceWorker.controller)
+    });
     // #endregion
     return findCachedAppShell().then(function (found) {
       // #region agent log
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'74a6ba'},body:JSON.stringify({sessionId:'74a6ba',runId:'pre-fix',hypothesisId:'C',location:'offline_auth.js:goHome:result',message:'cached shell lookup',data:{found:!!(found&&found.html),path:found&&found.path||null,htmlLen:found&&found.html?found.html.length:0},timestamp:Date.now()})}).catch(function(){});
+      dbgLog('C', 'offline_auth.js:goHome:result', 'cached shell lookup', {
+        found: !!(found && found.html),
+        path: (found && found.path) || null,
+        htmlLen: found && found.html ? found.html.length : 0
+      });
       // #endregion
       if (found && found.html) {
         try {
@@ -455,7 +516,12 @@
       var submitBtn = form.querySelector('button[type="submit"], .login-btn');
       if (submitBtn) submitBtn.disabled = true;
       // #region agent log
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'74a6ba'},body:JSON.stringify({sessionId:'74a6ba',runId:'pre-fix',hypothesisId:'D',location:'offline_auth.js:submit',message:'login submit',data:{offline:isBrowserOffline(),path:String(global.location&&global.location.pathname||''),hasUser:!!String(username||'').trim(),swCtrl:!!(global.navigator&&global.navigator.serviceWorker&&global.navigator.serviceWorker.controller)},timestamp:Date.now()})}).catch(function(){});
+      dbgLog('D', 'offline_auth.js:submit', 'login submit', {
+        offline: isBrowserOffline(),
+        path: String((global.location && global.location.pathname) || ''),
+        hasUser: !!String(username || '').trim(),
+        swCtrl: !!(global.navigator && global.navigator.serviceWorker && global.navigator.serviceWorker.controller)
+      });
       // #endregion
 
       function done() {
@@ -465,7 +531,7 @@
       function unlockLocal() {
         return verifyCredentials(username, password).then(function (ok) {
           // #region agent log
-          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'74a6ba'},body:JSON.stringify({sessionId:'74a6ba',runId:'pre-fix',hypothesisId:'C',location:'offline_auth.js:unlockLocal',message:'local verify result',data:{ok:!!ok},timestamp:Date.now()})}).catch(function(){});
+          dbgLog('C', 'offline_auth.js:unlockLocal', 'local verify result', { ok: !!ok });
           // #endregion
           if (!ok) {
             return hasAnyCredentials().then(function (has) {
@@ -475,7 +541,8 @@
           }
           return goHome().then(function (opened) {
             // #region agent log
-            fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'74a6ba'},body:JSON.stringify({sessionId:'74a6ba',runId:'pre-fix',hypothesisId:'C',location:'offline_auth.js:unlockLocal:nav',message:'goHome opened',data:{opened:!!opened},timestamp:Date.now()})}).catch(function(){});
+            dbgLog('C', 'offline_auth.js:unlockLocal:nav', 'goHome opened', { opened: !!opened });
+            dbgFlush();
             // #endregion
             if (opened) return;
             showNotice(notice, MSG_NO_SHELL);

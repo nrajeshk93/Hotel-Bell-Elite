@@ -4915,6 +4915,15 @@ def _locked_account_message(send_result=None):
     )
 
 
+@app.route("/login", methods=["GET"])
+def login_get():
+    """Same Sign In UI as `/` — needed so `/login` works online and via the SW offline shell."""
+    if get_current_user():
+        return redirect(url_for("home"))
+    notice = session.pop("login_notice", "")
+    return _login_page(notice=notice)
+
+
 @app.route("/login", methods=["POST"])
 def login():
     username = (request.form.get("username") or "").strip()
