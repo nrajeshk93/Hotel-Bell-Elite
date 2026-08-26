@@ -1,2 +1,0 @@
-{"sessionId":"74a6ba","runId":"pre-fix","hypothesisId":"B","location":"sw.js:fetch","message":"SW fetch decision","data":{"path":"/home","mode":"navigate","authSkip":false,"workspaceHtml":true,"cacheVersion":"hbe-app-v9","willIntercept":true},"timestamp":1787707015645}
-{"sessionId":"74a6ba","runId":"login-dino","hypothesisId":"H1","location":"offline_auth.js:boot","message":"offline_auth loaded","data":{"path":"/home","online":true,"swCtrl":true,"readyState":"loading"},"timestamp":1787707015751}

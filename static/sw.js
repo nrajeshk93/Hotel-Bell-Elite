@@ -3,9 +3,30 @@
  * Cache Storage is a fallback for offline + brief disconnects.
  * Floor APIs are never cached — occupancy must not go stale.
  * POS menu GETs stay network-first; mutation APIs are not intercepted. */
-var CACHE_VERSION = 'hbe-app-v17';
-var OFFLINE_LOGIN_URL = '/static/offline_login.html?v=9';
+var CACHE_VERSION = 'hbe-app-v18';
+var OFFLINE_LOGIN_URL = '/static/offline_login.html?v=10';
 var OFFLINE_AUTH_URL = '/static/offline_auth.js?v=11';
+var CRITICAL_STATIC_ALIASES = {
+  '/static/offline_auth.js': [
+    OFFLINE_AUTH_URL,
+    '/static/offline_auth.js?v=11',
+    '/static/offline_auth.js?v=10',
+    '/static/offline_auth.js?v=9',
+    '/static/offline_auth.js?v=8',
+    '/static/offline_auth.js'
+  ],
+  '/static/de_pwa.js': [
+    '/static/de_pwa.js?v=14',
+    '/static/de_pwa.js?v=13',
+    '/static/de_pwa.js'
+  ],
+  '/static/offline_login.html': [
+    OFFLINE_LOGIN_URL,
+    '/static/offline_login.html?v=10',
+    '/static/offline_login.html?v=9',
+    '/static/offline_login.html'
+  ]
+};
 var PRECACHE = [
   '/home',
   '/point-of-sale/invoice',
@@ -64,6 +85,28 @@ self.addEventListener('install', function (event) {
         return Promise.all(
           PRECACHE.map(function (url) {
             return cache.add(url).catch(function () {});
+          })
+        );
+      }).then(function () {
+        /* Stale login shells often request older ?v= query strings.
+           Mirror critical files under every known alias so offline Sign In works. */
+        return Promise.all(
+          Object.keys(CRITICAL_STATIC_ALIASES).map(function (pathOnly) {
+            var aliases = CRITICAL_STATIC_ALIASES[pathOnly];
+            function loadFirst(i) {
+              if (i >= aliases.length) return Promise.resolve(null);
+              return cache.match(aliases[i]).then(function (hit) {
+                return hit || loadFirst(i + 1);
+              });
+            }
+            return loadFirst(0).then(function (res) {
+              if (!res) return;
+              return Promise.all(
+                aliases.map(function (alias) {
+                  return cache.put(alias, res.clone()).catch(function () {});
+                })
+              );
+            });
           })
         );
       });
@@ -618,10 +661,12 @@ function networkFirstHtml(req) {
 
 function matchStaticCache(req) {
   var pathKey = '';
+  var pathOnly = '';
   var fullUrl = '';
   try {
     var u = new URL(req.url);
     pathKey = u.pathname + (u.search || '');
+    pathOnly = u.pathname;
     fullUrl = u.href;
   } catch (e) {}
   return caches.match(req).then(function (hit) {
@@ -629,10 +674,24 @@ function matchStaticCache(req) {
     if (!pathKey) return { hit: null, via: 'none' };
     return caches.match(pathKey).then(function (byPath) {
       if (byPath) return { hit: byPath, via: 'pathKey' };
-      if (!fullUrl || fullUrl === pathKey) return { hit: null, via: 'none' };
-      return caches.match(fullUrl).then(function (byHref) {
-        return { hit: byHref || null, via: byHref ? 'href' : 'none' };
-      });
+      function tryAliases() {
+        var aliases = CRITICAL_STATIC_ALIASES[pathOnly];
+        if (!aliases || !aliases.length) {
+          if (!fullUrl || fullUrl === pathKey) return Promise.resolve({ hit: null, via: 'none' });
+          return caches.match(fullUrl).then(function (byHref) {
+            return { hit: byHref || null, via: byHref ? 'href' : 'none' };
+          });
+        }
+        function next(i) {
+          if (i >= aliases.length) return Promise.resolve({ hit: null, via: 'none' });
+          return caches.match(aliases[i]).then(function (aliasHit) {
+            if (aliasHit) return { hit: aliasHit, via: 'alias:' + aliases[i] };
+            return next(i + 1);
+          });
+        }
+        return next(0);
+      }
+      return tryAliases();
     });
   });
 }

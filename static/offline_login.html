@@ -97,7 +97,7 @@
     /* Escape hatch: stale SW shells still showing Reconnect must not block Sign In. */
     var notice = document.getElementById('login-offline-notice');
     if (notice && /Reconnect to sign in/i.test(notice.textContent || '')) {
-      window.location.replace('/static/offline_login.html?v=9');
+      window.location.replace('/static/offline_login.html?v=10');
       return;
     }
     var eye = document.getElementById('login-toggle-password');
@@ -118,15 +118,31 @@
       form.addEventListener('submit', function (event) {
         event.preventDefault();
         event.stopPropagation();
-        if (window.HbeOfflineAuth && typeof window.HbeOfflineAuth.handleLoginSubmit === 'function') {
-          window.HbeOfflineAuth.handleLoginSubmit(form, { noticeEl: notice });
-          return;
+        function runSubmit() {
+          if (window.HbeOfflineAuth && typeof window.HbeOfflineAuth.handleLoginSubmit === 'function') {
+            window.HbeOfflineAuth.handleLoginSubmit(form, { noticeEl: notice });
+            return true;
+          }
+          return false;
         }
-        if (notice) {
-          notice.hidden = false;
-          notice.textContent =
-            "Sign-in script didn't load. Reconnect once, refresh this page, then try offline again.";
-        }
+        if (runSubmit()) return;
+        var s = document.createElement('script');
+        s.src = '/static/offline_auth.js?v=11';
+        s.onload = function () {
+          if (!runSubmit() && notice) {
+            notice.hidden = false;
+            notice.textContent =
+              "Sign-in script didn't load. Reconnect once, refresh this page, then try offline again.";
+          }
+        };
+        s.onerror = function () {
+          if (notice) {
+            notice.hidden = false;
+            notice.textContent =
+              "Sign-in script didn't load. Reconnect once, refresh this page, then try offline again.";
+          }
+        };
+        document.head.appendChild(s);
       }, true);
     }
     if (window.HbeOfflineAuth && form) {

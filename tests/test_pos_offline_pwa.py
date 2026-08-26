@@ -64,6 +64,8 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("responseLooksLikeModernOfflineLogin", body)
         self.assertIn("hbe_home_premium.css", body)
         self.assertIn("matchStaticCache", body)
+        self.assertIn("CRITICAL_STATIC_ALIASES", body)
+        self.assertIn("offline_login.html?v=10", body)
         self.assertIn("hbe_logo_sm.png", body)
         self.assertIn("isLoginShellPath", body)
         self.assertIn("offlineNavigateFallback", body)
@@ -90,7 +92,7 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("You can still sign in with your password on this device.", html)
         self.assertIn('action="/login"', html)
         self.assertIn("de_pwa.js", html)
-        self.assertIn("offline_login.html?v=9", html)
+        self.assertIn("offline_login.html?v=10", html)
         self.assertNotIn("Reconnect to sign in.", html)
 
     def test_get_login_serves_sign_in_page(self):
