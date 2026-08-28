@@ -177,6 +177,21 @@ def preview_logout_route():
     return _json(ps.preview_logout(token))
 
 
+@bp.route("/preview-api/health", methods=["GET"])
+def preview_health_route():
+    ps = _preview_serve()
+    _sync_base()
+    version = getattr(ps, "MOBILE_PREVIEW_API_VERSION", "unknown")
+    return _json(
+        {
+            "ok": True,
+            "flask_base": app_base_url().rstrip("/"),
+            "api_version": version,
+            "approvals_mode": "direct_db",
+        }
+    )
+
+
 @bp.route("/preview-api/approvals", methods=["GET"])
 def preview_approvals_route():
     denied = _deny("approvals")
@@ -385,8 +400,11 @@ def preview_approve_route():
         return _json(denied, 403)
     ps = _preview_serve()
     payload = request.get_json(silent=True) or {}
-    status, data = ps.approve_expense(payload)
-    return _json(data, status or 200)
+    try:
+        status, data = ps.approve_expense(payload)
+        return _json(data, status or 200)
+    except Exception as exc:  # noqa: BLE001
+        return _json({"ok": False, "error": str(exc)}, 500)
 
 
 @bp.route("/preview-api/approvals/revert", methods=["POST"])
@@ -396,8 +414,11 @@ def preview_revert_route():
         return _json(denied, 403)
     ps = _preview_serve()
     payload = request.get_json(silent=True) or {}
-    status, data = ps.revert_verification(payload)
-    return _json(data, status or 200)
+    try:
+        status, data = ps.revert_verification(payload)
+        return _json(data, status or 200)
+    except Exception as exc:  # noqa: BLE001
+        return _json({"ok": False, "error": str(exc)}, 500)
 
 
 @bp.route("/preview-api/indents/decide", methods=["POST"])

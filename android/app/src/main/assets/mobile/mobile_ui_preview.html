@@ -4774,9 +4774,11 @@
         lower.includes('errno 61') ||
         lower.includes('urlopen error') ||
         lower.includes('failed to fetch') ||
-        lower.includes('networkerror')
+        lower.includes('networkerror') ||
+        lower.includes('server offline') ||
+        lower.includes('start flask')
       ) {
-        return 'Unable to reach server. Check your connection and try again.';
+        return 'Unable to load dashboard. Pull down to refresh.';
       }
       if (lower.includes('timed out') || lower.includes('timeout')) {
         return 'Server timed out';

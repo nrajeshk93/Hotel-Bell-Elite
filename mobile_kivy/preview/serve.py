@@ -610,6 +610,93 @@ def _require_preview_access(access_key: str) -> Optional[dict[str, Any]]:
     return {"ok": False, "error": "You do not have access to this module."}
 
 
+def _flask_request_inprocess(
+    method: str,
+    path: str,
+    body: Optional[dict[str, Any]] = None,
+    user_id: Optional[int] = None,
+) -> Optional[tuple[int, dict[str, Any]]]:
+    """Run an authenticated Flask route in-process (avoids HTTP loopback on AWS)."""
+    try:
+        import csrf_protect
+        from app import AUTH_USER_SESSION_KEY, app as flask_app
+    except Exception:
+        return None
+
+    try:
+        uid = int(user_id or _effective_preview_user_id())
+    except Exception:
+        return None
+
+    route = path if path.startswith("/") else f"/{path}"
+    csrf = secrets.token_urlsafe(32)
+    headers = {
+        "Accept": "application/json, text/html;q=0.9",
+        "X-Requested-With": "XMLHttpRequest",
+        "X-CSRF-Token": csrf,
+        "X-CSRFToken": csrf,
+    }
+
+    try:
+        with flask_app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess[AUTH_USER_SESSION_KEY] = uid
+                sess[csrf_protect.CSRF_SESSION_KEY] = csrf
+            if method.upper() == "POST":
+                resp = client.post(route, json=body or {}, headers=headers)
+            elif method.upper() == "GET":
+                resp = client.get(route, headers=headers)
+            else:
+                return None
+            payload = resp.get_json(silent=True)
+            if not isinstance(payload, dict):
+                text = (resp.get_data(as_text=True) or "")[:300]
+                payload = {
+                    "ok": resp.status_code < 400,
+                    "error": text or f"HTTP {resp.status_code}",
+                }
+            return resp.status_code, payload
+    except Exception:
+        return None
+
+
+def _flask_get_inprocess(
+    path: str,
+    user_id: Optional[int] = None,
+) -> Optional[tuple[int, bytes, str]]:
+    """In-process authenticated GET (HTML or JSON)."""
+    try:
+        import csrf_protect
+        from app import AUTH_USER_SESSION_KEY, app as flask_app
+    except Exception:
+        return None
+
+    try:
+        uid = int(user_id or _effective_preview_user_id())
+    except Exception:
+        return None
+
+    route = path if path.startswith("/") else f"/{path}"
+    csrf = secrets.token_urlsafe(32)
+    headers = {
+        "Accept": "application/json, text/html;q=0.9",
+        "X-Requested-With": "XMLHttpRequest",
+        "X-CSRF-Token": csrf,
+        "X-CSRFToken": csrf,
+    }
+
+    try:
+        with flask_app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess[AUTH_USER_SESSION_KEY] = uid
+                sess[csrf_protect.CSRF_SESSION_KEY] = csrf
+            resp = client.get(route, headers=headers)
+            ctype = resp.content_type or "text/html"
+            return resp.status_code, resp.data, ctype
+    except Exception:
+        return None
+
+
 class FlaskLocalClient:
     """HTTP client to the running local Flask app with a forged session cookie."""
 
@@ -690,10 +777,16 @@ class FlaskLocalClient:
 
     def get(self, path: str) -> tuple[int, bytes, str]:
         """Authenticated GET against local Flask (HTML or JSON)."""
+        inprocess = _flask_get_inprocess(path, self._user_id)
+        if inprocess is not None:
+            return inprocess
         self._ensure()
         return self._request("GET", path)
 
     def post_json(self, path: str, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        inprocess = _flask_request_inprocess("POST", path, body, self._user_id)
+        if inprocess is not None:
+            return inprocess
         self._ensure()
         status, raw, _ctype = self._request("POST", path, body)
         try:
@@ -753,14 +846,62 @@ def _parse_md_dashboard_data(page: str) -> Optional[dict[str, Any]]:
     return data if isinstance(data, dict) else None
 
 
+def _fetch_main_dashboard_inprocess(period: str, location: str) -> Optional[dict[str, Any]]:
+    """Build dashboard JSON inside the running Flask app (no HTTP self-proxy)."""
+    try:
+        from werkzeug.datastructures import MultiDict
+
+        from app import (
+            DASHBOARD_FILTER_LOCATION_ALL,
+            _build_main_dashboard_payload,
+            _resolve_main_dashboard_filters,
+            get_db,
+        )
+        from mailer import app_base_url
+    except Exception:
+        return None
+
+    args = MultiDict([("period", period), ("location", location)])
+    filters = _resolve_main_dashboard_filters(args)
+    date_from = filters.pop("_date_from")
+    date_to = filters.pop("_date_to")
+    selected_location = filters["selected_location"]
+    location_filter = (
+        None if selected_location == DASHBOARD_FILTER_LOCATION_ALL else selected_location
+    )
+
+    conn = get_db()
+    try:
+        payload = _build_main_dashboard_payload(
+            conn, date_from, date_to, location=location_filter
+        )
+    finally:
+        conn.close()
+
+    base = app_base_url().rstrip("/")
+    return {
+        "ok": True,
+        "period": period,
+        "location": location,
+        "flask_base": base,
+        "webview_url": f"{base}/main-dashboard?period={period}&location={location}",
+        "dashboard": payload.get("dashboard") or {},
+    }
+
+
 def fetch_main_dashboard(period: str = "today", location: str = "All") -> dict[str, Any]:
-    """Proxy GET /main-dashboard and parse #md-dashboard-data JSON embed."""
+    """Load dashboard KPIs for mobile preview (in-process on production, HTTP locally)."""
     period_key = (period or "today").strip().lower()
     if period_key not in DASHBOARD_PERIODS:
         period_key = "today"
     loc = (location or "All").strip() or "All"
     if loc not in DASHBOARD_LOCATIONS:
         loc = "All"
+
+    inprocess = _fetch_main_dashboard_inprocess(period_key, loc)
+    if inprocess is not None:
+        return inprocess
+
     path = f"/main-dashboard?period={period_key}&location={loc}"
     try:
         status, raw, _ctype = _flask.get(path)
@@ -1137,6 +1278,26 @@ def fetch_notifications() -> dict[str, Any]:
     }
 
 
+MOBILE_PREVIEW_API_VERSION = "2026-08-28-direct-approvals"
+
+
+def _approval_actor():
+    user_id = _request_preview_user_id()
+    if not user_id:
+        return None, (401, {"ok": False, "error": "Sign in required."})
+    user = _load_user_by_id(int(user_id))
+    if not user:
+        return None, (401, {"ok": False, "error": "Sign in required."})
+    from workspace_access import user_can_approve_transactions
+
+    if not user_can_approve_transactions(user):
+        return None, (
+            403,
+            {"ok": False, "error": "You do not have Approval access to verify purchases."},
+        )
+    return user, None
+
+
 def approve_expense(payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     try:
         supplier_id = int(payload.get("supplier_id") or 0)
@@ -1146,14 +1307,58 @@ def approve_expense(payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         return 400, {"ok": False, "error": "supplier_id, expense_id, and amount are required"}
     if not supplier_id or not expense_id or amount <= 0:
         return 400, {"ok": False, "error": "supplier_id, expense_id, and amount are required"}
+
+    user, denied = _approval_actor()
+    if denied:
+        return denied
+
     body = {
         "supplier_id": supplier_id,
         "allocations": [{"expense_id": expense_id, "amount": amount}],
-        "notes": str(payload.get("notes") or "Approved from mobile preview"),
+        "notes": str(payload.get("notes") or "Approved from mobile app"),
     }
-    status, data = _flask.post_json("/accounts/purchase-verification/create", body)
-    data.setdefault("flask_base", FLASK_BASE)
-    return status, data
+
+    try:
+        from db import get_db
+        from app import _purchase_verification_detail, _validate_purchase_verification_payload
+    except Exception as exc:  # noqa: BLE001
+        return 502, {"ok": False, "error": f"Approval service unavailable: {exc}"}
+
+    conn = get_db()
+    try:
+        validated, errors = _validate_purchase_verification_payload(conn, body, user=user)
+        if errors:
+            return 400, {"ok": False, "error": errors[0], "errors": errors}
+        cursor = conn.execute(
+            """INSERT INTO purchase_verifications
+               (company, supplier_id, verification_date, verification_method, verification_account,
+                transaction_id, total_amount, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                validated["company"],
+                validated["supplier_id"],
+                validated["verification_date"],
+                validated["verification_method"],
+                validated["verification_account"],
+                validated["transaction_id"],
+                validated["total_amount"],
+                validated["notes"],
+            ),
+        )
+        verification_id = cursor.lastrowid
+        for allocation in validated["allocations"]:
+            conn.execute(
+                """INSERT INTO purchase_verification_allocations
+                   (purchase_verification_id, expense_id, amount)
+                   VALUES (?, ?, ?)""",
+                (verification_id, allocation["expense_id"], allocation["amount"]),
+            )
+        conn.commit()
+        verification = _purchase_verification_detail(conn, verification_id)
+    finally:
+        conn.close()
+
+    return 200, {"ok": True, "payment": verification, "flask_base": FLASK_BASE}
 
 
 def revert_verification(payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
@@ -1163,12 +1368,40 @@ def revert_verification(payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         payment_id = 0
     if not payment_id:
         return 400, {"ok": False, "error": "payment_id is required"}
-    status, data = _flask.post_json(
-        "/accounts/purchase-verification/delete",
-        {"payment_id": payment_id},
-    )
-    data.setdefault("flask_base", FLASK_BASE)
-    return status, data
+
+    user, denied = _approval_actor()
+    if denied:
+        status, data = denied
+        if status == 403:
+            data = {
+                "ok": False,
+                "error": "You do not have Approval access to revert verifications.",
+            }
+        return status, data
+
+    try:
+        from db import get_db
+    except Exception as exc:  # noqa: BLE001
+        return 502, {"ok": False, "error": f"Approval service unavailable: {exc}"}
+
+    conn = get_db()
+    try:
+        verification = conn.execute(
+            "SELECT id FROM purchase_verifications WHERE id = ?",
+            (payment_id,),
+        ).fetchone()
+        if not verification:
+            return 404, {"ok": False, "error": "Verification was not found."}
+        conn.execute(
+            "DELETE FROM purchase_verification_allocations WHERE purchase_verification_id = ?",
+            (payment_id,),
+        )
+        conn.execute("DELETE FROM purchase_verifications WHERE id = ?", (payment_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return 200, {"ok": True, "flask_base": FLASK_BASE}
 
 
 def fetch_expense_detail(expense_id: int) -> dict[str, Any]:

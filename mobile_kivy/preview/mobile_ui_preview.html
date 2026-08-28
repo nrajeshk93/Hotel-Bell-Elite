@@ -4123,9 +4123,10 @@
         body: JSON.stringify(body),
       });
       let data = null;
-      try { data = await res.json(); } catch (_) { data = null; }
+      const rawText = await res.text();
+      try { data = JSON.parse(rawText); } catch (_) { data = null; }
       if (!res.ok || !data || data.ok === false) {
-        throw new Error((data && data.error) || ('HTTP ' + res.status));
+        throw new Error((data && data.error) || (rawText && rawText.length < 200 ? rawText : '') || ('HTTP ' + res.status));
       }
       return data;
     }
@@ -4774,9 +4775,11 @@
         lower.includes('errno 61') ||
         lower.includes('urlopen error') ||
         lower.includes('failed to fetch') ||
-        lower.includes('networkerror')
+        lower.includes('networkerror') ||
+        lower.includes('server offline') ||
+        lower.includes('start flask')
       ) {
-        return 'Unable to reach server. Check your connection and try again.';
+        return 'Unable to load dashboard. Pull down to refresh.';
       }
       if (lower.includes('timed out') || lower.includes('timeout')) {
         return 'Server timed out';
