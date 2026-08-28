@@ -11,7 +11,9 @@ from hbe_mobile.api.dashboard import (
     snapshot_from_dashboard_data,
 )
 from hbe_mobile.api.pos import build_invoice_payload
+from hbe_mobile.api import payroll as payroll_api
 from hbe_mobile.models import InvoiceLine, Product
+from hbe_mobile.utils.nav import NAV_ITEMS
 
 
 class ExtractHelpersTests(unittest.TestCase):
@@ -321,6 +323,160 @@ class DashboardFetchTests(unittest.TestCase):
     def test_format_inr_indian_grouping(self):
         self.assertEqual(format_inr(1234567), "₹12,34,567")
         self.assertEqual(format_inr(1234.5, decimals=2), "₹1,234.50")
+
+
+
+
+class _FakeIndentClient:
+    def __init__(self):
+        self.calls: list[tuple[str, str, object]] = []
+        self.get_response: dict = {
+            "ok": True,
+            "outlet": "restaurant",
+            "categories": [
+                {
+                    "id": 1,
+                    "name": "Vegetable",
+                    "products": [
+                        {
+                            "id": 9,
+                            "name": "Onion",
+                            "default_unit": "kg",
+                            "outlet": "both",
+                            "approximate_price": 40,
+                            "approximate_price_display": "40",
+                            "variants": [
+                                {
+                                    "label": "Bag 10 kg",
+                                    "qty_in_base": 10,
+                                    "qty_in_base_display": "10",
+                                    "approximate_price": 380,
+                                    "approximate_price_display": "380",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+        self.post_response: dict = {"ok": True, "indent_id": 3, "indent_no": "IND/RES/26-27/1", "status": "pending"}
+
+    def get_json(self, path, *, params=None):
+        self.calls.append(("GET", path, params))
+        return dict(self.get_response)
+
+    def post_json(self, path, body):
+        self.calls.append(("POST", path, body))
+        return dict(self.post_response)
+
+
+class IndentRequestApiHelperTests(unittest.TestCase):
+    def test_flatten_validate_totals_and_submit_payload(self):
+        from hbe_mobile.api import indent_request as indent_api
+
+        client = _FakeIndentClient()
+        data = indent_api.fetch_catalog(client, "restaurant")
+        self.assertTrue(data.get("ok"))
+        self.assertEqual(client.calls[0][:2], ("GET", "/stores/api/indent-catalog"))
+        self.assertEqual(client.calls[0][2], {"outlet": "restaurant"})
+
+        products = indent_api.flatten_catalog(data)
+        self.assertEqual(len(products), 1)
+        self.assertEqual(products[0]["name"], "Onion")
+        self.assertEqual(products[0]["category_name"], "Vegetable")
+        self.assertEqual(len(products[0]["variants"]), 1)
+
+        self.assertEqual(indent_api.line_total(2, 12.5), 25.0)
+        self.assertEqual(indent_api.line_total("3", "10"), 30.0)
+        self.assertEqual(indent_api.line_total(None, 10), 0.0)
+
+        self.assertEqual(indent_api.validate_lines([]), "Add at least one item with a quantity.")
+        self.assertEqual(
+            indent_api.validate_lines([{"item_name": "", "quantity": 1, "approximate_price": 10}]),
+            "Item is required.",
+        )
+        self.assertEqual(
+            indent_api.validate_lines([{"item_name": "Onion", "quantity": 0, "approximate_price": 10}]),
+            "Enter a quantity greater than 0 for each item.",
+        )
+        self.assertEqual(
+            indent_api.validate_lines([{"item_name": "Onion", "quantity": 1, "approximate_price": 0}]),
+            "Enter an approximate price greater than 0 for each item.",
+        )
+        self.assertIsNone(
+            indent_api.validate_lines([{"item_name": "Onion", "quantity": 1, "approximate_price": 10}])
+        )
+
+        lines = [{
+            "item_name": "Onion",
+            "quantity": 2,
+            "unit": "kg",
+            "approximate_price": 40,
+            "pack_label": "Bag 10 kg",
+            "pack_qty_in_base": 10,
+        }]
+        result = indent_api.submit_indent(
+            client,
+            outlet="restaurant",
+            notes="need stock",
+            action="submit",
+            lines=lines,
+        )
+        self.assertTrue(result.get("ok"))
+        method, path, body = client.calls[1]
+        self.assertEqual(method, "POST")
+        self.assertEqual(path, "/stores/api/indent")
+        self.assertEqual(body["outlet"], "restaurant")
+        self.assertEqual(body["action"], "submit")
+        self.assertEqual(body["notes"], "need stock")
+        self.assertEqual(body["lines"][0]["item_name"], "Onion")
+        self.assertEqual(body["lines"][0]["pack_label"], "Bag 10 kg")
+        self.assertEqual(body["lines"][0]["pack_qty_in_base"], 10)
+
+        indent_api.submit_indent(
+            client,
+            outlet="bar",
+            notes="",
+            action="save",
+            lines=[{"item_name": "Onion", "quantity": 1, "unit": "kg", "approximate_price": 10}],
+        )
+        self.assertEqual(client.calls[2][2]["action"], "save")
+
+
+class PayrollHelperTests(unittest.TestCase):
+    def test_validate_employee_and_credit_and_tip(self):
+        self.assertEqual(payroll_api.validate_employee_payload("", "9876543210"), "Employee Name is required.")
+        self.assertEqual(payroll_api.validate_employee_payload("Anita", "123"), "Mobile number must be exactly 10 digits.")
+        self.assertIsNone(payroll_api.validate_employee_payload("Anita", "9876543210"))
+        self.assertIsNone(payroll_api.validate_attendance_status("present"))
+        self.assertIsNone(payroll_api.validate_attendance_status(""))
+        self.assertIsNotNone(payroll_api.validate_attendance_status("late"))
+        self.assertIn("Transaction ID", payroll_api.validate_credit_payload(1, 50, "credit", "bank_transfer", "") or "")
+        self.assertIsNone(payroll_api.validate_credit_payload(1, 50, "credit", "bank_transfer", "UTR1"))
+        self.assertIsNone(payroll_api.validate_tip_payload(3, 20, "Hotel"))
+        self.assertIsNotNone(payroll_api.validate_tip_payload(0, 20, "Hotel"))
+
+    def test_fetch_helpers_use_mobile_paths(self):
+        client = _FakeIndentClient()
+        client.get_response = {"ok": True, "employees": [], "year": 2026, "month": 8}
+        payroll_api.fetch_employees(client, q="an", status="active")
+        self.assertEqual(client.calls[0][1], "/api/mobile/payroll/employees")
+        client.post_response = {"ok": True}
+        payroll_api.mark_attendance(client, 9, "2026-08-28", "present")
+        self.assertEqual(client.calls[-1][1], "/api/mobile/payroll/attendance/mark")
+        payroll_api.add_credit(client, {
+            "employee_id": 9, "date": "2026-08-28", "amount": 100,
+            "transaction_type": "credit", "payment_type": "cash",
+        })
+        self.assertEqual(client.calls[-1][1], "/api/mobile/payroll/credits")
+        payroll_api.add_tip(client, {"employee_id": 9, "amount": 10, "location": "Hotel", "date": "2026-08-28"})
+        self.assertEqual(client.calls[-1][1], "/api/mobile/payroll/tips")
+
+    def test_nav_includes_payroll_group(self):
+        keys = {item["access_key"] for item in NAV_ITEMS}
+        self.assertTrue({"payroll_employee", "payroll_attendance", "payroll_credit", "payroll_tips"} <= keys)
+        groups = {item["group"] for item in NAV_ITEMS if item.get("access_key", "").startswith("payroll_")}
+        self.assertEqual(groups, {"Employee Payroll"})
 
 
 if __name__ == "__main__":

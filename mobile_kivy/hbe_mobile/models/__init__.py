@@ -201,3 +201,24 @@ class DashboardSnapshot:
     payment_mix: dict[str, Any] = field(default_factory=dict)
     top_selling_items: list[dict[str, Any]] = field(default_factory=list)
     top_selling_items_by_revenue: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
+class IndentLine:
+    item_name: str
+    quantity: float
+    unit: str = "pcs"
+    approximate_price: float = 0.0
+    pack_label: str = ""
+    pack_qty_in_base: Optional[float] = None
+
+    def to_api(self) -> dict[str, Any]:
+        return {
+            "item_name": self.item_name,
+            "quantity": self.quantity,
+            "unit": self.unit,
+            "approximate_price": self.approximate_price,
+            "pack_label": self.pack_label,
+            "pack_qty_in_base": self.pack_qty_in_base,
+        }
+

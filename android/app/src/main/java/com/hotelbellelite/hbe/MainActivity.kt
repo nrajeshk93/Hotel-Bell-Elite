@@ -1,12 +1,15 @@
 package com.hotelbellelite.hbe
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.DownloadManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.view.View
@@ -23,10 +26,12 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import com.hotelbellelite.hbe.databinding.ActivityMainBinding
+import org.json.JSONArray
 
 /**
  * Native Android shell loads the designed mobile UI from APK assets.
@@ -37,6 +42,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private var lastErrorUrl: String? = null
+    private var pendingOpenScreen: String? = null
     private val mobileEntryUrl = "file:///android_asset/mobile/mobile_ui_preview.html"
     private val apiHost = "belleliteaccounts.com"
 
@@ -54,6 +60,9 @@ class MainActivity : AppCompatActivity() {
             callback.onReceiveValue(uris)
         }
 
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op */ }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,6 +75,10 @@ class MainActivity : AppCompatActivity() {
             insets
         }
 
+        HbeNotifications.ensureChannel(this)
+        requestNotificationPermissionIfNeeded()
+        pendingOpenScreen = HbeNotifications.openScreenFromIntent(intent)
+
         setupWebView()
         binding.retryButton.setOnClickListener {
             hideOffline()
@@ -76,11 +89,34 @@ class MainActivity : AppCompatActivity() {
             this,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
-                    if (binding.webView.canGoBack()) {
-                        binding.webView.goBack()
-                    } else {
-                        isEnabled = false
-                        onBackPressedDispatcher.onBackPressed()
+                    // Prefer in-app navigation stack over WebView browser history.
+                    binding.webView.evaluateJavascript(
+                        """
+                        (function(){
+                          try {
+                            if (typeof window.hbeHandleBack === 'function') {
+                              return window.hbeHandleBack() ? '1' : '0';
+                            }
+                            if (typeof window.goBack === 'function') {
+                              window.goBack();
+                              return '1';
+                            }
+                          } catch (e) {}
+                          return '0';
+                        })();
+                        """.trimIndent(),
+                    ) { raw ->
+                        val handled = raw == "1" || raw == "\"1\"" || raw == "true" || raw == "\"true\""
+                        if (!handled) {
+                            runOnUiThread {
+                                isEnabled = false
+                                try {
+                                    onBackPressedDispatcher.onBackPressed()
+                                } finally {
+                                    isEnabled = true
+                                }
+                            }
+                        }
                     }
                 }
             },
@@ -93,6 +129,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val screen = HbeNotifications.openScreenFromIntent(intent) ?: return
+        pendingOpenScreen = screen
+        deliverPendingOpenScreen()
+    }
+
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         binding.webView.saveState(outState)
@@ -103,12 +147,32 @@ class MainActivity : AppCompatActivity() {
         CookieManager.getInstance().flush()
     }
 
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView() {
         val webView = binding.webView
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(webView, true)
+
+        webView.addJavascriptInterface(
+            HbeJsBridge { items: JSONArray ->
+                runOnUiThread {
+                    HbeNotifications.showFromJson(this, items)
+                }
+            },
+            "HBEAndroid",
+        )
 
         with(webView.settings) {
             javaScriptEnabled = true
@@ -181,6 +245,7 @@ class MainActivity : AppCompatActivity() {
                         """.trimIndent(),
                         null,
                     )
+                    deliverPendingOpenScreen()
                 }
             }
 
@@ -233,6 +298,23 @@ class MainActivity : AppCompatActivity() {
         webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
             enqueueDownload(url, userAgent, contentDisposition, mimeType)
         }
+    }
+
+    private fun deliverPendingOpenScreen() {
+        val screen = pendingOpenScreen ?: return
+        pendingOpenScreen = null
+        val safe = screen.replace("\\", "\\\\").replace("'", "\\'")
+        binding.webView.evaluateJavascript(
+            """
+            (function(){
+              try {
+                if (typeof go === 'function') go('$safe');
+                else window.__hbePendingScreen = '$safe';
+              } catch (_e) {}
+            })();
+            """.trimIndent(),
+            null,
+        )
     }
 
     private fun handleExternalOrDownload(url: String): Boolean {

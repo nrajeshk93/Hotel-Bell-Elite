@@ -64,6 +64,7 @@ from db import (
     get_customer,
     get_agency,
     get_db,
+    close_request_db,
     get_hotel_rooms_layout,
     get_hotel_room,
     get_hotel_room_invoice,
@@ -263,6 +264,7 @@ from workspace_access import (
     validate_access_user_form,
 )
 from employee_payroll import register_employee_payroll
+from payroll_mobile import register_payroll_mobile
 from embed_helpers import (
     is_background_fetch_request,
     is_embed_request,
@@ -332,6 +334,8 @@ _secure_cookies = (
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = False
+# Versioned static files (?v=) can be cached; HTML/auth shells stay no-store.
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 604800
 
 
 def _request_is_https():
@@ -646,6 +650,7 @@ register_employee_payroll(
     get_user=get_current_user,
     queue_auth_notice=_queue_auth_notice,
 )
+register_payroll_mobile(app)
 register_stores(
     app,
     pop_auth_notice=_pop_auth_notice,
@@ -4997,6 +5002,31 @@ def _no_cache_offline_auth_shell(response):
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
     return response
+
+
+@app.after_request
+def _static_asset_cache(response):
+    """Keep versioned CSS/JS in the browser; leave auth/PWA shells uncached."""
+    path = request.path or ""
+    if not path.startswith("/static/"):
+        return response
+    if (
+        path == "/static/offline_login.html"
+        or path.startswith("/static/offline_auth.js")
+        or path.startswith("/static/de_pwa.js")
+        or path.endswith("sw.js")
+    ):
+        return response
+    existing = (response.headers.get("Cache-Control") or "").lower()
+    if "no-store" in existing or "no-cache" in existing:
+        return response
+    response.headers.setdefault("Cache-Control", "public, max-age=604800")
+    return response
+
+
+@app.teardown_appcontext
+def _close_request_db(exc):
+    close_request_db(exc)
 
 
 @app.route("/")

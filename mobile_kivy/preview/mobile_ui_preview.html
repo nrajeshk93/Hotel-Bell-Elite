@@ -441,65 +441,199 @@
     }
     .notif-panel {
       position: absolute;
-      top: 66px;
-      right: 8px;
-      left: 8px;
+      top: 62px;
+      right: 10px;
+      left: 10px;
       z-index: 40;
-      background: #fff;
-      border-radius: 14px;
-      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
-      border: 1px solid #E2E8F0;
+      background: linear-gradient(180deg, #FBFCFD 0%, #FFFFFF 28%);
+      border-radius: 18px;
+      box-shadow:
+        0 18px 40px rgba(26, 39, 68, 0.16),
+        0 2px 0 rgba(196, 164, 106, 0.35);
+      border: 1px solid rgba(226, 232, 240, 0.95);
       overflow: hidden;
-      max-height: min(360px, 55vh);
+      max-height: min(380px, 58vh);
       display: flex;
       flex-direction: column;
+      animation: notif-panel-in 0.22s ease-out;
     }
-    .notif-panel[hidden] { display: none !important; }
+    @keyframes notif-panel-in {
+      from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .notif-panel[hidden] { display: none !important; animation: none; }
     .notif-panel-head {
       display: flex;
       align-items: center;
-      padding: 12px 14px;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px 12px;
+      background: linear-gradient(180deg, #F4F7FB 0%, rgba(244, 247, 251, 0) 100%);
       border-bottom: 1px solid #EEF2F7;
+      position: relative;
+    }
+    .notif-panel-head::after {
+      content: "";
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 0;
+      height: 2px;
+      border-radius: 2px;
+      background: linear-gradient(90deg, var(--gold), transparent 70%);
+      opacity: 0.85;
+    }
+    .notif-panel-head-copy {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
     }
     .notif-panel-head strong {
-      font-size: 14px;
-      color: #0F172A;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--navy);
     }
+    .notif-panel-sub {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .notif-count {
+      flex: 0 0 auto;
+      min-width: 28px;
+      height: 28px;
+      padding: 0 9px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--accent-soft);
+      color: var(--theme);
+      font-size: 12px;
+      font-weight: 800;
+      border: 1px solid rgba(0, 97, 255, 0.12);
+    }
+    .notif-count[hidden] { display: none !important; }
     .notif-list {
       overflow: auto;
-      padding: 6px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
     }
     .notif-item {
-      display: block;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
       width: 100%;
       text-align: left;
-      border: 0;
+      border: 1px solid transparent;
       background: #fff;
-      border-radius: 10px;
-      padding: 12px;
+      border-radius: 14px;
+      padding: 12px 12px 12px 10px;
       cursor: pointer;
       font: inherit;
       color: inherit;
+      transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     }
-    .notif-item:hover { background: #F8FAFC; }
+    .notif-item:hover,
+    .notif-item:focus-visible {
+      background: #F8FAFC;
+      border-color: #E2E8F0;
+      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
+      outline: none;
+    }
+    .notif-item:active {
+      background: #F1F5F9;
+    }
+    .notif-item-icon {
+      flex: 0 0 auto;
+      width: 36px;
+      height: 36px;
+      border-radius: 11px;
+      display: grid;
+      place-items: center;
+      background: var(--accent-soft);
+      color: var(--theme);
+    }
+    .notif-item-icon svg {
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .notif-item-icon.is-approval {
+      background: #FEF3C7;
+      color: #B45309;
+    }
+    .notif-item-icon.is-indent {
+      background: #ECFDF5;
+      color: #047857;
+    }
+    .notif-item-copy {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding-top: 1px;
+    }
     .notif-item-title {
       font-size: 13px;
       font-weight: 800;
-      color: #0F172A;
+      color: var(--navy);
+      letter-spacing: -0.01em;
+      line-height: 1.25;
     }
     .notif-item-body {
-      margin-top: 3px;
       font-size: 12px;
       color: var(--muted);
       font-weight: 600;
-      line-height: 1.35;
+      line-height: 1.4;
+    }
+    .notif-item-chev {
+      flex: 0 0 auto;
+      align-self: center;
+      width: 16px;
+      height: 16px;
+      opacity: 0.35;
+    }
+    .notif-item-chev svg {
+      width: 16px;
+      height: 16px;
+      stroke: var(--navy);
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
     }
     .notif-empty {
-      padding: 18px 12px;
+      padding: 28px 16px;
       text-align: center;
       color: var(--muted);
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 600;
+      line-height: 1.45;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    .notif-empty::before {
+      content: "";
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background:
+        radial-gradient(circle at 50% 42%, #fff 0 28%, transparent 29%),
+        linear-gradient(145deg, var(--accent-soft), #EEF2FF);
+      box-shadow: inset 0 0 0 1px rgba(0, 97, 255, 0.08);
+      margin-bottom: 2px;
     }
     .topbar-brand {
       flex: 1;
@@ -673,6 +807,13 @@
       overflow-y: auto;
       padding: 0 14px 8px;
       -webkit-overflow-scrolling: touch;
+      scrollbar-width: none; /* Firefox */
+      -ms-overflow-style: none; /* legacy Edge */
+    }
+    .nav-scroll::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+      display: none;
     }
     .nav-menu-card {
       background: var(--nav-card-bg);
@@ -1068,6 +1209,399 @@
       color: var(--accent);
     }
 
+    .panel-payroll {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding-bottom: 24px;
+    }
+    .panel-payroll[hidden] { display: none !important; }
+    .pay-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 12px 14px;
+      border: 1px solid var(--border, #E2E8F0);
+      border-radius: 12px;
+      background: #fff;
+      text-align: left;
+      width: 100%;
+    }
+    .pay-row strong { display: block; font-size: 14px; }
+    .pay-row span { display: block; color: #64748B; font-size: 12px; }
+    .pay-row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .pay-row-actions .pos-btn { padding: 6px 10px; font-size: 12px; min-height: 32px; }
+
+
+
+    .panel-payroll-employee {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background: #F4F7FB;
+      margin: 0 -4px;
+      padding: 4px 4px 24px;
+    }
+    .panel-payroll-employee[hidden] { display: none !important; }
+    .panel-payroll-employee .ap-head h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 800;
+      color: #0F172A;
+    }
+    .panel-payroll-employee .emp-period-row {
+      margin-bottom: 0;
+      position: relative;
+      z-index: 6;
+    }
+    .panel-payroll-employee .emp-period-labels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .panel-payroll-employee .emp-period-labels span {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #94A3B8;
+      padding-left: 2px;
+    }
+    .panel-payroll-employee .emp-list { display: flex; flex-direction: column; gap: 0; }
+    .panel-payroll-employee .emp-composer h3,
+    .panel-payroll-employee .emp-detail-card h3 {
+      margin: 0 0 12px;
+      font-size: 15px;
+      font-weight: 800;
+    }
+    .panel-payroll-employee .emp-card-btn {
+      display: block;
+      width: 100%;
+      text-align: left;
+      border: 0;
+      padding: 0;
+      background: transparent;
+      cursor: pointer;
+      font: inherit;
+      color: inherit;
+    }
+    .panel-payroll-credit {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background: #F4F7FB;
+      margin: 0 -4px;
+      padding: 4px 4px 24px;
+    }
+    .panel-payroll-credit[hidden] { display: none !important; }
+    .panel-payroll-credit .ap-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .panel-payroll-credit .ap-head h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 800;
+      color: #0F172A;
+    }
+    .panel-payroll-credit .pay-cr-add-btn {
+      flex: 0 0 auto;
+      width: auto;
+      min-height: 36px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1.5px solid #0061FF;
+      background: #0061FF;
+      color: #fff;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .panel-payroll-credit .pay-cr-list-view {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .panel-payroll-credit .pay-cr-list-view[hidden] {
+      display: none !important;
+    }
+    .panel-payroll-credit .pay-cr-add-view {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .panel-payroll-credit .pay-cr-add-view[hidden] {
+      display: none !important;
+    }
+    .panel-payroll-credit .pay-cr-detail-view {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .panel-payroll-credit .pay-cr-detail-view[hidden] {
+      display: none !important;
+    }
+    .panel-payroll-credit .cr-list .ap-card[data-cr-emp-id] {
+      cursor: pointer;
+    }
+    .panel-payroll-credit .cr-list .ap-card[data-cr-emp-id]:active {
+      background: #F8FAFC;
+    }
+    .panel-payroll-credit .pay-cr-detail-meta {
+      margin: 0;
+      color: #64748B;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .panel-payroll-credit .cr-date-filter,
+    .panel-payroll-credit .cr-entry-date-filter {
+      margin-bottom: 0;
+    }
+    .panel-payroll-credit .cr-kpis {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+    .panel-payroll-credit .cr-kpis .pay-kpi {
+      text-align: center;
+    }
+    .panel-payroll-credit .cr-kpis .pay-kpi b,
+    .panel-payroll-credit .cr-kpis .pay-kpi span {
+      text-align: center;
+    }
+    .panel-payroll-credit .cr-list { display: flex; flex-direction: column; gap: 0; }
+    .panel-payroll-credit .cr-section-title {
+      margin: 14px 2px 8px;
+      font-size: 13px;
+      font-weight: 800;
+      color: #64748B;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .panel-payroll-credit .cr-composer {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .panel-payroll-credit .cr-composer h3 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 800;
+    }
+    .panel-payroll-credit .cr-composer .pos-field {
+      margin-bottom: 0;
+    }
+    .panel-payroll-credit .cr-composer .pos-select-card.pos-listbox {
+      width: 100%;
+    }
+    /* Attendance — card layout matching design mockup */
+    .att-toolbar {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .att-date-filter {
+      margin-bottom: 0;
+      width: 100%;
+    }
+    .panel-payroll-attendance .att-toolbar .pos-search {
+      width: 100%;
+      margin: 0;
+    }
+
+    .panel-payroll-attendance {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: #F4F7FB;
+      margin: 0 -4px;
+      padding: 4px 4px 20px;
+    }
+    .panel-payroll-attendance[hidden] { display: none !important; }
+    .panel-payroll-attendance > h2 { display: none; }
+
+    .panel-payroll-attendance .pos-status#pay-att-status {
+      margin: 0 2px;
+      font-size: 12px;
+      color: #64748B;
+    }
+    .panel-payroll-attendance .pay-kpis { display: none; }
+    #pay-att-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 2px 2px 8px;
+    }
+    .att-card {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+      background: #fff;
+      border: 1px solid rgba(226, 232, 240, 0.9);
+      border-radius: 18px;
+      box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+      padding: 14px;
+    }
+    .att-card-main {
+      min-width: 0;
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 10px;
+    }
+    .att-card-name {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      color: #0F172A;
+      text-transform: uppercase;
+      line-height: 1.25;
+    }
+    .att-card-meta {
+      margin: 0;
+      font-size: 12px;
+      font-weight: 600;
+      color: #64748B;
+      white-space: nowrap;
+    }
+    .att-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      width: fit-content;
+      background: #EEF2F7;
+      color: #64748B;
+    }
+    .att-chip::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0.75;
+    }
+    .att-chip.is-present { background: #DBEAFE; color: #1D4ED8; }
+    .att-chip.is-absent { background: #FEE2E2; color: #B91C1C; }
+    .att-chip.is-half_day { background: #FEF3C7; color: #B45309; }
+    .att-chip.is-unmarked { background: #EEF2F7; color: #64748B; }
+    .att-actions {
+      display: flex;
+      flex-wrap: nowrap;
+      justify-content: stretch;
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+    }
+    .att-pill {
+      appearance: none;
+      flex: 1 1 0;
+      border: 1.5px solid #2563EB;
+      background: #fff;
+      color: #2563EB;
+      border-radius: 999px;
+      padding: 6px 4px;
+      font-size: 11px;
+      font-weight: 650;
+      line-height: 1;
+      min-height: 30px;
+      cursor: pointer;
+      white-space: nowrap;
+      text-align: center;
+    }
+    .att-pill:hover:not(:disabled) { background: #EFF6FF; }
+    .att-pill.is-active {
+      background: #2563EB;
+      color: #fff;
+    }
+    .att-pill:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .pay-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .pay-kpi { background: #fff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 10px 12px; }
+    .pay-kpi b { display: block; font-size: 16px; }
+    .pay-kpi span { color: #64748B; font-size: 12px; }
+    .panel-indent-request {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding-bottom: 88px;
+    }
+    .panel-indent-request[hidden] { display: none !important; }
+    .panel-indent-request .ir-unit-listbox {
+      min-height: 42px;
+      border-radius: 10px;
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      box-shadow: none;
+      padding: 0 8px;
+    }
+    .panel-indent-request .ir-unit-listbox > svg {
+      width: 16px;
+      height: 16px;
+    }
+    .panel-indent-request .ir-unit-listbox.is-locked {
+      opacity: 0.7;
+      pointer-events: none;
+    }
+    .panel-indent-request .ir-composer-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .panel-indent-request .ir-items-head {
+      grid-template-columns: 1.5fr 0.55fr 0.75fr 0.85fr;
+    }
+    .panel-indent-request .pos-line {
+      grid-template-columns: 1.5fr 0.55fr 0.75fr 0.85fr;
+    }
+    .panel-indent-request .pos-line .ir-line-sub {
+      display: block;
+      margin-top: 2px;
+      font-size: 11px;
+      font-weight: 500;
+      color: #94A3B8;
+    }
+    .panel-indent-request #ir-add {
+      width: 100%;
+      justify-content: center;
+    }
+    .panel-indent-request .ir-sticky {
+      position: sticky;
+      bottom: 0;
+      display: flex;
+      gap: 8px;
+      background: linear-gradient(180deg, rgba(247,248,250,0), #F7F8FA 28%);
+      padding-top: 12px;
+      z-index: 2;
+    }
+    .panel-indent-request .ir-sticky .pos-btn {
+      flex: 1;
+      justify-content: center;
+      min-height: 44px;
+    }
+    @media (max-width: 420px) {
+      .panel-indent-request .ir-composer-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
     /* —— POS redesign (ChatGPT reference) —— */
     /* Topbar stays homepage chrome (white / navy + gold ornament); only title changes. */
     .panel-pos {
@@ -1325,6 +1859,7 @@
       max-height: 180px;
       overflow: auto;
       display: none;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
     }
     .pos-suggest.is-open { display: block; }
     .pos-suggest button {
@@ -1339,6 +1874,10 @@
       cursor: pointer;
       font: inherit;
     }
+    .pos-suggest button:hover,
+    .pos-suggest button:focus {
+      background: #F8FAFC;
+    }
     .pos-suggest button:last-child { border-bottom: 0; }
     .pos-suggest strong {
       flex: 1;
@@ -1349,6 +1888,24 @@
       font-size: 12px;
       font-weight: 700;
       color: #0061FF;
+    }
+    #pay-cr-emp-suggest button,
+    #ir-suggest button {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+    }
+    #pay-cr-emp-suggest .pos-suggest-name,
+    #ir-suggest .pos-suggest-name {
+      font-size: 13px;
+      font-weight: 700;
+      color: #0F172A;
+    }
+    #pay-cr-emp-suggest .meta,
+    #ir-suggest .meta {
+      font-size: 12px;
+      font-weight: 600;
+      color: #64748B;
     }
     .pos-items-head {
       display: grid;
@@ -2875,7 +3432,11 @@
       </div>
       <div class="notif-panel" id="notif-panel" hidden>
         <div class="notif-panel-head">
-          <strong>Notifications</strong>
+          <div class="notif-panel-head-copy">
+            <strong>Notifications</strong>
+            <span class="notif-panel-sub" id="notif-panel-sub">Updates across your workspace</span>
+          </div>
+          <span class="notif-count" id="notif-count" hidden>0</span>
         </div>
         <div class="notif-list" id="notif-list">
           <div class="notif-empty">Loading…</div>
@@ -2909,7 +3470,14 @@
                 <span class="home-module-copy"><strong>Dashboard</strong><span>KPIs and analytics</span></span>
                 <svg class="home-module-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
               </button>
-              <div class="home-module-group" data-access-group="indent_approvals">Purchase &amp; Inventory</div>
+              <div class="home-module-group" data-access-group="indent_request,indent_approvals">Purchase &amp; Inventory</div>
+              <button type="button" class="home-module" data-go="indent-request" data-access="indent_request" data-accent="gold">
+                <span class="home-module-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>
+                </span>
+                <span class="home-module-copy"><strong>Indent Request</strong><span>Create a purchase indent</span></span>
+                <svg class="home-module-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+              </button>
               <button type="button" class="home-module" data-go="indent-approvals" data-access="indent_approvals" data-accent="gold">
                 <span class="home-module-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
@@ -2967,6 +3535,35 @@
                   <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg>
                 </span>
                 <span class="home-module-copy"><strong>Cash Ledger</strong><span>Cash movements &amp; balance</span></span>
+                <svg class="home-module-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+              </button>
+              <div class="home-module-group" data-access-group="payroll_employee,payroll_attendance,payroll_credit,payroll_tips">Employee Payroll</div>
+              <button type="button" class="home-module" data-go="payroll-employee" data-access="payroll_employee" data-accent="navy">
+                <span class="home-module-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19a7 7 0 0 1 14 0"/></svg>
+                </span>
+                <span class="home-module-copy"><strong>Employee</strong><span>Staff list and profiles</span></span>
+                <svg class="home-module-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+              </button>
+              <button type="button" class="home-module" data-go="payroll-attendance" data-access="payroll_attendance" data-accent="navy">
+                <span class="home-module-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 3v4"/><path d="M16 3v4"/></svg>
+                </span>
+                <span class="home-module-copy"><strong>Attendance</strong><span>Mark present or absent</span></span>
+                <svg class="home-module-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+              </button>
+              <button type="button" class="home-module" data-go="payroll-credit" data-access="payroll_credit" data-accent="navy">
+                <span class="home-module-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg>
+                </span>
+                <span class="home-module-copy"><strong>Credit</strong><span>Advance / Credit and repayment</span></span>
+                <svg class="home-module-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+              </button>
+              <button type="button" class="home-module" data-go="payroll-tips" data-access="payroll_tips" data-accent="navy">
+                <span class="home-module-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M6 3h12"/><path d="M6 8h12"/><path d="M9 13c6.667 0 6.667-10 0-10"/><path d="M6 13h3"/><path d="m6 13 8.5 8"/></svg>
+                </span>
+                <span class="home-module-copy"><strong>Tips</strong><span>Collections and add tip</span></span>
                 <svg class="home-module-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
               </button>
             </div>
@@ -3032,6 +3629,106 @@
               </div>
               <div id="md-items"><p class="md-empty">No menu sales in this period.</p></div>
             </section>
+          </div>
+          <div data-panel="indent-request" class="panel panel-indent-request" hidden>
+            <div class="pos-select-row">
+              <div class="pos-select-card pos-listbox" id="ir-outlet-listbox" data-pos-listbox>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
+                <div class="pos-listbox-control">
+                  <input type="hidden" id="ir-outlet" value="restaurant" />
+                  <button type="button" class="pos-listbox-trigger" id="ir-outlet-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="ir-outlet-menu">
+                    <span class="pos-listbox-value" id="ir-outlet-label">Restaurant</span>
+                  </button>
+                </div>
+                <div class="pos-listbox-menu" id="ir-outlet-menu" role="listbox" aria-label="Outlet" hidden>
+                  <button type="button" class="pos-listbox-option is-selected" role="option" data-value="restaurant" data-label="Restaurant" aria-selected="true">Restaurant</button>
+                  <button type="button" class="pos-listbox-option" role="option" data-value="bar" data-label="Bar" aria-selected="false">Bar</button>
+                </div>
+              </div>
+              <div class="pos-select-card pos-listbox" id="ir-pack-listbox" data-pos-listbox>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7L12 12l8.7-5"/><path d="M12 22V12"/></svg>
+                <div class="pos-listbox-control">
+                  <input type="hidden" id="ir-pack" value="" />
+                  <button type="button" class="pos-listbox-trigger" id="ir-pack-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="ir-pack-menu">
+                    <span class="pos-listbox-value is-placeholder" id="ir-pack-label" data-placeholder="Pack">Pack</span>
+                  </button>
+                </div>
+                <div class="pos-listbox-menu" id="ir-pack-menu" role="listbox" aria-label="Pack" hidden>
+                  <button type="button" class="pos-listbox-option is-selected" role="option" data-value="" data-label="Base unit" data-qty="" data-price="" aria-selected="true">Base unit</button>
+                </div>
+              </div>
+            </div>
+            <p class="pos-status" id="ir-status">Choose a product to add.</p>
+            <div>
+              <div class="pos-search">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-3.5-3.5"/></svg>
+                <input id="ir-search" type="search" placeholder="Search product…" autocomplete="off" />
+              </div>
+              <div class="pos-suggest" id="ir-suggest" role="listbox" aria-label="Product suggestions"></div>
+            </div>
+            <section class="pos-card" id="ir-composer" hidden aria-label="Line details">
+              <h3 id="ir-picked-name">Item</h3>
+              <div class="ir-composer-grid">
+                <div class="pos-field">
+                  <label for="ir-qty">Qty</label>
+                  <div class="pos-field-row">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16"/><path d="M8 15V9"/><path d="M12 15V5"/><path d="M16 15v-3"/></svg>
+                    <input id="ir-qty" type="number" min="0.01" step="0.01" value="1" inputmode="decimal" />
+                  </div>
+                </div>
+                <div class="pos-field">
+                  <label for="ir-unit-trigger">Unit</label>
+                  <div class="pos-select-card pos-listbox ir-unit-listbox" id="ir-unit-listbox" data-pos-listbox>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
+                    <div class="pos-listbox-control">
+                      <input type="hidden" id="ir-unit" value="kg" />
+                      <button type="button" class="pos-listbox-trigger" id="ir-unit-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="ir-unit-menu">
+                        <span class="pos-listbox-value" id="ir-unit-label">kg</span>
+                      </button>
+                    </div>
+                    <div class="pos-listbox-menu" id="ir-unit-menu" role="listbox" aria-label="Unit" hidden>
+                      <button type="button" class="pos-listbox-option is-selected" role="option" data-value="kg" data-label="kg" aria-selected="true">kg</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="pos-field">
+                  <label for="ir-price">Price/qty</label>
+                  <div class="pos-field-row">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg>
+                    <input id="ir-price" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="0.00" />
+                  </div>
+                </div>
+              </div>
+              <button type="button" class="pos-btn pos-btn--primary" id="ir-add">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                Add item
+              </button>
+            </section>
+            <section class="pos-card" aria-label="Indent lines">
+              <div class="pos-items-head ir-items-head">
+                <span>Item</span><span>Qty</span><span>Price</span><span>Amount</span>
+              </div>
+              <div id="ir-lines"></div>
+              <div class="pos-empty" id="ir-empty">
+                <div class="pos-empty-icon" aria-hidden="true">+</div>
+                <p>No items yet. Search and add products from the master.</p>
+              </div>
+              <div class="pos-bill-total" style="margin-top:12px;">
+                <span>Total</span><strong id="ir-total">₹0.00</strong>
+              </div>
+            </section>
+            <section class="pos-card pos-notes" aria-label="Indent notes">
+              <h3>Notes (Optional)</h3>
+              <textarea id="ir-notes" rows="2" maxlength="500" placeholder="Anything the approver should know."></textarea>
+              <div class="pos-notes-meta"><span></span><span id="ir-notes-count">0/500</span></div>
+            </section>
+            <div class="ir-sticky">
+              <button type="button" class="pos-btn" id="ir-draft">Draft</button>
+              <button type="button" class="pos-btn pos-btn--primary" id="ir-submit">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
+                Send for Approval
+              </button>
+            </div>
           </div>
           <div data-panel="indent-approvals" class="panel panel-approvals" hidden>
             <div class="ap-list-view" id="indent-list-view">
@@ -3351,6 +4048,198 @@
               <div id="cash-ledger-list"></div>
             </div>
           </div>
+
+                    <div data-panel="payroll-employee" class="panel panel-payroll panel-payroll-employee" hidden>
+            <div class="ap-head"><h2>Employee</h2></div>
+            <div class="emp-period-labels" aria-hidden="true"><span>Month</span><span>Year</span></div>
+            <div class="pos-select-row emp-period-row">
+              <div class="pos-select-card pos-listbox" data-pos-listbox>
+                <div class="pos-listbox-control">
+                  <input type="hidden" id="pay-emp-month" value="" />
+                  <button type="button" class="pos-listbox-trigger" aria-haspopup="listbox" aria-label="Month">
+                    <span class="pos-listbox-value" id="pay-emp-month-label" data-placeholder="Month">Month</span>
+                  </button>
+                </div>
+                <div class="pos-listbox-menu" id="pay-emp-month-menu" role="listbox" hidden></div>
+              </div>
+              <div class="pos-select-card pos-listbox" data-pos-listbox>
+                <div class="pos-listbox-control">
+                  <input type="hidden" id="pay-emp-year" value="" />
+                  <button type="button" class="pos-listbox-trigger" aria-haspopup="listbox" aria-label="Year">
+                    <span class="pos-listbox-value" id="pay-emp-year-label" data-placeholder="Year">Year</span>
+                  </button>
+                </div>
+                <div class="pos-listbox-menu" id="pay-emp-year-menu" role="listbox" hidden></div>
+              </div>
+            </div>
+            <div class="pos-search">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-3.5-3.5"/></svg>
+              <input id="pay-emp-search" type="search" placeholder="Search name, code, mobile…" autocomplete="off" />
+            </div>
+            <p class="pos-status" id="pay-emp-status">Loading employees…</p>
+            <div id="pay-emp-list" class="emp-list"></div>
+            <section class="pos-card emp-detail-card" id="pay-emp-detail" hidden aria-label="Employee detail"></section>
+            <section class="pos-card emp-composer" aria-label="Add employee">
+              <h3>Add employee</h3>
+              <div class="pos-field"><label for="pay-emp-add-name">Name</label><div class="pos-field-row"><input id="pay-emp-add-name" type="text" placeholder="Employee name" /></div></div>
+              <div class="pos-field"><label for="pay-emp-add-mobile">Mobile</label><div class="pos-field-row"><span class="prefix">+91</span><input id="pay-emp-add-mobile" type="tel" maxlength="10" placeholder="10-digit number" /></div></div>
+              <div class="pos-field"><label for="pay-emp-add-location">Location</label><div class="pos-field-row"><input id="pay-emp-add-location" type="text" placeholder="FO, HK, F&amp;B…" /></div></div>
+              <div class="pos-field"><label for="pay-emp-add-salary">Gross salary</label><div class="pos-field-row"><input id="pay-emp-add-salary" type="number" min="0" step="1" placeholder="0" /></div></div>
+              <button type="button" class="pos-btn pos-btn--primary" id="pay-emp-add-btn">Add</button>
+            </section>
+          </div>
+          <div data-panel="payroll-attendance" class="panel panel-payroll panel-payroll-attendance" hidden>
+            <h2>Attendance</h2>
+            <div class="att-toolbar">
+              <div class="ap-date-filter att-date-filter" data-att-dates="1">
+                <div class="ap-date-chip" id="pay-att-date-chip">
+                  <div class="ap-date-chip-label">Date</div>
+                  <button type="button" class="ap-date-chip-trigger" id="pay-att-date-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="pay-att-date-panel">
+                    <svg class="ap-date-chip-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 3v4"/><path d="M16 3v4"/></svg>
+                    <span class="ap-date-chip-value" id="pay-att-date-display">Select date…</span>
+                  </button>
+                  <div class="ap-date-chip-panel" id="pay-att-date-panel" role="dialog" aria-label="Attendance date" hidden>
+                    <div class="ap-date-chip-panel-h">Select date</div>
+                    <div class="ap-cal-hdr">
+                      <button type="button" class="ap-cal-nav" id="pay-att-cal-prev" aria-label="Previous month"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+                      <h4 class="ap-cal-title" id="pay-att-cal-title">—</h4>
+                      <button type="button" class="ap-cal-nav" id="pay-att-cal-next" aria-label="Next month"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>
+                    </div>
+                    <div class="ap-cal-dow" aria-hidden="true"><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span></div>
+                    <div class="ap-cal-grid" id="pay-att-cal-grid"></div>
+                    <div class="ap-date-chip-foot">
+                      <button type="button" class="ap-date-chip-clear" id="pay-att-date-today">Today</button>
+                    </div>
+                  </div>
+                  <input type="hidden" id="pay-att-date" value="" />
+                </div>
+              </div>
+              <div class="pos-search">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-3.5-3.5"/></svg>
+                <input id="pay-att-search" type="search" placeholder="Search employee…" autocomplete="off" />
+              </div>
+            </div>
+            <p class="pos-status" id="pay-att-status">Loading attendance…</p>
+            <div class="pay-kpis" id="pay-att-kpis"></div>
+            <div id="pay-att-list"></div>
+          </div>
+                    <div data-panel="payroll-credit" class="panel panel-payroll panel-payroll-credit" hidden>
+            <div class="pay-cr-list-view" id="pay-cr-list-view">
+              <div class="ap-head">
+                <h2>Credit</h2>
+                <button type="button" class="pay-cr-add-btn" id="pay-cr-open-add">Add Credit</button>
+              </div>
+              <div class="pay-kpis cr-kpis" id="pay-cr-kpis"></div>
+              <div id="pay-cr-list" class="cr-list"></div>
+            </div>
+            <div class="pay-cr-detail-view" id="pay-cr-detail-view" hidden>
+              <h2 class="ap-detail-title" id="pay-cr-detail-title">Employee</h2>
+              <p class="pay-cr-detail-meta" id="pay-cr-detail-meta"></p>
+              <div class="pay-kpis cr-kpis" id="pay-cr-detail-kpis"></div>
+              <div id="pay-cr-detail-list" class="cr-list"></div>
+            </div>
+            <div class="pay-cr-add-view" id="pay-cr-add-view" hidden>
+              <h2 class="ap-detail-title">Add Credit</h2>
+              <p class="pos-status" id="pay-cr-form-status" hidden></p>
+              <section class="pos-card cr-composer" aria-label="Add credit">
+                <div class="pos-field">
+                  <label for="pay-cr-emp">Employee</label>
+                  <div class="pos-field-row"><input id="pay-cr-emp" type="search" placeholder="Search employee name or code…" autocomplete="off" spellcheck="false" aria-autocomplete="list" aria-controls="pay-cr-emp-suggest" aria-expanded="false" /></div>
+                  <input type="hidden" id="pay-cr-emp-id" value="" />
+                </div>
+                <div class="pos-suggest" id="pay-cr-emp-suggest" role="listbox" aria-label="Employee suggestions"></div>
+                <div class="ap-date-filter cr-entry-date-filter">
+                  <div class="ap-date-chip" id="pay-cr-date-chip">
+                    <div class="ap-date-chip-label">Date</div>
+                    <button type="button" class="ap-date-chip-trigger" id="pay-cr-date-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="pay-cr-date-panel">
+                      <svg class="ap-date-chip-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 3v4"/><path d="M16 3v4"/></svg>
+                      <span class="ap-date-chip-value" id="pay-cr-date-display">Select date…</span>
+                    </button>
+                    <div class="ap-date-chip-panel" id="pay-cr-date-panel" role="dialog" aria-label="Credit entry date" hidden>
+                      <div class="ap-date-chip-panel-h">Select date</div>
+                      <div class="ap-cal-hdr">
+                        <button type="button" class="ap-cal-nav" id="pay-cr-date-prev" aria-label="Previous month"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+                        <h4 class="ap-cal-title" id="pay-cr-date-title">—</h4>
+                        <button type="button" class="ap-cal-nav" id="pay-cr-date-next" aria-label="Next month"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>
+                      </div>
+                      <div class="ap-cal-dow" aria-hidden="true"><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span></div>
+                      <div class="ap-cal-grid" id="pay-cr-date-grid"></div>
+                      <div class="ap-date-chip-foot">
+                        <button type="button" class="ap-date-chip-clear" id="pay-cr-date-today">Today</button>
+                      </div>
+                    </div>
+                    <input type="hidden" id="pay-cr-date" value="" />
+                  </div>
+                </div>
+                <div class="pos-field"><label for="pay-cr-amount">Amount</label><div class="pos-field-row"><input id="pay-cr-amount" type="number" min="0" step="0.01" /></div></div>
+                <div class="pos-select-card pos-listbox" data-pos-listbox>
+                  <div class="pos-listbox-control">
+                    <input type="hidden" id="pay-cr-type" value="credit" />
+                    <button type="button" class="pos-listbox-trigger"><span class="pos-listbox-value" id="pay-cr-type-label">Advance/Credit</span></button>
+                  </div>
+                  <div class="pos-listbox-menu" role="listbox" hidden>
+                    <button type="button" class="pos-listbox-option is-selected" data-value="credit" data-label="Advance/Credit">Advance/Credit</button>
+                    <button type="button" class="pos-listbox-option" data-value="repayment" data-label="Repayment">Repayment</button>
+                  </div>
+                </div>
+                <div class="pos-select-card pos-listbox" data-pos-listbox>
+                  <div class="pos-listbox-control">
+                    <input type="hidden" id="pay-cr-paytype" value="cash" />
+                    <button type="button" class="pos-listbox-trigger"><span class="pos-listbox-value" id="pay-cr-paytype-label">Cash</span></button>
+                  </div>
+                  <div class="pos-listbox-menu" role="listbox" hidden>
+                    <button type="button" class="pos-listbox-option is-selected" data-value="cash" data-label="Cash">Cash</button>
+                    <button type="button" class="pos-listbox-option" data-value="bank_transfer" data-label="Bank Transfer">Bank Transfer</button>
+                  </div>
+                </div>
+                <div class="pos-field"><label for="pay-cr-txn">Transaction ID</label><div class="pos-field-row"><input id="pay-cr-txn" type="text" placeholder="Required for bank" /></div></div>
+                <div class="pos-field"><label for="pay-cr-desc">Description</label><div class="pos-field-row"><input id="pay-cr-desc" type="text" placeholder="Advance" /></div></div>
+                <button type="button" class="pos-btn pos-btn--primary" id="pay-cr-add-btn">Save</button>
+              </section>
+            </div>
+          </div>
+          <div data-panel="payroll-tips" class="panel panel-payroll" hidden>
+            <h2>Tips</h2>
+            <div class="pos-select-row">
+              <div class="pos-field"><label for="pay-tip-from">From</label><div class="pos-field-row"><input id="pay-tip-from" type="date" /></div></div>
+              <div class="pos-field"><label for="pay-tip-to">To</label><div class="pos-field-row"><input id="pay-tip-to" type="date" /></div></div>
+            </div>
+            <div class="pos-select-card pos-listbox" data-pos-listbox>
+              <div class="pos-listbox-control">
+                <input type="hidden" id="pay-tip-location" value="All" />
+                <button type="button" class="pos-listbox-trigger"><span class="pos-listbox-value" id="pay-tip-location-label">All</span></button>
+              </div>
+              <div class="pos-listbox-menu" role="listbox" hidden>
+                <button type="button" class="pos-listbox-option is-selected" data-value="All" data-label="All">All</button>
+                <button type="button" class="pos-listbox-option" data-value="Hotel" data-label="Hotel">Hotel</button>
+                <button type="button" class="pos-listbox-option" data-value="Bar" data-label="Bar">Bar</button>
+                <button type="button" class="pos-listbox-option" data-value="Restaurant" data-label="Restaurant">Restaurant</button>
+              </div>
+            </div>
+            <p class="pos-status" id="pay-tip-status">Loading tips…</p>
+            <div class="pay-kpis" id="pay-tip-kpis"></div>
+            <div id="pay-tip-top"></div>
+            <section class="pos-card" aria-label="Add tip">
+              <h3>Add tip</h3>
+              <div class="pos-field"><label for="pay-tip-emp">Employee ID</label><div class="pos-field-row"><input id="pay-tip-emp" type="number" min="1" /></div></div>
+              <div class="pos-field"><label for="pay-tip-date">Date</label><div class="pos-field-row"><input id="pay-tip-date" type="date" /></div></div>
+              <div class="pos-select-card pos-listbox" data-pos-listbox>
+                <div class="pos-listbox-control">
+                  <input type="hidden" id="pay-tip-outlet" value="Hotel" />
+                  <button type="button" class="pos-listbox-trigger"><span class="pos-listbox-value" id="pay-tip-outlet-label">Hotel</span></button>
+                </div>
+                <div class="pos-listbox-menu" role="listbox" hidden>
+                  <button type="button" class="pos-listbox-option is-selected" data-value="Hotel" data-label="Hotel">Hotel</button>
+                  <button type="button" class="pos-listbox-option" data-value="Bar" data-label="Bar">Bar</button>
+                  <button type="button" class="pos-listbox-option" data-value="Restaurant" data-label="Restaurant">Restaurant</button>
+                </div>
+              </div>
+              <div class="pos-field"><label for="pay-tip-amount">Amount</label><div class="pos-field-row"><input id="pay-tip-amount" type="number" min="0" step="0.01" /></div></div>
+              <div class="pos-field"><label for="pay-tip-desc">Description</label><div class="pos-field-row"><input id="pay-tip-desc" type="text" /></div></div>
+              <button type="button" class="pos-btn pos-btn--primary" id="pay-tip-add-btn">Send</button>
+            </section>
+            <div id="pay-tip-recent"></div>
+          </div>
         </main>
       </div>
       <button type="button" class="nav-scrim" id="nav-scrim" aria-label="Close menu" hidden></button>
@@ -3367,7 +4256,8 @@
           <div class="nav-menu-card">
             <button class="nav-item" data-screen="home" data-access="home" id="nav-home"><span class="bullet">●</span>Home</button>
             <button class="nav-item is-active" data-screen="dashboard" data-access="main_dashboard" id="nav-dashboard"><span class="bullet">●</span>Dashboard</button>
-            <div class="nav-group" data-access-group="indent_approvals">PURCHASE &amp; INVENTORY</div>
+            <div class="nav-group" data-access-group="indent_request,indent_approvals">PURCHASE &amp; INVENTORY</div>
+            <button class="nav-item" data-screen="indent-request" data-access="indent_request" id="nav-indent-request"><span class="bullet">●</span>Indent Request<svg class="nav-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg></button>
             <button class="nav-item" data-screen="indent-approvals" data-access="indent_approvals" id="nav-indent-approvals"><span class="bullet">●</span>Indent Approval<svg class="nav-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg></button>
             <div class="nav-group" data-access-group="pos,kot">RESTAURANT</div>
             <button class="nav-item" data-screen="pos" data-access="pos" id="nav-pos"><span class="bullet">●</span>POS<svg class="nav-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg></button>
@@ -3379,6 +4269,11 @@
             <button class="nav-item" data-screen="approvals" data-access="approvals" id="nav-approvals"><span class="bullet">●</span>Approvals<svg class="nav-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg></button>
             <button class="nav-item" data-screen="ledger" data-access="purchase_ledger" id="nav-ledger"><span class="bullet">●</span>Purchase &amp; Expense<svg class="nav-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg></button>
             <button class="nav-item" data-screen="cash-ledger" data-access="cash_ledger" id="nav-cash-ledger"><span class="bullet">●</span>Cash Ledger<svg class="nav-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg></button>
+            <div class="nav-group" data-access-group="payroll_employee,payroll_attendance,payroll_credit,payroll_tips">EMPLOYEE PAYROLL</div>
+            <button class="nav-item" data-screen="payroll-employee" data-access="payroll_employee" id="nav-payroll-employee"><span class="bullet">●</span>Employee<svg class="nav-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg></button>
+            <button class="nav-item" data-screen="payroll-attendance" data-access="payroll_attendance" id="nav-payroll-attendance"><span class="bullet">●</span>Attendance<svg class="nav-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg></button>
+            <button class="nav-item" data-screen="payroll-credit" data-access="payroll_credit" id="nav-payroll-credit"><span class="bullet">●</span>Credit<svg class="nav-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg></button>
+            <button class="nav-item" data-screen="payroll-tips" data-access="payroll_tips" id="nav-payroll-tips"><span class="bullet">●</span>Tips<svg class="nav-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg></button>
           </div>
         </div>
       </nav>
@@ -3398,6 +4293,7 @@
     const SCREEN_ACCESS = {
       home: 'home',
       dashboard: 'main_dashboard',
+      'indent-request': 'indent_request',
       'indent-approvals': 'indent_approvals',
       pos: 'pos',
       kot: 'kot',
@@ -3406,6 +4302,10 @@
       approvals: 'approvals',
       ledger: 'purchase_ledger',
       'cash-ledger': 'cash_ledger',
+      'payroll-employee': 'payroll_employee',
+      'payroll-attendance': 'payroll_attendance',
+      'payroll-credit': 'payroll_credit',
+      'payroll-tips': 'payroll_tips',
     };
     let previewAccess = null;
     const HBE_PRODUCTION = 'https://belleliteaccounts.com';
@@ -3575,11 +4475,40 @@
       applyPreviewAccess(null);
     }
 
+    function scrollNavToActive() {
+      const scroller = sidebar && sidebar.querySelector('.nav-scroll');
+      if (!scroller) return;
+      const active = Array.from(sidebar.querySelectorAll('.nav-item.is-active')).find((el) => {
+        if (el.hidden) return false;
+        const style = window.getComputedStyle(el);
+        return style.display !== 'none' && style.visibility !== 'hidden' && el.offsetParent !== null;
+      });
+      if (!active) return;
+      const scrollerRect = scroller.getBoundingClientRect();
+      const activeRect = active.getBoundingClientRect();
+      const offsetWithin = (activeRect.top - scrollerRect.top) + scroller.scrollTop;
+      const target = offsetWithin - (scroller.clientHeight / 2) + (active.offsetHeight / 2);
+      const max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+      const nextTop = Math.max(0, Math.min(max, target));
+      if (typeof scroller.scrollTo === 'function') {
+        scroller.scrollTo({ top: nextTop, behavior: 'smooth' });
+      } else {
+        scroller.scrollTop = nextTop;
+      }
+    }
+
     function setNavOpen(open) {
       sidebar.classList.toggle('collapsed', !open);
       sidebar.setAttribute('aria-hidden', open ? 'false' : 'true');
       if (navScrim) navScrim.hidden = !open;
       document.getElementById('btn-menu').setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) {
+        // Wait for drawer open layout/paint, then center the active page link.
+        requestAnimationFrame(() => {
+          requestAnimationFrame(scrollNavToActive);
+        });
+        setTimeout(scrollNavToActive, 240);
+      }
     }
 
     function showWorkspace(screen, displayName) {
@@ -3591,7 +4520,7 @@
       writePreviewAuth(next, name ? { displayName: name } : undefined);
       applyPreviewAccess(previewAccess || (readPreviewAuth() && readPreviewAuth().access));
       updateHomeWelcome(name);
-      go(next);
+      go(next, { replace: true });
       if (typeof startNotifPolling === 'function') startNotifPolling();
     }
 
@@ -3618,27 +4547,183 @@
       setNavOpen(false);
     }
 
-    function go(screen) {
+    const navHistory = [];
+    let currentNavScreen = 'home';
+
+    function sheetIsOpen(id) {
+      const el = document.getElementById(id);
+      return !!(el && !el.hidden);
+    }
+
+    function syncBackButton() {
+      /* Native Android system / gesture back only — no in-app back control. */
+    }
+
+    function creditAddViewOpen() {
+      const addView = document.getElementById('pay-cr-add-view');
+      return !!(addView && !addView.hidden);
+    }
+
+    function creditDetailViewOpen() {
+      const detailView = document.getElementById('pay-cr-detail-view');
+      return !!(detailView && !detailView.hidden);
+    }
+
+    function go(screen, opts) {
+      opts = opts || {};
       const accessKey = SCREEN_ACCESS[screen] || screen;
       if (screen && screen !== 'home' && !hasModuleAccess(accessKey)) {
         screen = 'home';
       }
+      const next = screen || 'home';
+      if (opts.replace) {
+        navHistory.length = 0;
+      } else if (!opts.back && currentNavScreen && currentNavScreen !== next) {
+        if (!navHistory.length || navHistory[navHistory.length - 1] !== currentNavScreen) {
+          navHistory.push(currentNavScreen);
+        }
+        if (navHistory.length > 40) navHistory.shift();
+      }
+      currentNavScreen = next;
       document.querySelectorAll('.nav-item').forEach(el => {
-        el.classList.toggle('is-active', el.dataset.screen === screen);
+        el.classList.toggle('is-active', el.dataset.screen === next);
       });
       const panelScreen =
-        screen === 'pos-bar' ? 'pos'
-        : screen === 'kot-bar' ? 'kot'
-        : screen;
+        next === 'pos-bar' ? 'pos'
+        : next === 'kot-bar' ? 'kot'
+        : next;
       document.querySelectorAll('[data-panel]').forEach(el => {
         el.hidden = el.dataset.panel !== panelScreen;
       });
       if (title) title.textContent = BRAND_TITLE;
       setNavOpen(false);
       if (workspace.classList.contains('is-active')) {
-        writePreviewAuth(screen || 'home');
+        writePreviewAuth(next);
       }
-      return screen;
+      syncBackButton();
+      return next;
+    }
+    window.go = go;
+
+    function goBack() {
+      if (typeof setNotifOpen === 'function') {
+        const panel = document.getElementById('notif-panel');
+        if (panel && !panel.hidden) {
+          setNotifOpen(false);
+          return true;
+        }
+      }
+      if (sidebar && !sidebar.classList.contains('collapsed')) {
+        setNavOpen(false);
+        return true;
+      }
+      if (typeof closeAllLedgerDatePanels === 'function') closeAllLedgerDatePanels();
+      if (typeof closeAttDatePanel === 'function') closeAttDatePanel();
+      if (typeof closeCrDatePanels === 'function') closeCrDatePanels();
+      if (typeof closeEmpDatePanel === 'function') closeEmpDatePanel();
+      if (creditAddViewOpen() && typeof setPayrollCreditAddOpen === 'function') {
+        setPayrollCreditAddOpen(false);
+        return true;
+      }
+      if (creditDetailViewOpen() && typeof setPayrollCreditDetailOpen === 'function') {
+        setPayrollCreditDetailOpen(false);
+        return true;
+      }
+      if (typeof approvalsDetailOpen !== 'undefined' && approvalsDetailOpen) {
+        if (typeof closeApprovalsDetail === 'function') closeApprovalsDetail();
+        return true;
+      }
+      if (sheetIsOpen('kot-reason-sheet') && typeof closeKotReason === 'function') {
+        closeKotReason();
+        return true;
+      }
+      if (sheetIsOpen('kot-slip-sheet') && typeof closeKotSlip === 'function') {
+        closeKotSlip();
+        return true;
+      }
+      if (sheetIsOpen('indent-reject-sheet') && typeof closeIndentReject === 'function') {
+        closeIndentReject();
+        return true;
+      }
+      if (navHistory.length) {
+        const prev = navHistory.pop();
+        go(prev, { back: true });
+        return true;
+      }
+      if (currentNavScreen !== 'home') {
+        go('home', { back: true });
+        return true;
+      }
+      return false;
+    }
+    window.goBack = goBack;
+    window.hbeHandleBack = function hbeHandleBack() {
+      try {
+        return !!goBack();
+      } catch (_err) {
+        return false;
+      }
+    };
+
+    (function bindEdgeBackGesture() {
+      const root = document.getElementById('screen-workspace') || document.getElementById('phone');
+      if (!root) return;
+      const EDGE_PX = 28;
+      const MIN_DX = 64;
+      const MAX_DY = 56;
+      let tracking = false;
+      let startX = 0;
+      let startY = 0;
+      let fromLeft = false;
+
+      function pointInRoot(clientX, clientY) {
+        const rect = root.getBoundingClientRect();
+        return {
+          rect,
+          x: clientX - rect.left,
+          y: clientY - rect.top,
+        };
+      }
+
+      function onStart(clientX, clientY) {
+        const p = pointInRoot(clientX, clientY);
+        fromLeft = p.x <= EDGE_PX;
+        const fromRight = p.x >= p.rect.width - EDGE_PX;
+        tracking = fromLeft || fromRight;
+        startX = clientX;
+        startY = clientY;
+      }
+
+      function onEnd(clientX, clientY) {
+        if (!tracking) return;
+        tracking = false;
+        const dx = clientX - startX;
+        const dy = clientY - startY;
+        if (Math.abs(dx) < MIN_DX || Math.abs(dy) > MAX_DY) return;
+        if (fromLeft && dx > MIN_DX) goBack();
+        if (!fromLeft && dx < -MIN_DX) goBack();
+      }
+
+      root.addEventListener('touchstart', (event) => {
+        if (!event.touches || event.touches.length !== 1) return;
+        onStart(event.touches[0].clientX, event.touches[0].clientY);
+      }, { passive: true });
+      root.addEventListener('touchend', (event) => {
+        if (!event.changedTouches || !event.changedTouches.length) return;
+        onEnd(event.changedTouches[0].clientX, event.changedTouches[0].clientY);
+      }, { passive: true });
+      root.addEventListener('pointerdown', (event) => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        onStart(event.clientX, event.clientY);
+      });
+      root.addEventListener('pointerup', (event) => {
+        onEnd(event.clientX, event.clientY);
+      });
+    })();
+    if (window.__hbePendingScreen) {
+      const pendingScreen = window.__hbePendingScreen;
+      window.__hbePendingScreen = null;
+      go(pendingScreen, { replace: true });
     }
 
     async function signInFromForm() {
@@ -3891,6 +4976,7 @@
     function closeApprovalsDetail() {
       approvalsDetailContext = null;
       setApprovalsListVisible(true);
+      if (typeof syncBackButton === 'function') syncBackButton();
       const main = document.getElementById('main-content');
       if (main) main.scrollTop = 0;
     }
@@ -3995,6 +5081,7 @@
       const title = document.getElementById('approvals-detail-title');
       if (!detailView || !body) return;
       setApprovalsListVisible(false);
+      if (typeof syncBackButton === 'function') syncBackButton();
       if (title) title.textContent = kind === 'verification' ? 'Verification detail' : 'Purchase detail';
       body.innerHTML = '<div class="ap-detail-empty">Loading details…</div>';
       const main = document.getElementById('main-content');
@@ -4417,6 +5504,7 @@
       indentRejectId = null;
       const sheet = document.getElementById('indent-reject-sheet');
       if (sheet) sheet.hidden = true;
+      if (typeof syncBackButton === 'function') syncBackButton();
     }
 
     async function approveIndent(id) {
@@ -4488,6 +5576,343 @@
     });
 
     loadIndents('pending', { soft: true, silent: true });
+
+    /* —— Indent Request: catalog + create via /stores/api/indent —— */
+    const IR_UNITS = ['kg', 'gram', 'pcs', 'liter', 'mL', 'bunch', 'bottle', 'pack'];
+
+    const irState = {
+      outlet: 'restaurant',
+      products: [],
+      lines: [],
+      picked: null,
+      busy: false,
+    };
+
+    function irMoney(value) {
+      const n = Number(value || 0);
+      return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function irCsrfHeaders(extra) {
+      const headers = Object.assign({ Accept: 'application/json' }, extra || {});
+      const csrf = readCsrfCookie();
+      if (csrf) {
+        headers['X-CSRFToken'] = csrf;
+        headers['X-CSRF-Token'] = csrf;
+      }
+      return headers;
+    }
+
+    function setIrStatus(text) {
+      const el = document.getElementById('ir-status');
+      if (el) el.textContent = text;
+    }
+
+    function irLineTotal(line) {
+      return Math.round((Number(line.quantity || 0) * Number(line.approximate_price || 0)) * 100) / 100;
+    }
+
+    function syncIrNotesCount() {
+      const notes = document.getElementById('ir-notes');
+      const count = document.getElementById('ir-notes-count');
+      if (!notes || !count) return;
+      count.textContent = String((notes.value || '').length) + '/500';
+    }
+
+    function renderIrLines() {
+      const wrap = document.getElementById('ir-lines');
+      const empty = document.getElementById('ir-empty');
+      const totalEl = document.getElementById('ir-total');
+      if (!wrap) return;
+      if (!irState.lines.length) {
+        wrap.innerHTML = '';
+        if (empty) empty.hidden = false;
+        if (totalEl) totalEl.textContent = '₹0.00';
+        return;
+      }
+      if (empty) empty.hidden = true;
+      let running = 0;
+      wrap.innerHTML = irState.lines.map((line, idx) => {
+        const total = irLineTotal(line);
+        running += total;
+        const pack = line.pack_label || 'Base unit';
+        return (
+          '<div class="pos-line" data-idx="' + idx + '">' +
+            '<button type="button" data-ir-remove="' + idx + '">' +
+              escapeHtml(String(line.item_name || '')) +
+              '<span class="ir-line-sub">' + escapeHtml(pack) + ' · ' + escapeHtml(String(line.unit || '')) + '</span>' +
+            '</button>' +
+            '<span>' + escapeHtml(String(line.quantity)) + '</span>' +
+            '<span>' + irMoney(line.approximate_price).replace('₹', '') + '</span>' +
+            '<span>' + irMoney(total).replace('₹', '') + '</span>' +
+          '</div>'
+        );
+      }).join('');
+      if (totalEl) totalEl.textContent = irMoney(running);
+    }
+
+    function renderIrSuggest(query) {
+      const box = document.getElementById('ir-suggest');
+      if (!box) return;
+      const q = String(query || '').trim().toLowerCase();
+      if (!q) {
+        box.classList.remove('is-open');
+        box.innerHTML = '';
+        return;
+      }
+      const matches = irState.products.filter((p) => {
+        const hay = ((p.name || '') + ' ' + (p.category_name || '')).toLowerCase();
+        return hay.indexOf(q) >= 0;
+      }).slice(0, 8);
+      if (!matches.length) {
+        box.classList.remove('is-open');
+        box.innerHTML = '';
+        return;
+      }
+      box._matches = matches;
+      box.innerHTML = matches.map((p, i) => {
+        const price = p.approximate_price_display || p.approximate_price || '';
+        return (
+          '<button type="button" data-ir-pick="' + i + '">' +
+            escapeHtml(String(p.name || '')) +
+            '<span class="meta">' +
+              escapeHtml(String(p.category_name || '')) +
+              (p.default_unit ? (' · ' + escapeHtml(String(p.default_unit))) : '') +
+              (price !== '' && price != null ? (' · ' + escapeHtml(String(price))) : '') +
+            '</span>' +
+          '</button>'
+        );
+      }).join('');
+      box.classList.add('is-open');
+    }
+
+
+    function fillIrUnit(product, { locked } = {}) {
+      const root = document.getElementById('ir-unit-listbox');
+      const menu = document.getElementById('ir-unit-menu');
+      if (!root || !menu) return;
+      let unit = String((product && product.default_unit) || 'kg').trim() || 'kg';
+      const units = IR_UNITS.slice();
+      if (unit && units.indexOf(unit) < 0) units.unshift(unit);
+      menu.innerHTML = units.map((u) => {
+        const selected = u === unit;
+        return (
+          '<button type="button" class="pos-listbox-option' + (selected ? ' is-selected' : '') +
+          '" role="option" data-value="' + escapeHtml(u) + '" data-label="' + escapeHtml(u) +
+          '" aria-selected="' + (selected ? 'true' : 'false') + '">' + escapeHtml(u) + '</button>'
+        );
+      }).join('');
+      setPosListboxValue(root, unit, unit);
+      root.classList.toggle('is-locked', !!locked);
+      const trigger = document.getElementById('ir-unit-trigger');
+      if (trigger) trigger.setAttribute('aria-disabled', locked ? 'true' : 'false');
+    }
+
+    function fillIrPack(product) {
+      const root = document.getElementById('ir-pack-listbox');
+      const menu = document.getElementById('ir-pack-menu');
+      if (!root || !menu || !product) return;
+      const variants = Array.isArray(product.variants) ? product.variants : [];
+      const basePrice = product.approximate_price == null ? '' : String(product.approximate_price);
+      let html = '<button type="button" class="pos-listbox-option" role="option" data-value="" data-label="Base unit" data-qty="" data-price="' +
+        escapeHtml(basePrice) + '" aria-selected="false">Base unit</button>';
+      variants.forEach((v) => {
+        const label = String((v && v.label) || '');
+        if (!label) return;
+        const qty = v.qty_in_base == null ? '' : String(v.qty_in_base);
+        const price = v.approximate_price == null ? '' : String(v.approximate_price);
+        html += '<button type="button" class="pos-listbox-option" role="option" data-value="' +
+          escapeHtml(label) + '" data-label="' + escapeHtml(label) +
+          '" data-qty="' + escapeHtml(qty) + '" data-price="' + escapeHtml(price) +
+          '" aria-selected="false">' + escapeHtml(label) + '</button>';
+      });
+      menu.innerHTML = html;
+      const defaultLabel = variants.length ? String(variants[0].label || 'Base unit') : 'Base unit';
+      const defaultValue = variants.length ? String(variants[0].label || '') : '';
+      setPosListboxValue(root, defaultValue, defaultLabel || 'Base unit');
+      applyIrPack();
+    }
+
+    function applyIrPack() {
+      const root = document.getElementById('ir-pack-listbox');
+      const hidden = document.getElementById('ir-pack');
+      const price = document.getElementById('ir-price');
+      if (!root || !hidden || !irState.picked) return;
+      const packLabel = String(hidden.value || '');
+      const opt = Array.from(root.querySelectorAll('.pos-listbox-option')).find((el) => (el.getAttribute('data-value') || '') === packLabel);
+      fillIrUnit(irState.picked, { locked: !!packLabel });
+      const packPrice = opt ? (opt.getAttribute('data-price') || '') : '';
+      if (price) {
+        price.value = packPrice || (irState.picked.approximate_price == null ? '' : String(irState.picked.approximate_price));
+      }
+    }
+
+    function pickIrProduct(product) {
+      irState.picked = product;
+      const search = document.getElementById('ir-search');
+      const composer = document.getElementById('ir-composer');
+      const suggest = document.getElementById('ir-suggest');
+      const title = document.getElementById('ir-picked-name');
+      if (search) search.value = product.name || '';
+      if (suggest) {
+        suggest.classList.remove('is-open');
+        suggest.innerHTML = '';
+      }
+      if (composer) composer.hidden = false;
+      if (title) title.textContent = product.name || 'Item';
+      const qty = document.getElementById('ir-qty');
+      if (qty) qty.value = '1';
+      fillIrPack(product);
+    }
+
+    async function loadIrCatalog() {
+      setIrStatus('Loading catalog…');
+      try {
+        const res = await previewFetch(
+          '/preview-api/indent-catalog?outlet=' + encodeURIComponent(irState.outlet),
+          { cache: 'no-store', headers: irCsrfHeaders() }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+        const products = [];
+        (data.categories || []).forEach((cat) => {
+          (cat.products || []).forEach((p) => {
+            products.push(Object.assign({}, p, { category_name: p.category_name || cat.name || '' }));
+          });
+        });
+        irState.products = products;
+        setIrStatus(products.length + ' products');
+      } catch (err) {
+        irState.products = [];
+        setIrStatus('Failed to load · ' + (err && err.message ? err.message : err));
+      }
+    }
+
+    function setIrOutlet(outlet) {
+      const next = outlet === 'bar' ? 'bar' : 'restaurant';
+      irState.outlet = next;
+      irState.lines = [];
+      irState.picked = null;
+      const outletRoot = document.getElementById('ir-outlet-listbox');
+      if (outletRoot) {
+        setPosListboxValue(outletRoot, next, next === 'bar' ? 'Bar' : 'Restaurant');
+      }
+      const composer = document.getElementById('ir-composer');
+      if (composer) composer.hidden = true;
+      const search = document.getElementById('ir-search');
+      if (search) search.value = '';
+      const suggest = document.getElementById('ir-suggest');
+      if (suggest) {
+        suggest.classList.remove('is-open');
+        suggest.innerHTML = '';
+      }
+      const packRoot = document.getElementById('ir-pack-listbox');
+      const packMenu = document.getElementById('ir-pack-menu');
+      if (packMenu) {
+        packMenu.innerHTML = '<button type="button" class="pos-listbox-option is-selected" role="option" data-value="" data-label="Base unit" data-qty="" data-price="" aria-selected="true">Base unit</button>';
+      }
+      if (packRoot) setPosListboxValue(packRoot, '', 'Pack');
+      fillIrUnit({ default_unit: 'kg' }, { locked: false });
+      renderIrLines();
+      loadIrCatalog();
+    }
+
+    function addIrLine() {
+      if (!irState.picked) {
+        setIrStatus('Search product…');
+        return;
+      }
+      const packHidden = document.getElementById('ir-pack');
+      const packRoot = document.getElementById('ir-pack-listbox');
+      const packLabel = String((packHidden && packHidden.value) || '');
+      const opt = packRoot && Array.from(packRoot.querySelectorAll('.pos-listbox-option')).find((el) => (el.getAttribute('data-value') || '') === packLabel);
+      const packQtyRaw = opt ? opt.getAttribute('data-qty') : '';
+      const qty = Number((document.getElementById('ir-qty') || {}).value || 0);
+      const price = Number((document.getElementById('ir-price') || {}).value || 0);
+      const unit = String((document.getElementById('ir-unit') || {}).value || (irState.picked && irState.picked.default_unit) || 'pcs').trim() || 'pcs';
+      if (!qty || qty <= 0) { setIrStatus('Enter a quantity greater than 0 for each item.'); return; }
+      if (!price || price <= 0) { setIrStatus('Enter an approximate price greater than 0 for each item.'); return; }
+      irState.lines.push({
+        item_name: irState.picked.name,
+        quantity: qty,
+        unit: unit,
+        approximate_price: price,
+        pack_label: packLabel,
+        pack_qty_in_base: packLabel && packQtyRaw ? Number(packQtyRaw) : null,
+      });
+      irState.picked = null;
+      const composer = document.getElementById('ir-composer');
+      if (composer) composer.hidden = true;
+      const search = document.getElementById('ir-search');
+      if (search) search.value = '';
+      renderIrLines();
+      setIrStatus(irState.lines.length + ' item' + (irState.lines.length === 1 ? '' : 's'));
+    }
+
+    async function submitIrIndent(action) {
+      if (irState.busy) return;
+      if (!irState.lines.length) {
+        setIrStatus('Add at least one item with a quantity.');
+        return;
+      }
+      irState.busy = true;
+      setIrStatus(action === 'submit' ? 'Sending…' : 'Saving…');
+      try {
+        const res = await previewFetch('/preview-api/indent', {
+          method: 'POST',
+          headers: irCsrfHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            outlet: irState.outlet,
+            notes: String((document.getElementById('ir-notes') || {}).value || ''),
+            action: action,
+            lines: irState.lines,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+        irState.lines = [];
+        const notes = document.getElementById('ir-notes');
+        if (notes) notes.value = '';
+        syncIrNotesCount();
+        renderIrLines();
+        setIrStatus(
+          (action === 'submit' ? 'Indent sent for approval' : 'Indent saved as draft') +
+          (data.indent_no ? (' · ' + data.indent_no) : '')
+        );
+      } catch (err) {
+        setIrStatus(err && err.message ? err.message : String(err));
+      } finally {
+        irState.busy = false;
+      }
+    }
+
+    document.getElementById('ir-outlet')?.addEventListener('change', (event) => {
+      setIrOutlet(event.target.value);
+    });
+    document.getElementById('ir-search')?.addEventListener('input', (event) => {
+      renderIrSuggest(event.target.value);
+    });
+    document.getElementById('ir-suggest')?.addEventListener('click', (event) => {
+      const btn = event.target && event.target.closest('[data-ir-pick]');
+      if (!btn) return;
+      const matches = document.getElementById('ir-suggest')._matches || [];
+      const product = matches[Number(btn.getAttribute('data-ir-pick'))];
+      if (product) pickIrProduct(product);
+    });
+    document.getElementById('ir-pack')?.addEventListener('change', applyIrPack);
+    document.getElementById('ir-add')?.addEventListener('click', addIrLine);
+    document.getElementById('ir-lines')?.addEventListener('click', (event) => {
+      const btn = event.target && event.target.closest('[data-ir-remove]');
+      if (!btn) return;
+      irState.lines.splice(Number(btn.getAttribute('data-ir-remove')), 1);
+      renderIrLines();
+      setIrStatus(irState.lines.length ? (irState.lines.length + ' item' + (irState.lines.length === 1 ? '' : 's')) : 'Choose a product to add.');
+    });
+    document.getElementById('ir-draft')?.addEventListener('click', () => submitIrIndent('save'));
+    document.getElementById('ir-submit')?.addEventListener('click', () => submitIrIndent('submit'));
+    document.getElementById('ir-notes')?.addEventListener('input', syncIrNotesCount);
+    syncIrNotesCount();
+    renderIrLines();
 
     /* —— Dashboard: live /main-dashboard embed (md-dashboard-data) —— */
     const MD_PERIODS = ['today', '7d', '30d', 'mtd'];
@@ -4890,17 +6315,49 @@
       btn.setAttribute('aria-expanded', open ? 'true' : 'false');
     }
 
+    function notifItemIcon(item) {
+      const screen = String((item && item.screen) || '').toLowerCase();
+      const title = String((item && item.title) || '').toLowerCase();
+      let tone = '';
+      let path = '<path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2c0 .5-.2 1-.6 1.4L4 17h5"/><path d="M9.5 17a2.5 2.5 0 0 0 5 0"/>';
+      if (screen.indexOf('approval') >= 0 || title.indexOf('approval') >= 0 || title.indexOf('purchase') >= 0) {
+        tone = ' is-approval';
+        path = '<path d="M6 3h12"/><path d="M6 21h12"/><path d="M8 3v4l4 4 4-4V3"/><path d="M8 21v-4l4-4 4 4v4"/>';
+      } else if (screen.indexOf('indent') >= 0 || title.indexOf('indent') >= 0) {
+        tone = ' is-indent';
+        path = '<path d="M9 5h11"/><path d="M9 12h11"/><path d="M9 19h11"/><path d="M4 6h.01"/><path d="M4 12h.01"/><path d="M4 18h.01"/>';
+      }
+      return '<span class="notif-item-icon' + tone + '" aria-hidden="true"><svg viewBox="0 0 24 24">' + path + '</svg></span>';
+    }
+
     function renderNotifications(items, meta) {
       notifItems = Array.isArray(items) ? items : [];
       const list = document.getElementById('notif-list');
       const btn = document.getElementById('btn-notifications');
       const home = document.getElementById('home-notif');
+      const countEl = document.getElementById('notif-count');
+      const subEl = document.getElementById('notif-panel-sub');
       const unread = !!(meta && meta.unread) || notifItems.length > 0;
       if (btn) btn.classList.toggle('has-unread', unread);
       if (home) {
         if (!notifItems.length) home.textContent = 'Notifications: none';
         else home.textContent = 'Notifications: ' + notifItems.length + ' — ' + (notifItems[0].title || 'Update');
       }
+      if (countEl) {
+        if (notifItems.length) {
+          countEl.hidden = false;
+          countEl.textContent = String(notifItems.length);
+        } else {
+          countEl.hidden = true;
+          countEl.textContent = '0';
+        }
+      }
+      if (subEl) {
+        subEl.textContent = notifItems.length
+          ? (notifItems.length === 1 ? '1 update waiting' : (notifItems.length + ' updates waiting'))
+          : ((meta && meta.error) ? 'Unable to refresh right now' : 'You’re all caught up');
+      }
+      pushNativeNotifications(notifItems);
       if (!list) return;
       if (!notifItems.length) {
         list.innerHTML = '<div class="notif-empty">' +
@@ -4908,14 +6365,36 @@
           '</div>';
         return;
       }
+      const chev = '<span class="notif-item-chev" aria-hidden="true"><svg viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg></span>';
       list.innerHTML = notifItems.map((item, idx) => {
         return (
           '<button type="button" class="notif-item" data-notif-idx="' + idx + '">' +
-            '<div class="notif-item-title">' + escapeHtml(item.title || 'Notification') + '</div>' +
-            '<div class="notif-item-body">' + escapeHtml(item.body || '') + '</div>' +
+            notifItemIcon(item) +
+            '<span class="notif-item-copy">' +
+              '<span class="notif-item-title">' + escapeHtml(item.title || 'Notification') + '</span>' +
+              '<span class="notif-item-body">' + escapeHtml(item.body || '') + '</span>' +
+            '</span>' +
+            chev +
           '</button>'
         );
       }).join('');
+    }
+
+    /** Push alerts to Android system tray (bundled APK only). */
+    function pushNativeNotifications(items) {
+      try {
+        if (!window.HBEAndroid || typeof window.HBEAndroid.postNotifications !== 'function') return;
+        const payload = (items || []).map((item) => ({
+          id: String(item.id || item.title || ''),
+          title: String(item.title || 'Notification'),
+          body: String(item.body || ''),
+          screen: String(item.screen || ''),
+          count: item.count == null ? '' : item.count,
+        }));
+        window.HBEAndroid.postNotifications(JSON.stringify(payload));
+      } catch (_err) {
+        /* Native bridge unavailable in browser preview. */
+      }
     }
 
     async function loadNotifications(opts) {
@@ -5931,6 +7410,7 @@
         sheet.hidden = false;
         sheet.dataset.html = buildKotSlipHtml(token, lines);
       }
+      if (typeof syncBackButton === 'function') syncBackButton();
     }
 
     function closeKotSlip() {
@@ -5939,6 +7419,7 @@
         sheet.hidden = true;
         delete sheet.dataset.html;
       }
+      if (typeof syncBackButton === 'function') syncBackButton();
     }
 
     function openKotReason(changes) {
@@ -5953,6 +7434,7 @@
       kotState.pendingChanges = null;
       const sheet = document.getElementById('kot-reason-sheet');
       if (sheet) sheet.hidden = true;
+      if (typeof syncBackButton === 'function') syncBackButton();
     }
 
     function renderKotList() {
@@ -6269,6 +7751,8 @@
     }
 
     function closeAllLedgerDatePanels(exceptScreen) {
+      if (typeof closeAttDatePanel === 'function') closeAttDatePanel();
+      if (typeof closeCrDatePanels === 'function') closeCrDatePanels();
       ['ledger', 'cash-ledger'].forEach((screen) => {
         if (exceptScreen && screen === exceptScreen) return;
         const chip = document.getElementById(screen + '-date-chip');
@@ -6739,6 +8223,1008 @@
       if (event.key === 'Escape') closeAllLedgerDatePanels();
     });
 
+
+    const PAY_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const payState = { emp: { year: 0, month: 0 }, picker: [] };
+
+    function payMoney(v) {
+      const n = Number(v || 0);
+      return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    }
+    function payFillPeriodMenu(menuId, values, selected, labels) {
+      const menu = document.getElementById(menuId);
+      if (!menu) return;
+      menu.innerHTML = values.map((val, i) => {
+        const label = labels ? labels[i] : String(val);
+        const sel = String(val) === String(selected);
+        return '<button type="button" class="pos-listbox-option' + (sel ? ' is-selected' : '') + '" role="option" data-value="' + val + '" data-label="' + label + '" aria-selected="' + (sel ? 'true' : 'false') + '">' + label + '</button>';
+      }).join('');
+    }
+    function paySetPeriod(prefix, year, month) {
+      const yEl = document.getElementById(prefix + '-year');
+      const mEl = document.getElementById(prefix + '-month');
+      const yLab = document.getElementById(prefix + '-year-label');
+      const mLab = document.getElementById(prefix + '-month-label');
+      const y = Number(year) || new Date().getFullYear();
+      const m = Math.min(12, Math.max(1, Number(month) || (new Date().getMonth() + 1)));
+      if (yEl) yEl.value = String(y);
+      if (mEl) mEl.value = String(m);
+      if (yLab) yLab.textContent = String(y);
+      if (mLab) mLab.textContent = PAY_MONTHS[m - 1] || 'Month';
+      // Selected / current period first in each list.
+      const years = [y, y - 1, y - 2, y + 1];
+      const monthVals = [];
+      const monthLabs = [];
+      for (let i = 0; i < 12; i += 1) {
+        const mv = ((m - 1 + i) % 12) + 1;
+        monthVals.push(mv);
+        monthLabs.push(PAY_MONTHS[mv - 1]);
+      }
+      payFillPeriodMenu(prefix + '-year-menu', years, y);
+      payFillPeriodMenu(prefix + '-month-menu', monthVals, m, monthLabs);
+    }
+    function payQs(params) {
+      const usp = new URLSearchParams();
+      Object.keys(params || {}).forEach((k) => {
+        const v = params[k];
+        if (v !== undefined && v !== null && String(v) !== '') usp.set(k, String(v));
+      });
+      const s = usp.toString();
+      return s ? ('?' + s) : '';
+    }
+    function payEmpty(msg) {
+      return '<div class="pos-empty"><p>' + escapeHtml(String(msg || 'Nothing here.')) + '</p></div>';
+    }
+
+
+    function closeEmpDatePanel() {
+      /* Employee period uses month/year listboxes — no calendar panel. */
+    }
+
+    function ensureEmpPeriodDefault() {
+      const yearEl = document.getElementById('pay-emp-year');
+      const monthEl = document.getElementById('pay-emp-month');
+      const now = new Date();
+      const year = Number((yearEl && yearEl.value) || now.getFullYear());
+      const month = Number((monthEl && monthEl.value) || (now.getMonth() + 1));
+      paySetPeriod('pay-emp', year, month);
+    }
+
+    function empCard(e) {
+      return (
+        '<button type="button" class="emp-card-btn" data-pay-emp="' + e.id + '">' +
+          '<article class="ap-card">' +
+            '<div class="ap-card-top">' +
+              '<div class="ap-card-code">' + (e.name || '') + '</div>' +
+              '<div class="ap-card-amt">' + payMoney(e.gross_salary) + '</div>' +
+            '</div>' +
+            '<div class="ap-card-meta">' + (e.emp_code || '') + ' · ' + (e.location || '—') + (e.mobile ? (' · ' + e.mobile) : '') + '</div>' +
+            '<div class="ap-card-foot">' +
+              '<span class="ap-pill">' + ((e.status || 'active').replace(/_/g, ' ')) + '</span>' +
+            '</div>' +
+          '</article>' +
+        '</button>'
+      );
+    }
+
+    async function loadPayrollEmployees() {
+      const status = document.getElementById('pay-emp-status');
+      const list = document.getElementById('pay-emp-list');
+      ensureEmpPeriodDefault();
+      const q = (document.getElementById('pay-emp-search') || {}).value || '';
+      const year = (document.getElementById('pay-emp-year') || {}).value || '';
+      const month = (document.getElementById('pay-emp-month') || {}).value || '';
+      if (status) status.textContent = 'Loading employees…';
+      try {
+        const res = await previewFetch('/preview-api/payroll/employees' + payQs({ q: q, status: 'active', year: year, month: month }));
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          if (status) status.textContent = (data && data.error) || 'Could not load employees.';
+          if (list) list.innerHTML = payEmpty('No employees.');
+          return;
+        }
+        if (data.year && data.month) {
+          paySetPeriod('pay-emp', data.year, data.month);
+        }
+        payState.emp.year = data.year;
+        payState.emp.month = data.month;
+        const st = data.payroll_state || {};
+        const employees = data.employees || [];
+        if (status) {
+          status.textContent = employees.length + ' employees' +
+            (st.label ? (' · ' + st.label) : '') +
+            (st.locked ? ' · Locked' : '');
+        }
+        if (!list) return;
+        if (!employees.length) {
+          list.innerHTML = payEmpty('No employees match this search.');
+          return;
+        }
+        list.innerHTML = employees.map(empCard).join('');
+      } catch (_err) {
+        if (status) status.textContent = 'Could not load employees.';
+      }
+    }
+
+    async function loadPayrollEmployeeDetail(id) {
+      const box = document.getElementById('pay-emp-detail');
+      if (!box) return;
+      const year = (document.getElementById('pay-emp-year') || {}).value || '';
+      const month = (document.getElementById('pay-emp-month') || {}).value || '';
+      try {
+        const res = await previewFetch('/preview-api/payroll/employees/' + id + payQs({ year: year, month: month }));
+        const e = await res.json();
+        if (!res.ok || !e.ok) {
+          box.hidden = false;
+          box.innerHTML = '<p class="pos-status">' + ((e && e.error) || 'Not found') + '</p>';
+          return;
+        }
+        box.hidden = false;
+        box.innerHTML = '<h3>' + (e.name || '') + '</h3>'
+          + '<div class="pos-bill-row"><span>Employee ID</span><strong>' + (e.emp_code || '') + '</strong></div>'
+          + '<div class="pos-bill-row"><span>Mobile</span><strong>' + (e.mobile || '') + '</strong></div>'
+          + '<div class="pos-bill-row"><span>Location</span><strong>' + (e.location || '') + '</strong></div>'
+          + '<div class="pos-bill-row"><span>Gross salary</span><strong>' + payMoney(e.gross_salary) + '</strong></div>'
+          + '<div class="pos-bill-row"><span>Present / Absent / Half day</span><strong>' + [e.present, e.absent, e.half_day].map((v) => v == null ? '—' : v).join(' / ') + '</strong></div>'
+          + '<div class="pos-bill-row"><span>Credit</span><strong>' + payMoney(e.credit_balance) + '</strong></div>';
+      } catch (_err) {
+        box.hidden = false;
+        box.innerHTML = '<p class="pos-status">Could not load detail.</p>';
+      }
+    }
+
+    async function addPayrollEmployee() {
+      const name = (document.getElementById('pay-emp-add-name') || {}).value || '';
+      const mobile = (document.getElementById('pay-emp-add-mobile') || {}).value || '';
+      const location = (document.getElementById('pay-emp-add-location') || {}).value || '';
+      const salary = (document.getElementById('pay-emp-add-salary') || {}).value || '0';
+      const status = document.getElementById('pay-emp-status');
+      try {
+        const res = await previewFetch('/preview-api/payroll/employees', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ name: name.trim(), mobile: mobile.trim(), location: location.trim(), gross_salary: salary }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          if (status) status.textContent = (data && data.error) || 'Could not add employee.';
+          return;
+        }
+        ['pay-emp-add-name','pay-emp-add-mobile','pay-emp-add-location','pay-emp-add-salary'].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+        loadPayrollEmployees();
+      } catch (_err) {
+        if (status) status.textContent = 'Could not add employee.';
+      }
+    }
+
+
+    const attDateState = {
+      date: '',
+      calMonth: null,
+    };
+
+    function attTodayIso() {
+      if (typeof todayIso === 'function') return todayIso();
+      const d = new Date();
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+
+    function syncAttDateDisplay() {
+      const hidden = document.getElementById('pay-att-date');
+      const display = document.getElementById('pay-att-date-display');
+      const chip = document.getElementById('pay-att-date-chip');
+      if (hidden) hidden.value = attDateState.date || '';
+      if (display) {
+        if (attDateState.date) {
+          display.textContent = formatLedgerDisplayDate(attDateState.date);
+          display.classList.remove('is-placeholder');
+        } else {
+          display.textContent = 'Select date…';
+          display.classList.add('is-placeholder');
+        }
+      }
+      if (chip) chip.classList.toggle('is-filtered', !!attDateState.date);
+    }
+
+    function closeAttDatePanel() {
+      const chip = document.getElementById('pay-att-date-chip');
+      const trigger = document.getElementById('pay-att-date-trigger');
+      const panel = document.getElementById('pay-att-date-panel');
+      if (chip) chip.classList.remove('is-open');
+      if (trigger) trigger.setAttribute('aria-expanded', 'false');
+      if (panel) panel.hidden = true;
+    }
+
+    function renderAttCalendar() {
+      const grid = document.getElementById('pay-att-cal-grid');
+      const title = document.getElementById('pay-att-cal-title');
+      if (!grid || !title) return;
+      if (!attDateState.calMonth) {
+        const base = attDateState.date ? new Date(attDateState.date + 'T12:00:00') : new Date();
+        attDateState.calMonth = new Date(base.getFullYear(), base.getMonth(), 1);
+      }
+      const year = attDateState.calMonth.getFullYear();
+      const month = attDateState.calMonth.getMonth();
+      title.textContent = LEDGER_MONTHS[month] + ' ' + year;
+      const first = new Date(year, month, 1);
+      const startPad = (first.getDay() + 6) % 7;
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const prevDays = new Date(year, month, 0).getDate();
+      const selected = attDateState.date || '';
+      let out = '';
+      for (let i = 0; i < 42; i++) {
+        let dayNum;
+        let cellMonth = month;
+        let cellYear = year;
+        let muted = false;
+        if (i < startPad) {
+          dayNum = prevDays - startPad + i + 1;
+          cellMonth = month - 1;
+          if (cellMonth < 0) { cellMonth = 11; cellYear -= 1; }
+          muted = true;
+        } else if (i >= startPad + daysInMonth) {
+          dayNum = i - startPad - daysInMonth + 1;
+          cellMonth = month + 1;
+          if (cellMonth > 11) { cellMonth = 0; cellYear += 1; }
+          muted = true;
+        } else {
+          dayNum = i - startPad + 1;
+        }
+        const iso = cellYear + '-' + String(cellMonth + 1).padStart(2, '0') + '-' + String(dayNum).padStart(2, '0');
+        const classes = ['ap-cal-day'];
+        if (muted) classes.push('is-muted');
+        if (selected && iso === selected) classes.push('is-selected', 'is-start', 'is-end');
+        out += '<button type="button" class="' + classes.join(' ') + '" data-att-cal-day="' + iso + '">' + dayNum + '</button>';
+      }
+      grid.innerHTML = out;
+    }
+
+    function openAttDatePanel() {
+      const chip = document.getElementById('pay-att-date-chip');
+      const trigger = document.getElementById('pay-att-date-trigger');
+      const panel = document.getElementById('pay-att-date-panel');
+      if (!chip || !panel) return;
+      const willOpen = !chip.classList.contains('is-open');
+      if (typeof closeAllLedgerDatePanels === 'function') closeAllLedgerDatePanels();
+      if (typeof closeCrDatePanels === 'function') closeCrDatePanels();
+      if (typeof closeEmpDatePanel === 'function') closeEmpDatePanel();
+      closeAttDatePanel();
+      if (!willOpen) return;
+      chip.classList.add('is-open');
+      if (trigger) trigger.setAttribute('aria-expanded', 'true');
+      panel.hidden = false;
+      const base = attDateState.date ? new Date(attDateState.date + 'T12:00:00') : new Date();
+      attDateState.calMonth = new Date(base.getFullYear(), base.getMonth(), 1);
+      renderAttCalendar();
+    }
+
+    function commitAttDate(iso) {
+      attDateState.date = iso || attTodayIso();
+      syncAttDateDisplay();
+      closeAttDatePanel();
+      loadPayrollAttendance();
+    }
+
+    function ensureAttDateDefault() {
+      if (!attDateState.date) attDateState.date = attTodayIso();
+      syncAttDateDisplay();
+    }
+
+    async function loadPayrollAttendance() {
+      const status = document.getElementById('pay-att-status');
+      const list = document.getElementById('pay-att-list');
+      ensureAttDateDefault();
+      const dateEl = document.getElementById('pay-att-date');
+      const q = (document.getElementById('pay-att-search') || {}).value || '';
+      const d = attDateState.date || (dateEl && dateEl.value) || '';
+      if (status) status.textContent = 'Loading attendance…';
+      try {
+        const res = await previewFetch('/preview-api/payroll/attendance' + payQs({ date: d, q: q }));
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          if (status) status.textContent = (data && data.error) || 'Could not load attendance.';
+          return;
+        }
+        const st = data.payroll_state || {};
+        if (status) status.textContent = (st.label || data.date || '') + (st.locked ? ' · Locked' : '');
+        const kpis = document.getElementById('pay-att-kpis');
+        if (kpis) {
+          kpis.innerHTML = [
+            ['Present', data.present_count],
+            ['Absent', data.absent_count],
+            ['Half day', data.half_count],
+            ['Unmarked', data.unmarked_count],
+          ].map((row) => '<div class="pay-kpi"><b>' + row[1] + '</b><span>' + row[0] + '</span></div>').join('');
+        }
+        if (!list) return;
+        if (!(data.employees || []).length) {
+          list.innerHTML = payEmpty('No employees for this date.');
+          return;
+        }
+        const pill = (value, label, mark, disabled) => {
+          const isActive = value !== '' && mark === value;
+          return '<button type="button" class="att-pill' + (isActive && value !== '' ? ' is-active' : '')
+            + '" data-att-mark="' + value + '"' + disabled + '>' + label + '</button>';
+        };
+        list.innerHTML = data.employees.map((e) => {
+          const mark = (e.date_status || '').trim() || 'unmarked';
+          const disabled = e.can_modify ? '' : ' disabled';
+          const chipLabel = mark === 'half_day' ? 'half day' : mark.replace(/_/g, ' ');
+          const chipClass = 'att-chip is-' + (mark || 'unmarked');
+          return '<div class="att-card" data-pay-att-emp="' + e.id + '">'
+            + '<div class="att-card-main">'
+            + '<p class="att-card-name">' + (e.name || '') + '</p>'
+            + '<p class="att-card-meta">' + (e.emp_code || '') + ' · ' + (e.location || '—') + '</p>'
+            + '<span class="' + chipClass + '">' + chipLabel + '</span>'
+            + '</div>'
+            + '<div class="att-actions">'
+            + pill('present', 'Present', mark, disabled)
+            + pill('absent', 'Absent', mark, disabled)
+            + pill('half_day', 'Half day', mark, disabled)
+            + pill('', 'Clear', mark, disabled)
+            + '</div></div>';
+        }).join('');
+      } catch (_err) {
+        if (status) status.textContent = 'Could not load attendance.';
+      }
+    }
+
+    async function markPayrollAttendance(empId, statusValue) {
+      const dateEl = document.getElementById('pay-att-date');
+      const d = (typeof attDateState !== 'undefined' && attDateState.date) || (dateEl && dateEl.value) || '';
+      const status = document.getElementById('pay-att-status');
+      try {
+        const res = await previewFetch('/preview-api/payroll/attendance/mark', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ employee_id: empId, date: d, status: statusValue }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          if (status) status.textContent = (data && data.error) || 'Could not mark attendance.';
+          return;
+        }
+        loadPayrollAttendance();
+      } catch (_err) {
+        if (status) status.textContent = 'Could not mark attendance.';
+      }
+    }
+
+
+
+    function closeCrEmpSuggest() {
+      const box = document.getElementById('pay-cr-emp-suggest');
+      const input = document.getElementById('pay-cr-emp');
+      if (box) {
+        box.classList.remove('is-open');
+        box.innerHTML = '';
+        box._matches = [];
+      }
+      if (input) input.setAttribute('aria-expanded', 'false');
+    }
+
+    function crEmpMatchScore(emp, query) {
+      const name = String(emp.name || '').toLowerCase();
+      const code = String(emp.emp_code || '').toLowerCase();
+      const id = String(emp.id || '');
+      if (!query) return -1;
+      if (name === query || code === query || id === query) return 0;
+      if (name.startsWith(query) || code.startsWith(query)) return 1;
+      if (name.includes(query) || code.includes(query) || id.includes(query)) return 2;
+      // token nearest match: any word starting with query
+      const tokens = name.split(/\s+/);
+      if (tokens.some((t) => t.startsWith(query))) return 1;
+      if (tokens.some((t) => t.includes(query))) return 2;
+      return -1;
+    }
+
+    function renderCrEmpSuggest(q) {
+      const box = document.getElementById('pay-cr-emp-suggest');
+      const input = document.getElementById('pay-cr-emp');
+      if (!box) return;
+      const query = String(q || '').trim().toLowerCase();
+      if (!query) {
+        closeCrEmpSuggest();
+        return;
+      }
+      const ranked = (payState.picker || [])
+        .map((e) => ({ emp: e, score: crEmpMatchScore(e, query) }))
+        .filter((row) => row.score >= 0)
+        .sort((a, b) => {
+          if (a.score !== b.score) return a.score - b.score;
+          return String(a.emp.name || '').localeCompare(String(b.emp.name || ''));
+        })
+        .slice(0, 8)
+        .map((row) => row.emp);
+      if (!ranked.length) {
+        closeCrEmpSuggest();
+        return;
+      }
+      box._matches = ranked;
+      box.innerHTML = ranked.map((e, i) => {
+        const meta = [e.emp_code || '', e.id ? ('ID ' + e.id) : ''].filter(Boolean).join(' · ');
+        return (
+          '<button type="button" role="option" data-cr-emp-idx="' + i + '">' +
+            '<span class="pos-suggest-name">' + escapeHtml(e.name || 'Employee') + '</span>' +
+            (meta ? ('<span class="meta">' + escapeHtml(meta) + '</span>') : '') +
+          '</button>'
+        );
+      }).join('');
+      box.classList.add('is-open');
+      if (input) input.setAttribute('aria-expanded', 'true');
+    }
+
+    function pickCrEmployee(emp) {
+      const input = document.getElementById('pay-cr-emp');
+      const idEl = document.getElementById('pay-cr-emp-id');
+      if (!emp) return;
+      if (input) input.value = emp.name || '';
+      if (idEl) idEl.value = String(emp.id || '');
+      closeCrEmpSuggest();
+    }
+
+    const crDateState = {
+      entryDate: '',
+      entryCalMonth: null,
+    };
+
+    function crTodayIso() {
+      if (typeof todayIso === 'function') return todayIso();
+      if (typeof attTodayIso === 'function') return attTodayIso();
+      const d = new Date();
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+
+    function closeCrDatePanels() {
+      const chip = document.getElementById('pay-cr-date-chip');
+      const trigger = document.getElementById('pay-cr-date-trigger');
+      const panel = document.getElementById('pay-cr-date-panel');
+      if (chip) chip.classList.remove('is-open');
+      if (trigger) trigger.setAttribute('aria-expanded', 'false');
+      if (panel) panel.hidden = true;
+    }
+
+    function syncCrEntryDisplay() {
+      const iso = crDateState.entryDate || '';
+      const hidden = document.getElementById('pay-cr-date');
+      const display = document.getElementById('pay-cr-date-display');
+      const chip = document.getElementById('pay-cr-date-chip');
+      if (hidden) hidden.value = iso;
+      if (display) {
+        if (iso) {
+          display.textContent = formatLedgerDisplayDate(iso);
+          display.classList.remove('is-placeholder');
+        } else {
+          display.textContent = 'Select date…';
+          display.classList.add('is-placeholder');
+        }
+      }
+      if (chip) chip.classList.toggle('is-filtered', !!iso);
+    }
+
+    function renderCrCalendar() {
+      const grid = document.getElementById('pay-cr-date-grid');
+      const title = document.getElementById('pay-cr-date-title');
+      if (!grid || !title) return;
+      let calMonth = crDateState.entryCalMonth;
+      const selected = crDateState.entryDate;
+      if (!calMonth) {
+        const base = selected ? new Date(selected + 'T12:00:00') : new Date();
+        calMonth = new Date(base.getFullYear(), base.getMonth(), 1);
+        crDateState.entryCalMonth = calMonth;
+      }
+      const year = calMonth.getFullYear();
+      const month = calMonth.getMonth();
+      title.textContent = LEDGER_MONTHS[month] + ' ' + year;
+      const first = new Date(year, month, 1);
+      const startPad = (first.getDay() + 6) % 7;
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const prevDays = new Date(year, month, 0).getDate();
+      let out = '';
+      for (let i = 0; i < 42; i++) {
+        let dayNum, cellMonth = month, cellYear = year, muted = false;
+        if (i < startPad) {
+          dayNum = prevDays - startPad + i + 1;
+          cellMonth = month - 1;
+          if (cellMonth < 0) { cellMonth = 11; cellYear -= 1; }
+          muted = true;
+        } else if (i >= startPad + daysInMonth) {
+          dayNum = i - startPad - daysInMonth + 1;
+          cellMonth = month + 1;
+          if (cellMonth > 11) { cellMonth = 0; cellYear += 1; }
+          muted = true;
+        } else {
+          dayNum = i - startPad + 1;
+        }
+        const iso = cellYear + '-' + String(cellMonth + 1).padStart(2, '0') + '-' + String(dayNum).padStart(2, '0');
+        const classes = ['ap-cal-day'];
+        if (muted) classes.push('is-muted');
+        if (selected && iso === selected) classes.push('is-selected', 'is-start', 'is-end');
+        out += '<button type="button" class="' + classes.join(' ') + '" data-cr-cal-day="' + iso + '">' + dayNum + '</button>';
+      }
+      grid.innerHTML = out;
+    }
+
+    function openCrDatePanel() {
+      const chip = document.getElementById('pay-cr-date-chip');
+      const trigger = document.getElementById('pay-cr-date-trigger');
+      const panel = document.getElementById('pay-cr-date-panel');
+      if (!chip || !panel) return;
+      const willOpen = !chip.classList.contains('is-open');
+      if (typeof closeAllLedgerDatePanels === 'function') closeAllLedgerDatePanels();
+      if (typeof closeAttDatePanel === 'function') closeAttDatePanel();
+      if (typeof closeEmpDatePanel === 'function') closeEmpDatePanel();
+      closeCrDatePanels();
+      if (!willOpen) return;
+      chip.classList.add('is-open');
+      if (trigger) trigger.setAttribute('aria-expanded', 'true');
+      panel.hidden = false;
+      const selected = crDateState.entryDate;
+      const base = selected ? new Date(selected + 'T12:00:00') : new Date();
+      crDateState.entryCalMonth = new Date(base.getFullYear(), base.getMonth(), 1);
+      renderCrCalendar();
+    }
+
+    function commitCrDate(iso) {
+      crDateState.entryDate = iso || crTodayIso();
+      syncCrEntryDisplay();
+      closeCrDatePanels();
+    }
+
+    function ensureCrDateDefaults() {
+      if (!crDateState.entryDate) crDateState.entryDate = crTodayIso();
+      syncCrEntryDisplay();
+    }
+
+    function crBalanceCard(e) {
+      const bal = Number(e.credit_balance || 0);
+      const amtClass = bal > 0 ? 'ap-card-amt is-out' : 'ap-card-amt';
+      return (
+        '<article class="ap-card" data-cr-emp-id="' + escapeHtml(String(e.id || '')) + '" role="button" tabindex="0" aria-label="Open credit history for ' + escapeHtml(e.name || 'employee') + '">' +
+          '<div class="ap-card-top">' +
+            '<div class="ap-card-code">' + escapeHtml(e.name || '') + '</div>' +
+            '<div class="' + amtClass + '">' + payMoney(bal) + '</div>' +
+          '</div>' +
+          '<div class="ap-card-meta">' + escapeHtml((e.emp_code || '') + ' · ' + (e.location || '—') + ' · ' + (e.credit_entries || 0) + ' entries') + '</div>' +
+          '<div class="ap-card-foot">' +
+            '<span class="ap-pill">Balance</span>' +
+          '</div>' +
+        '</article>'
+      );
+    }
+
+    function crTxnCard(r) {
+      const amt = Number(r.amount || 0);
+      const amtClass = amt < 0 ? 'ap-card-amt' : 'ap-card-amt is-out';
+      const pill = (r.transaction_type === 'repayment' || amt < 0) ? 'Repayment' : 'Advance';
+      return (
+        '<article class="ap-card">' +
+          '<div class="ap-card-top">' +
+            '<div class="ap-card-code">' + escapeHtml(r.description || pill) + '</div>' +
+            '<div class="' + amtClass + '">' + payMoney(amt) + '</div>' +
+          '</div>' +
+          '<div class="ap-card-meta">' + escapeHtml(pill) + '</div>' +
+          '<div class="ap-card-foot">' +
+            '<span class="ap-card-date">' + (r.date ? formatLedgerDisplayDate(String(r.date).slice(0, 10)) : '—') + '</span>' +
+            '<span class="ap-pill">' + escapeHtml(pill) + '</span>' +
+          '</div>' +
+        '</article>'
+      );
+    }
+
+    function crRecentCard(r) {
+      const amt = Number(r.amount || 0);
+      const amtClass = amt < 0 ? 'ap-card-amt' : 'ap-card-amt is-out';
+      return (
+        '<article class="ap-card">' +
+          '<div class="ap-card-top">' +
+            '<div class="ap-card-code">' + (r.emp_name || '') + '</div>' +
+            '<div class="' + amtClass + '">' + payMoney(r.amount) + '</div>' +
+          '</div>' +
+          '<div class="ap-card-meta">' + (r.emp_code || '') + ' · ' + (r.description || '—') + '</div>' +
+          '<div class="ap-card-foot">' +
+            '<span class="ap-card-date">' + (r.date ? formatLedgerDisplayDate(String(r.date).slice(0, 10)) : '—') + '</span>' +
+            '<span class="ap-pill">Credit</span>' +
+          '</div>' +
+        '</article>'
+      );
+    }
+
+    async function loadPayrollCredits() {
+      const list = document.getElementById('pay-cr-list');
+      ensureCrDateDefaults();
+      try {
+        const res = await previewFetch('/preview-api/payroll/credits', { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          if (list) list.innerHTML = payEmpty((data && data.error) || 'Could not load credits.');
+          return;
+        }
+        payState.picker = data.all_employees || [];
+        const employees = (data.employees || []).filter((e) => Number(e.credit_balance || 0) > 0);
+        const kpis = document.getElementById('pay-cr-kpis');
+        if (kpis) {
+          kpis.innerHTML = '<div class="pay-kpi"><b>' + payMoney(data.total_credit_amount) + '</b><span>Overall credit</span></div>';
+        }
+        if (!list) return;
+        const balanceHtml = employees.length
+          ? employees.map(crBalanceCard).join('')
+          : payEmpty('No employees with outstanding credit.');
+        const recent = data.recent || [];
+        const recentHtml = recent.length
+          ? ('<div class="cr-section-title">Recent</div>' + recent.map(crRecentCard).join(''))
+          : '';
+        list.innerHTML = '<div class="cr-section-title">Balances</div>' + balanceHtml + recentHtml;
+      } catch (_err) {
+        if (list) list.innerHTML = payEmpty('Could not load credits.');
+      }
+    }
+
+    function setPayrollCreditAddOpen(open) {
+      const listView = document.getElementById('pay-cr-list-view');
+      const addView = document.getElementById('pay-cr-add-view');
+      const detailView = document.getElementById('pay-cr-detail-view');
+      if (open && detailView) detailView.hidden = true;
+      if (listView) listView.hidden = !!open;
+      if (addView) addView.hidden = !open;
+      const main = document.getElementById('main-content');
+      if (main) main.scrollTop = 0;
+      if (open) {
+        ensureCrDateDefaults();
+        const formStatus = document.getElementById('pay-cr-form-status');
+        if (formStatus) {
+          formStatus.hidden = true;
+          formStatus.textContent = '';
+        }
+        if (!(payState.picker && payState.picker.length)) {
+          loadPayrollCredits();
+        }
+      } else {
+        closeCrEmpSuggest();
+      }
+    }
+
+    function setPayrollCreditDetailOpen(open, empId) {
+      const listView = document.getElementById('pay-cr-list-view');
+      const detailView = document.getElementById('pay-cr-detail-view');
+      const addView = document.getElementById('pay-cr-add-view');
+      if (open && addView) addView.hidden = true;
+      if (listView) listView.hidden = !!open;
+      if (detailView) detailView.hidden = !open;
+      const main = document.getElementById('main-content');
+      if (main) main.scrollTop = 0;
+      if (open && empId) loadPayrollCreditEmployee(empId);
+    }
+
+    async function loadPayrollCreditEmployee(empId) {
+      const title = document.getElementById('pay-cr-detail-title');
+      const meta = document.getElementById('pay-cr-detail-meta');
+      const kpis = document.getElementById('pay-cr-detail-kpis');
+      const list = document.getElementById('pay-cr-detail-list');
+      if (title) title.textContent = 'Credit history';
+      if (meta) meta.textContent = 'Loading…';
+      if (kpis) kpis.innerHTML = '';
+      if (list) list.innerHTML = payEmpty('Loading transactions…');
+      try {
+        const res = await previewFetch('/preview-api/payroll/credits/' + encodeURIComponent(String(empId)), { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          const errMsg = String((data && data.error) || 'Could not load history.')
+            .replace(/<[^>]*>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 160) || 'Could not load history.';
+          if (meta) meta.textContent = errMsg;
+          if (list) list.innerHTML = payEmpty(errMsg);
+          return;
+        }
+        const emp = data.employee || {};
+        if (title) title.textContent = emp.name || 'Employee';
+        if (meta) {
+          meta.textContent = [emp.emp_code || '', emp.location || '', (data.entry_count || 0) + ' entries']
+            .filter(Boolean)
+            .join(' · ');
+        }
+        if (kpis) {
+          kpis.innerHTML = '<div class="pay-kpi"><b>' + payMoney(data.credit_balance) + '</b><span>Outstanding balance</span></div>';
+        }
+        const entries = data.entries || [];
+        if (list) {
+          list.innerHTML = entries.length
+            ? ('<div class="cr-section-title">Transactions</div>' + entries.map(crTxnCard).join(''))
+            : payEmpty('No credit transactions for this employee.');
+        }
+      } catch (_err) {
+        if (meta) meta.textContent = 'Could not load history.';
+        if (list) list.innerHTML = payEmpty('Could not load history.');
+      }
+    }
+
+    function resetPayrollCreditForm() {
+      const emp = document.getElementById('pay-cr-emp');
+      const empId = document.getElementById('pay-cr-emp-id');
+      const desc = document.getElementById('pay-cr-desc');
+      const amount = document.getElementById('pay-cr-amount');
+      const txn = document.getElementById('pay-cr-txn');
+      if (emp) emp.value = '';
+      if (empId) empId.value = '';
+      if (desc) desc.value = '';
+      if (amount) amount.value = '';
+      if (txn) txn.value = '';
+      closeCrEmpSuggest();
+      const typeEl = document.getElementById('pay-cr-type');
+      const typeLabel = document.getElementById('pay-cr-type-label');
+      if (typeEl) typeEl.value = 'credit';
+      if (typeLabel) typeLabel.textContent = 'Advance/Credit';
+      const payEl = document.getElementById('pay-cr-paytype');
+      const payLabel = document.getElementById('pay-cr-paytype-label');
+      if (payEl) payEl.value = 'cash';
+      if (payLabel) payLabel.textContent = 'Cash';
+      document.querySelectorAll('#pay-cr-add-view [data-pos-listbox]').forEach((box) => {
+        box.querySelectorAll('.pos-listbox-option').forEach((opt) => {
+          const selected = opt.getAttribute('data-value') === (box.querySelector('input[type="hidden"]') || {}).value;
+          opt.classList.toggle('is-selected', selected);
+        });
+      });
+      if (typeof commitCrDate === 'function') commitCrDate(crTodayIso());
+    }
+
+    async function addPayrollCredit() {
+      const status = document.getElementById('pay-cr-form-status');
+      const empId = String((document.getElementById('pay-cr-emp-id') || {}).value || '').trim();
+      const empText = String((document.getElementById('pay-cr-emp') || {}).value || '').trim();
+      const payload = {
+        employee_id: empId || empText,
+        date: (typeof crDateState !== 'undefined' && crDateState.entryDate) || (document.getElementById('pay-cr-date') || {}).value,
+        description: (document.getElementById('pay-cr-desc') || {}).value,
+        amount: (document.getElementById('pay-cr-amount') || {}).value,
+        transaction_type: (document.getElementById('pay-cr-type') || {}).value || 'credit',
+        payment_type: (document.getElementById('pay-cr-paytype') || {}).value || 'cash',
+        transaction_id: (document.getElementById('pay-cr-txn') || {}).value || '',
+      };
+      if (!payload.employee_id) {
+        if (status) {
+          status.hidden = false;
+          status.textContent = 'Select an employee from the list.';
+        }
+        return;
+      }
+      try {
+        const res = await previewFetch('/preview-api/payroll/credits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          if (status) {
+            status.hidden = false;
+            status.textContent = (data && data.error) || 'Could not save.';
+          }
+          return;
+        }
+        resetPayrollCreditForm();
+        setPayrollCreditAddOpen(false);
+        loadPayrollCredits();
+      } catch (_err) {
+        if (status) {
+          status.hidden = false;
+          status.textContent = 'Could not save credit.';
+        }
+      }
+    }
+
+    async function loadPayrollTips() {
+      const status = document.getElementById('pay-tip-status');
+      const from = (document.getElementById('pay-tip-from') || {}).value || '';
+      const to = (document.getElementById('pay-tip-to') || {}).value || '';
+      const location = (document.getElementById('pay-tip-location') || {}).value || 'All';
+      if (status) status.textContent = 'Loading tips…';
+      try {
+        const res = await previewFetch('/preview-api/payroll/tips' + payQs({ date_from: from, date_to: to, location: location }));
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          if (status) status.textContent = (data && data.error) || 'Could not load tips.';
+          return;
+        }
+        if (status) status.textContent = 'Tips ' + payMoney(data.grand_total);
+        const kpis = document.getElementById('pay-tip-kpis');
+        if (kpis) {
+          kpis.innerHTML = [
+            ['Total', data.grand_total],
+            ['Hotel', data.hotel_total],
+            ['Bar', data.bar_total],
+            ['Restaurant', data.restaurant_total],
+          ].map((row) => '<div class="pay-kpi"><b>' + payMoney(row[1]) + '</b><span>' + row[0] + '</span></div>').join('');
+        }
+        const top = document.getElementById('pay-tip-top');
+        if (top) {
+          const rows = (data.top_employees || []).map((e) => (
+            '<div class="pay-row"><div><strong>' + (e.employee_name || '') + '</strong><span>' + (e.employee_code || '') + '</span></div><span>' + payMoney(e.total) + '</span></div>'
+          )).join('');
+          top.innerHTML = rows || payEmpty('No tips in this range.');
+        }
+        const recent = document.getElementById('pay-tip-recent');
+        if (recent) {
+          recent.innerHTML = (data.recent || []).map((r) => (
+            '<div class="pay-row"><div><strong>' + (r.employee_name || '') + '</strong><span>' + (r.date || '') + ' · ' + (r.location || '') + '</span></div><span>' + payMoney(r.amount) + '</span></div>'
+          )).join('');
+        }
+        const dateEl = document.getElementById('pay-tip-date');
+        if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0, 10);
+      } catch (_err) {
+        if (status) status.textContent = 'Could not load tips.';
+      }
+    }
+
+    async function addPayrollTip() {
+      const status = document.getElementById('pay-tip-status');
+      const payload = {
+        employee_id: (document.getElementById('pay-tip-emp') || {}).value,
+        date: (document.getElementById('pay-tip-date') || {}).value,
+        location: (document.getElementById('pay-tip-outlet') || {}).value || 'Hotel',
+        amount: (document.getElementById('pay-tip-amount') || {}).value,
+        description: (document.getElementById('pay-tip-desc') || {}).value || '',
+        company: 'HBE',
+      };
+      try {
+        const res = await previewFetch('/preview-api/payroll/tips', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          if (status) status.textContent = (data && data.error) || 'Could not add tip.';
+          return;
+        }
+        loadPayrollTips();
+      } catch (_err) {
+        if (status) status.textContent = 'Could not add tip.';
+      }
+    }
+
+    function bindPayrollUi() {
+      if (document.documentElement.dataset.payrollBound === '1') return;
+      document.documentElement.dataset.payrollBound = '1';
+      const empSearch = document.getElementById('pay-emp-search');
+      let empTimer = null;
+      empSearch && empSearch.addEventListener('input', () => {
+        clearTimeout(empTimer);
+        empTimer = setTimeout(loadPayrollEmployees, 250);
+      });
+      document.getElementById('pay-emp-year')?.addEventListener('change', loadPayrollEmployees);
+      document.getElementById('pay-emp-month')?.addEventListener('change', loadPayrollEmployees);
+      document.getElementById('pay-emp-add-btn')?.addEventListener('click', addPayrollEmployee);
+
+      document.getElementById('pay-emp-list')?.addEventListener('click', (event) => {
+        const btn = event.target.closest('[data-pay-emp]');
+        if (btn) loadPayrollEmployeeDetail(btn.getAttribute('data-pay-emp'));
+      });
+      document.getElementById('pay-att-search')?.addEventListener('input', () => {
+        clearTimeout(empTimer);
+        empTimer = setTimeout(loadPayrollAttendance, 250);
+      });
+      
+      document.getElementById('pay-att-date-trigger')?.addEventListener('click', (event) => {
+        event.preventDefault();
+        openAttDatePanel();
+      });
+      document.getElementById('pay-att-cal-prev')?.addEventListener('click', () => {
+        if (!attDateState.calMonth) attDateState.calMonth = new Date();
+        attDateState.calMonth = new Date(attDateState.calMonth.getFullYear(), attDateState.calMonth.getMonth() - 1, 1);
+        renderAttCalendar();
+      });
+      document.getElementById('pay-att-cal-next')?.addEventListener('click', () => {
+        if (!attDateState.calMonth) attDateState.calMonth = new Date();
+        attDateState.calMonth = new Date(attDateState.calMonth.getFullYear(), attDateState.calMonth.getMonth() + 1, 1);
+        renderAttCalendar();
+      });
+      document.getElementById('pay-att-cal-grid')?.addEventListener('click', (event) => {
+        const day = event.target.closest('[data-att-cal-day]');
+        if (!day) return;
+        commitAttDate(day.getAttribute('data-att-cal-day') || '');
+      });
+      document.getElementById('pay-att-date-today')?.addEventListener('click', () => {
+        commitAttDate(attTodayIso());
+      });
+      document.addEventListener('click', (event) => {
+        const chip = document.getElementById('pay-att-date-chip');
+        if (!chip || !chip.classList.contains('is-open')) return;
+        if (chip.contains(event.target)) return;
+        closeAttDatePanel();
+      });
+
+      document.getElementById('pay-att-list')?.addEventListener('click', (event) => {
+        const mark = event.target.closest('[data-att-mark]');
+        if (!mark || mark.disabled) return;
+        const card = mark.closest('[data-pay-att-emp]');
+        if (!card) return;
+        markPayrollAttendance(card.getAttribute('data-pay-att-emp'), mark.getAttribute('data-att-mark') || '');
+      });
+      
+      
+      document.getElementById('pay-cr-emp')?.addEventListener('input', (event) => {
+        const idEl = document.getElementById('pay-cr-emp-id');
+        if (idEl) idEl.value = '';
+        renderCrEmpSuggest(event.target.value || '');
+      });
+      document.getElementById('pay-cr-emp')?.addEventListener('focus', (event) => {
+        if (String(event.target.value || '').trim()) renderCrEmpSuggest(event.target.value || '');
+      });
+      document.getElementById('pay-cr-emp-suggest')?.addEventListener('click', (event) => {
+        const item = event.target.closest('[data-cr-emp-idx]');
+        if (!item) return;
+        const box = document.getElementById('pay-cr-emp-suggest');
+        const idx = Number(item.getAttribute('data-cr-emp-idx'));
+        const emp = box && box._matches && box._matches[idx];
+        if (emp) pickCrEmployee(emp);
+      });
+      document.addEventListener('click', (event) => {
+        const field = document.getElementById('pay-cr-emp');
+        const box = document.getElementById('pay-cr-emp-suggest');
+        if (!box || !box.classList.contains('is-open')) return;
+        if ((field && field.contains(event.target)) || (box && box.contains(event.target))) return;
+        closeCrEmpSuggest();
+      });
+
+      document.getElementById('pay-cr-date-trigger')?.addEventListener('click', (event) => {
+        event.preventDefault();
+        openCrDatePanel();
+      });
+      document.getElementById('pay-cr-date-prev')?.addEventListener('click', () => {
+        if (!crDateState.entryCalMonth) crDateState.entryCalMonth = new Date();
+        crDateState.entryCalMonth = new Date(crDateState.entryCalMonth.getFullYear(), crDateState.entryCalMonth.getMonth() - 1, 1);
+        renderCrCalendar();
+      });
+      document.getElementById('pay-cr-date-next')?.addEventListener('click', () => {
+        if (!crDateState.entryCalMonth) crDateState.entryCalMonth = new Date();
+        crDateState.entryCalMonth = new Date(crDateState.entryCalMonth.getFullYear(), crDateState.entryCalMonth.getMonth() + 1, 1);
+        renderCrCalendar();
+      });
+      document.getElementById('pay-cr-date-grid')?.addEventListener('click', (event) => {
+        const day = event.target.closest('[data-cr-cal-day]');
+        if (!day) return;
+        commitCrDate(day.getAttribute('data-cr-cal-day') || '');
+      });
+      document.getElementById('pay-cr-date-today')?.addEventListener('click', () => commitCrDate(crTodayIso()));
+      document.addEventListener('click', (event) => {
+        const entryChip = document.getElementById('pay-cr-date-chip');
+        if (!entryChip || !entryChip.classList.contains('is-open')) return;
+        if (entryChip.contains(event.target)) return;
+        closeCrDatePanels();
+      });
+
+      document.getElementById('pay-cr-add-btn')?.addEventListener('click', addPayrollCredit);
+      document.getElementById('pay-cr-open-add')?.addEventListener('click', () => {
+        resetPayrollCreditForm();
+        setPayrollCreditAddOpen(true);
+      });
+      document.getElementById('pay-cr-list')?.addEventListener('click', (event) => {
+        const card = event.target.closest('[data-cr-emp-id]');
+        if (!card) return;
+        const empId = card.getAttribute('data-cr-emp-id');
+        if (!empId) return;
+        setPayrollCreditDetailOpen(true, empId);
+      });
+      document.getElementById('pay-cr-list')?.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const card = event.target.closest('[data-cr-emp-id]');
+        if (!card) return;
+        event.preventDefault();
+        const empId = card.getAttribute('data-cr-emp-id');
+        if (empId) setPayrollCreditDetailOpen(true, empId);
+      });
+      document.getElementById('pay-tip-from')?.addEventListener('change', loadPayrollTips);
+      document.getElementById('pay-tip-to')?.addEventListener('change', loadPayrollTips);
+      document.getElementById('pay-tip-location')?.addEventListener('change', loadPayrollTips);
+      document.getElementById('pay-tip-add-btn')?.addEventListener('click', addPayrollTip);
+    }
+    bindPayrollUi();
+
     const _go = go;
     go = function (screen) {
       if (typeof setNotifOpen === 'function') setNotifOpen(false);
@@ -6764,6 +9250,10 @@
       } else {
         closeIndentReject();
       }
+      if (screen === 'indent-request') {
+        loadIrCatalog();
+        renderIrLines();
+      }
       if (screen === 'dashboard') {
         loadDashboard();
       }
@@ -6788,6 +9278,14 @@
       if (screen === 'cash-ledger') {
         loadCashLedgerScreen();
       }
+      if (screen === 'payroll-employee') loadPayrollEmployees();
+      if (screen === 'payroll-attendance') loadPayrollAttendance();
+      if (screen === 'payroll-credit') {
+        setPayrollCreditAddOpen(false);
+        setPayrollCreditDetailOpen(false);
+        loadPayrollCredits();
+      }
+      if (screen === 'payroll-tips') loadPayrollTips();
     };
     // Keep preview signed in across refresh for 30 days (explicit Logout clears it).
     (async function restorePreviewSession() {

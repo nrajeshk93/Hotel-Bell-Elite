@@ -315,3 +315,9 @@
     border-top: 1px solid var(--border-s, #eef2f7);
   }
 }
+
+/* HBE: hide top-filter dropdown chevrons (match Purchase & Expense). */
+.an-range-chev,
+.se-filter-chip-chev {
+  display: none !important;
+}

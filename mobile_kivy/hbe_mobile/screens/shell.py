@@ -7,6 +7,7 @@ is unavailable on some Kivy pygame builds (e.g. Python 3.14 wheels).
 
 from __future__ import annotations
 
+from kivy.core.window import Window
 from kivy.graphics import Color, Rectangle
 from kivy.metrics import dp
 from kivy.uix.behaviors import ButtonBehavior
@@ -55,6 +56,7 @@ class WorkspaceShell(MDScreen):
         self._nav_group_labels: list = []
         self._nav_open = False
         self._active_screen = "home"
+        self._nav_history: list[str] = []
         self._nav_width = dp(260)
         self._access: dict = {}
         self._nav_box = None
@@ -95,6 +97,7 @@ class WorkspaceShell(MDScreen):
             )
         )
         root.add_widget(top)
+        Window.bind(on_keyboard=self._on_keyboard)
 
         # Gold rule under topbar (Home mock ornament)
         gold_rule = MDBoxLayout(size_hint_y=None, height=dp(2), md_bg_color=theme.LOGIN_GOLD)
@@ -128,7 +131,7 @@ class WorkspaceShell(MDScreen):
             height=dp(40),
         )
         self.nav_panel.add_widget(brand)
-        scroll = MDScrollView()
+        scroll = MDScrollView(bar_width=0, scroll_type=["content"])
         nav_box = MDBoxLayout(
             orientation="vertical",
             adaptive_height=True,
@@ -197,7 +200,7 @@ class WorkspaceShell(MDScreen):
         if home and hasattr(home, "apply_access"):
             home.apply_access(self._access)
         if self._active_screen not in self._nav_items and self._active_screen != "home":
-            self.navigate("home")
+            self.navigate("home", replace=True)
 
     def _logout_from_nav(self) -> None:
         self.close_nav()
@@ -237,18 +240,54 @@ class WorkspaceShell(MDScreen):
             screen.name = name
             self.content_manager.add_widget(screen)
 
-    def navigate(self, screen_name: str) -> None:
+    def navigate(self, screen_name: str, *, back: bool = False, replace: bool = False) -> None:
         if screen_name not in self.content_manager.screen_names:
             return
         item = next((i for i in NAV_ITEMS if i["screen"] == screen_name), None)
         if item and not can_access(self._access, str(item.get("access_key") or "")):
             screen_name = "home"
+        if replace:
+            self._nav_history.clear()
+        elif (
+            not back
+            and self._active_screen
+            and self._active_screen != screen_name
+        ):
+            if not self._nav_history or self._nav_history[-1] != self._active_screen:
+                self._nav_history.append(self._active_screen)
+            if len(self._nav_history) > 40:
+                self._nav_history.pop(0)
         self.content_manager.current = screen_name
         self._active_screen = screen_name
         self.title_label.text = "Hotel Bell Elite"
         for name, nav in self._nav_items.items():
             nav.is_active = name == screen_name
         self.close_nav()
+        self._sync_back_button()
         screen = self.content_manager.get_screen(screen_name)
         if hasattr(screen, "on_workspace_enter"):
             screen.on_workspace_enter()
+
+    def go_back(self) -> bool:
+        """Return to the previous workspace screen (or Home). True if handled."""
+        if self._nav_open:
+            self.close_nav()
+            return True
+        if self._nav_history:
+            prev = self._nav_history.pop()
+            self.navigate(prev, back=True)
+            return True
+        if self._active_screen != "home":
+            self.navigate("home", back=True)
+            return True
+        return False
+
+    def _on_keyboard(self, _window, key, *_args) -> bool:
+        # Android system / gesture back (and Esc on desktop).
+        if key in (27, 1000):
+            return bool(self.go_back())
+        return False
+
+    def _sync_back_button(self) -> None:
+        """No in-app back control — native Android back/gestures only."""
+        return

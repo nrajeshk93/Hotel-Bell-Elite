@@ -650,7 +650,12 @@ def _flask_request_inprocess(
                 return None
             payload = resp.get_json(silent=True)
             if not isinstance(payload, dict):
-                text = (resp.get_data(as_text=True) or "")[:300]
+                text = (resp.get_data(as_text=True) or "").strip()
+                lower = text[:200].lower()
+                if "<html" in lower or "<!doctype" in lower or "<title>" in lower:
+                    text = f"Request failed (HTTP {resp.status_code})."
+                else:
+                    text = (text[:280] + "…") if len(text) > 280 else text
                 payload = {
                     "ok": resp.status_code < 400,
                     "error": text or f"HTTP {resp.status_code}",
@@ -658,6 +663,171 @@ def _flask_request_inprocess(
             return resp.status_code, payload
     except Exception:
         return None
+
+
+
+
+def _payroll_preview_access_key(path: str) -> Optional[str]:
+    if path == "/preview-api/payroll/employees" or path.startswith("/preview-api/payroll/employees/"):
+        return "payroll_employee"
+    if path == "/preview-api/payroll/attendance" or path.startswith("/preview-api/payroll/attendance/"):
+        return "payroll_attendance"
+    if path == "/preview-api/payroll/credits" or path.startswith("/preview-api/payroll/credits/"):
+        return "payroll_credit"
+    if path == "/preview-api/payroll/tips" or path.startswith("/preview-api/payroll/tips/"):
+        return "payroll_tips"
+    return None
+
+
+def _payroll_flask_path(preview_path: str, query: str = "") -> str:
+    flask_path = "/api/mobile" + preview_path[len("/preview-api"):]
+    if query:
+        flask_path = f"{flask_path}?{query}"
+    return flask_path
+
+
+def proxy_payroll_mobile(
+    method: str,
+    preview_path: str,
+    query: str = "",
+    body: Optional[dict[str, Any]] = None,
+) -> tuple[int, dict[str, Any]]:
+    """Proxy Employee Payroll mobile JSON APIs through Flask in-process."""
+    result = _flask_request_inprocess(method, _payroll_flask_path(preview_path, query), body)
+    if result is None:
+        return 502, {
+            "ok": False,
+            "error": friendly_flask_error("Cannot reach Flask"),
+            "flask_base": FLASK_BASE,
+        }
+    status, data = result
+    if not isinstance(data, dict):
+        data = {"ok": status < 400, "error": "Invalid response"}
+    return status, data
+
+
+def fetch_indent_catalog(outlet: str = "restaurant") -> dict[str, Any]:
+    """Product catalog for Indent Request (Flask in-process, then local DB)."""
+    outlet_key = (outlet or "restaurant").strip().lower() or "restaurant"
+    if outlet_key not in ("bar", "restaurant"):
+        return {"ok": False, "error": "Choose Bar or Restaurant."}
+
+    result = _flask_request_inprocess(
+        "GET", f"/stores/api/indent-catalog?outlet={outlet_key}"
+    )
+    if result is not None:
+        status, data = result
+        if isinstance(data, dict):
+            if status < 400 and data.get("ok"):
+                out = dict(data)
+                out.setdefault("outlet", outlet_key)
+                out["source"] = "flask-inprocess"
+                out["flask_base"] = FLASK_BASE
+                return out
+            if data.get("ok") is False:
+                return data
+
+    categories: list[dict[str, Any]] = []
+    by_id: dict[int, dict[str, Any]] = {}
+    product_ids: list[int] = []
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT c.id AS category_id, c.name AS category_name,
+                   c.sort_order AS category_sort,
+                   p.id AS product_id, p.name AS product_name, p.default_unit, p.outlet,
+                   p.approximate_price, p.sort_order
+            FROM store_product_categories c
+            LEFT JOIN store_products p
+              ON p.category_id = c.id AND p.is_active = 1
+             AND lower(coalesce(p.outlet, '')) IN (?, 'both')
+            WHERE c.is_active = 1
+            ORDER BY c.sort_order, c.name, p.sort_order, p.name
+            """,
+            (outlet_key,),
+        ).fetchall()
+        for row in rows:
+            cat_id = int(row["category_id"])
+            if cat_id not in by_id:
+                node = {"id": cat_id, "name": str(row["category_name"] or ""), "products": []}
+                by_id[cat_id] = node
+                categories.append(node)
+            if row["product_id"]:
+                pid = int(row["product_id"])
+                product_ids.append(pid)
+                price = row["approximate_price"]
+                try:
+                    price_f = float(price) if price is not None and price != "" else None
+                except (TypeError, ValueError):
+                    price_f = None
+                by_id[cat_id]["products"].append({
+                    "id": pid,
+                    "name": str(row["product_name"] or ""),
+                    "default_unit": str(row["default_unit"] or ""),
+                    "outlet": str(row["outlet"] or ""),
+                    "approximate_price": price_f,
+                    "approximate_price_display": (
+                        f"{price_f:.2f}" if price_f is not None else ""
+                    ),
+                    "variants": [],
+                })
+        variants_by: dict[int, list[dict[str, Any]]] = {pid: [] for pid in product_ids}
+        if product_ids:
+            placeholders = ",".join("?" for _ in product_ids)
+            for vrow in conn.execute(
+                f"""
+                SELECT id, product_id, label, qty_in_base, approximate_price, sort_order
+                FROM store_product_variants
+                WHERE is_active = 1 AND product_id IN ({placeholders})
+                ORDER BY sort_order, id
+                """,
+                product_ids,
+            ):
+                pid = int(vrow["product_id"])
+                try:
+                    qty = float(vrow["qty_in_base"] or 0)
+                except (TypeError, ValueError):
+                    qty = 0.0
+                try:
+                    vprice = float(vrow["approximate_price"]) if vrow["approximate_price"] not in (None, "") else None
+                except (TypeError, ValueError):
+                    vprice = None
+                variants_by.setdefault(pid, []).append({
+                    "id": int(vrow["id"]),
+                    "label": str(vrow["label"] or ""),
+                    "qty_in_base": qty,
+                    "qty_in_base_display": f"{qty:g}" if qty else "",
+                    "approximate_price": vprice,
+                    "approximate_price_display": (
+                        f"{vprice:.2f}" if vprice is not None else ""
+                    ),
+                })
+        for cat in categories:
+            for product in cat["products"]:
+                product["variants"] = variants_by.get(int(product["id"]), [])
+        categories = [cat for cat in categories if cat["products"]]
+    return {
+        "ok": True,
+        "outlet": outlet_key,
+        "categories": categories,
+        "source": "local-db",
+        "flask_base": FLASK_BASE,
+    }
+
+
+def create_indent_request(payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    """Create indent (draft/submit) via Flask in-process — same rules as web."""
+    if not isinstance(payload, dict):
+        return 400, {"ok": False, "error": "JSON object required"}
+    result = _flask_request_inprocess("POST", "/stores/api/indent", payload)
+    if result is None:
+        return 502, {
+            "ok": False,
+            "error": friendly_flask_error("Cannot reach Flask"),
+            "flask_base": FLASK_BASE,
+        }
+    return result
+
 
 
 def _flask_get_inprocess(
@@ -1736,6 +1906,20 @@ class PreviewHandler(SimpleHTTPRequestHandler):
                 return
             self._indents(parsed.query)
             return
+        if parsed.path in ("/preview-api/indent-catalog", "/api/indent-catalog"):
+            denied = _require_preview_access("indent_request")
+            if denied:
+                self._send_json(403, denied)
+                return
+            qs = parse_qs(parsed.query or "")
+            outlet = (qs.get("outlet") or ["restaurant"])[0]
+            try:
+                payload = fetch_indent_catalog(outlet)
+                status = 200 if payload.get("ok") else 400
+                self._send_json(status, payload)
+            except Exception as exc:  # noqa: BLE001
+                self._send_json(500, {"ok": False, "error": str(exc), "flask_base": FLASK_BASE})
+            return
         if parsed.path in ("/preview-api/purchase-ledger", "/api/purchase-ledger"):
             denied = _require_preview_access("purchase_ledger")
             if denied:
@@ -1918,6 +2102,40 @@ class PreviewHandler(SimpleHTTPRequestHandler):
             except Exception as exc:  # noqa: BLE001
                 self._send_json(500, {"ok": False, "error": str(exc), "flask_base": FLASK_BASE})
             return
+        if parsed.path == "/stores/api/indent-catalog":
+            denied = _require_preview_access("indent_request")
+            if denied:
+                self._send_json(403, denied)
+                return
+            route = parsed.path
+            if parsed.query:
+                route = f"{parsed.path}?{parsed.query}"
+            result = _flask_request_inprocess("GET", route)
+            if result is None:
+                self._send_json(
+                    502,
+                    {
+                        "ok": False,
+                        "error": friendly_flask_error("Cannot reach Flask"),
+                        "flask_base": FLASK_BASE,
+                    },
+                )
+                return
+            status, data = result
+            self._send_json(status, data)
+            return
+        if parsed.path.startswith("/preview-api/payroll/"):
+            access_key = _payroll_preview_access_key(parsed.path)
+            if not access_key:
+                self._send_json(404, {"ok": False, "error": "Not found"})
+                return
+            denied = _require_preview_access(access_key)
+            if denied:
+                self._send_json(403, denied)
+                return
+            status, data = proxy_payroll_mobile("GET", parsed.path, parsed.query or "")
+            self._send_json(status, data)
+            return
         if parsed.path in ("/", ""):
             self.path = "/mobile_ui_preview.html"
         return super().do_GET()
@@ -1972,6 +2190,47 @@ class PreviewHandler(SimpleHTTPRequestHandler):
                     self._send_json(403, denied)
                     return
                 status, data = decide_indent(payload)
+                self._send_json(status if status else 200, data)
+                return
+            if parsed.path in ("/preview-api/indent", "/api/indent"):
+                denied = _require_preview_access("indent_request")
+                if denied:
+                    self._send_json(403, denied)
+                    return
+                status, data = create_indent_request(payload)
+                self._send_json(status if status else 200, data)
+                return
+            if parsed.path == "/stores/api/indent":
+                denied = _require_preview_access("indent_request")
+                if denied:
+                    self._send_json(403, denied)
+                    return
+                result = _flask_request_inprocess("POST", parsed.path, payload)
+                if result is None:
+                    self._send_json(
+                        502,
+                        {
+                            "ok": False,
+                            "error": friendly_flask_error("Cannot reach Flask"),
+                            "flask_base": FLASK_BASE,
+                        },
+                    )
+                    return
+                status, data = result
+                self._send_json(status if status else 200, data)
+                return
+            if parsed.path.startswith("/preview-api/payroll/"):
+                access_key = _payroll_preview_access_key(parsed.path)
+                if not access_key:
+                    self._send_json(404, {"ok": False, "error": "Not found"})
+                    return
+                denied = _require_preview_access(access_key)
+                if denied:
+                    self._send_json(403, denied)
+                    return
+                status, data = proxy_payroll_mobile(
+                    "POST", parsed.path, parsed.query or "", payload
+                )
                 self._send_json(status if status else 200, data)
                 return
             if parsed.path in ("/preview-api/pos/invoices", "/api/pos/invoices"):

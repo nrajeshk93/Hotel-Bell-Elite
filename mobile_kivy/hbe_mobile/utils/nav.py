@@ -16,6 +16,13 @@ NAV_ITEMS = [
         "access_key": "main_dashboard",
     },
     {
+        "id": "indent_request",
+        "label": "Indent Request",
+        "screen": "indent_request",
+        "group": "Purchase & Inventory",
+        "access_key": "indent_request",
+    },
+    {
         "id": "indent_approvals",
         "label": "Indent Approval",
         "screen": "indent_approvals",
@@ -49,6 +56,34 @@ NAV_ITEMS = [
         "screen": "kot_bar",
         "group": "Bar",
         "access_key": "kot_bar",
+    },
+    {
+        "id": "payroll_employee",
+        "label": "Employee",
+        "screen": "payroll_employees",
+        "group": "Employee Payroll",
+        "access_key": "payroll_employee",
+    },
+    {
+        "id": "payroll_attendance",
+        "label": "Attendance",
+        "screen": "payroll_attendance",
+        "group": "Employee Payroll",
+        "access_key": "payroll_attendance",
+    },
+    {
+        "id": "payroll_credit",
+        "label": "Credit",
+        "screen": "payroll_credit",
+        "group": "Employee Payroll",
+        "access_key": "payroll_credit",
+    },
+    {
+        "id": "payroll_tips",
+        "label": "Tips",
+        "screen": "payroll_tips",
+        "group": "Employee Payroll",
+        "access_key": "payroll_tips",
     },
     {
         "id": "approvals",

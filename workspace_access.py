@@ -1,5 +1,7 @@
 """Workspace module registry and permission helpers for Hotel Bell Elite."""
 
+import functools
+
 import auth_security
 from user_photos import avatar_accent_index, role_accent_index
 
@@ -573,6 +575,8 @@ _STORES_ENDPOINT_GROUPS = {
         "stores_orders_lines_next",
         "stores_orders_pdf",
         "stores_orders_send_wa",
+        "stores_api_indent_catalog",
+        "stores_api_indent_create",
     },
     "approvals": {
         "stores_approvals",
@@ -889,6 +893,10 @@ _PAYROLL_ENDPOINT_GROUPS = {
         "upload_employees",
         "export_employees",
         "export_employee_master",
+        "mobile_payroll_employees",
+        "mobile_payroll_employee_detail",
+        "mobile_payroll_employee_create",
+        "mobile_payroll_employee_update",
     },
     "report": {
         "report",
@@ -906,6 +914,9 @@ _PAYROLL_ENDPOINT_GROUPS = {
         "bulk_attendance",
         "export_attendance_report",
         "export_attendance_register",
+        "mobile_payroll_attendance",
+        "mobile_payroll_attendance_detail",
+        "mobile_payroll_attendance_mark",
     },
     "credit": {
         "credits_dashboard",
@@ -917,6 +928,8 @@ _PAYROLL_ENDPOINT_GROUPS = {
         "export_credits_report",
         "update_salary",
         "lock_payroll_month",
+        "mobile_payroll_credits",
+        "mobile_payroll_credit_create",
     },
     "tips": {
         "sales_update_tips_page",
@@ -925,6 +938,9 @@ _PAYROLL_ENDPOINT_GROUPS = {
         "sales_update_tips_delete_employee",
         "sales_update_tips_employee_lines",
         "sales_update_edit_tip",
+        "mobile_payroll_tips",
+        "mobile_payroll_tips_add",
+        "mobile_payroll_tips_incentive",
     },
 }
 _PAYROLL_PARENT_ENDPOINTS = set().union(*_PAYROLL_ENDPOINT_GROUPS.values())
@@ -967,6 +983,7 @@ def _ui_child_nodes(module_key, child_cfg, submodules):
     return nodes
 
 
+@functools.lru_cache(maxsize=1)
 def access_module_tree():
     tree = []
     for module in _WORKSPACE_MODULE_REGISTRY:
@@ -984,6 +1001,7 @@ def access_module_tree():
     return tree
 
 
+@functools.lru_cache(maxsize=1)
 def access_module_tree_ui():
     tree = []
     for module in _WORKSPACE_MODULE_REGISTRY:
@@ -1634,8 +1652,9 @@ def get_endpoint_dashboard_module(endpoint):
 
 
 def get_endpoint_payroll_submodule(endpoint):
+    bare = endpoint.split(".", 1)[1] if endpoint and "." in str(endpoint) else endpoint
     for key, endpoints in _PAYROLL_ENDPOINT_GROUPS.items():
-        if endpoint in endpoints:
+        if endpoint in endpoints or bare in endpoints:
             return key
     return None
 
@@ -1864,6 +1883,7 @@ def mobile_module_access(user):
             "home": False,
             "main_dashboard": False,
             "indent_approvals": False,
+            "indent_request": False,
             "pos": False,
             "kot": False,
             "pos_bar": False,
@@ -1871,6 +1891,10 @@ def mobile_module_access(user):
             "approvals": False,
             "purchase_ledger": False,
             "cash_ledger": False,
+            "payroll_employee": False,
+            "payroll_attendance": False,
+            "payroll_credit": False,
+            "payroll_tips": False,
             "can_approve": False,
             "is_admin": False,
         }
@@ -1885,6 +1909,7 @@ def mobile_module_access(user):
         "home": True,
         "main_dashboard": user_can_access_dashboard(user, "main_dashboard"),
         "indent_approvals": can_approve,
+        "indent_request": user_can_access_stores_submodule(user, "indent"),
         "pos": pos_invoice,
         "kot": bool(pos_invoice or pos_tables),
         "pos_bar": bar_invoice,
@@ -1892,6 +1917,10 @@ def mobile_module_access(user):
         "approvals": user_can_access_accounts_submodule(user, "purchase_verification"),
         "purchase_ledger": user_can_access_accounts_submodule(user, "purchase_ledger"),
         "cash_ledger": user_can_access_accounts_submodule(user, "cash_ledger"),
+        "payroll_employee": user_can_access_payroll_submodule(user, "employee"),
+        "payroll_attendance": user_can_access_payroll_submodule(user, "attendance"),
+        "payroll_credit": user_can_access_payroll_submodule(user, "credit"),
+        "payroll_tips": user_can_access_payroll_submodule(user, "tips"),
         "can_approve": can_approve,
         "is_admin": bool(user.get("is_admin")),
     }

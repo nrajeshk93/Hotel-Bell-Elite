@@ -40,5 +40,5 @@ Your repo `.env` may set `SESSION_COOKIE_SECURE=1`. That **blocks login on HTTP*
 - Cookie sessions (login)
 - File picker (Excel uploads)
 - Downloads (exports / reports) via DownloadManager
-- Android back → WebView history
+- Android system / gesture back → in-app navigation (`hbeHandleBack`)
 - Offline / retry screen if the server is unreachable

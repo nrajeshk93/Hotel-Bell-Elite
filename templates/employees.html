@@ -21,15 +21,15 @@
 </script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=13">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=17">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=55">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=2">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
 {% if mode is defined and mode == 'credits' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=3">
 {% endif %}
 {% include 'partials/employees_page_styles.html' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
@@ -75,14 +75,14 @@
 
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=13">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=17">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=2">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
 {% if mode is defined and mode == 'credits' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=3">
 {% endif %}
 {% include 'partials/employees_page_styles.html' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">

@@ -7,4 +7,6 @@
     <string name="retry">Retry</string>
     <string name="download_started">Download started</string>
     <string name="file_chooser_title">Choose file</string>
+    <string name="notif_channel_name">Approvals &amp; alerts</string>
+    <string name="notif_channel_desc">Purchase and indent approval reminders</string>
 </resources>

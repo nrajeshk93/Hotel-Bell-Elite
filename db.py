@@ -23,12 +23,99 @@ def is_pos_liquor_category(name):
     return bool(_POS_LIQUOR_CATEGORY_RE.search(str(name or "").strip()))
 
 
-def get_db():
+class _RequestScopedConnection:
+    """sqlite3 connection reused for one Flask request.
+
+    close() is a no-op so nested helpers can get_db()/close() without
+    dropping the caller's transaction. close_request_db() closes the file
+    at request teardown.
+    """
+
+    __slots__ = ("_raw",)
+
+    def __init__(self, conn):
+        object.__setattr__(self, "_raw", conn)
+
+    def close(self):
+        # Nested get_db()/close() is common in helpers. Rolling back here
+        # would undo the caller's uncommitted work on the shared connection.
+        # The real close happens in close_request_db() at request teardown.
+        return None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        raw = object.__getattribute__(self, "_raw")
+        if exc_type:
+            raw.rollback()
+        else:
+            try:
+                raw.commit()
+            except sqlite3.Error:
+                raw.rollback()
+                raise
+        return False
+
+    def __getattr__(self, name):
+        return getattr(object.__getattribute__(self, "_raw"), name)
+
+    def __setattr__(self, name, value):
+        setattr(object.__getattribute__(self, "_raw"), name, value)
+
+
+def _connect():
     conn = sqlite3.connect(DATABASE_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA temp_store=MEMORY")
+    conn.execute("PRAGMA cache_size=-8192")
+    conn.execute("PRAGMA mmap_size=67108864")
     return conn
+
+
+def get_db():
+    """Return a SQLite connection.
+
+    Inside a Flask app context the same connection is reused for the request.
+    Outside Flask (tests, scripts, init) a new connection is opened.
+    """
+    try:
+        from flask import g, has_app_context
+    except ImportError:
+        return _connect()
+    if has_app_context():
+        wrapper = getattr(g, "_hbe_db", None)
+        if wrapper is None:
+            wrapper = _RequestScopedConnection(_connect())
+            g._hbe_db = wrapper
+        return wrapper
+    return _connect()
+
+
+def close_request_db(exc=None):
+    """Close the request-scoped connection (Flask teardown_appcontext)."""
+    try:
+        from flask import g, has_app_context
+    except ImportError:
+        return
+    if not has_app_context():
+        return
+    wrapper = getattr(g, "_hbe_db", None)
+    if wrapper is None:
+        return
+    try:
+        delattr(g, "_hbe_db")
+    except Exception:
+        g._hbe_db = None
+    raw = getattr(wrapper, "_raw", wrapper)
+    try:
+        raw.close()
+    except Exception:
+        pass
 
 
 # POS workspace outlets (path/nav keys). Distinct from Sales Update OUTLET_* labels.
@@ -20424,6 +20511,7 @@ def init_db():
         )
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_att_emp_date ON attendance(employee_id, date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(date)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_credits_emp ON credits(employee_id)")
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_credits_emp_period "

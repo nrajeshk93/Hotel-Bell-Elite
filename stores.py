@@ -6628,6 +6628,184 @@ def stores_api_indent_approvals():
     )
 
 
+
+@stores_bp.route("/stores/api/indent-catalog")
+def stores_api_indent_catalog():
+    """JSON product catalog for mobile Indent Request (Bar or Restaurant)."""
+    user = _get_user()
+    if not user:
+        return jsonify({"ok": False, "error": "You must be logged in."}), 401
+    if not user_can_access_stores_submodule(user, "indent"):
+        return jsonify({"ok": False, "error": "You do not have access to this module."}), 403
+    outlet = _parse_outlet_filter(request.args.get("outlet"))
+    if outlet not in OUTLET_KEYS:
+        return jsonify({"ok": False, "error": "Choose Bar or Restaurant."}), 400
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        catalog = _load_product_catalog(conn, stores_outlet=outlet)
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "outlet": outlet, "categories": catalog})
+
+
+@stores_bp.route("/stores/api/indent", methods=["POST"])
+def stores_api_indent_create():
+    """JSON create indent (draft or pending) for mobile Indent Request."""
+    user = _get_user()
+    if not user:
+        return jsonify({"ok": False, "error": "You must be logged in."}), 401
+    if not user_can_access_stores_submodule(user, "indent"):
+        return jsonify({"ok": False, "error": "You do not have access to this module."}), 403
+
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        data = {}
+    form_outlet_raw = str(data.get("outlet") or "").strip()
+    if not form_outlet_raw or _parse_outlet_filter(form_outlet_raw) == "both":
+        return jsonify({
+            "ok": False,
+            "error": "Choose Bar or Restaurant before saving this indent.",
+        }), 400
+    write_outlet = _parse_outlet(form_outlet_raw)
+    notes = str(data.get("notes") or "").strip()[:500]
+    action = str(data.get("action") or "save").strip()
+    raw_lines = data.get("lines") or []
+    if not isinstance(raw_lines, list):
+        raw_lines = []
+
+    named_missing_qty = []
+    lines: list[dict[str, Any]] = []
+    for raw in raw_lines:
+        if not isinstance(raw, dict):
+            continue
+        item_name = str(raw.get("item_name") or "").strip()
+        if not item_name:
+            continue
+        try:
+            qty = float(raw.get("quantity") or 0)
+        except (TypeError, ValueError):
+            qty = 0
+        if qty <= 0:
+            named_missing_qty.append(item_name)
+            continue
+        unit = str(raw.get("unit") or "pcs").strip() or "pcs"
+        approx_price, _price_err = _parse_optional_price(raw.get("approximate_price"))
+        pack_label = str(raw.get("pack_label") or "").strip()
+        pack_qty_in_base = None
+        if pack_label:
+            try:
+                pack_qty_in_base = float(raw.get("pack_qty_in_base") or 0)
+            except (TypeError, ValueError):
+                pack_qty_in_base = 0.0
+            if pack_qty_in_base <= 0:
+                pack_label = ""
+                pack_qty_in_base = None
+        lines.append({
+            "item_name": item_name,
+            "quantity": qty,
+            "unit": unit,
+            "notes": "",
+            "approximate_price": approx_price,
+            "pack_label": pack_label,
+            "pack_qty_in_base": pack_qty_in_base,
+        })
+
+    if named_missing_qty:
+        return jsonify({
+            "ok": False,
+            "error": "Enter a quantity greater than 0 for each item.",
+        }), 400
+    if not lines:
+        return jsonify({
+            "ok": False,
+            "error": "Add at least one item with a quantity.",
+        }), 400
+    missing_price = [
+        line["item_name"]
+        for line in lines
+        if line.get("approximate_price") is None
+        or float(line.get("approximate_price") or 0) <= 0
+    ]
+    if missing_price:
+        return jsonify({
+            "ok": False,
+            "error": "Enter an approximate price greater than 0 for each item.",
+        }), 400
+
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        allowed = _product_names_for_outlet(conn, write_outlet)
+        if allowed:
+            bad = sorted({
+                line["item_name"]
+                for line in lines
+                if str(line.get("item_name") or "").strip().lower() not in allowed
+            })
+            if bad:
+                return jsonify({
+                    "ok": False,
+                    "error": (
+                        "These items are not in the "
+                        f"{_outlet_label(write_outlet)} product master: {', '.join(bad)}."
+                    ),
+                }), 400
+
+        status = "pending" if action == "submit" else "draft"
+        indent_no = _next_indent_no(conn, write_outlet)
+        cur = conn.execute(
+            """
+            INSERT INTO store_indents
+                (outlet, indent_no, status, notes, created_by, created_at, submitted_at, submission_token)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                write_outlet,
+                indent_no,
+                status,
+                notes,
+                user["id"] if user else None,
+                _now(),
+                _now() if status == "pending" else None,
+                uuid.uuid4().hex,
+            ),
+        )
+        new_id = cur.lastrowid
+        for line in lines:
+            conn.execute(
+                """
+                INSERT INTO store_indent_lines
+                    (indent_id, item_name, quantity, unit, notes, approximate_price,
+                     pack_label, pack_qty_in_base)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    new_id,
+                    line["item_name"],
+                    line["quantity"],
+                    line["unit"],
+                    line.get("notes") or "",
+                    line.get("approximate_price"),
+                    line.get("pack_label") or "",
+                    line.get("pack_qty_in_base"),
+                ),
+            )
+        if status == "pending":
+            assign_fresh_approval_token(conn, new_id)
+        conn.commit()
+        if status == "pending":
+            _notify_indent_pending_whatsapp(conn, new_id, write_outlet)
+        return jsonify({
+            "ok": True,
+            "indent_id": int(new_id),
+            "indent_no": indent_no,
+            "status": status,
+        })
+    finally:
+        conn.close()
+
+
 @stores_bp.route("/stores/indent/<int:indent_id>/decide", methods=["POST"])
 def stores_indent_decide(indent_id: int):
     user = _get_user()

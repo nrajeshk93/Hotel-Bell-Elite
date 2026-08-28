@@ -22,11 +22,16 @@ from hbe_mobile.widgets.kpi_card import ModuleCard
 
 _HOME_MODULES = [
     (None, "Dashboard", "KPIs and analytics", "dashboard", theme.LOGIN_NAVY, "main_dashboard"),
-    ("Purchase & Inventory", "Indent Approval", "Approve or reject indents", "indent_approvals", theme.LOGIN_GOLD, "indent_approvals"),
+    ("Purchase & Inventory", "Indent Request", "Create a purchase indent", "indent_request", theme.LOGIN_GOLD, "indent_request"),
+    (None, "Indent Approval", "Approve or reject indents", "indent_approvals", theme.LOGIN_GOLD, "indent_approvals"),
     ("Restaurant", "POS", "Restaurant invoice", "pos_invoice", "#64748B", "pos"),
     (None, "KOT", "Restaurant kitchen tokens", "kot", "#64748B", "kot"),
     ("Bar", "POS", "Bar invoice", "pos_bar_invoice", "#64748B", "pos_bar"),
     (None, "KOT", "Bar kitchen tokens", "kot_bar", "#64748B", "kot_bar"),
+    ("Employee Payroll", "Employee", "Staff list and profiles", "payroll_employees", theme.LOGIN_NAVY, "payroll_employee"),
+    (None, "Attendance", "Mark present or absent", "payroll_attendance", theme.LOGIN_NAVY, "payroll_attendance"),
+    (None, "Credit", "Advance / Credit and repayment", "payroll_credit", theme.LOGIN_NAVY, "payroll_credit"),
+    (None, "Tips", "Collections and add tip", "payroll_tips", theme.LOGIN_NAVY, "payroll_tips"),
     ("Accounts", "Approvals", "Purchase verification", "approvals", "#5B4B8A", "approvals"),
 ]
 

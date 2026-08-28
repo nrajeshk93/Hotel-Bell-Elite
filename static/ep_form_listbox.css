@@ -494,3 +494,9 @@ body.hotel-reservations-module .ep-toolbar-listbox.is-open .se-filter-listbox{
   background:#fff;
   isolation:isolate;
 }
+
+/* HBE: hide top-filter dropdown chevrons (match Purchase & Expense). */
+.se-filter-chip-chev,
+.an-range-chev {
+  display: none !important;
+}

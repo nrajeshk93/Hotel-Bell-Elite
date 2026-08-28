@@ -14,9 +14,14 @@ from hbe_mobile.screens.approvals import ApprovalsScreen
 from hbe_mobile.screens.dashboard import DashboardScreen
 from hbe_mobile.screens.home import HomeScreen
 from hbe_mobile.screens.indent_approvals import IndentApprovalsScreen
+from hbe_mobile.screens.indent_request import IndentRequestScreen
 from hbe_mobile.screens.kot import KotScreen
 from hbe_mobile.screens.login import LoginScreen
 from hbe_mobile.screens.pos_invoice import PosInvoiceScreen
+from hbe_mobile.screens.payroll_employees import PayrollEmployeesScreen
+from hbe_mobile.screens.payroll_attendance import PayrollAttendanceScreen
+from hbe_mobile.screens.payroll_credit import PayrollCreditScreen
+from hbe_mobile.screens.payroll_tips import PayrollTipsScreen
 from hbe_mobile.screens.shell import WorkspaceShell
 
 
@@ -43,6 +48,7 @@ class HbeMobileApp(MDApp):
             {
                 "home": HomeScreen(self),
                 "dashboard": DashboardScreen(self),
+                "indent_request": IndentRequestScreen(self),
                 "indent_approvals": IndentApprovalsScreen(self),
                 "pos_invoice": PosInvoiceScreen(self),
                 "kot": KotScreen(self),
@@ -51,6 +57,10 @@ class HbeMobileApp(MDApp):
                 ),
                 "kot_bar": KotScreen(self, api_base="/bar-point-of-sale"),
                 "approvals": ApprovalsScreen(self),
+                "payroll_employees": PayrollEmployeesScreen(self),
+                "payroll_attendance": PayrollAttendanceScreen(self),
+                "payroll_credit": PayrollCreditScreen(self),
+                "payroll_tips": PayrollTipsScreen(self),
             }
         )
         self.root_manager.add_widget(login)

@@ -768,3 +768,9 @@ body.se-cash-mode #se-cash-date-range-host {
   display: block;
   margin-bottom: 5px;
 }
+
+/* HBE: hide top-filter dropdown chevrons (match Purchase & Expense). */
+.se-filter-chip-chev,
+.an-range-chev {
+  display: none !important;
+}
