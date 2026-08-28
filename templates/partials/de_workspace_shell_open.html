@@ -1,4 +1,5 @@
 {% if is_partial_main|default(false) %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
 {# Soft-nav fetches main-only HTML. Include a hidden sidebar snapshot so
    mergeMissingSidebarLinks can add modules introduced mid-session (e.g. Settings)
    without a full page reload. #}

@@ -312,6 +312,7 @@ def compress_pdf_with_ghostscript(
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         gs,
+        "-dSAFER",
         "-sDEVICE=pdfwrite",
         "-dCompatibilityLevel=1.4",
         f"-dPDFSETTINGS={preset}",

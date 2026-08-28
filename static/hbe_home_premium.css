@@ -735,3 +735,6 @@ body.home-module .de-main-inner.db-main-inner--home{
     .db-home .db-home-card{height:206px;min-height:206px;max-height:206px;padding:24px 22px 20px}
     .db-home .db-home-card h2{font-size:20px}
   }
+
+.db-home .db-profile-logout-form{margin:0;width:100%}
+.db-home .db-profile-logout{cursor:pointer;font-family:inherit}

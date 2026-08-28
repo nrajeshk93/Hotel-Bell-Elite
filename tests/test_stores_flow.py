@@ -1272,9 +1272,8 @@ class StoresFlowTests(unittest.TestCase):
             follow_redirects=True,
         )
         self.assertEqual(page.status_code, 200)
-        self.assertIn(b"Confirm Stock Inward", page.data)
+        self.assertIn(b"Confirm purchase", page.data)
         self.assertIn(b"st-inward-expense-modal", page.data)
-        self.assertIn(b"Confirm stock &amp; expense", page.data)
 
         form_blocked = self.client.post(
             "/stores/purchase-requests?outlet=bar",
@@ -1290,7 +1289,7 @@ class StoresFlowTests(unittest.TestCase):
             follow_redirects=True,
         )
         self.assertEqual(form_blocked.status_code, 200)
-        self.assertIn(b"expense popup", form_blocked.data)
+        self.assertIn(b"purchase dialog", form_blocked.data)
 
         empty = self.client.post(
             "/stores/purchase-requests/confirm-with-expense",

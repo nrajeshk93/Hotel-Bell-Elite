@@ -2,10 +2,13 @@
 
 Cloud clients on https://belleliteaccounts.com talk to a loopback agent on the
 same Windows PC. Origins and browser pairing are derived from APP_BASE_URL.
+API keys are stored as HMAC hashes; a sealed copy is kept so browser-pair can
+still return the key. Plaintext is never persisted going forward.
 """
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -14,6 +17,11 @@ import secrets
 import time
 from datetime import datetime
 from urllib.parse import urlparse
+
+from secret_key import PUBLIC_DEFAULT_SECRET_KEY, get_secret_key
+
+_SEAL_PREFIX = "enc1$"
+_LEGACY_PEPPER = PUBLIC_DEFAULT_SECRET_KEY.encode("utf-8")
 
 
 def ensure_print_agent_schema(conn):
@@ -45,6 +53,11 @@ def ensure_print_agent_schema(conn):
         conn.execute(
             "ALTER TABLE print_agents ADD COLUMN api_key TEXT NOT NULL DEFAULT ''"
         )
+    if "api_key_hash" not in cols:
+        conn.execute(
+            "ALTER TABLE print_agents ADD COLUMN api_key_hash TEXT NOT NULL DEFAULT ''"
+        )
+    _migrate_plaintext_api_keys(conn)
     conn.commit()
 
 
@@ -52,11 +65,99 @@ def _now():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _hash_secret(value: str) -> str:
-    pepper = (os.environ.get("SECRET_KEY") or "hotel-bell-elite-dev-key-change-in-production").encode(
-        "utf-8"
-    )
+def _pepper() -> bytes:
+    return get_secret_key().encode("utf-8")
+
+
+def _hmac_hex(value: str, pepper: bytes) -> str:
     return hmac.new(pepper, (value or "").encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _hash_secret(value: str) -> str:
+    return _hmac_hex(value, _pepper())
+
+
+def _hashes_match(stored: str, value: str) -> bool:
+    stored = stored or ""
+    if not stored:
+        return False
+    current = _hash_secret(value)
+    if len(stored) == len(current) and hmac.compare_digest(stored, current):
+        return True
+    legacy = _hmac_hex(value, _LEGACY_PEPPER)
+    return len(stored) == len(legacy) and hmac.compare_digest(stored, legacy)
+
+
+def _seal_secret(value: str) -> str:
+    raw = (value or "").encode("utf-8")
+    nonce = secrets.token_bytes(16)
+    stream = b""
+    counter = 0
+    while len(stream) < len(raw):
+        stream += hmac.new(
+            _pepper(), nonce + b"print-agent-key" + counter.to_bytes(4, "big"), hashlib.sha256
+        ).digest()
+        counter += 1
+    ct = bytes(a ^ b for a, b in zip(raw, stream[: len(raw)]))
+    mac = hmac.new(_pepper(), nonce + ct, hashlib.sha256).digest()
+    blob = base64.urlsafe_b64encode(nonce + mac + ct).decode("ascii")
+    return _SEAL_PREFIX + blob
+
+
+def _unseal_secret(stored: str) -> str:
+    stored = stored or ""
+    if not stored:
+        return ""
+    if not stored.startswith(_SEAL_PREFIX):
+        return stored
+    try:
+        blob = base64.urlsafe_b64decode(stored[len(_SEAL_PREFIX) :].encode("ascii"))
+    except (ValueError, TypeError):
+        return ""
+    if len(blob) < 48:
+        return ""
+    nonce, mac, ct = blob[:16], blob[16:48], blob[48:]
+    expected = hmac.new(_pepper(), nonce + ct, hashlib.sha256).digest()
+    if not hmac.compare_digest(mac, expected):
+        return ""
+    stream = b""
+    counter = 0
+    while len(stream) < len(ct):
+        stream += hmac.new(
+            _pepper(), nonce + b"print-agent-key" + counter.to_bytes(4, "big"), hashlib.sha256
+        ).digest()
+        counter += 1
+    return bytes(a ^ b for a, b in zip(ct, stream[: len(ct)])).decode("utf-8")
+
+
+def _migrate_plaintext_api_keys(conn) -> None:
+    try:
+        rows = conn.execute(
+            "SELECT agent_id, api_key, api_key_hash FROM print_agents"
+        ).fetchall()
+    except Exception:
+        return
+    for row in rows:
+        raw = (row["api_key"] or "").strip()
+        if not raw:
+            continue
+        if raw.startswith(_SEAL_PREFIX):
+            if not (row["api_key_hash"] or "").strip():
+                plain = _unseal_secret(raw)
+                if plain:
+                    conn.execute(
+                        "UPDATE print_agents SET api_key_hash = ? WHERE agent_id = ?",
+                        (_hash_secret(plain), row["agent_id"]),
+                    )
+            continue
+        conn.execute(
+            """
+            UPDATE print_agents
+               SET api_key = ?, api_key_hash = ?
+             WHERE agent_id = ?
+            """,
+            (_seal_secret(raw), _hash_secret(raw), row["agent_id"]),
+        )
 
 
 def _issue_token(agent_id: str, business_id: str) -> str:
@@ -120,16 +221,24 @@ def register_print_agent(conn, payload: dict, request_host_url: str | None = Non
     api_key = secrets.token_urlsafe(24)
     token = _issue_token(agent_id, business_id)
     stamp = _now()
+    sealed = _seal_secret(api_key)
+    key_hash = _hash_secret(api_key)
+    token_hash = _hash_secret(token)
 
     existing = conn.execute(
-        "SELECT agent_id FROM print_agents WHERE agent_id = ?", (agent_id,)
+        "SELECT agent_id, api_key, api_key_hash FROM print_agents WHERE agent_id = ?",
+        (agent_id,),
     ).fetchone()
     if existing:
+        presented = str(payload.get("apiKey") or payload.get("api_key") or "").strip()
+        if not presented or not _hashes_match(existing["api_key_hash"] or "", presented):
+            return {"ok": False, "error": "agent already registered."}
+        api_key = _unseal_secret(existing["api_key"] or "") or api_key
         conn.execute(
             """
             UPDATE print_agents
             SET business_id = ?, device_name = ?, windows_username = ?, agent_version = ?,
-                api_key = ?, api_key_hash = ?, token_hash = ?, installed_printers_json = ?,
+                token_hash = ?, installed_printers_json = ?,
                 last_seen_at = ?, updated_at = ?, revoked = 0
             WHERE agent_id = ?
             """,
@@ -138,9 +247,7 @@ def register_print_agent(conn, payload: dict, request_host_url: str | None = Non
                 device_name,
                 windows_username,
                 agent_version,
-                api_key,
-                _hash_secret(api_key),
-                _hash_secret(token),
+                token_hash,
                 printers_json,
                 stamp,
                 stamp,
@@ -162,9 +269,9 @@ def register_print_agent(conn, payload: dict, request_host_url: str | None = Non
                 device_name,
                 windows_username,
                 agent_version,
-                api_key,
-                _hash_secret(api_key),
-                _hash_secret(token),
+                sealed,
+                key_hash,
+                token_hash,
                 printers_json,
                 stamp,
                 stamp,
@@ -198,8 +305,15 @@ def heartbeat_print_agent(conn, payload: dict, bearer_token: str | None) -> dict
     ).fetchone()
     if not row or int(row["revoked"] or 0) == 1:
         return {"ok": False, "error": "Unknown or revoked agent."}
-    if not bearer_token or _hash_secret(bearer_token) != (row["token_hash"] or ""):
+    if not bearer_token or not _hashes_match(row["token_hash"] or "", bearer_token):
         return {"ok": False, "error": "Invalid token."}
+
+    current_hash = _hash_secret(bearer_token)
+    if (row["token_hash"] or "") != current_hash:
+        conn.execute(
+            "UPDATE print_agents SET token_hash = ? WHERE agent_id = ?",
+            (current_hash, agent_id),
+        )
 
     mapped = payload.get("printers") or {}
     if not isinstance(mapped, dict):
@@ -252,7 +366,7 @@ def browser_pair_print_agent(
     if wanted_id:
         row = conn.execute(
             """
-            SELECT agent_id, api_key, device_name, last_seen_at, business_id,
+            SELECT agent_id, api_key, api_key_hash, device_name, last_seen_at, business_id,
                    mapped_printers_json
             FROM print_agents
             WHERE revoked = 0 AND agent_id = ? AND api_key != ''
@@ -265,7 +379,7 @@ def browser_pair_print_agent(
         if biz:
             row = conn.execute(
                 """
-                SELECT agent_id, api_key, device_name, last_seen_at, business_id,
+                SELECT agent_id, api_key, api_key_hash, device_name, last_seen_at, business_id,
                        mapped_printers_json
                 FROM print_agents
                 WHERE revoked = 0 AND business_id = ? AND api_key != ''
@@ -277,7 +391,7 @@ def browser_pair_print_agent(
         else:
             row = conn.execute(
                 """
-                SELECT agent_id, api_key, device_name, last_seen_at, business_id,
+                SELECT agent_id, api_key, api_key_hash, device_name, last_seen_at, business_id,
                        mapped_printers_json
                 FROM print_agents
                 WHERE revoked = 0 AND api_key != ''
@@ -286,7 +400,9 @@ def browser_pair_print_agent(
                 """
             ).fetchone()
 
-    if not row or not (row["api_key"] or "").strip():
+    stored = (row["api_key"] if row else "") or ""
+    api_key = _unseal_secret(stored) if stored else ""
+    if not row or not api_key:
         return {
             "ok": False,
             "error": "No Print Agent registered for this business. Install Hotel Print Agent on this PC and click Register.",
@@ -306,7 +422,7 @@ def browser_pair_print_agent(
     return {
         "ok": True,
         "agentId": row["agent_id"],
-        "apiKey": row["api_key"],
+        "apiKey": api_key,
         "deviceName": row["device_name"] or "",
         "businessId": row["business_id"] or "",
         "lastSeenAt": row["last_seen_at"] or "",

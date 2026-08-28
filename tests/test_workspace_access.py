@@ -243,8 +243,18 @@ class WorkspaceAccessTests(unittest.TestCase):
                 "Sales - Restaurant & Bar",
                 "Menu Insights",
                 "Customer Insights",
+                "GST",
             ],
         )
+        gst_node = next(child for child in report["children"] if child["label"] == "GST")
+        self.assertEqual(gst_node["fieldName"], "reports_modules")
+        self.assertEqual(gst_node["fieldValue"], "gst")
+        self.assertEqual(
+            [child["label"] for child in gst_node["children"]],
+            ["Hotel", "Restaurant & Bar"],
+        )
+        self.assertEqual(gst_node["children"][0]["fieldValue"], "gst_hotel")
+        self.assertEqual(gst_node["children"][1]["fieldValue"], "gst_fnb")
 
     def test_kot_cancellation_unlocks_kot_sent_line_edits(self):
         locked = {
@@ -430,7 +440,7 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertTrue(user_can_access_hotel_rooms_submodule(hotel, "rooms"))
         self.assertEqual(len(hotel_rooms_access_list(hotel)), 6)
         self.assertTrue(user_can_access_reports_submodule(reports, "hotel_sales"))
-        self.assertEqual(len(reports_access_list(reports)), 7)
+        self.assertEqual(len(reports_access_list(reports)), 11)
 
     def test_endpoint_submodule_mapping_for_new_scopes(self):
         from workspace_access import (

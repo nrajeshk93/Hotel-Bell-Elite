@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -25,6 +27,49 @@ def whatsapp_verify_token() -> str:
     return (os.environ.get("WHATSAPP_VERIFY_TOKEN") or "").strip()
 
 
+def whatsapp_app_secret() -> str:
+    return (
+        os.environ.get("WHATSAPP_APP_SECRET")
+        or os.environ.get("META_APP_SECRET")
+        or ""
+    ).strip()
+
+
+def _tokens_match(left: str, right: str) -> bool:
+    a = (left or "").encode("utf-8")
+    b = (right or "").encode("utf-8")
+    if not a or not b or len(a) != len(b):
+        return False
+    return hmac.compare_digest(a, b)
+
+
+def verify_webhook_signature(request) -> bool:
+    """HMAC-SHA256 of the raw body using Meta app secret.
+
+    Unsigned POSTs are rejected when the app secret is missing. Set
+    WHATSAPP_APP_SECRET on the server so Meta indent Approve/Reject still works.
+    GET hub.verify_token handshake is unchanged.
+    """
+    secret = whatsapp_app_secret()
+    if not secret:
+        log.warning(
+            "WHATSAPP_APP_SECRET is not configured; rejecting unsigned WhatsApp "
+            "webhook POSTs. Set WHATSAPP_APP_SECRET in .env."
+        )
+        return False
+    header = (request.headers.get("X-Hub-Signature-256") or "").strip()
+    if not header.lower().startswith("sha256="):
+        log.warning("WhatsApp webhook POST rejected: missing X-Hub-Signature-256.")
+        return False
+    sent = header.split("=", 1)[1].strip()
+    raw = request.get_data(cache=True) or b""
+    digest = hmac.new(secret.encode("utf-8"), raw, hashlib.sha256).hexdigest()
+    if not _tokens_match(sent, digest):
+        log.warning("WhatsApp webhook POST rejected: invalid X-Hub-Signature-256.")
+        return False
+    return True
+
+
 def _append_webhook_log(line: str) -> None:
     try:
         os.makedirs(os.path.dirname(_WEBHOOK_LOG), exist_ok=True)
@@ -40,7 +85,7 @@ def handle_verification_get(request):
     token = request.args.get("hub.verify_token")
     challenge = request.args.get("hub.challenge")
     expected = whatsapp_verify_token()
-    if mode == "subscribe" and expected and token == expected:
+    if mode == "subscribe" and expected and _tokens_match(token or "", expected):
         log.info("WhatsApp webhook verified successfully.")
         return (challenge or ""), 200, {"Content-Type": "text/plain"}
     log.warning("WhatsApp webhook verify rejected.")

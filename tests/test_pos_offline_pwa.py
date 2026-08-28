@@ -95,7 +95,7 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertNotIn("Reconnect to sign in.", html)
 
     def test_get_login_serves_sign_in_page(self):
-        self.client.get("/logout", follow_redirects=False)
+        self.client.post("/logout", follow_redirects=False)
         resp = self.client.get("/login")
         self.assertEqual(resp.status_code, 200)
         html = resp.get_data(as_text=True)

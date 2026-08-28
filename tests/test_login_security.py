@@ -535,7 +535,7 @@ class LoginSecurityTests(unittest.TestCase):
         self.assertFalse(auth_security.password_needs_rehash(row["password_hash"]))
 
         # Second login still works with the upgraded hash.
-        self.client.get("/logout", follow_redirects=False)
+        self.client.post("/logout", follow_redirects=False)
         resp = self.client.post(
             "/login",
             data={"username": "locke", "password": "secret123"},
@@ -729,7 +729,7 @@ class LoginSecurityTests(unittest.TestCase):
         home = self.client.get("/home", follow_redirects=False)
         self.assertEqual(home.status_code, 200)
 
-        self.client.get("/logout")
+        self.client.post("/logout")
         again = self.client.post(
             "/login",
             data={"username": "temp_user", "password": "NewPass2!"},
@@ -851,7 +851,7 @@ class LoginSecurityTests(unittest.TestCase):
             data={"username": "admin", "password": "admin"},
             follow_redirects=False,
         )
-        resp = self.client.get("/logout", follow_redirects=False)
+        resp = self.client.post("/logout", follow_redirects=False)
         self.assertEqual(resp.status_code, 302)
         home = self.client.get("/home", follow_redirects=False)
         self.assertEqual(home.status_code, 302)
@@ -939,7 +939,7 @@ class LoginSecurityTests(unittest.TestCase):
         self.assertIn(b"Super Administrator", home.data)
         self.assertNotIn(b">User</div>", home.data)
 
-        self.client.get("/logout", follow_redirects=False)
+        self.client.post("/logout", follow_redirects=False)
         self.client.post(
             "/login",
             data={"username": "locke", "password": "secret123"},

@@ -6,3 +6,13 @@ bell_elite.db
 db_backups/
 .env
 uploads/
+instance/
+bell_elite.db*
+*.db-*
+logs/
+.cursor/debug-*.log
+mobile_kivy/.venv/
+mobile_kivy/.buildozer/
+mobile_kivy/bin/
+mobile_kivy/.pytest_cache/
+mobile_kivy/**/__pycache__/

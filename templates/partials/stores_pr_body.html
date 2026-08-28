@@ -150,7 +150,7 @@
         data-st-today="{{ today_iso }}"
         data-st-outlet="{{ selected_outlet }}">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
-        Confirm Stock Inward
+        Confirm purchase
       </button>
     </div>
     {% endif %}
@@ -369,7 +369,7 @@
         data-st-available-cash-url="{{ available_cash_url }}"
         data-st-today="{{ today_iso }}">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
-        Confirm Stock Inward
+        Confirm purchase
       </button>
     </div>
     {% else %}
@@ -439,7 +439,7 @@
     <div class="staff-credit-box pl-add-purchase-box st-inward-expense-box" role="dialog" aria-modal="true" aria-labelledby="st-inward-expense-title">
       <div class="staff-credit-head">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/><path d="M16 16v6"/><path d="M19 19h-6"/></svg>
-        <span id="st-inward-expense-title">Confirm stock &amp; expense</span>
+        <span id="st-inward-expense-title">Confirm purchase</span>
       </div>
       <div class="se-expense-available-cash" id="st-inward-available-wrap" hidden>
         <div class="se-expense-available-cash-card" aria-label="Available cash">
@@ -505,7 +505,7 @@
             <div class="st-inward-cat-breakdown-empty" id="st-inward-cat-breakdown-empty">From invoice lines</div>
           </div>
           <p class="st-inward-cat-breakdown-note" id="st-inward-cat-breakdown-note" hidden>
-            Expense Ledger will show one entry per category.
+            Purchase Ledger will show one purchase entry per category.
           </p>
         </div>
         <div class="staff-field staff-field--inline">
@@ -515,8 +515,8 @@
       </div>
       <div class="staff-grid">
         <div class="staff-field staff-field--inline">
-          <label for="st-inward-expense-description">Expense *</label>
-          <input id="st-inward-expense-description" class="staff-input" type="text" placeholder="e.g. Stock inward">
+          <label for="st-inward-expense-description">Description *</label>
+          <input id="st-inward-expense-description" class="staff-input" type="text" placeholder="e.g. Kitchen vegetables">
         </div>
         <div class="staff-field staff-field--inline">
           <label for="st-inward-expense-amount">Value (₹) *</label>
@@ -552,13 +552,13 @@
         <button type="button" class="btn staff-secondary" id="st-inward-expense-cancel">Cancel</button>
         <button type="button" class="btn staff-primary" id="st-inward-expense-save">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
-          <span>Confirm stock &amp; expense</span>
+          <span>Confirm purchase</span>
         </button>
       </div>
     </div>
   </div>
 
-  {# Category add modal — stacked above Confirm stock & expense (same pattern as Product Master) #}
+  {# Category add modal — stacked above Confirm purchase (same pattern as Product Master) #}
   <div class="modal-overlay st-category-modal st-inward-category-modal"
        id="st-inward-category-modal"
        role="dialog"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import os
 import smtplib
@@ -146,10 +147,12 @@ def send_account_unlock_email(*, to_addr: str, username: str, unlock_url: str) -
         f"{unlock_url}\n\n"
         "If you did not try to sign in, contact your administrator.\n"
     )
+    safe_user = html.escape(username or "")
+    safe_url = html.escape(unlock_url or "", quote=True)
     html_body = (
-        f"<p>Hello <strong>{username}</strong>,</p>"
+        f"<p>Hello <strong>{safe_user}</strong>,</p>"
         "<p>Your account was locked after too many failed sign-in attempts.</p>"
-        f'<p><a href="{unlock_url}">Unlock your account</a> '
+        f'<p><a href="{safe_url}">Unlock your account</a> '
         "(link valid for 1 hour).</p>"
         "<p>If you did not try to sign in, contact your administrator.</p>"
     )

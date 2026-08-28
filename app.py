@@ -29,8 +29,12 @@ from flask import (
     url_for,
 )
 from flask.sessions import SecureCookieSessionInterface
+from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.utils import secure_filename
 
 import auth_security
+import csrf_protect
+from secret_key import get_secret_key
 from mailer import app_base_url, send_account_unlock_email, smtp_configured
 from db import (
     SQL_NOW,
@@ -254,6 +258,7 @@ from workspace_access import (
     user_can_edit_unsettled_invoices,
     user_can_approve_transactions,
     user_has_assigned_access_role,
+    mobile_module_access,
     validate_access_role_form,
     validate_access_user_form,
 )
@@ -296,6 +301,8 @@ from stores import register_stores
 from communication_hub import register_communication_hub
 from back_office_receipt import register_back_office_receipt
 from seo_privacy import register_seo_privacy
+from gst_hotel import register_gst_hotel
+from gst_fnb import register_gst_fnb
 from main_dashboard_data import (
     build_dow_avg,
     build_outlet_boards,
@@ -309,7 +316,7 @@ from main_dashboard_data import (
 )
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "hotel-bell-elite-dev-key-change-in-production")
+app.secret_key = get_secret_key()
 
 # Cookie session hardening for HTTPS / Android WebView (auth flow unchanged).
 _app_env = (
@@ -349,6 +356,16 @@ class _HttpsAwareSessionInterface(SecureCookieSessionInterface):
 
 
 app.session_interface = _HttpsAwareSessionInterface()
+
+def _trust_proxy_headers():
+    val = (
+        os.environ.get("TRUST_PROXY") or os.environ.get("TRUSTED_PROXY") or ""
+    ).strip().lower()
+    return val in ("1", "true", "yes", "on")
+
+
+if _trust_proxy_headers():
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
 init_db()
 
@@ -645,6 +662,8 @@ register_back_office_receipt(
     get_user=get_current_user,
 )
 register_seo_privacy(app)
+register_gst_hotel(app)
+register_gst_fnb(app)
 
 
 def _access_nav_view():
@@ -738,7 +757,16 @@ def whatsapp_webhook():
     if request.method == "GET":
         body, status, headers = handle_verification_get(request)
         return body, status, headers
+    from whatsapp_webhook import verify_webhook_signature
+
+    if not verify_webhook_signature(request):
+        return "Forbidden", 403, {"Content-Type": "text/plain"}
     return handle_events_post(request, get_db, ensure_stores_schema, ensure_communication_hub_schema)
+
+
+@app.before_request
+def _csrf_before_request():
+    csrf_protect.csrf_protect_request(app)
 
 
 @app.before_request
@@ -751,7 +779,6 @@ def enforce_access():
         or request.path == "/sitemap.xml"
         or request.path.startswith("/static/")
         or request.path.startswith("/webhook/")
-        or request.path == "/communication-hub/api/mirror-export"
     ):
         return None
 
@@ -774,6 +801,13 @@ def enforce_access():
             or request.path.startswith("/hotel/api/id-documents/")
         ):
             return jsonify({"ok": False, "error": "Please sign in again."}), 401
+        if endpoint == "mobile_session" or (
+            request.path.startswith("/api/mobile/")
+            and endpoint not in {"mobile_ota_manifest", "mobile_ota_apk"}
+        ):
+            return jsonify({"ok": False, "error": "Not signed in"}), 401
+        if request.path.startswith("/preview-api/") or request.path.startswith("/mobile-app"):
+            return None
         return redirect(url_for("index"))
 
     required_dashboard = get_endpoint_dashboard_module(endpoint)
@@ -4079,6 +4113,95 @@ def _all_suppliers(conn):
     return [_supplier_row_to_dict(row) for row in rows]
 
 
+def _purchase_ledger_filter_suppliers(
+    conn,
+    date_from,
+    date_to,
+    *,
+    category=None,
+    payment_type=None,
+    entry_kind=None,
+):
+    """Suppliers that have at least one hotel purchase/expense in the active filters.
+
+    Used by the Purchases & Expenses supplier dropdown so names with no matching
+    ledger lines (for the current date / category / payment / kind) are hidden.
+    """
+    sql = """SELECT DISTINCT s.id, s.name, s.gst, s.address, s.phone,
+                    s.bank_name, s.bank_account_number, s.ifsc_code
+             FROM sales_update_expenses e
+             INNER JOIN suppliers s ON s.id = e.supplier_id
+             WHERE e.location = ?
+               AND e.sales_date >= ?
+               AND e.sales_date <= ?"""
+    params = [
+        OUTLET_HOTEL,
+        date_from.isoformat() if hasattr(date_from, "isoformat") else str(date_from),
+        date_to.isoformat() if hasattr(date_to, "isoformat") else str(date_to),
+    ]
+    if category:
+        sql += " AND e.category = ?"
+        params.append(category)
+    if payment_type:
+        sql += " AND e.payment_type = ?"
+        params.append(payment_type)
+    if entry_kind:
+        sql += " AND COALESCE(NULLIF(TRIM(e.entry_kind), ''), ?) = ?"
+        params.extend([LEDGER_ENTRY_KIND_EXPENSE, entry_kind])
+    sql += " ORDER BY LOWER(s.name), s.id"
+    rows = conn.execute(sql, params).fetchall()
+    return [_supplier_row_to_dict(row) for row in rows]
+
+
+def _purchase_ledger_filter_categories(
+    conn,
+    date_from,
+    date_to,
+    *,
+    supplier_id=None,
+    payment_type=None,
+    entry_kind=None,
+    labels=None,
+):
+    """Categories that appear on hotel purchase/expense lines for the active filters.
+
+    Used by the Purchases & Expenses category dropdown so unused master categories
+    (with no matching ledger lines) are hidden.
+    """
+    label_map = dict(labels or EXPENSE_CATEGORY_LABELS)
+    sql = """SELECT DISTINCT TRIM(e.category) AS category_key
+             FROM sales_update_expenses e
+             WHERE e.location = ?
+               AND e.sales_date >= ?
+               AND e.sales_date <= ?
+               AND TRIM(COALESCE(e.category, '')) != ''"""
+    params = [
+        OUTLET_HOTEL,
+        date_from.isoformat() if hasattr(date_from, "isoformat") else str(date_from),
+        date_to.isoformat() if hasattr(date_to, "isoformat") else str(date_to),
+    ]
+    if supplier_id:
+        sql += " AND e.supplier_id = ?"
+        params.append(supplier_id)
+    if payment_type:
+        sql += " AND e.payment_type = ?"
+        params.append(payment_type)
+    if entry_kind:
+        sql += " AND COALESCE(NULLIF(TRIM(e.entry_kind), ''), ?) = ?"
+        params.extend([LEDGER_ENTRY_KIND_EXPENSE, entry_kind])
+    rows = conn.execute(sql, params).fetchall()
+    items = []
+    seen = set()
+    for row in rows:
+        raw = row["category_key"]
+        key = _normalize_expense_category(raw)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        items.append((key, label_map.get(key) or key.replace("_", " ").title()))
+    return _sorted_label_choices(items)
+
+
 def _get_supplier(conn, supplier_id):
     if not supplier_id:
         return None
@@ -4836,6 +4959,30 @@ def service_worker():
     return response
 
 
+@app.context_processor
+def _csrf_template_context():
+    return {"csrf_token": csrf_protect.get_csrf_token}
+
+
+@app.after_request
+def _security_headers(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    path = request.path or ""
+    if not (
+        path.startswith("/webhook/")
+        or path.startswith("/static/")
+        or path.startswith("/api/print-agent/")
+    ):
+        try:
+            csrf_protect.get_csrf_token()
+            csrf_protect.set_csrf_cookie(response, secure=_request_is_https())
+        except RuntimeError:
+            pass
+    return response
+
+
 @app.after_request
 def _no_cache_offline_auth_shell(response):
     """Keep offline Sign In HTML/JS from being pinned by CDN/browser year-long caches."""
@@ -5150,33 +5297,11 @@ def login_resend_unlock():
             "SELECT * FROM users WHERE LOWER(username) = LOWER(?) AND is_active = 1",
             (username,),
         ).fetchone()
-        if not row:
-            # Keep generic notice to avoid account enumeration.
-            account_locked = True
-        elif not auth_security.is_account_locked(row):
-            notice = "That account is not locked. You can sign in with your password."
-            account_locked = False
-        else:
+        if row and auth_security.is_account_locked(row):
             account_locked = True
             send_result = _send_unlock_email_for_user(conn, row)
             conn.commit()
-            if send_result.get("ok"):
-                notice = "Unlock email sent. Check your inbox (and spam folder)."
-            elif send_result.get("reason") == "no_email":
-                notice = (
-                    "This account is locked, but no email is on file. "
-                    "Ask an administrator to unlock the account."
-                )
-            elif send_result.get("reason") == "smtp_not_configured":
-                notice = (
-                    "This account is locked, but SMTP is not configured on the server "
-                    "(set SMTP_HOST in .env). Ask an administrator to unlock the account."
-                )
-            else:
-                notice = (
-                    "This account is locked, but unlock email could not be sent. "
-                    "Ask an administrator to unlock the account."
-                )
+            # Always keep the generic public notice (no username / lock / SMTP leak).
     finally:
         conn.close()
     return _login_page(
@@ -5205,12 +5330,11 @@ def unlock_account():
 
 @app.route("/logout", methods=["GET", "POST"])
 def logout():
-    # Prefetch / soft-nav GET must not destroy the session. Idle prefetch of
-    # the home Logout link was signing Administrator out while the avatar
-    # still showed AD; refresh then loaded a limited user (or the login page).
-    # POST is a real click (fullscreen-safe fetch) and always clears the session.
-    if request.method == "GET" and is_background_fetch_request():
-        return Response(status=204)
+    # POST-only session clear. GET prefetch must not destroy the session.
+    if request.method == "GET":
+        if is_background_fetch_request():
+            return Response(status=204)
+        return Response("Method Not Allowed", status=405)
     session.pop(AUTH_USER_SESSION_KEY, None)
     return redirect(url_for("index"))
 
@@ -5931,6 +6055,8 @@ def reports():
         "restaurant_sales",
         "menu_sales",
         "customer_insights",
+        "gst_hotel",
+        "gst_fnb",
     }
     owning_checks = {
         "expense_ledger": lambda: user_can_access_accounts_submodule(user, "purchase_ledger"),
@@ -10803,6 +10929,17 @@ def hotel_id_document_file(stored_name):
     return _send_hotel_id_document(stored_name)
 
 
+
+def _inline_content_disposition(filename):
+    """RFC 5987 Content-Disposition for guest ID downloads."""
+    from urllib.parse import quote
+
+    raw = (filename or "guest-id.pdf").replace("\r", "").replace("\n", "")
+    ascii_name = secure_filename(raw) or "guest-id.pdf"
+    encoded = quote(raw, safe="")
+    return f"inline; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}"
+
+
 def _send_hotel_id_document(stored_name):
     from io import BytesIO
 
@@ -10815,9 +10952,9 @@ def _send_hotel_id_document(stored_name):
         BytesIO(data),
         mimetype=mime,
         as_attachment=False,
-        download_name=filename,
+        download_name=secure_filename(filename) or "guest-id.pdf",
     )
-    resp.headers["Content-Disposition"] = f'inline; filename="{filename}"'
+    resp.headers["Content-Disposition"] = _inline_content_disposition(filename)
     resp.headers["Cache-Control"] = "private, max-age=0, no-store"
     resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp
@@ -12533,6 +12670,7 @@ def point_of_sale_api_kot_tokens_reduce():
                 allow_kot_cancel=True,
                 created_by=created_by,
                 reason=reason,
+                outlet=outlet,
             )
             # Drop any invoice that no longer belongs to this outlet from the response.
             invoices = [
@@ -13151,6 +13289,21 @@ def _home_notifications(user):
     notifications = []
     if not user:
         return notifications
+    if user_can_access_accounts_submodule(user, "purchase_verification"):
+        conn = get_db()
+        try:
+            pending_purchases = _pending_purchase_verifications(conn)
+        finally:
+            conn.close()
+        pending_count = len(pending_purchases or [])
+        if pending_count > 0:
+            label = "purchase" if pending_count == 1 else "purchases"
+            notifications.append({
+                "id": "purchase-verification-pending",
+                "title": "Purchases awaiting approval",
+                "body": f"{pending_count} {label} waiting for your review.",
+                "href": url_for("purchase_verification"),
+            })
     if user_can_access_stores_submodule(user, "approvals"):
         conn = get_db()
         try:
@@ -13759,20 +13912,59 @@ def purchase_ledger():
     expense_categories = EXPENSE_CATEGORIES
     expense_category_labels = EXPENSE_CATEGORY_LABELS
     try:
-        suppliers = _all_suppliers(conn)
-        supplier_lookup = {str(s["id"]): s for s in suppliers}
-        if selected_supplier != PURCHASE_LEDGER_FILTER_ALL and selected_supplier not in supplier_lookup:
-            selected_supplier = PURCHASE_LEDGER_FILTER_ALL
-            supplier_id = None
-        if selected_category != PURCHASE_LEDGER_FILTER_ALL and not _normalize_expense_category(selected_category):
-            selected_category = PURCHASE_LEDGER_FILTER_ALL
-            category = None
         if selected_payment != PURCHASE_LEDGER_FILTER_ALL and selected_payment not in EXPENSE_PAYMENT_LABELS:
             selected_payment = PURCHASE_LEDGER_FILTER_ALL
             payment_type = None
         if selected_kind != PURCHASE_LEDGER_FILTER_ALL and selected_kind not in LEDGER_ENTRY_KIND_LABELS:
             selected_kind = PURCHASE_LEDGER_FILTER_ALL
             entry_kind = None
+        expense_category_labels = _expense_category_labels(conn)
+
+        # Categories first (ignore selected category so unused master keys drop out).
+        if selected_category != PURCHASE_LEDGER_FILTER_ALL and not _normalize_expense_category(selected_category):
+            selected_category = PURCHASE_LEDGER_FILTER_ALL
+            category = None
+        expense_categories = _purchase_ledger_filter_categories(
+            conn,
+            query_date_from,
+            query_date_to,
+            supplier_id=supplier_id,
+            payment_type=payment_type,
+            entry_kind=entry_kind,
+            labels=expense_category_labels,
+        )
+        category_keys = {key for key, _label in expense_categories}
+        if selected_category != PURCHASE_LEDGER_FILTER_ALL and selected_category not in category_keys:
+            selected_category = PURCHASE_LEDGER_FILTER_ALL
+            category = None
+
+        suppliers = _purchase_ledger_filter_suppliers(
+            conn,
+            query_date_from,
+            query_date_to,
+            category=category,
+            payment_type=payment_type,
+            entry_kind=entry_kind,
+        )
+        supplier_lookup = {str(s["id"]): s for s in suppliers}
+        if selected_supplier != PURCHASE_LEDGER_FILTER_ALL and selected_supplier not in supplier_lookup:
+            selected_supplier = PURCHASE_LEDGER_FILTER_ALL
+            supplier_id = None
+            # Supplier cleared — refresh categories without that supplier constraint.
+            expense_categories = _purchase_ledger_filter_categories(
+                conn,
+                query_date_from,
+                query_date_to,
+                supplier_id=None,
+                payment_type=payment_type,
+                entry_kind=entry_kind,
+                labels=expense_category_labels,
+            )
+            category_keys = {key for key, _label in expense_categories}
+            if selected_category != PURCHASE_LEDGER_FILTER_ALL and selected_category not in category_keys:
+                selected_category = PURCHASE_LEDGER_FILTER_ALL
+                category = None
+
         entries = _purchase_ledger_entries(
             conn,
             query_date_from,
@@ -13783,8 +13975,6 @@ def purchase_ledger():
             entry_kind=entry_kind,
         )
         available_cash = _cash_ledger_available_as_of(conn, DEFAULT_COMPANY, today)
-        expense_categories = _expense_category_choices(conn)
-        expense_category_labels = _expense_category_labels(conn)
     finally:
         conn.close()
 
@@ -15388,6 +15578,24 @@ def delete_purchase_verification():
         conn.close()
 
     return jsonify({"ok": True})
+
+
+@app.route("/accounts/purchase-verification/expense/<int:expense_id>")
+def purchase_verification_expense_detail(expense_id):
+    """Expense header + stock-in product lines for mobile Approvals detail."""
+    user = get_current_user()
+    if not user:
+        return jsonify({"ok": False, "error": "You must be logged in."}), 401
+    from expense_stock_lines import expense_stock_detail
+
+    conn = get_db()
+    try:
+        detail = expense_stock_detail(conn, expense_id)
+    finally:
+        conn.close()
+    if not detail:
+        return jsonify({"ok": False, "error": "Expense was not found."}), 404
+    return jsonify(detail)
 
 
 @app.route("/accounts/purchase-verification/<int:verification_id>")
@@ -19611,15 +19819,60 @@ def print_agent_browser_pair():
         result = browser_pair_print_agent(
             conn, business_id=business_id, agent_id=agent_id or None
         )
-        # Also try empty / any agent if business-specific miss (single-tenant installs)
-        if not result.get("ok") and not agent_id and business_id != "default":
-            result = browser_pair_print_agent(conn, business_id=None)
         status = 200 if result.get("ok") else 404
         return jsonify(result), status
     finally:
         conn.close()
 
 
+@app.route("/api/mobile/session", methods=["GET"], endpoint="mobile_session")
+def mobile_session():
+    """Current user + module flags for the native / preview mobile clients."""
+    user = get_current_user()
+    if not user:
+        return jsonify({"ok": False, "error": "Not signed in"}), 401
+    if not user_has_assigned_access_role(user):
+        return jsonify({"ok": False, "error": "No access role assigned"}), 403
+    return jsonify(
+        {
+            "ok": True,
+            "user_id": int(user.get("id") or 0),
+            "username": str(user.get("username") or ""),
+            "display_name": str(user.get("display_name") or user.get("username") or ""),
+            "role_name": str(user.get("role_name") or ""),
+            "must_change_password": bool(user.get("must_change_password")),
+            "access": mobile_module_access(user),
+        }
+    )
+
+
+@app.route("/api/mobile/version", methods=["GET"], endpoint="mobile_ota_manifest")
+def mobile_ota_manifest():
+    import mobile_ota
+
+    return mobile_ota.manifest_response()
+
+
+@app.route("/api/mobile/hbemobile.apk", methods=["GET"], endpoint="mobile_ota_apk")
+def mobile_ota_apk():
+    import mobile_ota
+
+    return mobile_ota.apk_response()
+
+
+from mobile_preview_flask import register_mobile_preview_routes
+
+register_mobile_preview_routes(app)
+
+
 if __name__ == "__main__":
     init_db()
-    app.run(debug=True, host="127.0.0.1", port=8002)
+    _flask_env = (
+        os.environ.get("FLASK_ENV") or os.environ.get("ENV") or os.environ.get("APP_ENV") or ""
+    ).strip().lower()
+    _debug_raw = (os.environ.get("FLASK_DEBUG") or "").strip()
+    if _debug_raw:
+        _debug = _debug_raw.lower() in ("1", "true", "yes", "on")
+    else:
+        _debug = _flask_env not in ("production", "prod")
+    app.run(debug=_debug, host="127.0.0.1", port=8002)

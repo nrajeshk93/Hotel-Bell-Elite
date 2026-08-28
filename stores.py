@@ -2118,7 +2118,7 @@ def _group_inward_lines_by_expense_category(
             return [], f"{item_name} has no Product Master category."
         resolved = _resolve_expense_category_from_product_category(pm_cat, expense_choices)
         if not resolved:
-            return [], f"Could not resolve expense category for {item_name}."
+            return [], f"Could not resolve purchase category for {item_name}."
         raw_key, raw_label = resolved
         # Prefer Product Master display name for custom categories.
         if raw_key not in dict(app_module.EXPENSE_CATEGORIES):
@@ -2127,7 +2127,7 @@ def _group_inward_lines_by_expense_category(
         category_key = ensured_key or raw_key
         category_label = ensured_label or raw_label or pm_cat
         if not category_key:
-            return [], f"Could not resolve expense category for {item_name}."
+            return [], f"Could not resolve purchase category for {item_name}."
 
         amount = _inward_line_amount(
             line.get("qty"),
@@ -2171,7 +2171,7 @@ def _create_inward_category_expenses(
     import app as app_module
 
     if not groups:
-        return [], "No expense categories to create."
+        return [], "No purchase categories to create."
 
     grand = app_module.round_half_up(
         sum(float(g.get("amount") or 0) for g in groups),
@@ -2181,7 +2181,7 @@ def _create_inward_category_expenses(
     if posted_raw not in (None, ""):
         posted_amount = app_module.parse_money(posted_raw)
         if posted_amount > 0 and abs(posted_amount - grand) > 1.0:
-            return [], "Expense amount does not match invoice line totals."
+            return [], "Purchase amount does not match invoice line totals."
 
     company = base_expense_data.get("company") or app_module.DEFAULT_COMPANY
     sales_date = base_expense_data.get("date") or ""
@@ -2192,6 +2192,8 @@ def _create_inward_category_expenses(
         conn, company, sales_date, grand, payment_type
     )
     if cash_error:
+        # Stock inward records purchases — keep cash limit wording purchase-facing.
+        cash_error = cash_error.replace("Cash expense", "Cash purchase")
         return [], cash_error
 
     duplicate = app_module._duplicate_expense_invoice(
@@ -2202,7 +2204,7 @@ def _create_inward_category_expenses(
     if duplicate:
         code = duplicate["expense_code"] or f"#{duplicate['id']}"
         return [], (
-            f"An expense with this supplier and invoice number already exists ({code})."
+            f"A purchase with this supplier and invoice number already exists ({code})."
         )
 
     base_desc = (base_expense_data.get("description") or "").strip()
@@ -2212,11 +2214,11 @@ def _create_inward_category_expenses(
         if base_desc:
             desc = f"{base_desc} · {cat_label}" if cat_label else base_desc
         elif description_suffix and cat_label:
-            desc = f"Stock inward {description_suffix} · {cat_label}"
+            desc = f"Purchase {description_suffix} · {cat_label}"
         elif cat_label:
-            desc = f"Stock inward · {cat_label}"
+            desc = f"Purchase · {cat_label}"
         else:
-            desc = "Stock inward"
+            desc = "Purchase"
 
         expense_data = dict(base_expense_data)
         expense_data["category"] = group["category_key"]
@@ -6538,6 +6540,94 @@ def stores_approvals():
     )
 
 
+@stores_bp.route("/stores/api/indent-approvals")
+def stores_api_indent_approvals():
+    """JSON list of pending or recent indent decisions (mobile / preview clients)."""
+    user = _get_user()
+    if not user:
+        return jsonify({"ok": False, "error": "You must be logged in."}), 401
+    view = (request.args.get("view") or "pending").strip().lower()
+    outlet = _parse_outlet_filter(request.args.get("outlet"))
+    outlet_sql, outlet_params = _outlet_match_sql("i.outlet", outlet)
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        if view in ("recent", "approved", "rejected", "history"):
+            rows = conn.execute(
+                f"""
+                SELECT i.id, i.indent_no, i.outlet, i.notes, i.status,
+                       i.decided_at, i.decision_note,
+                       u.full_name AS created_by_name,
+                       d.full_name AS decided_by_name,
+                       (SELECT COUNT(*) FROM store_indent_lines l WHERE l.indent_id = i.id) AS line_count,
+                       (SELECT COALESCE(SUM(
+                            COALESCE(l.quantity, 0) * COALESCE(l.approximate_price, 0)
+                        ), 0)
+                        FROM store_indent_lines l WHERE l.indent_id = i.id) AS approximate_total
+                FROM store_indents i
+                LEFT JOIN users u ON u.id = i.created_by
+                LEFT JOIN users d ON d.id = i.decided_by
+                WHERE {outlet_sql} AND i.status IN ('approved', 'rejected')
+                ORDER BY i.decided_at DESC, i.id DESC
+                LIMIT 40
+                """,
+                outlet_params,
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                f"""
+                SELECT i.id, i.indent_no, i.outlet, i.notes, i.status,
+                       i.submitted_at, i.created_at,
+                       u.full_name AS created_by_name,
+                       (SELECT COUNT(*) FROM store_indent_lines l WHERE l.indent_id = i.id) AS line_count,
+                       (SELECT COALESCE(SUM(
+                            COALESCE(l.quantity, 0) * COALESCE(l.approximate_price, 0)
+                        ), 0)
+                        FROM store_indent_lines l WHERE l.indent_id = i.id) AS approximate_total
+                FROM store_indents i
+                LEFT JOIN users u ON u.id = i.created_by
+                WHERE {outlet_sql} AND i.status = 'pending'
+                ORDER BY i.submitted_at ASC, i.id ASC
+                """,
+                outlet_params,
+            ).fetchall()
+    finally:
+        conn.close()
+
+    out = []
+    for row in rows:
+        item = dict(row)
+        try:
+            total = float(item.get("approximate_total") or 0)
+        except (TypeError, ValueError):
+            total = 0.0
+        submitted = item.get("submitted_at") or item.get("created_at") or ""
+        out.append(
+            {
+                "id": int(item["id"]),
+                "indent_no": str(item.get("indent_no") or ""),
+                "outlet": str(item.get("outlet") or ""),
+                "notes": str(item.get("notes") or ""),
+                "status": str(item.get("status") or ""),
+                "created_by_name": str(item.get("created_by_name") or ""),
+                "decided_by_name": str(item.get("decided_by_name") or ""),
+                "decision_note": str(item.get("decision_note") or ""),
+                "line_count": int(item.get("line_count") or 0),
+                "approximate_total": round(total, 2),
+                "submitted_at": str(submitted)[:19],
+                "decided_at": str(item.get("decided_at") or "")[:19],
+            }
+        )
+    return jsonify(
+        {
+            "ok": True,
+            "view": "recent" if view in ("recent", "approved", "rejected", "history") else "pending",
+            "total": len(out),
+            "rows": out,
+        }
+    )
+
+
 @stores_bp.route("/stores/indent/<int:indent_id>/decide", methods=["POST"])
 def stores_indent_decide(indent_id: int):
     user = _get_user()
@@ -6695,8 +6785,8 @@ def stores_purchase_requests():
         return redirect(url_for("stores_purchase_requests", outlet=write_outlet, view="approved"))
 
     if request.method == "POST" and request.form.get("action") == "confirm_stock_inward":
-        # Stock + expense must go through the expense modal / JSON endpoint.
-        flash("Confirm stock inward from the expense popup.", "error")
+        # Stock + purchase must go through the confirm purchase modal / JSON endpoint.
+        flash("Confirm purchase from the purchase dialog.", "error")
         try:
             indent_id = int(request.form.get("indent_id") or 0)
         except (TypeError, ValueError):
@@ -6995,7 +7085,7 @@ def stores_save_expense_category():
 
 @stores_bp.route("/stores/purchase-requests/confirm-with-expense", methods=["POST"])
 def stores_confirm_stock_inward_expense():
-    """Confirm stock inward and record Hotel expense in one transaction."""
+    """Confirm stock inward and record Hotel purchase entries in one transaction."""
     user = _get_user()
     if not user:
         return jsonify({"ok": False, "error": "You must be logged in."}), 401
@@ -7179,7 +7269,7 @@ def stores_confirm_stock_inward_expense():
             "location": app_module.OUTLET_HOTEL,
             "date": data.get("date") or date.today().isoformat(),
             "description": (data.get("description") or "").strip()
-            or f"Stock inward {indent['indent_no']}",
+            or f"Purchase {indent['indent_no']}",
             "amount": data.get("amount"),
             "payment_type": data.get("payment_type"),
             "transaction_id": data.get("transaction_id"),
@@ -7340,10 +7430,10 @@ def stores_confirm_stock_inward_expense():
             }
             if po_still_open:
                 redirect_kwargs["po_id"] = purchase_order_id
-                message = "Partial warehouse stock inward recorded. Remaining items stay on Stock Inward."
+                message = "Partial purchase recorded into warehouse. Remaining items stay on Stock Inward."
             else:
                 message = (
-                    "Warehouse stock inward recorded for this purchase order. "
+                    "Purchase recorded for this purchase order. "
                     "Remaining indent qty stays available for other POs."
                 )
             redirect_url = url_for("stores_purchase_requests", **redirect_kwargs)
@@ -7353,7 +7443,7 @@ def stores_confirm_stock_inward_expense():
                 (indent_id,),
             )
             redirect_url = url_for("stores_stock", outlet=write_outlet)
-            message = "Stock inward recorded into warehouse."
+            message = "Purchase recorded into warehouse."
 
         conn.commit()
     except ValueError as exc:
@@ -7378,7 +7468,7 @@ def stores_confirm_stock_inward_expense():
 
 @stores_bp.route("/stores/purchase-requests/confirm-direct-with-expense", methods=["POST"])
 def stores_confirm_direct_stock_inward_expense():
-    """Confirm without-indent stock inward; expense always awaits Purchase Verification."""
+    """Confirm without-indent stock inward; purchase always awaits Purchase Verification."""
     user = _get_user()
     if not user:
         return jsonify({"ok": False, "error": "You must be logged in."}), 401
@@ -7472,7 +7562,7 @@ def stores_confirm_direct_stock_inward_expense():
         invoice_number = (data.get("invoice_number") or "").strip()
         description = (data.get("description") or "").strip()
         if not description:
-            description = "Stock inward without indent approval"
+            description = "Purchase without indent approval"
             if invoice_number:
                 description = f"{description} · Inv {invoice_number}"
 
@@ -7560,7 +7650,7 @@ def stores_confirm_direct_stock_inward_expense():
         "expense_id": expenses[0]["expense_id"] if expenses else None,
         "expense_code": expenses[0].get("expense_code") if expenses else None,
         "expenses": expenses,
-        "message": "Warehouse stock inward recorded. Expense awaits Purchase Verification.",
+        "message": "Warehouse stock recorded. Purchase awaits verification.",
         "partial": False,
     })
 

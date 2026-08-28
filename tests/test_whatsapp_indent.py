@@ -1,3 +1,6 @@
+import hashlib
+import hmac
+import json
 import os
 import tempfile
 import unittest
@@ -55,6 +58,7 @@ class WhatsAppIndentTests(unittest.TestCase):
                 "WHATSAPP_INDENT_APPROVER_NUMBERS": "8940651222",
                 "WHATSAPP_INDENT_APPROVER_NAME": "Neeraj",
                 "WHATSAPP_VERIFY_TOKEN": "verify-me",
+                "WHATSAPP_APP_SECRET": "test-meta-app-secret",
             },
             clear=False,
         )
@@ -97,6 +101,18 @@ class WhatsAppIndentTests(unittest.TestCase):
             return dict(indent)
         finally:
             conn.close()
+
+
+    def _post_webhook(self, payload):
+        raw = json.dumps(payload)
+        secret = os.environ["WHATSAPP_APP_SECRET"]
+        digest = hmac.new(secret.encode("utf-8"), raw.encode("utf-8"), hashlib.sha256).hexdigest()
+        return self.client.post(
+            "/webhook/whatsapp",
+            data=raw,
+            content_type="application/json",
+            headers={"X-Hub-Signature-256": "sha256=" + digest},
+        )
 
     def _token_button_payload(self, action, token, *, wa_context_id, sender="919999999999"):
         return {
@@ -214,7 +230,7 @@ class WhatsAppIndentTests(unittest.TestCase):
             indent["approval_token"],
             wa_context_id="wamid.BTN_A",
         )
-        res = self.client.post("/webhook/whatsapp", json=payload)
+        res = self._post_webhook(payload)
         self.assertEqual(res.status_code, 200)
 
         conn = db_mod.get_db()
@@ -266,7 +282,7 @@ class WhatsAppIndentTests(unittest.TestCase):
                 }]
             }]
         }
-        self.assertEqual(self.client.post("/webhook/whatsapp", json=payload).status_code, 200)
+        self.assertEqual(self._post_webhook(payload).status_code, 200)
         conn = db_mod.get_db()
         try:
             status = conn.execute(
@@ -307,7 +323,7 @@ class WhatsAppIndentTests(unittest.TestCase):
                     }]
                 }]
             }
-            self.assertEqual(self.client.post("/webhook/whatsapp", json=payload).status_code, 200)
+            self.assertEqual(self._post_webhook(payload).status_code, 200)
 
         conn = db_mod.get_db()
         try:
@@ -356,7 +372,7 @@ class WhatsAppIndentTests(unittest.TestCase):
                 }]
             }]
         }
-        self.assertEqual(self.client.post("/webhook/whatsapp", json=payload).status_code, 200)
+        self.assertEqual(self._post_webhook(payload).status_code, 200)
         conn = db_mod.get_db()
         try:
             status = conn.execute(
@@ -395,7 +411,7 @@ class WhatsAppIndentTests(unittest.TestCase):
             indent["approval_token"],
             wa_context_id="wamid.BTN_R",
         )
-        res = self.client.post("/webhook/whatsapp", json=payload)
+        res = self._post_webhook(payload)
         self.assertEqual(res.status_code, 200)
 
         conn = db_mod.get_db()
@@ -420,7 +436,7 @@ class WhatsAppIndentTests(unittest.TestCase):
 
         fake = "00000000-0000-4000-8000-000000000099"
         payload = self._token_button_payload("approve", fake, wa_context_id="wamid.BTN")
-        res = self.client.post("/webhook/whatsapp", json=payload)
+        res = self._post_webhook(payload)
         self.assertEqual(res.status_code, 200)
 
         conn = db_mod.get_db()
@@ -451,8 +467,8 @@ class WhatsAppIndentTests(unittest.TestCase):
             indent["approval_token"],
             wa_context_id="wamid.BTN",
         )
-        self.assertEqual(self.client.post("/webhook/whatsapp", json=payload).status_code, 200)
-        self.assertEqual(self.client.post("/webhook/whatsapp", json=payload).status_code, 200)
+        self.assertEqual(self._post_webhook(payload).status_code, 200)
+        self.assertEqual(self._post_webhook(payload).status_code, 200)
 
         conn = db_mod.get_db()
         try:
@@ -480,7 +496,7 @@ class WhatsAppIndentTests(unittest.TestCase):
             first["approval_token"],
             wa_context_id="wamid.BTNA",
         )
-        self.assertEqual(self.client.post("/webhook/whatsapp", json=payload).status_code, 200)
+        self.assertEqual(self._post_webhook(payload).status_code, 200)
 
         conn = db_mod.get_db()
         try:

@@ -634,7 +634,7 @@ body.su-module .st-sr-only{
   body.su-module .st-inward-head-stat{flex:1}
 }
 
-/* Stock Inward expense confirm modal */
+/* Stock Inward purchase confirm modal */
 body.su-module #st-inward-expense-modal .st-inward-expense-box{
   overflow:visible;
 }
@@ -703,7 +703,7 @@ body.su-module .st-inward-category-modal{
   z-index:520;
 }
 
-/* Read-only multi-category breakdown on Confirm stock & expense */
+/* Read-only multi-category breakdown on Confirm purchase */
 body.su-module #st-inward-expense-modal .st-inward-cat-breakdown-field{
   min-width:0;
 }
@@ -892,6 +892,15 @@ body.su-module #st-inward-page .st-inward-direct-line > .st-line-remove-wrap{
   justify-self:center;
   align-self:center;
   margin:0;
+}
+/* Pack / Unit listboxes — no chevron (cleaner invoice row) */
+body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-pack-listbox .se-filter-chip-chev,
+body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-unit-listbox .se-filter-chip-chev{
+  display:none !important;
+}
+body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-pack-listbox .se-filter-chip-trigger,
+body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-unit-listbox .se-filter-chip-trigger{
+  padding-right:14px;
 }
 body.su-module #st-inward-page .st-inward-direct-line .st-field--qty input[type="number"],
 body.su-module #st-inward-page .st-inward-direct-line .st-field--price input[type="number"],

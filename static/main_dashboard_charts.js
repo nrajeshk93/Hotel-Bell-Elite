@@ -410,10 +410,11 @@
     },
     series: [{
       type: 'pie',
-      radius: ['58%', '78%'],
+      /* Larger hole so center Total / amount never clips into the ring. */
+      radius: ['64%', '86%'],
       center: ['50%', '50%'],
-      padAngle: 2,
-      itemStyle: { borderRadius: 8 },
+      padAngle: 2.5,
+      itemStyle: { borderRadius: 6 },
       label: { show: false },
       labelLine: { show: false },
       data: contribItems.map(function (x) {

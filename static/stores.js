@@ -2974,14 +2974,14 @@
     if (directMode) {
       var notesEl = document.getElementById('st-inward-notes');
       var notes = notesEl ? String(notesEl.value || '').trim() : '';
-      var description = 'Stock inward without indent approval';
+      var description = 'Purchase without indent approval';
       if (notes) description += ' — ' + notes;
       if (descriptionEl) descriptionEl.value = description;
     } else {
       var indentNo = confirmBtn.getAttribute('data-st-inward-indent-no') || '';
       var notesEl2 = document.getElementById('st-inward-notes');
       var notes2 = notesEl2 ? String(notesEl2.value || '').trim() : '';
-      var description2 = 'Stock inward ' + indentNo;
+      var description2 = 'Purchase ' + indentNo;
       if (notes2) description2 += ' — ' + notes2;
       if (descriptionEl) descriptionEl.value = description2;
     }
@@ -3046,7 +3046,7 @@
       return;
     }
     if (!description) {
-      setInwardExpenseError('Please enter an expense description.');
+      setInwardExpenseError('Please enter a purchase description.');
       return;
     }
     if (!amountRaw || Number(amountRaw) <= 0) {
@@ -3063,7 +3063,7 @@
     }
     if (paymentType === 'cash' && Number(amountRaw) - Number(inwardAvailableCash) > 0.001) {
       setInwardExpenseError(
-        'Cash expense cannot be more than available cash (' +
+        'Cash purchase cannot be more than available cash (' +
           formatInwardAvailableCash(inwardAvailableCash) +
           ').'
       );
@@ -3127,14 +3127,14 @@
       });
       var data = await res.json().catch(function () { return {}; });
       if (!res.ok || !data.ok) {
-        throw new Error(data.error || 'Could not confirm stock inward.');
+        throw new Error(data.error || 'Could not confirm purchase.');
       }
       closeInwardModal(modal);
       if (data.redirect) window.location.href = data.redirect;
       else if (typeof window.deSoftRefresh === 'function') window.deSoftRefresh();
       else window.location.reload();
     } catch (err) {
-      setInwardExpenseError(err.message || 'Could not confirm stock inward.');
+      setInwardExpenseError(err.message || 'Could not confirm purchase.');
       var invoiceElFocus = document.getElementById('st-inward-invoice-number');
       if (
         invoiceElFocus

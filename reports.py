@@ -136,6 +136,7 @@ REPORT_CATEGORY_LABELS = {
     "accounts": "Accounts",
     "hr": "Employee Payroll",
     "sales": "Sales",
+    "gst": "GST",
     "inventory": "Inventory",
 }
 
@@ -360,6 +361,28 @@ REPORT_DEFINITIONS = [
         "category": "sales",
         "view_route": "sales_report_customer_insights",
         "download_route": "sales_report_customer_insights_export",
+        "downloadable": True,
+    },
+    {
+        "id": "gst_hotel",
+        "name": "Hotel",
+        "description": "Monthly GST Excel matching the statutory pack.",
+        "icon": "invoice",
+        "icon_tone": "blue",
+        "category": "gst",
+        "view_route": "gst_hotel_report",
+        "download_route": "gst_hotel_report_export",
+        "downloadable": True,
+    },
+    {
+        "id": "gst_fnb",
+        "name": "Restaurant & Bar",
+        "description": "Monthly GST Excel matching the statutory pack.",
+        "icon": "invoice",
+        "icon_tone": "violet",
+        "category": "gst",
+        "view_route": "gst_fnb_report",
+        "download_route": "gst_fnb_report_export",
         "downloadable": True,
     },
 ]

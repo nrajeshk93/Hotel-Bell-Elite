@@ -1,0 +1,32 @@
+name: Build Hotel Bell Elite mobile APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build debug APK with Buildozer
+        run: |
+          docker pull kivy/buildozer:latest
+          docker run --rm \
+            --entrypoint /bin/bash \
+            -v "${{ github.workspace }}/mobile_kivy:/home/user/hostcwd" \
+            -w /home/user/hostcwd \
+            kivy/buildozer:latest \
+            -lc '
+              SDK=/home/user/.buildozer/android/platform/android-sdk
+              yes | sdkmanager --sdk_root="$SDK" --licenses >/dev/null || true
+              sdkmanager --sdk_root="$SDK" "platform-tools" "platforms;android-31" "build-tools;31.0.0" >/dev/null || true
+              buildozer android debug
+            '
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hotel-Bell-Elite-apk
+          path: mobile_kivy/bin/*-debug.apk

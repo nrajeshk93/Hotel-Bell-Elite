@@ -610,6 +610,7 @@
   function preferredInsertTarget(container){
     return container.querySelector('.db-profile')
       || container.querySelector('.de-logout-btn')
+      || container.querySelector('.db-profile-logout')
       || container.querySelector('a[href*="logout"]')
       || null;
   }

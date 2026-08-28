@@ -4861,7 +4861,7 @@ def list_pos_kot_tokens(conn, outlet=POS_OUTLET_RESTAURANT):
     }
 
 
-def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, created_by="", reason=""):
+def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, created_by="", reason="", outlet=None):
     """Adjust kitchen-sent quantities from the Tables KOT hub and sync the bill.
 
     ``changes`` is a list of {invoice_id, line_id, sent_qty} where sent_qty is the
@@ -4898,6 +4898,13 @@ def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, cre
 
     if not by_invoice:
         raise ValueError("No quantity changes to save.")
+
+    if outlet is not None:
+        wanted = normalize_pos_outlet(outlet)
+        for invoice_id in list(by_invoice.keys()):
+            invoice = get_pos_invoice(conn, invoice_id)
+            if not invoice or normalize_pos_outlet(invoice.get("outlet")) != wanted:
+                raise ValueError(f"Invoice #{invoice_id} not found.")
 
     # Detect reductions against current DB state so reason rules are accurate.
     has_reduction = False

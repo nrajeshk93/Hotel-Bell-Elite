@@ -89,6 +89,14 @@ _REPORTS_SUBMODULES = (
     {"key": "restaurant_sales", "label": "Sales - Restaurant & Bar"},
     {"key": "menu_sales", "label": "Menu Insights"},
     {"key": "customer_insights", "label": "Customer Insights"},
+    {
+        "key": "gst",
+        "label": "GST",
+        "children": (
+            {"key": "gst_hotel", "label": "Hotel"},
+            {"key": "gst_fnb", "label": "Restaurant & Bar"},
+        ),
+    },
 )
 
 
@@ -103,6 +111,8 @@ def _flatten_submodules(items):
 
 
 _STORES_SUBMODULES_FLAT = _flatten_submodules(_STORES_SUBMODULES)
+_REPORTS_SUBMODULES_FLAT = _flatten_submodules(_REPORTS_SUBMODULES)
+_GST_REPORT_KEYS = frozenset({"gst", "gst_hotel", "gst_fnb"})
 
 # Single registry aligned with the workspace sidebar and access-management UI.
 # Add a new top-level module here and wire its endpoints to auto-include it everywhere.
@@ -272,7 +282,7 @@ _MASTER_SUBMODULE_LABELS = {
     item["key"]: item["label"] for item in _MASTER_SUBMODULES
 }
 _REPORTS_SUBMODULE_LABELS = {
-    item["key"]: item["label"] for item in _REPORTS_SUBMODULES
+    item["key"]: item["label"] for item in _REPORTS_SUBMODULES_FLAT
 }
 
 _ACCESS_MODULE_UI_META = {
@@ -653,6 +663,14 @@ _REPORTS_ENDPOINT_GROUPS = {
         "sales_report_customer_insights",
         "sales_report_customer_insights_export",
     },
+    "gst_hotel": {
+        "gst_hotel_report",
+        "gst_hotel_report_export",
+    },
+    "gst_fnb": {
+        "gst_fnb_report",
+        "gst_fnb_report_export",
+    },
 }
 _REPORTS_ENDPOINTS = set().union(*_REPORTS_ENDPOINT_GROUPS.values()) | {"reports"}
 
@@ -673,6 +691,8 @@ _PUBLIC_ENDPOINTS = {
     "whatsapp_webhook",
     "robots_txt",
     "sitemap_xml",
+    "mobile_ota_manifest",
+    "mobile_ota_apk",
 }
 
 _OUTLET_WRITE_ENDPOINTS = {
@@ -1350,17 +1370,29 @@ def user_can_access_master_submodule(user, submodule_key):
     )
 
 
+def _reports_all_keys():
+    return {item["key"] for item in _REPORTS_SUBMODULES_FLAT}
+
+
+def _reports_access_keys(user):
+    """Resolved Report page keys. GST defaults ON for existing report users."""
+    unlocked = _scoped_access_keys(
+        user,
+        attr="reports_access",
+        dashboard_key="reports",
+        all_keys=_reports_all_keys(),
+    )
+    if unlocked:
+        return set(unlocked) | _GST_REPORT_KEYS
+    return unlocked
+
+
 def user_can_access_reports_submodule(user, submodule_key):
     if not user:
         return False
     if user.get("is_admin"):
         return True
-    return submodule_key in _scoped_access_keys(
-        user,
-        attr="reports_access",
-        dashboard_key="reports",
-        all_keys={item["key"] for item in _REPORTS_SUBMODULES},
-    )
+    return submodule_key in _reports_access_keys(user)
 
 
 def user_can_access_supplier_master(user):
@@ -1542,13 +1574,8 @@ def master_access_list(user):
 def reports_access_list(user):
     if not user:
         return []
-    unlocked = _scoped_access_keys(
-        user,
-        attr="reports_access",
-        dashboard_key="reports",
-        all_keys={item["key"] for item in _REPORTS_SUBMODULES},
-    )
-    return [item["key"] for item in _REPORTS_SUBMODULES if item["key"] in unlocked]
+    unlocked = _reports_access_keys(user)
+    return [item["key"] for item in _REPORTS_SUBMODULES_FLAT if item["key"] in unlocked]
 
 
 def sales_analytics_access_list(user):
@@ -1825,6 +1852,49 @@ def user_can_approve_transactions(user):
     settlement pages is separate.
     """
     return user_can_access_dashboard(user, "approval")
+
+
+def mobile_module_access(user):
+    """Boolean flags for mobile / preview nav tiles (same rules as web sidebar).
+
+    Keys match mobile screen ids used by the HTML preview and Kivy shell.
+    """
+    if not user:
+        return {
+            "home": False,
+            "main_dashboard": False,
+            "indent_approvals": False,
+            "pos": False,
+            "kot": False,
+            "pos_bar": False,
+            "kot_bar": False,
+            "approvals": False,
+            "purchase_ledger": False,
+            "cash_ledger": False,
+            "can_approve": False,
+            "is_admin": False,
+        }
+
+    pos_invoice = user_can_access_point_of_sale_submodule(user, "invoice")
+    pos_tables = user_can_access_point_of_sale_submodule(user, "tables")
+    bar_invoice = user_can_access_point_of_sale_bar_submodule(user, "invoice")
+    bar_tables = user_can_access_point_of_sale_bar_submodule(user, "tables")
+    can_approve = user_can_approve_transactions(user)
+
+    return {
+        "home": True,
+        "main_dashboard": user_can_access_dashboard(user, "main_dashboard"),
+        "indent_approvals": can_approve,
+        "pos": pos_invoice,
+        "kot": bool(pos_invoice or pos_tables),
+        "pos_bar": bar_invoice,
+        "kot_bar": bool(bar_invoice or bar_tables),
+        "approvals": user_can_access_accounts_submodule(user, "purchase_verification"),
+        "purchase_ledger": user_can_access_accounts_submodule(user, "purchase_ledger"),
+        "cash_ledger": user_can_access_accounts_submodule(user, "cash_ledger"),
+        "can_approve": can_approve,
+        "is_admin": bool(user.get("is_admin")),
+    }
 
 
 def _normalize_permission_modules(

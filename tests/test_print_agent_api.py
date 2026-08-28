@@ -70,6 +70,17 @@ class PrintAgentApiTests(unittest.TestCase):
         self.assertTrue(body.get("ok"))
         self.assertTrue(body.get("token"))
         self.assertTrue(body.get("apiKey"))
+        stored = db_mod.get_db()
+        try:
+            row = stored.execute(
+                "SELECT api_key, api_key_hash FROM print_agents WHERE agent_id = ?",
+                ("11111111-2222-3333-4444-555555555555",),
+            ).fetchone()
+        finally:
+            stored.close()
+        self.assertTrue((row["api_key"] or "").startswith("enc1$"))
+        self.assertNotEqual(row["api_key"], body.get("apiKey"))
+        self.assertTrue(row["api_key_hash"])
         self.assertIn("http://127.0.0.1:8002", body.get("allowedOrigins") or [])
         self.assertIn("https://belleliteaccounts.com", body.get("allowedOrigins") or [])
 

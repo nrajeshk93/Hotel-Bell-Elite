@@ -2034,6 +2034,28 @@
     }
   }
 
+  function postLogoutNavigate(url){
+    var logoutUrl = url || '/logout';
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.action = logoutUrl;
+    form.style.display = 'none';
+    var token = '';
+    try{
+      var meta = document.querySelector('meta[name="csrf-token"]');
+      if(meta && meta.content) token = meta.content;
+    } catch(eMeta){}
+    if(token){
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'csrf_token';
+      input.value = token;
+      form.appendChild(input);
+    }
+    document.body.appendChild(form);
+    form.submit();
+  }
+
   function shouldKeepFullscreen(){
     return isFullscreenActive() || isFullscreenPreferred();
   }
@@ -2190,13 +2212,14 @@
 
   function handleLogoutLink(event, link){
     if(!link) return false;
-    var href = link.href || link.getAttribute('href') || '';
+    var href = link.href || link.getAttribute('href') || link.getAttribute('formaction') || link.getAttribute('action') || '';
+    if(!href && link.form) href = link.form.getAttribute('action') || '';
     if(!isLogoutUrl(href)) return false;
     if(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return false;
     if(!shouldKeepFullscreen()) return false;
     event.preventDefault();
     event.stopPropagation();
-    logoutWhileKeepingFullscreen(link.href || href);
+    logoutWhileKeepingFullscreen(href || '/logout');
     return true;
   }
 
@@ -2655,7 +2678,7 @@
         logoutWhileKeepingFullscreen(url);
         return;
       }
-      window.location.href = url;
+      postLogoutNavigate(url);
       return;
     }
     url = withSalesScope(url);

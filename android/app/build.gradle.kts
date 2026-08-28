@@ -18,10 +18,9 @@ android {
     buildTypes {
         debug {
             isDebuggable = true
-            // Android emulator loopback → host machine Flask (app.py uses port 8002)
-            buildConfigField("String", "SERVER_URL", "\"http://10.0.2.2:8002\"")
-            buildConfigField("boolean", "ALLOW_CLEARTEXT", "true")
-            manifestPlaceholders["usesCleartextTraffic"] = "true"
+            buildConfigField("String", "SERVER_URL", "\"https://belleliteaccounts.com/mobile-app/\"")
+            buildConfigField("boolean", "ALLOW_CLEARTEXT", "false")
+            manifestPlaceholders["usesCleartextTraffic"] = "false"
         }
         release {
             isMinifyEnabled = false
@@ -29,8 +28,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            // Change this to your real HTTPS host before shipping.
-            buildConfigField("String", "SERVER_URL", "\"https://YOUR_HTTPS_HOST\"")
+            buildConfigField("String", "SERVER_URL", "\"https://belleliteaccounts.com/mobile-app/\"")
             buildConfigField("boolean", "ALLOW_CLEARTEXT", "false")
             manifestPlaceholders["usesCleartextTraffic"] = "false"
         }

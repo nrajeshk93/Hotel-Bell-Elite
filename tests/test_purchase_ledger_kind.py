@@ -223,5 +223,80 @@ class CreateSalesExpenseKindTests(unittest.TestCase):
         self.assertTrue(row["expense_code"].startswith("HBE-PU-"))
 
 
+class PurchaseLedgerFilterSupplierTests(unittest.TestCase):
+    def setUp(self):
+        self.conn = _memory_conn()
+        self.with_grocery = _seed_supplier(self.conn, name="Grocery Co", gst="29AAAAA0000A1Z1")
+        self.with_alcohol = _seed_supplier(self.conn, name="Alcohol Co", gst="29AAAAA0000A1Z2")
+        self.unused = _seed_supplier(self.conn, name="A.B.ELECTRONICS", gst="29AAAAA0000A1Z3")
+        _seed_entry(
+            self.conn,
+            self.with_grocery,
+            amount=100,
+            entry_kind="purchase",
+            code="HBE-PU-1",
+        )
+        self.conn.execute(
+            """UPDATE sales_update_expenses SET category = 'grocery' WHERE expense_code = 'HBE-PU-1'"""
+        )
+        self.conn.execute(
+            """INSERT INTO sales_update_expenses
+               (company, location, sales_date, description, amount, payment_type,
+                supplier_id, category, expense_code, entry_kind)
+               VALUES ('HBE', 'Hotel', '2026-07-01', 'Bar stock', 50, 'cash', ?, 'liquor', 'HBE-EX-9', 'expense')""",
+            (self.with_alcohol,),
+        )
+        self.conn.commit()
+
+    def tearDown(self):
+        self.conn.close()
+
+    def test_filter_suppliers_excludes_unused_master_rows(self):
+        names = {
+            s["name"]
+            for s in app_module._purchase_ledger_filter_suppliers(
+                self.conn, date(2026, 4, 1), date(2027, 3, 31)
+            )
+        }
+        self.assertIn("Grocery Co", names)
+        self.assertIn("Alcohol Co", names)
+        self.assertNotIn("A.B.ELECTRONICS", names)
+
+    def test_filter_suppliers_respects_category(self):
+        names = {
+            s["name"]
+            for s in app_module._purchase_ledger_filter_suppliers(
+                self.conn,
+                date(2026, 4, 1),
+                date(2027, 3, 31),
+                category="liquor",
+            )
+        }
+        self.assertEqual(names, {"Alcohol Co"})
+
+    def test_filter_categories_excludes_unused_master_keys(self):
+        keys = {
+            key
+            for key, _label in app_module._purchase_ledger_filter_categories(
+                self.conn, date(2026, 4, 1), date(2027, 3, 31)
+            )
+        }
+        self.assertIn("grocery", keys)
+        self.assertIn("liquor", keys)
+        self.assertNotIn("alcopop", keys)
+
+    def test_filter_categories_respects_supplier(self):
+        keys = {
+            key
+            for key, _label in app_module._purchase_ledger_filter_categories(
+                self.conn,
+                date(2026, 4, 1),
+                date(2027, 3, 31),
+                supplier_id=self.with_alcohol,
+            )
+        }
+        self.assertEqual(keys, {"liquor"})
+
+
 if __name__ == "__main__":
     unittest.main()

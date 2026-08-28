@@ -681,10 +681,28 @@ body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-body 
 
 body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-chart-wrap {
   max-width: 148px;
+  container-type: size;
 }
 
 body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-chart {
   min-height: 148px;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-center {
+  padding: 20%;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-center-label {
+  font-size: clamp(9px, 7.5cqw, 11px);
+  margin: 0 0 2px;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-center-value {
+  font-size: clamp(11px, 11cqw, 15px);
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-list {

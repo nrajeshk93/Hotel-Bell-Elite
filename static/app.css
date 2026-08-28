@@ -658,3 +658,6 @@ tbody tr:hover{background:rgba(24,119,242,.025)}
   .check-grid{grid-template-columns:1fr}
   .brand p{display:none}
 }
+
+.db-profile-logout-form{margin:0;width:100%}
+.db-profile-logout{cursor:pointer;font-family:inherit}

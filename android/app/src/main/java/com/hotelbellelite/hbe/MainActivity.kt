@@ -27,15 +27,16 @@ import androidx.core.view.WindowCompat
 import com.hotelbellelite.hbe.databinding.ActivityMainBinding
 
 /**
- * Thin WebView shell around the existing Hotel Bell Elite Flask site.
- * Debug → http://10.0.2.2:5000 (emulator → host).
- * Release → HTTPS URL from BuildConfig.SERVER_URL.
+ * Native Android shell loads the designed mobile UI from APK assets.
+ * API calls go to production Flask (preview-api endpoints).
  */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private var lastErrorUrl: String? = null
+    private val mobileEntryUrl = "file:///android_asset/mobile/mobile_ui_preview.html"
+    private val apiHost = "belleliteaccounts.com"
 
     private val fileChooserLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -61,7 +62,7 @@ class MainActivity : AppCompatActivity() {
         setupWebView()
         binding.retryButton.setOnClickListener {
             hideOffline()
-            binding.webView.loadUrl(lastErrorUrl ?: BuildConfig.SERVER_URL)
+            binding.webView.loadUrl(lastErrorUrl ?: mobileEntryUrl)
         }
 
         onBackPressedDispatcher.addCallback(
@@ -81,7 +82,7 @@ class MainActivity : AppCompatActivity() {
         if (savedInstanceState != null) {
             binding.webView.restoreState(savedInstanceState)
         } else {
-            binding.webView.loadUrl(BuildConfig.SERVER_URL)
+            binding.webView.loadUrl(mobileEntryUrl)
         }
     }
 
@@ -128,6 +129,20 @@ class MainActivity : AppCompatActivity() {
                 request: WebResourceRequest?,
             ): Boolean {
                 val url = request?.url?.toString() ?: return false
+                // Keep the designed mobile UI; block redirects to the desktop web app.
+                if (url.startsWith("file:///android_asset/mobile/")) {
+                    return false
+                }
+                if (url.contains(apiHost) && (
+                        url.contains("/preview-api/") ||
+                            url.contains("/api/mobile/")
+                        )
+                ) {
+                    return false
+                }
+                if (url.contains(apiHost)) {
+                    return true
+                }
                 return handleExternalOrDownload(url)
             }
 
@@ -147,7 +162,7 @@ class MainActivity : AppCompatActivity() {
                 error: WebResourceError?,
             ) {
                 if (request?.isForMainFrame == true) {
-                    lastErrorUrl = request.url?.toString() ?: BuildConfig.SERVER_URL
+                    lastErrorUrl = mobileEntryUrl
                     showOffline()
                 }
             }

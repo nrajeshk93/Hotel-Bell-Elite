@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import io
+import os
 import random
 import re
 import secrets
@@ -333,11 +334,22 @@ def fetch_login_logs(conn, *, result: str = "all", limit: int = 500) -> list[dic
 
 # ── IP throttle ──────────────────────────────────────────────────────────────
 
+def _trust_proxy_headers() -> bool:
+    val = (
+        os.environ.get("TRUST_PROXY") or os.environ.get("TRUSTED_PROXY") or ""
+    ).strip().lower()
+    return val in ("1", "true", "yes", "on")
+
+
 def client_ip_from_request(request) -> str:
+    """Client IP for lockout/throttle. Do not trust X-Forwarded-For unless TRUST_PROXY is on."""
+    remote = (request.remote_addr or "unknown").strip() or "unknown"
+    if not _trust_proxy_headers():
+        return remote
     forwarded = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
     if forwarded:
         return forwarded
-    return (request.remote_addr or "unknown").strip() or "unknown"
+    return remote
 
 
 def note_ip_login_attempt(ip: str) -> None:

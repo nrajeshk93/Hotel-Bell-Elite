@@ -1,0 +1,481 @@
+"""Dashboard — executive landing (period/outlet chips + KPI scroll)."""
+
+from __future__ import annotations
+
+import webbrowser
+
+from kivy.metrics import dp
+from kivy.uix.behaviors import ButtonBehavior
+from kivymd.toast import toast
+from kivymd.uix.boxlayout import MDBoxLayout
+from kivymd.uix.button import MDTextButton
+from kivymd.uix.card import MDCard
+from kivymd.uix.gridlayout import MDGridLayout
+from kivymd.uix.label import MDLabel
+from kivymd.uix.screen import MDScreen
+from kivymd.uix.scrollview import MDScrollView
+
+from hbe_mobile import theme
+from hbe_mobile.api.dashboard import dashboard_webview_url, fetch_dashboard
+from hbe_mobile.utils.async_jobs import run_async
+from hbe_mobile.widgets.kpi_card import ExecKpiCard
+
+PERIODS = (("today", "Today"), ("7d", "7D"), ("30d", "30D"), ("mtd", "MTD"))
+OUTLETS = (("All", "All"), ("Hotel", "Hotel"), ("Restaurant", "Restaurant"), ("Bar", "Bar"))
+KPI_LABELS = {
+    "actual_sales": "Total Sales",
+    "digital_transactions": "Digital Collection",
+    "cash": "Cash Collection",
+    "expense": "Expense",
+    "difference": "Difference",
+}
+
+
+def _bind_h(widget) -> None:
+    widget.bind(minimum_height=widget.setter("height"))
+
+
+def _label(text, *, style="Body1", color=None, height=None, bold=False, shorten=False):
+    kwargs = dict(
+        text=text,
+        theme_text_color="Custom",
+        text_color=color or theme.TEXT,
+        font_style=style,
+        bold=bold,
+        shorten=shorten,
+    )
+    if height is not None:
+        kwargs["size_hint_y"] = None
+        kwargs["height"] = height
+    return MDLabel(**kwargs)
+
+
+class _FilterChip(ButtonBehavior, MDBoxLayout):
+    def __init__(self, key: str, caption: str, on_select, **kwargs):
+        super().__init__(**kwargs)
+        self.key = key
+        self._on_select = on_select
+        self.size_hint = (None, None)
+        self.height = dp(32)
+        self.width = max(dp(56), dp(22) + len(caption) * dp(7.2))
+        self.padding = [dp(10), 0, dp(10), 0]
+        self.radius = [dp(16)]
+        self.line_width = 1
+        self._caption = MDLabel(
+            text=caption,
+            halign="center",
+            valign="middle",
+            theme_text_color="Custom",
+            text_color=theme.TEXT,
+            font_style="Caption",
+            bold=True,
+        )
+        self.add_widget(self._caption)
+        self.set_selected(False)
+
+    def set_selected(self, selected: bool) -> None:
+        if selected:
+            self.md_bg_color = theme.ACCENT_SOFT
+            self.line_color = theme.ACCENT_BORDER
+            self._caption.text_color = theme.ACCENT
+        else:
+            self.md_bg_color = theme.SURFACE
+            self.line_color = theme.BORDER
+            self._caption.text_color = theme.TEXT
+
+    def on_release(self):
+        if self._on_select:
+            self._on_select(self.key)
+
+
+class _ChipRow(MDBoxLayout):
+    def __init__(self, options, selected, on_select, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation = "horizontal"
+        self.size_hint_y = None
+        self.height = dp(36)
+        self.spacing = dp(8)
+        self._on_select = on_select
+        self._chips: dict[str, _FilterChip] = {}
+        for key, caption in options:
+            chip = _FilterChip(key, caption, self._picked)
+            self._chips[key] = chip
+            self.add_widget(chip)
+        self.set_selected(selected)
+
+    def _picked(self, key: str) -> None:
+        self.set_selected(key)
+        self._on_select(key)
+
+    def set_selected(self, key: str) -> None:
+        for k, chip in self._chips.items():
+            chip.set_selected(k == key)
+
+
+def _section_card(title: str) -> tuple[MDCard, MDBoxLayout]:
+    card = MDCard(
+        orientation="vertical",
+        size_hint_y=None,
+        padding=dp(14),
+        spacing=dp(8),
+        radius=[dp(12)],
+        md_bg_color=theme.SURFACE,
+        elevation=1,
+    )
+    _bind_h(card)
+    card.add_widget(_label(title, style="Subtitle1", bold=True, height=dp(24)))
+    body = MDBoxLayout(orientation="vertical", spacing=dp(8), size_hint_y=None)
+    _bind_h(body)
+    card.add_widget(body)
+    return card, body
+
+
+def _empty(text: str) -> MDLabel:
+    return _label(text, style="Caption", color=theme.TEXT_MUTED, height=dp(22))
+
+
+def _share_bar(pct, *, color=None) -> MDBoxLayout:
+    try:
+        share = max(0.0, min(100.0, float(pct or 0)))
+    except (TypeError, ValueError):
+        share = 0.0
+    track = MDBoxLayout(
+        orientation="horizontal",
+        size_hint_y=None,
+        height=dp(6),
+        md_bg_color=theme.BG,
+        radius=[dp(3)],
+        spacing=0,
+    )
+    fill = MDBoxLayout(
+        size_hint_x=max(share / 100.0, 0.001),
+        md_bg_color=color or theme.ACCENT,
+        radius=[dp(3)],
+    )
+    track.add_widget(fill)
+    if share < 100:
+        track.add_widget(MDBoxLayout(size_hint_x=max((100.0 - share) / 100.0, 0.001)))
+    return track
+
+
+class DashboardScreen(MDScreen):
+    """Native executive dashboard. Post-login landing; Home stays the module launcher."""
+
+    def __init__(self, app, **kwargs):
+        super().__init__(**kwargs)
+        self.app = app
+        self.name = "dashboard"
+        self.md_bg_color = theme.BG
+        self._period = "today"
+        self._location = None
+        self._items_sort = "qty"
+        self._load_gen = 0
+        self._snap = None
+
+        scroll = MDScrollView()
+        root = MDBoxLayout(
+            orientation="vertical",
+            padding=[dp(12), dp(12), dp(12), dp(28)],
+            spacing=dp(10),
+            size_hint_y=None,
+        )
+        _bind_h(root)
+
+        root.add_widget(
+            _label("Dashboard", style="H5", bold=True, height=dp(36), color=theme.TEXT)
+        )
+        root.add_widget(_label("Period", style="Caption", color=theme.TEXT_MUTED, height=dp(18)))
+        self._period_chips = _ChipRow(PERIODS, "today", self._set_period)
+        root.add_widget(self._period_chips)
+        root.add_widget(_label("Outlet", style="Caption", color=theme.TEXT_MUTED, height=dp(18)))
+        self._outlet_chips = _ChipRow(OUTLETS, "All", self._set_location)
+        root.add_widget(self._outlet_chips)
+
+        self.status = _label("Loading…", style="Caption", color=theme.TEXT_MUTED, height=dp(22))
+        root.add_widget(self.status)
+
+        self.grid = MDGridLayout(cols=2, spacing=dp(10), size_hint_y=None, padding=0)
+        _bind_h(self.grid)
+        root.add_widget(self.grid)
+
+        self._trend_card, self._trend_body = _section_card("Sales trend")
+        root.add_widget(self._trend_card)
+        self._outlets_card, self._outlets_body = _section_card("Top outlets")
+        root.add_widget(self._outlets_card)
+        self._pay_card, self._pay_body = _section_card("Payment mix")
+        root.add_widget(self._pay_card)
+
+        items_card = MDCard(
+            orientation="vertical",
+            size_hint_y=None,
+            padding=dp(14),
+            spacing=dp(8),
+            radius=[dp(12)],
+            md_bg_color=theme.SURFACE,
+            elevation=1,
+        )
+        _bind_h(items_card)
+        items_head = MDBoxLayout(orientation="vertical", spacing=dp(6), size_hint_y=None)
+        _bind_h(items_head)
+        items_head.add_widget(_label("Top selling items", style="Subtitle1", bold=True, height=dp(24)))
+        self._sort_chips = _ChipRow(
+            (("qty", "Qty"), ("revenue", "Revenue")),
+            "qty",
+            self._set_items_sort,
+        )
+        items_head.add_widget(self._sort_chips)
+        items_card.add_widget(items_head)
+        self._items_body = MDBoxLayout(orientation="vertical", spacing=dp(6), size_hint_y=None)
+        _bind_h(self._items_body)
+        items_card.add_widget(self._items_body)
+        root.add_widget(items_card)
+
+        root.add_widget(
+            MDTextButton(
+                text="Open full web dashboard",
+                theme_text_color="Custom",
+                text_color=theme.ACCENT,
+                size_hint_y=None,
+                height=dp(36),
+                on_release=lambda *_: self._open_web(),
+            )
+        )
+
+        scroll.add_widget(root)
+        self.add_widget(scroll)
+
+    def on_workspace_enter(self) -> None:
+        self.refresh()
+
+    def _set_period(self, period: str) -> None:
+        if period == self._period:
+            return
+        self._period = period
+        self.refresh()
+
+    def _set_location(self, key: str) -> None:
+        loc = None if key in ("All", "", None) else key
+        if loc == self._location:
+            return
+        self._location = loc
+        self.refresh()
+
+    def _set_items_sort(self, key: str) -> None:
+        self._items_sort = "revenue" if key == "revenue" else "qty"
+        if self._snap is not None:
+            self._render_items(self._snap)
+
+    def refresh(self) -> None:
+        self._load_gen += 1
+        gen = self._load_gen
+        period = self._period
+        location = self._location
+        self.status.text = "Loading…"
+
+        def work():
+            return fetch_dashboard(self.app.api, period=period, location=location)
+
+        def ok(snap):
+            if gen != self._load_gen:
+                return
+            self._snap = snap
+            self.status.text = ""
+            self._render(snap)
+
+        def err(exc):
+            if gen != self._load_gen:
+                return
+            self.status.text = "Could not load dashboard"
+            toast(str(exc))
+
+        run_async(work, ok, err)
+
+    def _render(self, snap) -> None:
+        self._render_kpis(snap)
+        self._render_trend(snap)
+        self._render_outlets(snap)
+        self._render_payment(snap)
+        has_qty = getattr(snap, "top_selling_items", None) is not None
+        has_rev = getattr(snap, "top_selling_items_by_revenue", None) is not None
+        self._sort_chips.opacity = 1 if (has_qty and has_rev) else 0
+        self._sort_chips.disabled = not (has_qty and has_rev)
+        self._sort_chips.height = dp(36) if (has_qty and has_rev) else 0
+        self._render_items(snap)
+
+    def _render_kpis(self, snap) -> None:
+        self.grid.clear_widgets()
+        kpis = list(getattr(snap, "kpis", None) or [])
+        if not kpis:
+            self.grid.add_widget(_empty("No KPI data for this period."))
+            if not self.status.text:
+                self.status.text = "No data for this period"
+            return
+        for kpi in kpis[:5]:
+            if not isinstance(kpi, dict):
+                continue
+            key = str(kpi.get("key") or "")
+            title = KPI_LABELS.get(key) or str(kpi.get("label") or "KPI")
+            value = str(kpi.get("value_display") or kpi.get("value_compact") or "—")
+            change = kpi.get("change_pct")
+            self.grid.add_widget(
+                ExecKpiCard(
+                    title=title,
+                    value=value,
+                    change_pct=change,
+                    subtitle="vs prior" if change is not None else "",
+                )
+            )
+
+    def _render_trend(self, snap) -> None:
+        body = self._trend_body
+        body.clear_widgets()
+        trend = getattr(snap, "sales_trend", None) or {}
+        if not isinstance(trend, dict) or not trend:
+            body.add_widget(_empty("No sales in this period."))
+            return
+        avg = trend.get("avg_display") or "—"
+        body.add_widget(self._stat_row("Avg", str(avg)))
+        best = trend.get("best") if isinstance(trend.get("best"), dict) else None
+        lowest = trend.get("lowest") if isinstance(trend.get("lowest"), dict) else None
+        body.add_widget(
+            self._stat_row(
+                "Best",
+                str((best or {}).get("amount_display") or "—"),
+                str((best or {}).get("label") or ""),
+            )
+        )
+        body.add_widget(
+            self._stat_row(
+                "Lowest",
+                str((lowest or {}).get("amount_display") or "—"),
+                str((lowest or {}).get("label") or ""),
+            )
+        )
+
+    def _stat_row(self, label: str, value: str, meta: str = "") -> MDBoxLayout:
+        row = MDBoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(2))
+        row.add_widget(_label(label, style="Caption", color=theme.TEXT_MUTED, height=dp(16)))
+        row.add_widget(_label(value, style="Body1", bold=True, height=dp(22)))
+        extra = (meta or "").strip()
+        row.add_widget(_label(extra, style="Caption", color=theme.TEXT_MUTED, height=dp(16) if extra else 0))
+        row.height = dp(54) if extra else dp(38)
+        return row
+
+    def _render_outlets(self, snap) -> None:
+        body = self._outlets_body
+        body.clear_widgets()
+        rows = list(getattr(snap, "company_leaderboard", None) or [])
+        if not rows:
+            body.add_widget(_empty("No settled outlet sales in this period."))
+            return
+        for i, row in enumerate(rows, start=1):
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("name") or row.get("label") or "Outlet")
+            amount = str(row.get("amount_display") or row.get("sales_compact") or "—")
+            share = row.get("share_pct")
+            block = MDBoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
+            top = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(22))
+            top.add_widget(_label(f"{i}. {name}", style="Body2", shorten=True))
+            top.add_widget(_label(amount, style="Body2", bold=True, height=dp(22)))
+            block.add_widget(top)
+            block.add_widget(_share_bar(share if share is not None else 0))
+            meta = f"{share:g}% contribution" if share is not None else ""
+            if meta:
+                block.add_widget(_label(meta, style="Caption", color=theme.TEXT_MUTED, height=dp(16)))
+            block.height = dp(48) if meta else dp(32)
+            body.add_widget(block)
+
+    def _render_payment(self, snap) -> None:
+        body = self._pay_body
+        body.clear_widgets()
+        mix = getattr(snap, "payment_mix", None) or {}
+        if not isinstance(mix, dict) or not mix:
+            body.add_widget(_empty("No payment mix for this period."))
+            return
+        dig = mix.get("digital_pct")
+        cash = mix.get("cash_pct")
+        if dig is None and cash is None:
+            body.add_widget(_empty("No payment mix for this period."))
+            return
+        dig_f = float(dig or 0)
+        cash_f = float(cash or 0)
+        pair = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(40), spacing=dp(12))
+        pair.add_widget(self._mix_stat("Digital", f"{dig_f:g}%"))
+        pair.add_widget(self._mix_stat("Cash", f"{cash_f:g}%"))
+        body.add_widget(pair)
+        bar = MDBoxLayout(
+            orientation="horizontal",
+            size_hint_y=None,
+            height=dp(10),
+            radius=[dp(5)],
+            md_bg_color=theme.BG,
+        )
+        total = dig_f + cash_f
+        if total <= 0:
+            body.add_widget(_empty("No collections in this period."))
+            return
+        bar.add_widget(
+            MDBoxLayout(
+                size_hint_x=max(dig_f / total, 0.001),
+                md_bg_color=theme.ACCENT,
+                radius=[dp(5), 0, 0, dp(5)] if cash_f else [dp(5)],
+            )
+        )
+        bar.add_widget(
+            MDBoxLayout(
+                size_hint_x=max(cash_f / total, 0.001),
+                md_bg_color=theme.TEXT_MUTED,
+                radius=[0, dp(5), dp(5), 0] if dig_f else [dp(5)],
+            )
+        )
+        body.add_widget(bar)
+
+    def _mix_stat(self, label: str, value: str) -> MDBoxLayout:
+        col = MDBoxLayout(orientation="vertical", size_hint_y=None, height=dp(40))
+        col.add_widget(_label(label, style="Caption", color=theme.TEXT_MUTED, height=dp(16)))
+        col.add_widget(_label(value, style="H6", bold=True, height=dp(24)))
+        return col
+
+    def _render_items(self, snap) -> None:
+        body = self._items_body
+        body.clear_widgets()
+        loc = (self._location or getattr(snap, "location", "") or "").strip()
+        qty_rows = list(getattr(snap, "top_selling_items", None) or [])
+        rev_rows = list(getattr(snap, "top_selling_items_by_revenue", None) or [])
+        rows = rev_rows if self._items_sort == "revenue" else qty_rows
+        if loc.casefold() == "hotel" and not rows:
+            body.add_widget(_empty("No POS menu items for Hotel."))
+            return
+        if not rows:
+            body.add_widget(_empty("No menu sales in this period."))
+            return
+        for i, row in enumerate(rows, start=1):
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("name") or row.get("item_name") or "Item")
+            if self._items_sort == "revenue":
+                metric = str(
+                    row.get("sale_value_compact")
+                    or row.get("amount_display")
+                    or row.get("qty_display")
+                    or "—"
+                )
+            else:
+                metric = str(
+                    row.get("qty_display")
+                    or row.get("qty_label")
+                    or row.get("sale_value_compact")
+                    or "—"
+                )
+            line = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(28))
+            line.add_widget(_label(f"{i}. {name}", style="Body2", shorten=True))
+            line.add_widget(_label(metric, style="Caption", color=theme.TEXT_MUTED, height=dp(28)))
+            body.add_widget(line)
+
+    def _open_web(self) -> None:
+        url = dashboard_webview_url(
+            self.app.api, period=self._period, location=self._location
+        )
+        webbrowser.open(url)
+        toast("Opened in system browser")
