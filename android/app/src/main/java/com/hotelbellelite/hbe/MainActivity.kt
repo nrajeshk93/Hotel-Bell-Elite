@@ -23,12 +23,14 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import com.hotelbellelite.hbe.databinding.ActivityMainBinding
 
 /**
  * Native Android shell loads the designed mobile UI from APK assets.
- * API calls go to production Flask (preview-api endpoints).
+ * API calls use production Flask session cookies (see /api/mobile/login).
  */
 class MainActivity : AppCompatActivity() {
 
@@ -55,9 +57,14 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        WindowCompat.setDecorFitsSystemWindows(window, true)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(0, 0, 0, bars.bottom)
+            insets
+        }
 
         setupWebView()
         binding.retryButton.setOnClickListener {
@@ -113,6 +120,10 @@ class MainActivity : AppCompatActivity() {
             displayZoomControls = false
             allowFileAccess = true
             allowContentAccess = true
+            @Suppress("DEPRECATION")
+            allowUniversalAccessFromFileURLs = true
+            @Suppress("DEPRECATION")
+            allowFileAccessFromFileURLs = true
             mediaPlaybackRequiresUserGesture = true
             mixedContentMode = if (BuildConfig.ALLOW_CLEARTEXT) {
                 WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
@@ -129,12 +140,13 @@ class MainActivity : AppCompatActivity() {
                 request: WebResourceRequest?,
             ): Boolean {
                 val url = request?.url?.toString() ?: return false
-                // Keep the designed mobile UI; block redirects to the desktop web app.
+                // Keep mobile UI + API on production; block desktop web app pages.
                 if (url.startsWith("file:///android_asset/mobile/")) {
                     return false
                 }
                 if (url.contains(apiHost) && (
-                        url.contains("/preview-api/") ||
+                        url.contains("/mobile-app/") ||
+                            url.contains("/preview-api/") ||
                             url.contains("/api/mobile/")
                         )
                 ) {
@@ -154,6 +166,22 @@ class MainActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 binding.progressBar.visibility = View.GONE
                 CookieManager.getInstance().flush()
+                if (url != null && (
+                        url.startsWith("file:///android_asset/mobile/") ||
+                            url.contains("/mobile-app/")
+                        )
+                ) {
+                    view?.evaluateJavascript(
+                        """
+                        (function(){
+                          document.body.classList.add('is-bundled-app');
+                          var banner = document.querySelector('.banner');
+                          if (banner) banner.style.display = 'none';
+                        })();
+                        """.trimIndent(),
+                        null,
+                    )
+                }
             }
 
             override fun onReceivedError(

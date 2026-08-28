@@ -791,6 +791,8 @@ def enforce_access():
         return None
 
     if not user:
+        if request.path == "/api/mobile/login" and request.method == "POST":
+            return None
         xhr = (
             request.headers.get("X-Requested-With") == "XMLHttpRequest"
             or request.is_json
@@ -803,7 +805,7 @@ def enforce_access():
             return jsonify({"ok": False, "error": "Please sign in again."}), 401
         if endpoint == "mobile_session" or (
             request.path.startswith("/api/mobile/")
-            and endpoint not in {"mobile_ota_manifest", "mobile_ota_apk"}
+            and endpoint not in {"mobile_ota_manifest", "mobile_ota_apk", "mobile_login"}
         ):
             return jsonify({"ok": False, "error": "Not signed in"}), 401
         if request.path.startswith("/preview-api/") or request.path.startswith("/mobile-app"):
@@ -19842,6 +19844,48 @@ def mobile_session():
             "role_name": str(user.get("role_name") or ""),
             "must_change_password": bool(user.get("must_change_password")),
             "access": mobile_module_access(user),
+        }
+    )
+
+
+@app.route("/api/mobile/login", methods=["POST"], endpoint="mobile_login")
+def mobile_login():
+    """JSON sign-in for the Android WebView (Flask session cookie, not preview tokens)."""
+    payload = request.get_json(silent=True) or {}
+    username = str(payload.get("username") or "").strip()
+    password = str(payload.get("password") or "")
+    if not username or not password:
+        return jsonify({"ok": False, "error": "Enter username and password."}), 400
+
+    from mobile_preview_flask import preview_authenticate_credentials
+
+    status, data = preview_authenticate_credentials(username, password)
+    if status != 200 or not data.get("ok"):
+        return jsonify(data), status
+
+    session.clear()
+    session[AUTH_USER_SESSION_KEY] = int(data["user_id"])
+    if bool(data.get("must_change_password")):
+        return jsonify(
+            {
+                "ok": True,
+                "must_change_password": True,
+                "user_id": int(data["user_id"]),
+                "username": data.get("username") or username,
+                "display_name": data.get("display_name") or username,
+                "access": data.get("access") or {},
+                "auth_mode": "cookie",
+            }
+        )
+    return jsonify(
+        {
+            "ok": True,
+            "must_change_password": False,
+            "user_id": int(data["user_id"]),
+            "username": data.get("username") or username,
+            "display_name": data.get("display_name") or username,
+            "access": data.get("access") or {},
+            "auth_mode": "cookie",
         }
     )
 

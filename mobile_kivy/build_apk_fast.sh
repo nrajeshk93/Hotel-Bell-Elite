@@ -24,8 +24,7 @@ if [[ ! -x "$ANDROID/gradlew" ]]; then
 fi
 
 echo "==> Building $APK_NAME"
-echo "==> Mobile UI: bundled in APK (login/home/POS design)"
-echo "==> API: https://belleliteaccounts.com/preview-api/ (deploy Flask changes to AWS)"
+echo "==> Mobile UI: bundled in APK + production cookie auth (/api/mobile/login)"
 cd "$ANDROID"
 chmod +x gradlew
 ./gradlew --no-daemon assembleDebug

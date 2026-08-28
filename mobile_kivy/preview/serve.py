@@ -333,7 +333,89 @@ def _resolve_preview_user_id() -> int:
 
 # Signed-in preview clients (HTML phone mock). Token → session payload.
 _preview_sessions: dict[str, dict[str, Any]] = {}
+_PREVIEW_SESSION_TTL_S = 30 * 24 * 60 * 60
 _request_ctx = threading.local()
+
+
+def _ensure_preview_sessions_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS mobile_preview_sessions (
+            token TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            username TEXT NOT NULL DEFAULT '',
+            display_name TEXT NOT NULL DEFAULT '',
+            access_json TEXT NOT NULL DEFAULT '{}',
+            created_at REAL NOT NULL
+        )
+        """
+    )
+
+
+def _save_preview_session(
+    token: str,
+    user_id: int,
+    username: str,
+    display_name: str,
+    access: dict[str, Any],
+) -> None:
+    _preview_sessions[token] = {
+        "user_id": int(user_id),
+        "username": username,
+        "display_name": display_name,
+        "access": access,
+        "created_at": time.time(),
+    }
+    try:
+        with _connect() as conn:
+            _ensure_preview_sessions_table(conn)
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO mobile_preview_sessions
+                    (token, user_id, username, display_name, access_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    token,
+                    int(user_id),
+                    username,
+                    display_name,
+                    json.dumps(access or {}),
+                    time.time(),
+                ),
+            )
+            conn.commit()
+    except Exception:
+        pass
+
+
+def _delete_preview_session(token: str) -> None:
+    token = (token or "").strip()
+    if not token:
+        return
+    _preview_sessions.pop(token, None)
+    try:
+        with _connect() as conn:
+            _ensure_preview_sessions_table(conn)
+            conn.execute("DELETE FROM mobile_preview_sessions WHERE token = ?", (token,))
+            conn.commit()
+    except Exception:
+        pass
+
+
+def _preview_session_row(token: str) -> Optional[sqlite3.Row]:
+    token = (token or "").strip()
+    if not token:
+        return None
+    try:
+        with _connect() as conn:
+            _ensure_preview_sessions_table(conn)
+            return conn.execute(
+                "SELECT * FROM mobile_preview_sessions WHERE token = ?",
+                (token,),
+            ).fetchone()
+    except Exception:
+        return None
 
 
 def _set_request_preview_user(user_id: Optional[int], access: Optional[dict[str, Any]] = None) -> None:
@@ -437,13 +519,13 @@ def preview_authenticate(username: str, password: str) -> tuple[int, dict[str, A
         "must_change_password": bool(user.get("must_change_password")),
         "access": access,
     }
-    _preview_sessions[token] = {
-        "user_id": int(user["id"]),
-        "username": payload["username"],
-        "display_name": display_name,
-        "access": access,
-        "created_at": time.time(),
-    }
+    _save_preview_session(
+        token,
+        int(user["id"]),
+        payload["username"],
+        display_name,
+        access,
+    )
     return 200, payload
 
 
@@ -452,16 +534,30 @@ def preview_session_from_token(token: str) -> Optional[dict[str, Any]]:
     if not token:
         return None
     cached = _preview_sessions.get(token)
+    row = _preview_session_row(token)
+    if row is not None:
+        age = time.time() - float(row["created_at"] or 0)
+        if age < 0 or age > _PREVIEW_SESSION_TTL_S:
+            _delete_preview_session(token)
+            return None
+        cached = {
+            "user_id": int(row["user_id"]),
+            "username": str(row["username"] or ""),
+            "display_name": str(row["display_name"] or ""),
+            "access": json.loads(row["access_json"] or "{}"),
+            "created_at": float(row["created_at"] or 0),
+        }
+        _preview_sessions[token] = cached
     if not cached:
         return None
     user = _load_user_by_id(int(cached["user_id"]))
     if not user:
-        _preview_sessions.pop(token, None)
+        _delete_preview_session(token)
         return None
     from workspace_access import user_has_assigned_access_role
 
     if not user_has_assigned_access_role(user):
-        _preview_sessions.pop(token, None)
+        _delete_preview_session(token)
         return None
     access = mobile_access_for_user(user)
     cached["access"] = access
@@ -479,9 +575,7 @@ def preview_session_from_token(token: str) -> Optional[dict[str, Any]]:
 
 
 def preview_logout(token: str) -> dict[str, Any]:
-    token = (token or "").strip()
-    if token:
-        _preview_sessions.pop(token, None)
+    _delete_preview_session(token)
     return {"ok": True}
 
 

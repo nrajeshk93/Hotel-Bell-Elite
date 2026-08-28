@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from urllib.parse import parse_qs
 
-from flask import Blueprint, jsonify, request, send_from_directory
+from flask import Blueprint, jsonify, make_response, request, send_from_directory
 
 from mailer import app_base_url
 
@@ -53,9 +53,44 @@ def _bind():
             ps._flask.impersonate(int(session["user_id"]))
         except Exception:
             pass
-    else:
-        ps._set_request_preview_user(None, None)
-    return session
+        return session
+
+    user = _flask_session_user()
+    if user:
+        access = ps.mobile_access_for_user(user)
+        uid = int(user["id"])
+        ps._set_request_preview_user(uid, access)
+        try:
+            ps._flask.impersonate(uid)
+        except Exception:
+            pass
+        return {
+            "ok": True,
+            "user_id": uid,
+            "username": str(user.get("username") or ""),
+            "display_name": str(user.get("display_name") or user.get("username") or ""),
+            "role_name": str(user.get("role_name") or ""),
+            "must_change_password": bool(user.get("must_change_password")),
+            "access": access,
+        }
+
+    ps._set_request_preview_user(None, None)
+    return None
+
+
+def _flask_session_user():
+    try:
+        from app import get_current_user
+
+        return get_current_user()
+    except Exception:
+        return None
+
+
+def preview_authenticate_credentials(username: str, password: str):
+    ps = _preview_serve()
+    _sync_base()
+    return ps.preview_authenticate(username, password)
 
 
 def _deny(access_key: str):
@@ -65,6 +100,43 @@ def _deny(access_key: str):
 
 def _json(data, status=200):
     return jsonify(data), status
+
+
+_PREVIEW_CORS_HEADERS = {
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Preview-Token, X-CSRF-Token, X-CSRFToken",
+}
+
+
+def _preview_cors_headers():
+    origin = (request.headers.get("Origin") or "").strip()
+    headers = dict(_PREVIEW_CORS_HEADERS)
+    if origin in {"", "null"}:
+        headers["Access-Control-Allow-Origin"] = "null"
+        headers["Access-Control-Allow-Credentials"] = "true"
+    elif origin:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+    else:
+        headers["Access-Control-Allow-Origin"] = "*"
+    return headers
+
+
+@bp.before_request
+def _preview_api_cors_preflight():
+    if request.method != "OPTIONS" or not (request.path or "").startswith("/preview-api/"):
+        return None
+    resp = make_response("", 204)
+    resp.headers.update(_preview_cors_headers())
+    return resp
+
+
+@bp.after_request
+def _preview_api_cors(response):
+    if (request.path or "").startswith("/preview-api/") or (request.path or "").startswith("/api/mobile/"):
+        for key, value in _preview_cors_headers().items():
+            response.headers[key] = value
+    return response
 
 
 @bp.route("/mobile-app/")
@@ -399,3 +471,20 @@ def preview_pos_settle_route():
 
 def register_mobile_preview_routes(app) -> None:
     app.register_blueprint(bp)
+
+    @app.before_request
+    def _mobile_api_cors_preflight():
+        path = request.path or ""
+        if request.method != "OPTIONS" or not path.startswith("/api/mobile/"):
+            return None
+        resp = make_response("", 204)
+        resp.headers.update(_preview_cors_headers())
+        return resp
+
+    @app.after_request
+    def _mobile_api_cors(response):
+        path = request.path or ""
+        if path.startswith("/api/mobile/"):
+            for key, value in _preview_cors_headers().items():
+                response.headers[key] = value
+        return response

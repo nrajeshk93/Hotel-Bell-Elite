@@ -1,8 +1,7 @@
 {
-  "version": "0.1.0",
-  "versionCode": 1,
+  "version": "0.1.1",
+  "versionCode": 2,
   "apk_url": "/api/mobile/hbemobile.apk",
-  "sha256": "",
-  "force": false,
-  "apk_available": false
+  "sha256": "dc79e49aa336454cbf37c0a011311540312795c2c6bf4a770fdff0490b57a32c",
+  "force": false
 }

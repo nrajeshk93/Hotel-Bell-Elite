@@ -44,6 +44,37 @@
       line-height: 1.4;
     }
     .banner strong { color: var(--login-gold); }
+    body.is-bundled-app .banner { display: none; }
+    body.is-bundled-app {
+      padding: 0;
+      margin: 0;
+      gap: 0;
+      background: var(--bg);
+      min-height: 100dvh;
+      height: 100dvh;
+      overflow: hidden;
+    }
+    body.is-bundled-app .phone {
+      width: 100%;
+      max-width: none;
+      height: 100dvh;
+      min-height: 100dvh;
+      border-radius: 0;
+      border: none;
+      box-shadow: none;
+    }
+    body.is-bundled-app .topbar {
+      padding-top: max(env(safe-area-inset-top, 0px), 8px);
+      min-height: calc(52px + env(safe-area-inset-top, 0px));
+      height: auto;
+    }
+    body.is-bundled-app #screen-login {
+      padding-top: max(env(safe-area-inset-top, 0px), 12px);
+      padding-bottom: max(env(safe-area-inset-bottom, 0px), 12px);
+    }
+    body.is-bundled-app .screen {
+      min-height: 0;
+    }
     .phone {
       width: min(390px, 100%);
       height: min(780px, calc(100vh - 80px));
@@ -3377,13 +3408,32 @@
       'cash-ledger': 'cash_ledger',
     };
     let previewAccess = null;
+    const HBE_PRODUCTION = 'https://belleliteaccounts.com';
+    const IS_BUNDLED_APP = location.protocol === 'file:'
+      || String(location.href || '').startsWith('file://')
+      || /HBEAndroidApp\//i.test(navigator.userAgent || '');
+    const IS_PRODUCTION_APP = IS_BUNDLED_APP || /belleliteaccounts\.com/i.test(location.hostname || '');
+    const USE_FLASK_SESSION = IS_PRODUCTION_APP && !IS_BUNDLED_APP;
+    const FLASK_SESSION_TOKEN = 'cookie';
+    const HBE_API_ROOT = (function () {
+      if (IS_BUNDLED_APP) return HBE_PRODUCTION;
+      const host = String(location.hostname || '').toLowerCase();
+      if (host === 'belleliteaccounts.com' || host.endsWith('.belleliteaccounts.com')) return '';
+      if (host === '127.0.0.1' || host === 'localhost') return '';
+      return HBE_PRODUCTION;
+    })();
+    const DEFAULT_FLASK_BASE = USE_FLASK_SESSION ? HBE_PRODUCTION : (HBE_API_ROOT || 'http://127.0.0.1:8002');
+    if (IS_BUNDLED_APP) {
+      document.body.classList.add('is-bundled-app');
+    }
 
     function readPreviewAuth() {
       try {
         const raw = localStorage.getItem(PREVIEW_AUTH_KEY);
         if (!raw) return null;
         const data = JSON.parse(raw);
-        if (!data || !data.signedInAt || !data.token) return null;
+        if (!data || !data.signedInAt) return null;
+        if (!data.token) return null;
         const age = Date.now() - Number(data.signedInAt);
         if (!Number.isFinite(age) || age < 0 || age > PREVIEW_AUTH_MS) {
           localStorage.removeItem(PREVIEW_AUTH_KEY);
@@ -3430,21 +3480,45 @@
 
     function previewAuthHeaders(extra) {
       const headers = Object.assign({}, extra || {});
+      if (USE_FLASK_SESSION) return headers;
       const auth = readPreviewAuth();
-      if (auth && auth.token) {
+      if (auth && auth.token && auth.token !== FLASK_SESSION_TOKEN) {
         headers['Authorization'] = 'Bearer ' + auth.token;
         headers['X-Preview-Token'] = auth.token;
       }
       return headers;
     }
 
-    const HBE_API_ROOT = "https://belleliteaccounts.com";
     function previewFetch(url, options) {
       const opts = Object.assign({}, options || {});
       opts.headers = previewAuthHeaders(opts.headers);
       if (!opts.cache) opts.cache = 'no-store';
+      if (USE_FLASK_SESSION) opts.credentials = 'include';
       const full = url.startsWith('http') ? url : (HBE_API_ROOT + url);
       return fetch(full, opts);
+    }
+
+    function readCsrfCookie() {
+      const match = String(document.cookie || '').match(/(?:^|;\s*)hbe_csrf=([^;]+)/);
+      return match ? decodeURIComponent(match[1]) : '';
+    }
+
+    async function flaskLogout() {
+      const csrf = readCsrfCookie();
+      const headers = {};
+      if (csrf) {
+        headers['X-CSRF-Token'] = csrf;
+        headers['X-CSRFToken'] = csrf;
+      }
+      try {
+        await fetch((HBE_API_ROOT || '') + '/logout', {
+          method: 'POST',
+          credentials: 'include',
+          headers: headers,
+        });
+      } catch (_err) {
+        /* ignore */
+      }
     }
 
     function hasModuleAccess(key) {
@@ -3523,7 +3597,9 @@
 
     function showLogin() {
       const token = (readPreviewAuth() && readPreviewAuth().token) || '';
-      if (token) {
+      if (USE_FLASK_SESSION) {
+        flaskLogout();
+      } else if (token) {
         previewFetch('/preview-api/logout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -3581,19 +3657,28 @@
         btn.setAttribute('aria-busy', 'true');
       }
       try {
-        const res = await fetch('/preview-api/login', {
+        const loginPath = USE_FLASK_SESSION ? '/api/mobile/login' : '/preview-api/login';
+        const res = await previewFetch(loginPath, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
           body: JSON.stringify({ username: username, password: password }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data || !data.ok || !data.token) {
+        if (!res.ok || !data || !data.ok) {
+          setLoginError((data && data.error) || 'Invalid username or password.');
+          return;
+        }
+        if (data.must_change_password) {
+          setLoginError('Password change required. Use the web app once, then try again.');
+          return;
+        }
+        if (!USE_FLASK_SESSION && !data.token) {
           setLoginError((data && data.error) || 'Invalid username or password.');
           return;
         }
         previewAccess = data.access || {};
         writePreviewAuth('home', {
-          token: data.token,
+          token: USE_FLASK_SESSION ? FLASK_SESSION_TOKEN : data.token,
           access: previewAccess,
           displayName: data.display_name || data.username || username,
           username: data.username || username,
@@ -3601,7 +3686,7 @@
         if (passEl) passEl.value = '';
         showWorkspace('home', data.display_name || data.username || username);
       } catch (_err) {
-        setLoginError('Sign-in failed. Is the preview server running?');
+        setLoginError('Sign-in failed. Check your connection and try again.');
       } finally {
         if (btn) {
           btn.disabled = false;
@@ -3664,7 +3749,7 @@
     let approvalsLoadToken = 0;
     let approvalsCounts = { pending: null, approved: null };
     let approvalsRowsById = {};
-    let approvalsFlaskBase = 'http://127.0.0.1:8002';
+    let approvalsFlaskBase = DEFAULT_FLASK_BASE;
     let approvalsFingerprint = '';
     let approvalsPollTimer = null;
     let approvalsBusy = false;
@@ -4162,7 +4247,7 @@
       });
     }
 
-    fetch('/preview-api/health').then((r) => r.json()).then((h) => {
+    previewFetch('/preview-api/health').then((r) => r.json()).then((h) => {
       if (h && h.flask_base) {
         approvalsFlaskBase = h.flask_base;
         mdFlaskBase = h.flask_base;
@@ -4437,7 +4522,7 @@
     const MD_PERIOD_LABEL = { today: 'Today', '7d': '7D', '30d': '30D', mtd: 'MTD' };
     let mdPeriod = '30d';
     let mdLocation = 'All';
-    let mdFlaskBase = 'http://127.0.0.1:8002';
+    let mdFlaskBase = DEFAULT_FLASK_BASE;
     let mdLoadToken = 0;
     let mdLastDash = null;
     let mdItemsMode = 'qty';
@@ -4691,7 +4776,7 @@
         lower.includes('failed to fetch') ||
         lower.includes('networkerror')
       ) {
-        return 'Server offline — start Flask on ' + (mdFlaskBase || 'http://127.0.0.1:8002');
+        return 'Unable to reach server. Check your connection and try again.';
       }
       if (lower.includes('timed out') || lower.includes('timeout')) {
         return 'Server timed out';
@@ -6705,8 +6790,9 @@
     (async function restorePreviewSession() {
       const auth = readPreviewAuth();
       if (!auth || !auth.token) return;
+      const sessionPath = USE_FLASK_SESSION ? '/api/mobile/session' : '/preview-api/session';
       try {
-        const res = await previewFetch('/preview-api/session');
+        const res = await previewFetch(sessionPath);
         const data = await res.json();
         if (!res.ok || !data || !data.ok) {
           clearPreviewAuth();
