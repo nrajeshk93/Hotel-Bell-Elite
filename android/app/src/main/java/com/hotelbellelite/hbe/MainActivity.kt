@@ -84,13 +84,17 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = true
+            show(WindowInsetsCompat.Type.statusBars())
+        }
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        // Native pads only gesture-nav bottom. HTML already applies safe-area-inset-top;
-        // do not add Kotlin top padding or both layers would double-inset the header.
+        // Keep the system status bar (signal, battery, time) in its own strip.
+        // Pad the WebView below it so the app does not draw over those icons.
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.setPadding(0, 0, 0, bars.bottom)
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
 

@@ -5,9 +5,13 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Color
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toBitmap
 import org.json.JSONArray
 
 object HbeNotifications {
@@ -63,6 +67,9 @@ object HbeNotifications {
             )
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_stat_notification)
+                .setLargeIcon(largeIconBitmap(context))
+                .setColor(Color.WHITE)
+                .setColorized(false)
                 .setContentTitle(title)
                 .setContentText(body)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(body))
@@ -88,7 +95,16 @@ object HbeNotifications {
         return intent?.getStringExtra(EXTRA_OPEN_SCREEN)?.takeIf { it.isNotBlank() }
     }
 
+
+    private fun largeIconBitmap(context: Context): Bitmap {
+        val drawable = ContextCompat.getDrawable(context, R.drawable.ic_notification_large)
+            ?: return Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+        val size = (64f * context.resources.displayMetrics.density).toInt().coerceAtLeast(192)
+        return drawable.toBitmap(width = size, height = size, config = Bitmap.Config.ARGB_8888)
+    }
+
     private fun stableId(id: String): Int {
+
         var hash = 0
         for (ch in id) {
             hash = 31 * hash + ch.code
