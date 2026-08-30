@@ -237,7 +237,7 @@ class MainActivity : AppCompatActivity() {
         cookieManager.setAcceptThirdPartyCookies(webView, true)
 
         webView.addJavascriptInterface(
-            HbeJsBridge(applicationContext) { items: JSONArray ->
+            HbeJsBridge(this, { binding.webView }) { items: JSONArray ->
                 runOnUiThread {
                     HbeNotifications.showFromJson(this, items)
                 }

@@ -10,6 +10,7 @@
 -keep class com.hotelbellelite.hbe.MainActivity { *; }
 -keep class com.hotelbellelite.hbe.AppUpdater { *; }
 -keep class com.hotelbellelite.hbe.HbeNotifications { *; }
+-keep class com.hotelbellelite.hbe.HbeBiometric { *; }
 -keep class com.hotelbellelite.hbe.SilentUpdateHelper { *; }
 
 # Any WebView JS interfaces

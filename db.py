@@ -7056,6 +7056,20 @@ def reopen_pos_invoice_for_edit(conn, invoice_id):
     return get_pos_invoice(conn, invoice_id)
 
 
+def pos_invoice_is_ledger_generated(invoice, outlet=None):
+    """True for Invoice Ledger rows: Generate Invoice ran, or order_no is non-provisional.
+
+    Matches the ledger_is_generated flag used by the ledger UI. Provisional
+    dine-in autosaves (e.g. SPC/{token}/{fy}) stay hidden until customer_bill_sent.
+    """
+    if bool((invoice or {}).get("customer_bill_sent")):
+        return True
+    outlet_key = outlet
+    if outlet_key is None:
+        outlet_key = (invoice or {}).get("outlet")
+    return not is_provisional_pos_order_no((invoice or {}).get("order_no"), outlet_key)
+
+
 def list_pos_invoices(
     conn,
     *,
@@ -7065,8 +7079,14 @@ def list_pos_invoices(
     settlement=None,
     q="",
     outlet=None,
+    generated_only=False,
 ):
-    """List active invoices with optional filters (newest first)."""
+    """List active invoices with optional filters (newest first).
+
+    When generated_only=True (Invoice Ledger / export), provisional drafts that
+    have not had Generate Invoice are excluded. Drafts remain in the DB and in
+    other list callers (tables hub, sales import, etc.).
+    """
     ensure_pos_schema(conn)
     clauses = ["i.is_active = 1"]
     params = []
@@ -7137,7 +7157,12 @@ def list_pos_invoices(
         params,
     ).fetchall()
     invoices = [_pos_invoice_row_to_dict(conn, row, include_lines=False) for row in rows]
-    return _enrich_pos_invoices_payment_modes(conn, invoices)
+    invoices = _enrich_pos_invoices_payment_modes(conn, invoices)
+    if generated_only:
+        invoices = [
+            inv for inv in invoices if pos_invoice_is_ledger_generated(inv, outlet)
+        ]
+    return invoices
 
 
 def _pos_outlet_display_label(outlet) -> str:

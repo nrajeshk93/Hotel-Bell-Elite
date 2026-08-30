@@ -300,6 +300,158 @@
       width: 100%;
     }
     .btn-primary:disabled { opacity: 0.65; }
+    .btn-fingerprint {
+      margin-top: 12px;
+      border: 1px solid #D6E6FB;
+      border-radius: 999px;
+      padding: 0 16px;
+      height: 52px;
+      background: #E8F1FE;
+      color: #1877F2;
+      font-weight: 600;
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-family: inherit;
+      box-shadow: none;
+      position: relative;
+      z-index: 1;
+      width: 100%;
+    }
+    .btn-fingerprint svg {
+      width: 22px;
+      height: 22px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .btn-fingerprint[hidden] { display: none !important; }
+    .btn-fingerprint:disabled { opacity: 0.65; }
+    .fp-offer {
+      margin: 14px 0 0;
+      width: 100%;
+      background: #fff;
+      border: 1px solid #E2E8F0;
+      border-radius: 16px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-sizing: border-box;
+    }
+    .fp-offer[hidden] { display: none !important; }
+    .fp-offer strong {
+      display: block;
+      font-size: 15px;
+      font-weight: 700;
+      color: #0F172A;
+      letter-spacing: -0.02em;
+    }
+    .fp-offer p {
+      margin: 4px 0 0;
+      font-size: 12px;
+      font-weight: 500;
+      color: #64748B;
+      line-height: 1.4;
+    }
+    .fp-offer-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .fp-offer-actions button {
+      flex: 1;
+      height: 40px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    #fp-offer-enable {
+      border: 0;
+      background: #1877F2;
+      color: #fff;
+    }
+    #fp-offer-dismiss {
+      border: 1px solid #E2E8F0;
+      background: #fff;
+      color: #475569;
+    }
+    [data-panel="about"] #about-fp-toggle {
+      margin-top: 0;
+      border: 1px solid #D6E6FB;
+      border-radius: 999px;
+      padding: 0;
+      height: 44px;
+      background: #E8F1FE;
+      color: #1877F2;
+      font-weight: 600;
+      font-size: 15px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: inherit;
+      box-shadow: none;
+      width: 100%;
+    }
+    [data-panel="about"] #about-fp-toggle.is-on {
+      background: #FEF2F2;
+      border-color: #FECACA;
+      color: #B91C1C;
+    }
+    [data-panel="about"] #about-fp-status {
+      margin: 10px 0 0;
+      font-size: 12px;
+      font-weight: 500;
+      color: #64748B;
+      text-align: center;
+      line-height: 1.45;
+    }
+    [data-panel="about"] #about-fp-copy {
+      margin: 0 0 12px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #64748B;
+      line-height: 1.4;
+    }
+    [data-panel="about"] #about-fp-reauth[hidden] { display: none !important; }
+    [data-panel="about"] #about-fp-reauth {
+      margin-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    [data-panel="about"] #about-fp-reauth label {
+      font-size: 12px;
+      font-weight: 500;
+      color: #64748B;
+      margin-left: 4px;
+    }
+    [data-panel="about"] #about-fp-password {
+      height: 44px;
+      border: 1px solid #E2E8F0;
+      border-radius: 12px;
+      padding: 0 14px;
+      font-size: 15px;
+      font-family: inherit;
+    }
+    [data-panel="about"] #about-fp-confirm {
+      height: 44px;
+      border: 0;
+      border-radius: 999px;
+      background: #1877F2;
+      color: #fff;
+      font-weight: 600;
+      font-size: 14px;
+      font-family: inherit;
+      cursor: pointer;
+    }
     .btn-ghost {
       border: 0;
       background: transparent;
@@ -6515,6 +6667,10 @@
           </div>
           <div class="login-error" id="login-error" hidden role="alert"></div>
           <button class="btn-primary" id="btn-sign-in" type="button">Sign In</button>
+          <button class="btn-fingerprint" id="btn-fingerprint" type="button" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 11v4"/><path d="M8.5 11.5A3.5 3.5 0 0 1 12 8"/><path d="M15.5 11.5A3.5 3.5 0 0 0 12 8"/><path d="M6.5 12a5.5 5.5 0 0 1 8.7-4.5"/><path d="M17.5 12a5.5 5.5 0 0 0-8.7-4.5"/><path d="M5 13.2a7.5 7.5 0 0 1 11.2-6.4"/><path d="M19 13.2a7.5 7.5 0 0 0-3.2-6.2"/><path d="M9 16.2c.6 1.4 1.6 2.5 3 3.3"/><path d="M15 16.2c-.4.9-.9 1.7-1.6 2.4"/></svg>
+            Use fingerprint
+          </button>
           <p class="login-staff">Staff</p>
         </div>
       </div>
@@ -6554,6 +6710,16 @@
               <h2 id="home-welcome-title">Welcome!</h2>
               <p class="home-hero-date" id="home-date-pill">—</p>
               <div class="home-gold-rule" aria-hidden="true"></div>
+              <div class="fp-offer" id="fp-offer" hidden>
+                <div>
+                  <strong>Use fingerprint next time</strong>
+                  <p>Unlock this account with your fingerprint after you sign out.</p>
+                </div>
+                <div class="fp-offer-actions">
+                  <button type="button" id="fp-offer-enable">Enable</button>
+                  <button type="button" id="fp-offer-dismiss">Not now</button>
+                </div>
+              </div>
             </div>
             <div class="home-modules">
               <div class="home-module-grid cols-2">
@@ -7815,6 +7981,17 @@
                 <p id="about-update-status"></p>
                 <button type="button" id="about-install-manual" hidden>Install</button>
               </article>
+              <article class="about-card" id="about-fingerprint-card" hidden>
+                <h3>Fingerprint</h3>
+                <p id="about-fp-copy">Unlock Hotel Bell Elite with your fingerprint the next time you sign in.</p>
+                <button type="button" id="about-fp-toggle">Enable fingerprint</button>
+                <p id="about-fp-status"></p>
+                <div id="about-fp-reauth" hidden>
+                  <label for="about-fp-password">Password</label>
+                  <input id="about-fp-password" type="password" autocomplete="current-password" placeholder="Password" />
+                  <button type="button" id="about-fp-confirm">Confirm</button>
+                </div>
+              </article>
               <p class="about-copy">&copy; 2026 DhiyaOne. All rights reserved.</p>
             </div>
           </div>
@@ -7989,6 +8166,168 @@
     function hbeHapticSuccess() {
       try { window.HBEAndroid && window.HBEAndroid.haptic && window.HBEAndroid.haptic('success'); } catch (e) {}
     }
+
+    let fpAutoPrompted = false;
+    let fpOfferDismissed = false;
+
+    function hbeNativeFingerprint() {
+      return !!(window.HBEAndroid && typeof window.HBEAndroid.biometricStatus === 'function');
+    }
+
+    function hbeBiometricStatus() {
+      if (!hbeNativeFingerprint()) return null;
+      try {
+        const raw = window.HBEAndroid.biometricStatus();
+        return raw ? JSON.parse(raw) : null;
+      } catch (_e) {
+        return null;
+      }
+    }
+
+    function hbeHoldNativeLogin(username, password) {
+      if (!hbeNativeFingerprint()) return;
+      try { window.HBEAndroid.holdLogin(String(username || ''), String(password || '')); } catch (_e) {}
+    }
+
+    async function confirmPreviewSession() {
+      const sessionPath = USE_FLASK_SESSION ? '/api/mobile/session' : '/preview-api/session';
+      try {
+        const res = await previewFetch(sessionPath);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data || !data.ok) {
+          return { ok: false, error: (data && data.error) || 'Sign in required.' };
+        }
+        return { ok: true, data: data };
+      } catch (_e) {
+        return { ok: false, error: 'Sign-in failed. Check your connection and try again.' };
+      }
+    }
+
+    function hbeSetFpStatus(text) {
+      const line = document.getElementById('about-fp-status');
+      if (line) line.textContent = text || '';
+    }
+
+    function hbeShowFpReauth(show) {
+      const box = document.getElementById('about-fp-reauth');
+      if (box) box.hidden = !show;
+      if (!show) {
+        const inp = document.getElementById('about-fp-password');
+        if (inp) inp.value = '';
+      }
+    }
+
+    function hbeRefreshFingerprintUi(opts) {
+      opts = opts || {};
+      const st = hbeBiometricStatus();
+      const fpBtn = document.getElementById('btn-fingerprint');
+      const offer = document.getElementById('fp-offer');
+      const aboutCard = document.getElementById('about-fingerprint-card');
+      const toggle = document.getElementById('about-fp-toggle');
+      const copy = document.getElementById('about-fp-copy');
+      const onLogin = !!(login && login.classList.contains('is-active'));
+      const nativeOk = !!(st && st.native);
+      const available = !!(st && st.available);
+      const enabled = !!(st && st.enabled);
+      const hasHold = !!(st && st.hasHold);
+      if (fpBtn) {
+        fpBtn.hidden = !(nativeOk && available && enabled && onLogin);
+      }
+      if (offer) {
+        const showOffer = nativeOk && available && !enabled && !fpOfferDismissed && !onLogin && hasHold;
+        offer.hidden = !showOffer;
+      }
+      if (aboutCard) {
+        aboutCard.hidden = !(nativeOk && (available || enabled));
+      }
+      if (toggle) {
+        toggle.textContent = enabled ? 'Turn off fingerprint' : 'Enable fingerprint';
+        toggle.classList.toggle('is-on', !!enabled);
+        toggle.disabled = !available && !enabled;
+      }
+      if (copy) {
+        if (!available && !enabled) {
+          copy.textContent = 'Set up a fingerprint on this phone, then you can use it to sign in.';
+        } else if (enabled) {
+          copy.textContent = 'Fingerprint is on. The next sign-in can use it instead of a password.';
+        } else {
+          copy.textContent = 'Unlock Hotel Bell Elite with your fingerprint the next time you sign in.';
+        }
+      }
+      if (enabled && st.username) {
+        const userEl = document.getElementById('username');
+        if (userEl && !String(userEl.value || '').trim()) userEl.value = st.username;
+      }
+      if (opts.autoPrompt && nativeOk && available && enabled && onLogin) {
+        hbeMaybeAutoFingerprint();
+      }
+    }
+
+    function hbeMaybeAutoFingerprint() {
+      if (fpAutoPrompted) return;
+      if (!(login && login.classList.contains('is-active'))) return;
+      fpAutoPrompted = true;
+      hbeUnlockWithFingerprint();
+    }
+
+    function hbeEnableFingerprint(username, password) {
+      if (!hbeNativeFingerprint()) return;
+      hbeSetFpStatus('Confirm your fingerprint…');
+      try {
+        const raw = window.HBEAndroid.enableBiometric(String(username || ''), String(password || ''));
+        const now = raw ? JSON.parse(raw) : {};
+        if (now && now.ok === false) {
+          hbeSetFpStatus(now.error || 'Could not enable fingerprint.');
+          if (now.needPassword) hbeShowFpReauth(true);
+        }
+      } catch (_e) {
+        hbeSetFpStatus('Could not enable fingerprint.');
+      }
+    }
+
+    function hbeUnlockWithFingerprint() {
+      if (!hbeNativeFingerprint()) return;
+      const btn = document.getElementById('btn-fingerprint');
+      if (btn) {
+        btn.disabled = true;
+        btn.setAttribute('aria-busy', 'true');
+      }
+      try { window.HBEAndroid.unlockWithBiometric(); } catch (_e) {
+        if (btn) {
+          btn.disabled = false;
+          btn.removeAttribute('aria-busy');
+        }
+      }
+    }
+
+    window.__hbeOnBiometricEnable = function (payload) {
+      const ok = !!(payload && payload.ok);
+      if (ok) {
+        fpOfferDismissed = true;
+        hbeShowFpReauth(false);
+        hbeSetFpStatus('Fingerprint is on.');
+        hbeHapticSuccess();
+        hbeRefreshFingerprintUi();
+        return;
+      }
+      const err = payload && payload.error ? String(payload.error) : '';
+      hbeSetFpStatus(err || '');
+      hbeRefreshFingerprintUi();
+    };
+
+    window.__hbeOnBiometricUnlock = function (payload) {
+      const btn = document.getElementById('btn-fingerprint');
+      if (btn) {
+        btn.disabled = false;
+        btn.removeAttribute('aria-busy');
+      }
+      if (payload && payload.ok && payload.username && payload.password) {
+        signInWithCredentials(String(payload.username), String(payload.password), { fromFingerprint: true });
+        return;
+      }
+      const err = payload && payload.error ? String(payload.error) : '';
+      if (err) setLoginError(err);
+    };
     function hbeSkelHtml(n) {
       const count = n || 5;
       let html = '';
@@ -8166,6 +8505,7 @@
           }).catch(() => {});
         }
         clearPreviewAuth();
+        try { if (window.HBEAndroid && window.HBEAndroid.clearHeldLogin) window.HBEAndroid.clearHeldLogin(); } catch (_e) {}
       }
       setLoginError('');
       if (typeof setNotifOpen === 'function') setNotifOpen(false);
@@ -8177,6 +8517,8 @@
       workspace.classList.remove('is-active');
       login.classList.add('is-active');
       setNavOpen(false);
+      fpAutoPrompted = false;
+      if (typeof hbeRefreshFingerprintUi === 'function') hbeRefreshFingerprintUi({ autoPrompt: true });
     }
 
     const navHistory = [];
@@ -8243,6 +8585,10 @@
       syncBackButton();
       if (next === 'about') {
         try { if (typeof hbeCheckForUpdate === 'function') hbeCheckForUpdate(); } catch (_e) {}
+        try { if (typeof hbeRefreshFingerprintUi === 'function') hbeRefreshFingerprintUi(); } catch (_e) {}
+      }
+      if (next === 'home') {
+        try { if (typeof hbeRefreshFingerprintUi === 'function') hbeRefreshFingerprintUi(); } catch (_e) {}
       }
       return next;
     }
@@ -8520,7 +8866,6 @@
     async function signInFromForm() {
       const userEl = document.getElementById('username');
       const passEl = document.getElementById('password');
-      const btn = document.getElementById('btn-sign-in');
       const username = userEl ? String(userEl.value || '').trim() : '';
       const password = passEl ? String(passEl.value || '') : '';
       setLoginError('');
@@ -8528,6 +8873,15 @@
         setLoginError('Enter username and password.');
         return;
       }
+      await signInWithCredentials(username, password, { fromFingerprint: false });
+    }
+
+    async function signInWithCredentials(username, password, opts) {
+      opts = opts || {};
+      const fromFp = !!opts.fromFingerprint;
+      const btn = document.getElementById(fromFp ? 'btn-fingerprint' : 'btn-sign-in');
+      const passEl = document.getElementById('password');
+      setLoginError('');
       if (btn) {
         btn.disabled = true;
         btn.setAttribute('aria-busy', 'true');
@@ -8541,6 +8895,10 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data || !data.ok) {
+          if (fromFp) {
+            try { if (window.HBEAndroid && window.HBEAndroid.disableBiometric) window.HBEAndroid.disableBiometric(); } catch (_e) {}
+            hbeRefreshFingerprintUi();
+          }
           setLoginError((data && data.error) || 'Invalid username or password.');
           return;
         }
@@ -8559,10 +8917,21 @@
           displayName: data.display_name || data.username || username,
           username: data.username || username,
         });
+        const session = await confirmPreviewSession();
+        if (!session.ok) {
+          clearPreviewAuth();
+          previewAccess = null;
+          setLoginError(session.error || 'Sign in required.');
+          return;
+        }
+        if (session.data && session.data.access) previewAccess = session.data.access;
+        hbeHoldNativeLogin(data.username || username, password);
         if (passEl) passEl.value = '';
         previewSessionExpiredGuard = false;
-        showWorkspace('home', data.display_name || data.username || username);
+        showWorkspace('home', (session.data && session.data.display_name) || data.display_name || data.username || username);
         hbeHapticSuccess();
+        fpOfferDismissed = false;
+        hbeRefreshFingerprintUi();
       } catch (_err) {
         setLoginError('Sign-in failed. Check your connection and try again.');
       } finally {
@@ -8591,6 +8960,44 @@
     document.getElementById('btn-toggle-password').addEventListener('click', () => {
       const input = document.getElementById('password');
       input.type = input.type === 'password' ? 'text' : 'password';
+    });
+    document.getElementById('btn-fingerprint')?.addEventListener('click', () => {
+      hbeUnlockWithFingerprint();
+    });
+    document.getElementById('fp-offer-enable')?.addEventListener('click', () => {
+      hbeEnableFingerprint('', '');
+    });
+    document.getElementById('fp-offer-dismiss')?.addEventListener('click', () => {
+      fpOfferDismissed = true;
+      hbeRefreshFingerprintUi();
+    });
+    document.getElementById('about-fp-toggle')?.addEventListener('click', () => {
+      const st = hbeBiometricStatus();
+      if (st && st.enabled) {
+        try { window.HBEAndroid.disableBiometric(); } catch (_e) {}
+        hbeShowFpReauth(false);
+        hbeSetFpStatus('Fingerprint is off.');
+        hbeRefreshFingerprintUi();
+        return;
+      }
+      if (st && st.hasHold) {
+        hbeEnableFingerprint('', '');
+        return;
+      }
+      hbeShowFpReauth(true);
+      hbeSetFpStatus('Enter your password, then confirm your fingerprint.');
+    });
+    document.getElementById('about-fp-confirm')?.addEventListener('click', () => {
+      const auth = readPreviewAuth() || {};
+      const userEl = document.getElementById('username');
+      const passEl = document.getElementById('about-fp-password');
+      const username = String(auth.username || (userEl && userEl.value) || '').trim();
+      const password = passEl ? String(passEl.value || '') : '';
+      if (!username || !password) {
+        hbeSetFpStatus('Enter your password to enable fingerprint.');
+        return;
+      }
+      hbeEnableFingerprint(username, password);
     });
     document.getElementById('btn-logout').addEventListener('click', () => {
       showLogin({ logout: true });
@@ -14882,15 +15289,18 @@
     // Keep preview signed in across refresh for 30 days (explicit Logout clears it).
     (async function restorePreviewSession() {
       const auth = readPreviewAuth();
-      if (!auth || !auth.token) return;
+      if (!auth || !auth.token) {
+        hbeRefreshFingerprintUi({ autoPrompt: true });
+        return;
+      }
       const sessionPath = USE_FLASK_SESSION ? '/api/mobile/session' : '/preview-api/session';
       try {
         const res = await previewFetch(sessionPath);
         const data = await res.json();
         if (!res.ok || !data || !data.ok) {
-          previewAccess = auth.access || {};
-          updateHomeWelcome(auth.displayName || '');
-          showWorkspace(auth.screen || 'home', auth.displayName || '');
+          clearPreviewAuth();
+          previewAccess = null;
+          hbeRefreshFingerprintUi({ autoPrompt: true });
           return;
         }
         previewAccess = data.access || {};
@@ -14902,10 +15312,11 @@
         });
         updateHomeWelcome(data.display_name || auth.displayName || '');
         showWorkspace(auth.screen || 'home', data.display_name || auth.displayName || '');
+        hbeRefreshFingerprintUi();
       } catch (_err) {
-        previewAccess = auth.access || {};
-        updateHomeWelcome(auth.displayName || '');
-        showWorkspace(auth.screen || 'home', auth.displayName || '');
+        clearPreviewAuth();
+        previewAccess = null;
+        hbeRefreshFingerprintUi({ autoPrompt: true });
       }
     })();
   </script>

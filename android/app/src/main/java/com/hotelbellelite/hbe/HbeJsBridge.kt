@@ -8,8 +8,11 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.webkit.JavascriptInterface
+import android.webkit.WebView
+import androidx.appcompat.app.AppCompatActivity
 import org.json.JSONArray
 import org.json.JSONObject
+import java.lang.ref.WeakReference
 import java.util.concurrent.Executors
 
 /**
@@ -17,10 +20,12 @@ import java.util.concurrent.Executors
  * Exposed as window.HBEAndroid from MainActivity.
  */
 class HbeJsBridge(
-    context: Context,
+    activity: AppCompatActivity,
+    private val webView: () -> WebView?,
     private val onNotifications: (JSONArray) -> Unit,
 ) {
-    private val appContext = context.applicationContext
+    private val activityRef = WeakReference(activity)
+    private val appContext = activity.applicationContext
     private val main = Handler(Looper.getMainLooper())
     private val io = Executors.newSingleThreadExecutor()
 
@@ -107,5 +112,76 @@ class HbeJsBridge(
     fun openInstallPermissionSettings(): String {
         main.post { SilentUpdateHelper.openUnknownSourcesSettings(appContext) }
         return "ok"
+    }
+
+    @JavascriptInterface
+    fun biometricStatus(): String = HbeBiometric.status(appContext).toString()
+
+    @JavascriptInterface
+    fun holdLogin(username: String?, password: String?): String {
+        val user = username?.trim().orEmpty()
+        val pass = password.orEmpty()
+        if (user.isEmpty() || pass.isEmpty()) {
+            return JSONObject().put("ok", false).toString()
+        }
+        HbeBiometric.hold(user, pass)
+        return JSONObject().put("ok", true).toString()
+    }
+
+    @JavascriptInterface
+    fun clearHeldLogin(): String {
+        HbeBiometric.clearHold()
+        return JSONObject().put("ok", true).toString()
+    }
+
+    @JavascriptInterface
+    fun hasHeldLogin(): String = if (HbeBiometric.hasHold()) "1" else "0"
+
+    @JavascriptInterface
+    fun enableBiometric(username: String?, password: String?): String {
+        var user = username?.trim().orEmpty()
+        var pass = password.orEmpty()
+        if (user.isEmpty() || pass.isEmpty()) {
+            user = HbeBiometric.heldUsername?.trim().orEmpty()
+            pass = HbeBiometric.heldPassword.orEmpty()
+        }
+        if (user.isEmpty() || pass.isEmpty()) {
+            return JSONObject()
+                .put("ok", false)
+                .put("error", "Enter your password to enable fingerprint.")
+                .put("needPassword", true)
+                .toString()
+        }
+        main.post {
+            val act = activityRef.get() ?: return@post
+            HbeBiometric.enable(act, user, pass) { result ->
+                dispatchJs("window.__hbeOnBiometricEnable && window.__hbeOnBiometricEnable($result)")
+            }
+        }
+        return JSONObject().put("ok", true).put("pending", true).toString()
+    }
+
+    @JavascriptInterface
+    fun disableBiometric(): String {
+        HbeBiometric.disable(appContext)
+        return JSONObject().put("ok", true).put("enabled", false).toString()
+    }
+
+    @JavascriptInterface
+    fun unlockWithBiometric(): String {
+        main.post {
+            val act = activityRef.get() ?: return@post
+            HbeBiometric.unlock(act) { result ->
+                dispatchJs("window.__hbeOnBiometricUnlock && window.__hbeOnBiometricUnlock($result)")
+            }
+        }
+        return JSONObject().put("ok", true).put("pending", true).toString()
+    }
+
+    private fun dispatchJs(expr: String) {
+        main.post {
+            val wv = webView() ?: return@post
+            wv.evaluateJavascript(expr, null)
+        }
     }
 }

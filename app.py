@@ -134,6 +134,7 @@ from db import (
     list_customers,
     list_agencies,
     list_pos_invoices,
+    pos_invoice_is_ledger_generated,
     auto_settle_zero_payable_pos_invoices,
     list_pos_kot_pending_summary,
     list_pos_kot_tokens,
@@ -172,7 +173,6 @@ from db import (
     search_customers,
     soft_delete_pos_invoice,
     cancel_pos_invoice,
-    is_provisional_pos_order_no,
     reopen_pos_invoice_for_edit,
     soft_delete_pos_menu_category,
     soft_delete_pos_menu_item,
@@ -12383,6 +12383,7 @@ def point_of_sale_invoice_ledger():
             order_type=filters["order_type_filter"],
             settlement=filters["settlement_filter"],
             outlet=outlet,
+            generated_only=True,
         )
         kpis = pos_invoice_kpis(conn, invoices, today=filters["today"].isoformat())
     finally:
@@ -12396,9 +12397,7 @@ def point_of_sale_invoice_ledger():
             or bool(str(inv.get("settled_at") or "").strip())
         )
         is_cancelled = status_key == "cancelled"
-        is_generated = bool(inv.get("customer_bill_sent")) or not is_provisional_pos_order_no(
-            inv.get("order_no"), outlet
-        )
+        is_generated = pos_invoice_is_ledger_generated(inv, outlet)
         inv["ledger_is_settled"] = is_settled
         inv["ledger_is_cancelled"] = is_cancelled
         inv["ledger_is_generated"] = is_generated
@@ -12494,6 +12493,7 @@ def export_pos_invoice_ledger_report():
             order_type=filters["order_type_filter"],
             settlement=filters["settlement_filter"],
             outlet=outlet,
+            generated_only=True,
         )
     finally:
         conn.close()

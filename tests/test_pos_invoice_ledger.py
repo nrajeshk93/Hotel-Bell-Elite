@@ -194,10 +194,94 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertIn("ORD-2607-0002", html2)
         self.assertIn("Cancelled", html2)
 
+    def test_ledger_hides_provisional_draft_until_generate(self):
+        """Autosaved provisional drafts stay off the ledger until Generate Invoice."""
+        today = date.today().isoformat()
+        draft = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                order_no="SPC/B0FF39/26-27",
+                total=100,
+                orderDate=today,
+                savedAt=today + " 10:00:00",
+            ),
+        )
+        self.assertEqual(draft.status_code, 200, draft.get_data(as_text=True))
+        draft_body = draft.get_json()["invoice"]
+        draft_id = draft_body["id"]
+        self.assertFalse(draft_body.get("customer_bill_sent"))
+        self.assertTrue(
+            db_mod.is_provisional_pos_order_no(draft_body["order_no"], "restaurant")
+        )
+
+        conn = db_mod.get_db()
+        try:
+            all_rows = db_mod.list_pos_invoices(conn)
+            ledger_rows = db_mod.list_pos_invoices(conn, generated_only=True)
+        finally:
+            conn.close()
+        self.assertTrue(any(r["id"] == draft_id for r in all_rows))
+        self.assertFalse(any(r["id"] == draft_id for r in ledger_rows))
+
+        page = self.client.get("/point-of-sale/invoice-ledger")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertNotIn("SPC/B0FF39/26-27", html)
+        self.assertNotIn(f'data-invoice-id="{draft_id}"', html)
+
+        generated = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                order_no="SPC/B0FF39/26-27",
+                total=100,
+                customerBill=True,
+                orderDate=today,
+                savedAt=today + " 10:05:00",
+            ),
+        )
+        self.assertEqual(generated.status_code, 200, generated.get_data(as_text=True))
+        gen_inv = generated.get_json()["invoice"]
+        self.assertEqual(gen_inv["id"], draft_id)
+        self.assertTrue(gen_inv.get("customer_bill_sent"))
+        gen_no = gen_inv["order_no"]
+        self.assertFalse(db_mod.is_provisional_pos_order_no(gen_no, "restaurant"))
+        self.assertTrue(db_mod._pos_is_official_order_no(gen_no, "restaurant"))
+
+        conn = db_mod.get_db()
+        try:
+            ledger_rows = db_mod.list_pos_invoices(conn, generated_only=True)
+            kpis = db_mod.pos_invoice_kpis(
+                conn, ledger_rows, today=today
+            )
+        finally:
+            conn.close()
+        self.assertTrue(any(r["id"] == draft_id for r in ledger_rows))
+        self.assertEqual(kpis["invoice_count"], 1)
+
+        page2 = self.client.get("/point-of-sale/invoice-ledger")
+        html2 = page2.get_data(as_text=True)
+        self.assertIn(gen_no, html2)
+        self.assertIn(f'data-invoice-id="{draft_id}"', html2)
+        self.assertNotIn("SPC/B0FF39/26-27", html2)
+
+        export = self.client.get("/point-of-sale/invoice-ledger/report")
+        self.assertEqual(export.status_code, 200)
+        from io import BytesIO
+        from openpyxl import load_workbook
+
+        wb = load_workbook(BytesIO(export.data))
+        ws = wb.active
+        order_nos = [
+            ws.cell(row, 1).value for row in range(4, ws.max_row + 1)
+        ]
+        self.assertIn(gen_no, order_nos)
+        self.assertNotIn("SPC/B0FF39/26-27", order_nos)
+
     def test_ledger_hides_delete_for_generated_and_settled(self):
         from datetime import date
 
         today = date.today().isoformat()
+        # Provisional draft must remain in DB but not on the ledger.
         draft = self.client.post(
             "/point-of-sale/api/invoices",
             json=self._payload(order_no="SPC/DRAFT1/26-27", total=100),
@@ -236,19 +320,8 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
 
-        self.assertIn(f'data-invoice-id="{draft_id}"', html)
-        self.assertRegex(
-            html,
-            rf'pos-il-delete-btn[^>]*data-invoice-id="{draft_id}"|data-invoice-id="{draft_id}"[^>]*pos-il-delete-btn',
-        )
-        self.assertRegex(
-            html,
-            rf'pos-il-edit-btn[^>]*data-invoice-id="{draft_id}"|data-invoice-id="{draft_id}"[^>]*pos-il-edit-btn',
-        )
-        self.assertNotIn(
-            f'pos-il-cancel-btn" data-tip="Cancel" aria-label="Cancel invoice SPC/DRAFT1/26-27"',
-            html,
-        )
+        self.assertNotIn(f'data-invoice-id="{draft_id}"', html)
+        self.assertNotIn("SPC/DRAFT1/26-27", html)
 
         self.assertIn(f'data-invoice-id="{gen_id}"', html)
         self.assertIn(f'Cancel invoice {gen_no}', html)
