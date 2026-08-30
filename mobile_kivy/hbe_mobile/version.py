@@ -7,6 +7,6 @@ values from the installed APK, which are written from that spec at build time.
 
 from __future__ import annotations
 
-APP_VERSION = "0.1.4"
-APP_VERSION_CODE = 5
+APP_VERSION = "0.1.5"
+APP_VERSION_CODE = 6
 ANDROID_PACKAGE = "com.hotelbellelite.hbemobile"

@@ -232,7 +232,7 @@ object AppUpdater {
             if (dest.isFile) dest.delete()
             shaFile(app).delete()
             val msg = if (!apkAvailable) {
-                "You’re up to date"
+                "No update published yet"
             } else {
                 "You’re up to date"
             }

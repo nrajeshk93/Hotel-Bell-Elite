@@ -1,0 +1,8 @@
+{
+  "version": "1.0.4",
+  "versionCode": 5,
+  "apk_url": "/api/mobile/hbe.apk",
+  "sha256": "ee67846079fcac78e1c6f22654f721d95ed709da3e1ed07b9b9152132cf7fafb",
+  "force": false,
+  "package": "com.hotelbellelite.hbe"
+}

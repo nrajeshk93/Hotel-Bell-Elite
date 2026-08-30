@@ -6,10 +6,10 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,json,txt
 source.exclude_dirs = .venv,.git,.buildozer,bin,tests,preview,__pycache__,.pytest_cache
 source.exclude_patterns = assets/.gitkeep
-version = 0.1.4
+version = 0.1.5
 # Must bump together with version. Reuse the SAME keystore for every build
 # or already-installed phones cannot silent-update.
-android.numeric_version = 5
+android.numeric_version = 6
 requirements = python3,kivy==2.3.0,kivymd==1.2.0,httpx,certifi,pillow,android,pyjnius
 orientation = portrait
 fullscreen = 0
