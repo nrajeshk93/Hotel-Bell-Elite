@@ -184,10 +184,22 @@ def _preview_api_cors(response):
 @bp.route("/mobile-app/")
 @bp.route("/mobile-app/<path:filename>")
 def mobile_app_files(filename="mobile_ui_preview.html"):
-    name = "mobile_ui_preview.html" if not filename or filename.endswith("/") else Path(filename).name
-    if name != filename or ".." in filename:
+    if not filename or filename.endswith("/"):
+        filename = "mobile_ui_preview.html"
+    rel = Path(filename)
+    if rel.is_absolute() or ".." in rel.parts:
         return _json({"ok": False, "error": "Not found"}, 404)
-    return send_from_directory(PREVIEW_DIR, name)
+    # Root preview files (HTML, logos) plus fonts/*.woff2
+    if rel.parent.parts not in ((), ("fonts",)):
+        return _json({"ok": False, "error": "Not found"}, 404)
+    target = (PREVIEW_DIR / rel).resolve()
+    try:
+        target.relative_to(PREVIEW_DIR.resolve())
+    except ValueError:
+        return _json({"ok": False, "error": "Not found"}, 404)
+    if not target.is_file():
+        return _json({"ok": False, "error": "Not found"}, 404)
+    return send_from_directory(PREVIEW_DIR, rel.as_posix())
 
 
 @bp.route("/preview-api/session", methods=["GET"])
@@ -246,8 +258,19 @@ def preview_approvals_route():
         limit = int((qs.get("limit") or ["0"])[0])
     except ValueError:
         limit = 0
+    date_from = (qs.get("date_from") or [""])[0].strip()
+    date_to = (qs.get("date_to") or [""])[0].strip()
+    supplier_id = (qs.get("supplier_id") or [""])[0].strip()
+    supplier = (qs.get("supplier") or [""])[0].strip()
     try:
-        payload = ps.fetch_approved(limit) if view in ("approved", "history") else ps.fetch_pending(limit)
+        kwargs = {
+            "limit": limit,
+            "date_from": date_from,
+            "date_to": date_to,
+            "supplier_id": supplier_id,
+            "supplier": supplier,
+        }
+        payload = ps.fetch_approved(**kwargs) if view in ("approved", "history") else ps.fetch_pending(**kwargs)
         return _json(payload)
     except Exception as exc:  # noqa: BLE001
         return _json({"ok": False, "error": str(exc)}, 500)
@@ -275,10 +298,63 @@ def preview_indents_route():
         return _json({"ok": False, "error": str(exc)}, 500)
 
 
+@bp.route("/preview-api/indent-catalog", methods=["GET"])
+def preview_indent_catalog_route():
+    denied = _deny("indent_request")
+    if denied:
+        return _json(denied, 403)
+    ps = _preview_serve()
+    outlet = (request.args.get("outlet") or "restaurant").strip()
+    try:
+        payload = ps.fetch_indent_catalog(outlet)
+        return _json(payload, 200 if payload.get("ok") else 400)
+    except Exception as exc:  # noqa: BLE001
+        return _json({"ok": False, "error": str(exc)}, 500)
+
+
+@bp.route("/preview-api/indent", methods=["POST"])
+def preview_indent_submit_route():
+    denied = _deny("indent_request")
+    if denied:
+        return _json(denied, 403)
+    ps = _preview_serve()
+    payload = request.get_json(silent=True) or {}
+    try:
+        status, data = ps.create_indent_request(payload)
+        return _json(data, status or 200)
+    except Exception as exc:  # noqa: BLE001
+        return _json({"ok": False, "error": str(exc)}, 500)
+
+
+@bp.route("/preview-api/shell/version", methods=["GET"])
+def preview_shell_version_route():
+    try:
+        import mobile_ota
+
+        payload = mobile_ota.load_shell_manifest()
+        if isinstance(payload, dict):
+            return _json(payload)
+    except Exception:
+        pass
+    ps = _preview_serve()
+    try:
+        result = ps._flask_request_inprocess("GET", "/api/mobile/shell/version")
+        if result is None:
+            return _json({"ok": False, "error": "Cannot reach update server"}, 502)
+        status, data = result
+        if not isinstance(data, dict):
+            data = {"ok": False, "error": "Invalid response"}
+        return _json(data, status or 200)
+    except Exception as exc:  # noqa: BLE001
+        return _json({"ok": False, "error": str(exc)}, 500)
+
+
 @bp.route("/preview-api/notifications", methods=["GET"])
 def preview_notifications_route():
+    session = _bind()
+    if not session:
+        return _json({"ok": False, "error": "Not signed in"}, 401)
     ps = _preview_serve()
-    _bind()
     try:
         return _json(ps.fetch_notifications())
     except Exception as exc:  # noqa: BLE001
@@ -479,11 +555,12 @@ def preview_verification_detail_route(verification_id: int):
 
 @bp.route("/preview-api/pos/tables", methods=["GET"])
 def preview_pos_tables_route():
-    denied = _deny("pos")
-    if denied:
-        return _json(denied, 403)
     ps = _preview_serve()
     outlet = (request.args.get("outlet") or "restaurant").strip()
+    access_key = "pos_bar" if outlet.lower() == "bar" else "pos"
+    denied = _deny(access_key)
+    if denied:
+        return _json(denied, 403)
     try:
         return _json(ps.fetch_pos_tables(outlet=outlet))
     except Exception as exc:  # noqa: BLE001

@@ -4685,13 +4685,18 @@
       flex-wrap: wrap;
       align-items: center;
       gap: 8px;
+      min-width: 0;
+      overflow: visible;
     }
     [data-panel="approvals"] .ap-tabs {
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
+      align-items: center;
       gap: 8px;
-      flex: 1;
-      min-width: 0;
+      flex: 0 1 auto;
+      min-width: min-content;
+      height: auto;
+      min-height: 32px;
     }
     [data-panel="approvals"] .ap-tab {
       display: inline-flex;
@@ -4701,7 +4706,10 @@
       gap: 6px;
       height: 32px;
       min-height: 32px;
-      min-width: 0;
+      flex: 0 0 auto;
+      min-width: max-content;
+      white-space: nowrap;
+      overflow: visible;
       padding: 0 14px;
       border-radius: 20px;
       border: 1px solid #E2E8F0;
@@ -4713,6 +4721,11 @@
       letter-spacing: -0.01em;
       cursor: pointer;
       transition: background .15s ease, border-color .15s ease, color .15s ease;
+    }
+    [data-panel="approvals"] .ap-tab .ap-tab-label,
+    [data-panel="approvals"] .ap-tab .ap-tab-count {
+      flex-shrink: 0;
+      white-space: nowrap;
     }
     [data-panel="approvals"] .ap-tab .ap-tab-label {
       font-size: 12px;
@@ -4736,21 +4749,11 @@
       background: #1565C0;
       border-color: #1565C0;
     }
-    [data-panel="approvals"] .ap-chip-row {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 8px;
-    }
-    [data-panel="approvals"] .ap-tabs,
-    [data-panel="approvals"] .ap-tab {
-      min-height: 32px;
-      height: 32px;
-    }
     [data-panel="approvals"] .ap-date-filter {
       position: relative;
       z-index: 8;
-      margin: 0 0 0 auto;
+      margin: 0;
+      flex: 0 0 auto;
     }
     [data-panel="approvals"] .ap-date-chip { display: block; }
     [data-panel="approvals"] .ap-date-chip-panel {
@@ -4804,6 +4807,140 @@
       font-size: 12px;
       font-weight: 600;
     }
+    [data-panel="approvals"] #approvals-supplier-row {
+      position: relative;
+      z-index: 10;
+      display: block;
+      margin: 0;
+      flex: 1 1 140px;
+      min-width: 132px;
+      max-width: 220px;
+      overflow: visible;
+    }
+    [data-panel="approvals"] #approvals-supplier-row.is-open {
+      z-index: 30;
+    }
+    [data-panel="approvals"] #approvals-supplier-row .cash-outlet-trigger {
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+      min-width: 0;
+      min-height: 32px;
+      height: 32px;
+      padding: 0 12px 0 14px;
+      border: 1px solid #E2E8F0;
+      border-radius: 20px;
+      background: #fff;
+      box-shadow: none;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: #1A202C;
+      cursor: pointer;
+    }
+    [data-panel="approvals"] #approvals-supplier-row.is-open .cash-outlet-trigger,
+    [data-panel="approvals"] #approvals-supplier-row .cash-outlet-trigger[aria-expanded="true"],
+    [data-panel="approvals"] #approvals-supplier-row.is-filtered .cash-outlet-trigger {
+      border-color: #1877F2;
+      box-shadow: 0 0 0 3px #E8F1FE;
+      background: #fff;
+    }
+    [data-panel="approvals"] #approvals-supplier-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    [data-panel="approvals"] #approvals-supplier-row .cash-outlet-trigger svg {
+      width: 14px;
+      height: 14px;
+      stroke: #1877F2;
+      fill: none;
+      stroke-width: 1.8;
+      flex-shrink: 0;
+    }
+    [data-panel="approvals"] #approvals-supplier-menu {
+      position: absolute;
+      right: 0;
+      left: auto;
+      top: calc(100% + 6px);
+      min-width: 220px;
+      width: max(220px, 100%);
+      max-width: min(320px, calc(100vw - 32px));
+      background: #fff;
+      border: 1px solid #E2E8F0;
+      border-radius: 16px;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, .12);
+      padding: 8px;
+      z-index: 40;
+    }
+    [data-panel="approvals"] #approvals-supplier-menu[hidden] { display: none !important; }
+    [data-panel="approvals"] .ap-supplier-search-wrap {
+      position: relative;
+      margin: 0 0 6px;
+    }
+    [data-panel="approvals"] #approvals-supplier-search {
+      width: 100%;
+      height: 36px;
+      padding: 0 12px 0 34px;
+      border: 1px solid #E2E8F0;
+      border-radius: 12px;
+      background: #F8FAFC;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      color: #1A202C;
+      outline: none;
+    }
+    [data-panel="approvals"] #approvals-supplier-search:focus {
+      border-color: #1877F2;
+      background: #fff;
+      box-shadow: 0 0 0 3px #E8F1FE;
+    }
+    [data-panel="approvals"] .ap-supplier-search-wrap svg {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      width: 14px;
+      height: 14px;
+      margin-top: -7px;
+      stroke: #94A3B8;
+      fill: none;
+      stroke-width: 1.8;
+      pointer-events: none;
+    }
+    [data-panel="approvals"] #approvals-supplier-options {
+      max-height: 240px;
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    [data-panel="approvals"] #approvals-supplier-menu .chip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      width: 100%;
+      height: 36px;
+      min-height: 36px;
+      padding: 0 12px;
+      border: 0;
+      border-radius: 12px;
+      background: transparent;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      color: #1A202C;
+      text-align: left;
+      cursor: pointer;
+    }
+    [data-panel="approvals"] #approvals-supplier-menu .chip.is-active {
+      background: #E8F1FE;
+      color: #1877F2;
+    }
+    [data-panel="approvals"] #approvals-supplier-menu .chip[hidden] { display: none !important; }
     [data-panel="approvals"] .ap-card {
       border-radius: 20px;
       border: 1px solid #EEF1F4;
@@ -7470,6 +7607,21 @@
                     <span class="ap-tab-count" id="ap-count-approved">—</span>
                   </button>
                 </div>
+                <div class="md-filter-row cash-outlet-dd ap-supplier-dd" id="approvals-supplier-row">
+                  <button type="button" class="cash-outlet-trigger" id="approvals-supplier-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="approvals-supplier-menu" aria-label="Supplier">
+                    <span id="approvals-supplier-label">All suppliers</span>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                  </button>
+                  <div class="cash-outlet-menu" id="approvals-supplier-menu" role="listbox" hidden>
+                    <div class="ap-supplier-search-wrap">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-3.5-3.5"/></svg>
+                      <input id="approvals-supplier-search" type="search" placeholder="Supplier name…" autocomplete="off" />
+                    </div>
+                    <div id="approvals-supplier-options">
+                      <button type="button" class="chip is-active" data-ap-supplier="" data-ap-supplier-name="All suppliers" role="option" aria-selected="true">All suppliers</button>
+                    </div>
+                  </div>
+                </div>
                 <div class="ap-date-filter" data-ap-dates="approvals">
                   <div class="ap-date-chip" id="approvals-date-chip">
                     <button type="button" class="ap-summary-filter ap-date-chip-trigger" id="btn-approvals-filter" aria-haspopup="dialog" aria-expanded="false" aria-controls="approvals-date-panel" aria-label="Filter" title="Filter (preview)">
@@ -8396,6 +8548,13 @@
       return !!access[key];
     }
 
+    function canApproveTransactions() {
+      const access = previewAccess || (readPreviewAuth() && readPreviewAuth().access) || null;
+      if (!access) return false;
+      if (access.is_admin) return true;
+      return !!access.can_approve;
+    }
+
     function applyPreviewAccess(access) {
       previewAccess = access || null;
       document.querySelectorAll('[data-access]').forEach((el) => {
@@ -9043,6 +9202,9 @@
     const APPROVALS_POLL_MS = 12000;
     const APPROVALS_PAGE = 50;
     let approvalsLimit = APPROVALS_PAGE;
+    let approvalsLastRows = [];
+    let approvalsLastMeta = {};
+    let approvalsLastView = 'pending';
 
     function formatInr(n) {
       const num = Number(n) || 0;
@@ -9095,29 +9257,180 @@
       return view + '|' + (data && data.total) + '|' + ids;
     }
 
+    function approvalsSupplierIsAllLabel(name) {
+      const n = String(name || '').trim().toLowerCase();
+      return !n || n === 'all' || n === 'all suppliers';
+    }
+
+    function approvalsSupplierFilterActive() {
+      const st = ledgerState.approvals || {};
+      if (st.supplierId) return true;
+      const q = String(st.supplierQuery || st.supplierName || '').trim();
+      return !!(q && !approvalsSupplierIsAllLabel(q));
+    }
+
+    function approvalsDateFilterActive() {
+      const st = ledgerState.approvals || {};
+      return !!(st.dateFrom || st.dateTo);
+    }
+
+    function approvalsEmptyCopy() {
+      const dateOn = approvalsDateFilterActive();
+      const supplierOn = approvalsSupplierFilterActive();
+      if (dateOn && supplierOn) {
+        return {
+          title: 'No matching entries',
+          meta: 'Try another date range or supplier',
+        };
+      }
+      if (dateOn) {
+        return {
+          title: 'No entries in this date range',
+          meta: 'Try another date range',
+        };
+      }
+      if (supplierOn) {
+        return {
+          title: 'No matching suppliers',
+          meta: 'Try another supplier name, or choose All suppliers',
+        };
+      }
+      return {
+        title: 'No entries',
+        meta: 'Nothing in this Approvals view',
+      };
+    }
+
+    function rowMatchesApprovalsSupplier(row) {
+      const st = ledgerState.approvals || {};
+      const id = st.supplierId;
+      if (id) return String(row && row.supplier_id) === String(id);
+      const q = String(st.supplierQuery || st.supplierName || '').trim().toLowerCase();
+      if (!q || approvalsSupplierIsAllLabel(q)) return true;
+      return String((row && row.supplier_name) || '').toLowerCase().indexOf(q) !== -1;
+    }
+
+    function syncApprovalsSupplierChrome() {
+      const st = ledgerState.approvals || {};
+      const label = document.getElementById('approvals-supplier-label');
+      const row = document.getElementById('approvals-supplier-row');
+      const name = String(st.supplierName || st.supplierQuery || '').trim();
+      const filtered = approvalsSupplierFilterActive();
+      if (label) label.textContent = filtered ? (name || 'Supplier') : 'All suppliers';
+      if (row) row.classList.toggle('is-filtered', filtered);
+    }
+
+    function uniqueApprovalsSuppliers(rows) {
+      const seen = {};
+      const out = [];
+      (rows || []).forEach((row) => {
+        const id = String((row && row.supplier_id) || '');
+        const name = String((row && row.supplier_name) || '').trim();
+        const key = id || name.toLowerCase();
+        if (!key || seen[key]) return;
+        seen[key] = true;
+        out.push({ id: id, name: name || ('Supplier #' + id) });
+      });
+      out.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+      return out;
+    }
+
+    function fillApprovalsSupplierMenu(rows) {
+      const wrap = document.getElementById('approvals-supplier-options');
+      if (!wrap) return;
+      const st = ledgerState.approvals || {};
+      const selectedId = String(st.supplierId || '');
+      const selectedName = String(st.supplierName || '').trim().toLowerCase();
+      const suppliers = uniqueApprovalsSuppliers(rows);
+      const allOn = !approvalsSupplierFilterActive();
+      let html = '<button type="button" class="chip' + (allOn ? ' is-active' : '') +
+        '" data-ap-supplier="" data-ap-supplier-name="All suppliers" role="option" aria-selected="' +
+        (allOn ? 'true' : 'false') + '">All suppliers</button>';
+      suppliers.forEach((s) => {
+        const on = selectedId
+          ? String(s.id) === selectedId
+          : (!!selectedName && s.name.toLowerCase() === selectedName);
+        html += '<button type="button" class="chip' + (on ? ' is-active' : '') +
+          '" data-ap-supplier="' + escapeHtml(s.id) +
+          '" data-ap-supplier-name="' + escapeHtml(s.name) +
+          '" role="option" aria-selected="' + (on ? 'true' : 'false') + '">' +
+          escapeHtml(s.name) + '</button>';
+      });
+      wrap.innerHTML = html;
+      filterApprovalsSupplierOptions();
+      syncApprovalsSupplierChrome();
+    }
+
+    function filterApprovalsSupplierOptions() {
+      const wrap = document.getElementById('approvals-supplier-options');
+      const search = document.getElementById('approvals-supplier-search');
+      if (!wrap) return;
+      const q = String(search && search.value || '').trim().toLowerCase();
+      wrap.querySelectorAll('.chip').forEach((opt) => {
+        const id = opt.getAttribute('data-ap-supplier') || '';
+        const name = String(opt.getAttribute('data-ap-supplier-name') || opt.textContent || '').toLowerCase();
+        const isAll = !id && name === 'all suppliers';
+        opt.hidden = !!(q && !isAll && name.indexOf(q) === -1);
+      });
+    }
+
+    function setApprovalsSupplier(id, name, query) {
+      const st = ledgerState.approvals || (ledgerState.approvals = {});
+      const clearAll = !id && (query == null || String(query).trim() === '') && approvalsSupplierIsAllLabel(name);
+      if (clearAll) {
+        st.supplierId = '';
+        st.supplierName = '';
+        st.supplierQuery = '';
+        const search = document.getElementById('approvals-supplier-search');
+        if (search) search.value = '';
+      } else {
+        st.supplierId = id ? String(id) : '';
+        st.supplierName = name || '';
+        st.supplierQuery = query != null ? String(query) : (st.supplierId ? '' : (name || ''));
+        const search = document.getElementById('approvals-supplier-search');
+        if (search && query == null) search.value = st.supplierId ? '' : (st.supplierQuery || '');
+      }
+      syncApprovalsSupplierChrome();
+      closeApprovalsSupplierMenu();
+      renderApprovalsList(approvalsLastView || approvalsView, approvalsLastRows, approvalsLastMeta);
+    }
+
+    function closeApprovalsSupplierMenu() {
+      const menu = document.getElementById('approvals-supplier-menu');
+      const trigger = document.getElementById('approvals-supplier-trigger');
+      const row = document.getElementById('approvals-supplier-row');
+      if (menu) menu.hidden = true;
+      if (trigger) {
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.classList.remove('is-open');
+      }
+      if (row) row.classList.remove('is-open');
+    }
+
     function renderApprovalsList(view, rows, meta) {
       const list = document.getElementById('approvals-list');
       if (!list) return;
 
+      approvalsLastView = view;
+      approvalsLastRows = rows || [];
+      approvalsLastMeta = meta || {};
       if (meta && meta.flask_base) approvalsFlaskBase = meta.flask_base;
       approvalsRowsById = {};
       (rows || []).forEach((row) => { approvalsRowsById[String(row.id)] = row; });
+      fillApprovalsSupplierMenu(rows);
 
       const total = meta && typeof meta.total === 'number' ? meta.total : (rows || []).length;
-      if (view === 'approved') {
-        approvalsCounts.approved = total;
-        setApprovalsStatus(total + ' approved');
-      } else {
-        approvalsCounts.pending = total;
-        setApprovalsStatus(total + ' pending');
-      }
+      if (view === 'approved') approvalsCounts.approved = total;
+      else approvalsCounts.pending = total;
       updateApprovalsTabCounts();
 
       if (!rows || !rows.length) {
+        const empty = approvalsEmptyCopy();
+        setApprovalsStatus(view === 'approved' ? '0 approved' : '0 pending');
         list.innerHTML =
           '<div class="ap-card" id="de-nav-purchase-verification-preview">' +
-            '<div class="ap-card-top"><div class="ap-card-code">No entries</div><div class="ap-card-amt">—</div></div>' +
-            '<div class="ap-card-meta">Nothing in this Approvals view</div>' +
+            '<div class="ap-card-top"><div class="ap-card-code">' + escapeHtml(empty.title) + '</div><div class="ap-card-amt">—</div></div>' +
+            '<div class="ap-card-meta">' + escapeHtml(empty.meta) + '</div>' +
           '</div>';
         return;
       }
@@ -9125,14 +9438,37 @@
       const apState = ledgerState.approvals || {};
       const apFrom = apState.dateFrom || '';
       const apTo = apState.dateTo || '';
-      const filtered = (apFrom || apTo) ? (rows || []).filter((row) => {
-        const raw = view === 'approved' ? (row.payment_date || '') : (row.sales_date || '');
+      const filtered = (rows || []).filter((row) => {
+        if (!rowMatchesApprovalsSupplier(row)) return false;
+        if (!(apFrom || apTo)) return true;
+        const raw = view === 'approved' ? (row.payment_date || row.verification_date || '') : (row.sales_date || '');
         const d = String(raw).slice(0, 10);
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return true;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
         if (apFrom && d < apFrom) return false;
         if (apTo && d > apTo) return false;
         return true;
-      }) : (rows || []);
+      });
+      const noun = view === 'approved' ? 'approved' : 'pending';
+      if (filtered.length !== (rows || []).length) {
+        setApprovalsStatus(filtered.length + ' of ' + total + ' ' + noun);
+      } else {
+        setApprovalsStatus(total + ' ' + noun);
+      }
+      const fetched = (rows || []).length;
+      const totalAll = meta && typeof meta.total === 'number' ? meta.total : fetched;
+      const loadMoreHtml = fetched < totalAll
+        ? ('<button type="button" class="ap-end hbe-load-more" data-ap-load-more>'
+          + '<strong>Load more</strong>' + (totalAll - fetched) + ' remaining</button>')
+        : ('<div class="ap-end"><strong>— That\'s all for now —</strong>You\'ve reached the end of the list</div>');
+      if (!filtered.length) {
+        const empty = approvalsEmptyCopy();
+        list.innerHTML =
+          '<div class="ap-card" id="de-nav-purchase-verification-preview">' +
+            '<div class="ap-card-top"><div class="ap-card-code">' + escapeHtml(empty.title) + '</div><div class="ap-card-amt">—</div></div>' +
+            '<div class="ap-card-meta">' + escapeHtml(empty.meta) + '</div>' +
+          '</div>' + loadMoreHtml;
+        return;
+      }
       const cards = filtered.map((row, i) => {
         if (view === 'approved') {
           const code = '#' + row.id;
@@ -9149,10 +9485,12 @@
               '<div class="ap-card-meta">' + escapeHtml(metaLine) + '</div>' +
               '<div class="ap-card-foot">' +
                 '<div class="ap-card-date">' + ICON_CAL + '<span>' + escapeHtml(date) + '</span></div>' +
-                '<div class="ap-actions">' +
-                  '<button type="button" class="ap-act ap-act--revert" data-ap-action="revert" data-id="' + escapeHtml(row.id) + '">' +
-                    ICON_REVERT + '<span>Revert</span></button>' +
-                '</div>' +
+                (canApproveTransactions()
+                  ? ('<div class="ap-actions">' +
+                      '<button type="button" class="ap-act ap-act--revert" data-ap-action="revert" data-id="' + escapeHtml(row.id) + '">' +
+                        ICON_REVERT + '<span>Revert</span></button>' +
+                    '</div>')
+                  : '') +
               '</div>' +
             '</article>'
           );
@@ -9171,28 +9509,19 @@
             '<div class="ap-card-meta">' + escapeHtml(metaLine) + '</div>' +
             '<div class="ap-card-foot">' +
               '<div class="ap-card-date">' + ICON_CAL + '<span>' + escapeHtml(date) + '</span></div>' +
-              '<div class="ap-actions">' +
-                '<button type="button" class="ap-act ap-act--ok" data-ap-action="approve" data-id="' + escapeHtml(row.id) + '"' +
-                  ' data-supplier-id="' + escapeHtml(row.supplier_id) + '"' +
-                  ' data-amount="' + escapeHtml(row.balance) + '">' +
-                  ICON_OK + '<span>Approve</span></button>' +
-              '</div>' +
+              (canApproveTransactions()
+                ? ('<div class="ap-actions">' +
+                    '<button type="button" class="ap-act ap-act--ok" data-ap-action="approve" data-id="' + escapeHtml(row.id) + '"' +
+                      ' data-supplier-id="' + escapeHtml(row.supplier_id) + '"' +
+                      ' data-amount="' + escapeHtml(row.balance) + '">' +
+                      ICON_OK + '<span>Approve</span></button>' +
+                  '</div>')
+                : '') +
             '</div>' +
           '</article>'
         );
       });
-      const fetched = (rows || []).length;
-      const totalAll = meta && typeof meta.total === 'number' ? meta.total : fetched;
-      if (fetched < totalAll) {
-        cards.push(
-          '<button type="button" class="ap-end hbe-load-more" data-ap-load-more>'
-          + '<strong>Load more</strong>' + (totalAll - fetched) + ' remaining</button>'
-        );
-      } else {
-        cards.push(
-          '<div class="ap-end"><strong>— That\'s all for now —</strong>You\'ve reached the end of the list</div>'
-        );
-      }
+      cards.push(loadMoreHtml);
       list.innerHTML = cards.join('');
     }
 
@@ -9264,7 +9593,7 @@
         '</article>' +
         '<p class="ap-section-label">Line items' + (lineCount ? (' · ' + lineCount) : '') + '</p>' +
         renderLineCards(lines);
-      if (showApprove && e.id && e.supplier_id && (e.balance == null || e.balance > 0)) {
+      if (showApprove && canApproveTransactions() && e.id && e.supplier_id && (e.balance == null || e.balance > 0)) {
         html +=
           '<div class="ap-detail-foot">' +
             '<button type="button" class="ap-act ap-act--ok" data-ap-action="approve" data-id="' + escapeHtml(e.id) + '">' +
@@ -9297,11 +9626,13 @@
       if (!expenses.length) {
         html += '<div class="ap-detail-empty">No allocated purchases on this verification.</div>';
       }
-      html +=
-        '<div class="ap-detail-foot">' +
-          '<button type="button" class="ap-act ap-act--revert" data-ap-action="revert" data-id="' + escapeHtml(v.id) + '">' +
-            ICON_REVERT + '<span>Revert</span></button>' +
-        '</div>';
+      if (canApproveTransactions()) {
+        html +=
+          '<div class="ap-detail-foot">' +
+            '<button type="button" class="ap-act ap-act--revert" data-ap-action="revert" data-id="' + escapeHtml(v.id) + '">' +
+              ICON_REVERT + '<span>Revert</span></button>' +
+          '</div>';
+      }
       return html;
     }
 
@@ -9354,7 +9685,19 @@
     }
 
     async function fetchApprovalsView(view) {
-      const res = await previewFetch('/preview-api/approvals?view=' + encodeURIComponent(view) + '&limit=' + encodeURIComponent(approvalsLimit), {
+      const st = ledgerState.approvals || {};
+      const params = new URLSearchParams();
+      params.set('view', view);
+      params.set('limit', String(approvalsLimit));
+      const dateFrom = String(st.dateFrom || '').trim();
+      const dateTo = String(st.dateTo || '').trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) params.set('date_from', dateFrom);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) params.set('date_to', dateTo);
+      const sid = String(st.supplierId || '').trim();
+      if (sid) params.set('supplier_id', sid);
+      const q = String(st.supplierQuery || st.supplierName || '').trim();
+      if (q && !approvalsSupplierIsAllLabel(q)) params.set('supplier', q);
+      const res = await previewFetch('/preview-api/approvals?' + params.toString(), {
         cache: 'no-store',
       });
       const data = await res.json();
@@ -9484,6 +9827,71 @@
       if (typeof loadNotifications === 'function') loadNotifications({ silent: true });
       if (typeof loadHomeSummary === 'function') loadHomeSummary();
     }
+
+    (function bindApprovalsSupplierFilter() {
+      const row = document.getElementById('approvals-supplier-row');
+      const trigger = document.getElementById('approvals-supplier-trigger');
+      const menu = document.getElementById('approvals-supplier-menu');
+      const search = document.getElementById('approvals-supplier-search');
+      const options = document.getElementById('approvals-supplier-options');
+      if (!row || !trigger || !menu) return;
+      trigger.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const open = menu.hidden;
+        menu.hidden = !open;
+        trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+        trigger.classList.toggle('is-open', open);
+        row.classList.toggle('is-open', open);
+        if (open && search) {
+          search.focus();
+          if (search.select) search.select();
+        }
+      });
+      menu.addEventListener('click', (ev) => ev.stopPropagation());
+      if (options) {
+        options.addEventListener('click', (ev) => {
+          const btn = ev.target && ev.target.closest('[data-ap-supplier-name]');
+          if (!btn || !options.contains(btn)) return;
+          ev.preventDefault();
+          setApprovalsSupplier(btn.getAttribute('data-ap-supplier') || '', btn.getAttribute('data-ap-supplier-name') || '', '');
+        });
+      }
+      if (search) {
+        search.addEventListener('input', () => {
+          const q = String(search.value || '').trim();
+          const st = ledgerState.approvals || (ledgerState.approvals = {});
+          st.supplierId = '';
+          st.supplierName = q;
+          st.supplierQuery = q;
+          filterApprovalsSupplierOptions();
+          syncApprovalsSupplierChrome();
+          renderApprovalsList(approvalsLastView || approvalsView, approvalsLastRows, approvalsLastMeta);
+        });
+        search.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') {
+            ev.preventDefault();
+            const typed = String(search.value || '').trim();
+            const chips = options ? Array.prototype.slice.call(options.querySelectorAll('.chip:not([hidden])[data-ap-supplier-name]')) : [];
+            const firstReal = chips.find((opt) => {
+              const id = opt.getAttribute('data-ap-supplier') || '';
+              const name = String(opt.getAttribute('data-ap-supplier-name') || '').trim();
+              return !!(id || !approvalsSupplierIsAllLabel(name));
+            });
+            if (firstReal) {
+              setApprovalsSupplier(firstReal.getAttribute('data-ap-supplier') || '', firstReal.getAttribute('data-ap-supplier-name') || '', '');
+            } else if (typed && !approvalsSupplierIsAllLabel(typed)) {
+              setApprovalsSupplier('', typed, typed);
+            } else {
+              closeApprovalsSupplierMenu();
+            }
+          } else if (ev.key === 'Escape') {
+            ev.preventDefault();
+            closeApprovalsSupplierMenu();
+          }
+        });
+      }
+      document.addEventListener('click', () => closeApprovalsSupplierMenu());
+    })();
 
     const approvalsToolbar = document.getElementById('approvals-toolbar');
     if (approvalsToolbar) {
@@ -11066,11 +11474,15 @@
       serviceValue: 0,
       tip: 0,
       coupon: '',
+      taxCgstPct: 2.5,
+      taxUgstPct: 2.5,
+      taxVatPct: 10,
+      pricesIncludeTax: true,
     };
 
     function setPosOutlet(outlet) {
       const next = outlet === 'bar' ? 'bar' : 'restaurant';
-      if (posState.outlet === next) return;
+      if (posState.outlet === next) return false;
       posState.outlet = next;
       posState.tablesLoaded = false;
       posState.menuLoaded = false;
@@ -11085,6 +11497,7 @@
       posState.serviceValue = 0;
       posState.tip = 0;
       posState.coupon = '';
+      /* Keep hotel/POS tax rates across outlet reset; they are property-wide. */
       closePosAdjSheets();
       const select = document.getElementById('pos-table-select');
       if (select) {
@@ -11099,6 +11512,7 @@
         suggest.innerHTML = '';
       }
       renderPosLines();
+      return true;
     }
 
     function posOutletLabel() {
@@ -11178,29 +11592,190 @@
       return Math.round(cap * v / 100 * 100) / 100;
     }
 
+    const POS_LIQUOR_CATEGORY_RE =
+      /\b(liquou?r|alcohol|whisky|whiskey|beer|wine|vodka|gin|rum|brandy|spirit|spirits|imfl|cocktail|cocktails|shots?|scotch|tequila|champagne|cider|liqueur|aperitif)\b/i;
+
+    function posRoundMoney(n) {
+      return Math.round((Number(n) || 0) * 100) / 100;
+    }
+
+    function posClampTaxPct(raw, fallback) {
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 0) return fallback;
+      return Math.min(100, Math.round(n * 1000) / 1000);
+    }
+
+    function posCgstRate() {
+      return posClampTaxPct(posState.taxCgstPct, 2.5) / 100;
+    }
+
+    function posUgstRate() {
+      return posClampTaxPct(posState.taxUgstPct, 2.5) / 100;
+    }
+
+    function posVatRate() {
+      return posClampTaxPct(posState.taxVatPct, 10) / 100;
+    }
+
+    function posPricesIncludeTax() {
+      return posState.pricesIncludeTax !== false;
+    }
+
+    function posApplyTaxRates(src) {
+      if (!src || typeof src !== 'object') return;
+      const tr = src.taxRates && typeof src.taxRates === 'object' ? src.taxRates : src;
+      const settings = src.settings;
+      let cgstPct = null;
+      let ugstPct = null;
+      let vatPct = null;
+      let includeTax = null;
+      const pickPct = (obj, keys) => {
+        if (!obj) return null;
+        for (let i = 0; i < keys.length; i++) {
+          const v = obj[keys[i]];
+          if (v != null && v !== '') {
+            const n = Number(v);
+            if (Number.isFinite(n)) return n;
+          }
+        }
+        return null;
+      };
+      cgstPct = pickPct(tr, ['cgst_pct', 'taxCgstPct', 'tax_cgst_pct']);
+      ugstPct = pickPct(tr, ['ugst_pct', 'taxUgstPct', 'tax_ugst_pct']);
+      vatPct = pickPct(tr, ['vat_pct', 'taxVatPct', 'tax_vat_pct']);
+      if (cgstPct == null && tr.cgst != null) cgstPct = Number(tr.cgst) * 100;
+      if (ugstPct == null && tr.ugst != null) ugstPct = Number(tr.ugst) * 100;
+      if (vatPct == null && tr.vat != null) vatPct = Number(tr.vat) * 100;
+      if (tr.prices_include_tax != null) includeTax = !!tr.prices_include_tax;
+      if (tr.pricesIncludeTax != null) includeTax = !!tr.pricesIncludeTax;
+      if (settings && typeof settings === 'object') {
+        const panels = settings.panels || {};
+        const taxes = (panels.taxes && panels.taxes.values) || panels.taxes || settings;
+        if (cgstPct == null) cgstPct = pickPct(taxes, ['cgst_pct']);
+        if (ugstPct == null) ugstPct = pickPct(taxes, ['ugst_pct']);
+        if (vatPct == null) vatPct = pickPct(taxes, ['vat_pct']);
+        if (includeTax == null && taxes && taxes.prices_include_tax != null) includeTax = !!taxes.prices_include_tax;
+      }
+      if (cgstPct != null && Number.isFinite(Number(cgstPct))) posState.taxCgstPct = posClampTaxPct(cgstPct, 2.5);
+      if (ugstPct != null && Number.isFinite(Number(ugstPct))) posState.taxUgstPct = posClampTaxPct(ugstPct, 2.5);
+      if (vatPct != null && Number.isFinite(Number(vatPct))) posState.taxVatPct = posClampTaxPct(vatPct, 10);
+      if (includeTax != null) posState.pricesIncludeTax = !!includeTax;
+    }
+
+    function posSplitInclusiveGst(inclusive, cgstRate, ugstRate) {
+      inclusive = posRoundMoney(inclusive);
+      const factor = 1 + Number(cgstRate || 0) + Number(ugstRate || 0);
+      if (inclusive <= 0 || factor <= 1) {
+        return { taxable: inclusive, cgst: 0, ugst: 0, gst: 0 };
+      }
+      const taxable = posRoundMoney(inclusive / factor);
+      let cgst = posRoundMoney(taxable * cgstRate);
+      let ugst = posRoundMoney(inclusive - taxable - cgst);
+      if (ugst < 0) {
+        ugst = 0;
+        cgst = posRoundMoney(inclusive - taxable);
+      }
+      return { taxable: taxable, cgst: cgst, ugst: ugst, gst: posRoundMoney(cgst + ugst) };
+    }
+
+    function posSplitInclusiveVat(inclusive, vatRate) {
+      inclusive = posRoundMoney(inclusive);
+      const factor = 1 + Number(vatRate || 0);
+      if (inclusive <= 0 || factor <= 1) {
+        return { taxable: inclusive, vat: 0 };
+      }
+      const taxable = posRoundMoney(inclusive / factor);
+      return { taxable: taxable, vat: posRoundMoney(inclusive - taxable) };
+    }
+
+    function posFindMenuItem(menuId) {
+      if (menuId == null || menuId === '') return null;
+      return (posState.menu || []).find((item) => String(item.id) === String(menuId)) || null;
+    }
+
+    function posIsLiquorLine(line) {
+      if (!line) return false;
+      if (line.isLiquor === true || line.itemKind === 'liquor' || line.item_kind === 'liquor') return true;
+      if (line.isLiquor === false && (line.itemKind === 'food' || line.item_kind === 'food')) return false;
+      const menu = posFindMenuItem(line.menuId || line.menu_id);
+      if (menu) {
+        if (menu.isLiquor || menu.itemKind === 'liquor' || menu.item_kind === 'liquor' || menu.menu_type === 'liquor') return true;
+        if (menu.itemKind === 'food' || menu.item_kind === 'food') return false;
+      }
+      const cat = line.category || line.category_name || (menu && (menu.category || menu.category_name)) || '';
+      return POS_LIQUOR_CATEGORY_RE.test(String(cat || '').trim());
+    }
+
+    function posLineMenuOutlet(line) {
+      const raw = String((line && line.outlet) || '').trim().toLowerCase();
+      if (raw === 'bar') return 'bar';
+      if (raw === 'restaurant') return 'restaurant';
+      const menu = posFindMenuItem(line && (line.menuId || line.menu_id));
+      if (menu && String(menu.outlet || '').toLowerCase() === 'bar') return 'bar';
+      return posState.outlet === 'bar' ? 'bar' : 'restaurant';
+    }
+
     function calcPosTotals() {
-      const gross = posLineGross();
-      const discount = posAdjAmount(gross, posState.discountType || 'pct', posState.discountValue);
-      const afterDisc = Math.max(0, gross - discount);
-      const service = posAdjAmount(afterDisc, posState.serviceType || 'pct', posState.serviceValue);
-      const tip = Math.round((Number(posState.tip) || 0) * 100) / 100;
-      const inclusive = afterDisc + service + tip;
-      const taxable = inclusive > 0 ? inclusive / 1.05 : 0;
-      const cgst = Math.round(taxable * 0.025 * 100) / 100;
-      const sgst = Math.round(taxable * 0.025 * 100) / 100;
-      const rawTotal = inclusive;
-      const rounded = Math.round(rawTotal);
-      const roundOff = Math.round((rounded - rawTotal) * 100) / 100;
+      let subtotal = 0;
+      let barAlcoholSubtotal = 0;
+      (posState.lines || []).forEach((line) => {
+        const lineTotal = (Number(line.rate) || 0) * (Number(line.qty) || 0);
+        subtotal += lineTotal;
+        if (posLineMenuOutlet(line) === 'bar' && posIsLiquorLine(line)) {
+          barAlcoholSubtotal += lineTotal;
+        }
+      });
+      const discount = posAdjAmount(subtotal, posState.discountType || 'pct', posState.discountValue);
+      const afterDiscount = Math.max(0, subtotal - discount);
+      const barShare = subtotal > 0 ? barAlcoholSubtotal / subtotal : 0;
+      const barAfter = afterDiscount * barShare;
+      const foodAfter = Math.max(0, afterDiscount - barAfter);
+      const cgstRate = posCgstRate();
+      const ugstRate = posUgstRate();
+      const vatRate = posVatRate();
+      let cgst;
+      let sgst;
+      let gst;
+      let vat;
+      let taxAdd;
+      let summarySubtotal = subtotal;
+      let summaryDiscount = discount;
+      if (posPricesIncludeTax()) {
+        const foodGross = Math.max(0, subtotal - barAlcoholSubtotal);
+        const foodGrossSplit = posSplitInclusiveGst(foodGross, cgstRate, ugstRate);
+        const foodNetSplit = posSplitInclusiveGst(foodAfter, cgstRate, ugstRate);
+        const barGrossSplit = posSplitInclusiveVat(barAlcoholSubtotal, vatRate);
+        const barNetSplit = posSplitInclusiveVat(barAfter, vatRate);
+        cgst = foodNetSplit.cgst;
+        sgst = foodNetSplit.ugst;
+        gst = foodNetSplit.gst;
+        vat = barNetSplit.vat;
+        taxAdd = 0;
+        summarySubtotal = posRoundMoney(foodGrossSplit.taxable + barGrossSplit.taxable);
+        summaryDiscount = posRoundMoney(summarySubtotal - foodNetSplit.taxable - barNetSplit.taxable);
+      } else {
+        cgst = posRoundMoney(foodAfter * cgstRate);
+        sgst = posRoundMoney(foodAfter * ugstRate);
+        gst = posRoundMoney(cgst + sgst);
+        vat = posRoundMoney(barAfter * vatRate);
+        taxAdd = gst + vat;
+      }
+      const service = posAdjAmount(afterDiscount, posState.serviceType || 'pct', posState.serviceValue);
+      const tip = posRoundMoney(Math.max(0, Number(posState.tip) || 0));
+      const beforeRound = afterDiscount + taxAdd + service + tip;
+      const rounded = Math.round(beforeRound);
+      const roundOff = posRoundMoney(rounded - beforeRound);
       return {
-        subtotal: Math.round(gross * 100) / 100,
-        discount,
+        subtotal: posRoundMoney(summarySubtotal),
+        discount: posRoundMoney(summaryDiscount),
         service,
         tip,
         cgst,
         sgst,
-        gst: Math.round((cgst + sgst) * 100) / 100,
+        gst,
+        vat: posRoundMoney(vat),
         roundOff,
-        total: Math.round((rawTotal + roundOff) * 100) / 100,
+        total: posRoundMoney(rounded),
       };
     }
 
@@ -11268,6 +11843,9 @@
           category: item.category_name || item.category || '',
           variant: item.variant || '',
           kotSentQty: 0,
+          isLiquor: !!(item.isLiquor || item.is_liquor || item.itemKind === 'liquor' || item.item_kind === 'liquor' || item.menu_type === 'liquor'),
+          itemKind: item.itemKind || item.item_kind || '',
+          outlet: item.outlet || posState.outlet,
         });
       }
       renderPosLines();
@@ -11340,6 +11918,8 @@
       posState.serviceValue = Number(pick(invoice, ['service_value', 'serviceValue']) || pick(totals, ['serviceValue', 'service_value']) || 0) || 0;
       posState.tip = Number(pick(invoice, ['tip_amount', 'tipAmount', 'tip']) || pick(totals, ['tip', 'tipAmount']) || 0) || 0;
       posState.coupon = String(pick(invoice, ['coupon_code', 'couponCode', 'coupon']) || '').trim();
+      posApplyTaxRates(invoice);
+      posApplyTaxRates(invoice.totals || {});
       posState.lines = [];
       for (const line of invoice.lines || []) {
         if (!line || typeof line !== 'object') continue;
@@ -11349,12 +11929,15 @@
           name: String(line.name || ''),
           rate: Number(line.rate || 0) || 0,
           qty: Number(line.qty || 1) || 1,
-          category: line.category || '',
+          category: line.category || line.category_name || '',
           variant: line.variant || '',
           kotSentQty: Number(
             line.kotSentQty != null ? line.kotSentQty
               : (line.kot_sent_qty != null ? line.kot_sent_qty : line.sent_qty)
           ) || 0,
+          isLiquor: !!(line.isLiquor || line.is_liquor || line.itemKind === 'liquor' || line.item_kind === 'liquor'),
+          itemKind: line.itemKind || line.item_kind || '',
+          outlet: line.outlet || posState.outlet,
         });
       }
       renderPosLines();
@@ -11506,6 +12089,7 @@
         const data = await res.json();
         posState.menu = (data && data.items) || [];
         posState.menuLoaded = true;
+        posApplyTaxRates(data);
         return posState.menu;
       } catch (_err) {
         posState.menu = [];
@@ -11569,8 +12153,8 @@
         serviceValue: Number(posState.serviceValue) || 0,
         tipAmount: Number(posState.tip) || 0,
         couponCode: posState.coupon || '',
-        taxCgstPct: 2.5,
-        taxUgstPct: 2.5,
+        taxCgstPct: posClampTaxPct(posState.taxCgstPct, 2.5),
+        taxUgstPct: posClampTaxPct(posState.taxUgstPct, 2.5),
         lines: posState.lines.map((line) => {
           const qty = Number(line.qty) || 0;
           let kotSentQty = Number(line.kotSentQty) || 0;
@@ -11588,6 +12172,8 @@
             qty,
             kotSentQty,
             notes: '',
+            isLiquor: !!line.isLiquor || posIsLiquorLine(line),
+            outlet: posLineMenuOutlet(line),
           };
         }),
         totals: {
@@ -11598,6 +12184,7 @@
           gst: totals.gst,
           cgst: totals.cgst,
           ugst: totals.sgst,
+          vat: totals.vat || 0,
           service: totals.service,
           serviceType: posState.serviceType === 'inr' ? 'inr' : 'pct',
           serviceValue: Number(posState.serviceValue) || 0,
@@ -12485,7 +13072,7 @@
       ledger: { tab: 'all', rows: [], totals: null, dateFrom: '', dateTo: '', cleared: false, calMonth: null, pickStart: null, draftFrom: '', draftTo: '' },
       'cash-ledger': { location: 'All', rows: [], totals: null, dateFrom: '', dateTo: '', cleared: false, calMonth: null, pickStart: null, draftFrom: '', draftTo: '' },
       'pay-tip': { dateFrom: '', dateTo: '', cleared: false, calMonth: null, pickStart: null, draftFrom: '', draftTo: '' },
-      approvals: { dateFrom: '', dateTo: '', cleared: false, calMonth: null, pickStart: null, draftFrom: '', draftTo: '' },
+      approvals: { dateFrom: '', dateTo: '', cleared: false, calMonth: null, pickStart: null, draftFrom: '', draftTo: '', supplierId: '', supplierName: '', supplierQuery: '' },
       dashboard: { location: 'All', dateFrom: '', dateTo: '', cleared: false, calMonth: null, pickStart: null, draftFrom: '', draftTo: '' },
     };
     function mdIsoDate(d) {
@@ -13984,12 +14571,12 @@
         '<button type="button" class="emp-card-btn" data-pay-emp="' + e.id + '">' +
           '<article class="ap-card">' +
             '<div class="ap-card-top">' +
-              '<div class="ap-card-code">' + (e.name || '') + '</div>' +
-              '<div class="ap-card-amt">' + formatInrWhole(empExpected(e)) + '</div>' +
+              '<div class="ap-card-code">' + escapeHtml(e.name || '') + '</div>' +
+              '<div class="ap-card-amt">' + escapeHtml(formatInrWhole(empExpected(e))) + '</div>' +
             '</div>' +
-            '<div class="ap-card-meta">' + (e.emp_code || '') + ' · ' + (e.location || '—') + (e.mobile ? (' · ' + e.mobile) : '') + '</div>' +
+            '<div class="ap-card-meta">' + escapeHtml(e.emp_code || '') + ' · ' + escapeHtml(e.location || '—') + (e.mobile ? (' · ' + escapeHtml(e.mobile)) : '') + '</div>' +
             '<div class="ap-card-pills">' +
-              '<span class="ap-pill">' + ((e.status || 'active').replace(/_/g, ' ')) + '</span>' +
+              '<span class="ap-pill">' + escapeHtml((e.status || 'active').replace(/_/g, ' ')) + '</span>' +
             '</div>' +
           '</article>' +
         '</button>'
@@ -14316,9 +14903,9 @@
           const chipClass = 'att-chip is-' + (mark || 'unmarked');
           return '<article class="att-card ap-card" data-pay-att-emp="' + e.id + '">'
             + '<div class="att-card-main">'
-            + '<p class="att-card-name">' + (e.name || '') + '</p>'
-            + '<p class="att-card-meta">' + (e.emp_code || '') + ' · ' + (e.location || '—') + '</p>'
-            + '<span class="' + chipClass + '">' + chipLabel + '</span>'
+            + '<p class="att-card-name">' + escapeHtml(e.name || '') + '</p>'
+            + '<p class="att-card-meta">' + escapeHtml(e.emp_code || '') + ' · ' + escapeHtml(e.location || '—') + '</p>'
+            + '<span class="' + chipClass + '">' + escapeHtml(chipLabel) + '</span>'
             + '</div>'
             + '<div class="att-actions">'
             + pill('present', 'Present', mark, disabled)
@@ -15193,8 +15780,9 @@
       const isBack = !!(opts && opts.back);
       const isPos = screen === 'pos' || screen === 'pos-bar';
       const isKot = screen === 'kot' || screen === 'kot-bar';
+      let posOutletChanged = false;
       if (isPos) {
-        setPosOutlet(screen === 'pos-bar' ? 'bar' : 'restaurant');
+        posOutletChanged = !!setPosOutlet(screen === 'pos-bar' ? 'bar' : 'restaurant');
       }
       setPosChrome(isPos);
       if (screen === 'approvals') {
@@ -15224,7 +15812,7 @@
         if (!isBack) loadDashboard();
       }
       if (isPos) {
-        if (!isBack) loadPosScreen();
+        if (posOutletChanged || !isBack) loadPosScreen();
       }
       if (isKot) {
         setKotOutlet(screen === 'kot-bar' ? 'bar' : 'restaurant');
@@ -15296,11 +15884,28 @@
       const sessionPath = USE_FLASK_SESSION ? '/api/mobile/session' : '/preview-api/session';
       try {
         const res = await previewFetch(sessionPath);
-        const data = await res.json();
-        if (!res.ok || !data || !data.ok) {
+        let data = null;
+        try {
+          data = await res.json();
+        } catch (_jsonErr) {
+          data = null;
+        }
+        const errText = String((data && (data.error || data.message)) || '');
+        const unauth = res.status === 401 || (
+          data && data.ok === false && /not signed in|unauthenticated|sign in required/i.test(errText)
+        );
+        if (unauth) {
           clearPreviewAuth();
           previewAccess = null;
           hbeRefreshFingerprintUi({ autoPrompt: true });
+          return;
+        }
+        if (!res.ok || !data || !data.ok) {
+          previewAccess = (auth && auth.access) || previewAccess;
+          if (typeof applyPreviewAccess === 'function') applyPreviewAccess(previewAccess);
+          updateHomeWelcome(auth.displayName || '');
+          showWorkspace(auth.screen || 'home', auth.displayName || '');
+          hbeRefreshFingerprintUi();
           return;
         }
         previewAccess = data.access || {};
@@ -15314,9 +15919,11 @@
         showWorkspace(auth.screen || 'home', data.display_name || auth.displayName || '');
         hbeRefreshFingerprintUi();
       } catch (_err) {
-        clearPreviewAuth();
-        previewAccess = null;
-        hbeRefreshFingerprintUi({ autoPrompt: true });
+        previewAccess = (auth && auth.access) || previewAccess;
+        if (typeof applyPreviewAccess === 'function') applyPreviewAccess(previewAccess);
+        updateHomeWelcome(auth.displayName || '');
+        showWorkspace(auth.screen || 'home', auth.displayName || '');
+        hbeRefreshFingerprintUi();
       }
     })();
   </script>

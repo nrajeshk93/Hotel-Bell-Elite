@@ -126,8 +126,76 @@ def _money(value: object) -> float:
         return 0.0
 
 
-def fetch_pending(limit: int = 0) -> dict:
-    """All pending hotel purchase verifications (no FY date filter)."""
+
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _iso_date(value: str) -> str:
+    text = str(value or "").strip()[:10]
+    return text if _ISO_DATE_RE.fullmatch(text) else ""
+
+
+def _filter_approval_rows(
+    rows: list[dict],
+    *,
+    date_field: str,
+    date_from: str = "",
+    date_to: str = "",
+    supplier_id: str = "",
+    supplier: str = "",
+) -> list[dict]:
+    """Apply date/supplier filters before paging. Invalid dates miss an active range."""
+    date_from = _iso_date(date_from)
+    date_to = _iso_date(date_to)
+    sid = str(supplier_id or "").strip()
+    q = str(supplier or "").strip().lower()
+    if q in ("all", "all suppliers"):
+        q = ""
+    if not date_from and not date_to and not sid and not q:
+        return rows
+    sid_int = None
+    if sid:
+        try:
+            sid_int = int(sid)
+        except (TypeError, ValueError):
+            sid_int = None
+    out: list[dict] = []
+    for row in rows:
+        if date_from or date_to:
+            d = _iso_date(str(row.get(date_field) or "")[:10])
+            if not d:
+                continue
+            if date_from and d < date_from:
+                continue
+            if date_to and d > date_to:
+                continue
+        if sid:
+            row_sid = row.get("supplier_id")
+            try:
+                row_sid_int = int(row_sid or 0)
+            except (TypeError, ValueError):
+                row_sid_int = None
+            if sid_int is not None:
+                if row_sid_int != sid_int:
+                    continue
+            elif str(row_sid or "") != sid:
+                continue
+        elif q:
+            name = str(row.get("supplier_name") or "").lower()
+            if q not in name:
+                continue
+        out.append(row)
+    return out
+
+
+def fetch_pending(
+    limit: int = 0,
+    date_from: str = "",
+    date_to: str = "",
+    supplier_id: str = "",
+    supplier: str = "",
+) -> dict:
+    """Pending hotel purchase verifications (filters applied before paging)."""
     sql = """
         SELECT e.id, e.expense_code, e.sales_date, e.description, e.amount,
                e.category, e.supplier_id, e.entry_kind,
@@ -163,6 +231,14 @@ def fetch_pending(limit: int = 0) -> dict:
                     "entry_kind": str(row["entry_kind"] or "expense"),
                 }
             )
+    rows_out = _filter_approval_rows(
+        rows_out,
+        date_field="sales_date",
+        date_from=date_from,
+        date_to=date_to,
+        supplier_id=supplier_id,
+        supplier=supplier,
+    )
     rows = rows_out if limit <= 0 else rows_out[:limit]
     return {
         "ok": True,
@@ -174,11 +250,17 @@ def fetch_pending(limit: int = 0) -> dict:
     }
 
 
-def fetch_approved(limit: int = 0) -> dict:
-    """All approved purchase verifications (no FY date filter)."""
+def fetch_approved(
+    limit: int = 0,
+    date_from: str = "",
+    date_to: str = "",
+    supplier_id: str = "",
+    supplier: str = "",
+) -> dict:
+    """Approved purchase verifications (filters applied before paging)."""
     sql = """
         SELECT v.id, v.verification_date AS payment_date, v.total_amount,
-               v.verification_account, s.name AS supplier_name,
+               v.verification_account, v.supplier_id, s.name AS supplier_name,
                (
                    SELECT COUNT(*) FROM purchase_verification_allocations a
                    WHERE a.purchase_verification_id = v.id
@@ -202,6 +284,7 @@ def fetch_approved(limit: int = 0) -> dict:
             rows_out.append(
                 {
                     "id": int(row["id"]),
+                    "supplier_id": int(row["supplier_id"] or 0),
                     "supplier_name": str(row["supplier_name"] or ""),
                     "total_amount": _money(row["total_amount"]),
                     "payment_date": str(row["payment_date"] or ""),
@@ -210,6 +293,14 @@ def fetch_approved(limit: int = 0) -> dict:
                     "expense_codes": str(row["expense_codes"] or ""),
                 }
             )
+    rows_out = _filter_approval_rows(
+        rows_out,
+        date_field="payment_date",
+        date_from=date_from,
+        date_to=date_to,
+        supplier_id=supplier_id,
+        supplier=supplier,
+    )
     rows = rows_out if limit <= 0 else rows_out[:limit]
     return {
         "ok": True,
@@ -1437,8 +1528,8 @@ def fetch_notifications() -> dict[str, Any]:
     """Pending purchase + indent approvals for the mobile preview bell."""
     items: list[dict[str, Any]] = []
     access = _request_preview_access()
-    allow_purchase = access is None or bool(access.get("approvals"))
-    allow_indent = access is None or bool(access.get("indent_approvals"))
+    allow_purchase = bool(access) and bool(access.get("is_admin") or access.get("approvals"))
+    allow_indent = bool(access) and bool(access.get("is_admin") or access.get("indent_approvals"))
 
     if allow_purchase:
         try:
@@ -2367,7 +2458,17 @@ class PreviewHandler(SimpleHTTPRequestHandler):
                 self._send_json(500, {"ok": False, "error": str(exc)})
             return
         if parsed.path in ("/preview-api/health", "/api/health"):
-            self._send_json(200, _flask.health())
+            payload = _flask.health()
+            if isinstance(payload, dict):
+                if session:
+                    uid = session.get("user_id")
+                    if uid is not None:
+                        payload["preview_user_id"] = uid
+                    else:
+                        payload.pop("preview_user_id", None)
+                else:
+                    payload.pop("preview_user_id", None)
+            self._send_json(200, payload)
             return
         if parsed.path in ("/preview-api/dashboard", "/api/dashboard"):
             denied = _require_preview_access("main_dashboard")
@@ -2459,6 +2560,9 @@ class PreviewHandler(SimpleHTTPRequestHandler):
                 )
             return
         if parsed.path in ("/preview-api/notifications", "/api/notifications"):
+            if not session:
+                self._send_json(401, {"ok": False, "error": "Not signed in"})
+                return
             try:
                 payload = fetch_notifications()
                 self._send_json(200, payload)
@@ -2710,8 +2814,19 @@ class PreviewHandler(SimpleHTTPRequestHandler):
             limit = int((qs.get("limit") or ["0"])[0])
         except ValueError:
             limit = 0
+        date_from = (qs.get("date_from") or [""])[0].strip()
+        date_to = (qs.get("date_to") or [""])[0].strip()
+        supplier_id = (qs.get("supplier_id") or [""])[0].strip()
+        supplier = (qs.get("supplier") or [""])[0].strip()
         try:
-            payload = fetch_approved(limit) if view in ("approved", "history") else fetch_pending(limit)
+            kwargs = {
+                "limit": limit,
+                "date_from": date_from,
+                "date_to": date_to,
+                "supplier_id": supplier_id,
+                "supplier": supplier,
+            }
+            payload = fetch_approved(**kwargs) if view in ("approved", "history") else fetch_pending(**kwargs)
             self._send_json(200, payload)
         except Exception as exc:  # noqa: BLE001
             self._send_json(500, {"ok": False, "error": str(exc)})
