@@ -38,9 +38,10 @@ import com.hotelbellelite.hbe.databinding.ActivityMainBinding
 import org.json.JSONArray
 
 /**
- * Native Android shell paints bundled assets first, then refreshes from production
- * (/mobile-app/?v=VERSION) so HTML/CSS/JS updates reach phones after AWS sync.
- * Assets remain the fallback if remote fails. Native shell bumps still use silent OTA.
+ * Native Android shell paints bundled assets first. Assets stay on screen after
+ * a successful paint so a hop to /mobile-app/ cannot drop the signed-in session
+ * (file:// vs https:// is a different origin). Remote is only used if assets fail.
+ * Native shell bumps still use silent OTA.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -323,7 +324,8 @@ class MainActivity : AppCompatActivity() {
                 }
                 if (isAsset) {
                     loadedAsset = true
-                    maybeLoadRemote()
+                    // Do not swap to https://.../mobile-app/ after assets painted.
+                    // That origin change drops localStorage and looks like a log-off.
                 }
             }
 

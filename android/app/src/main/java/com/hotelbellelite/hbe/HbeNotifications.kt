@@ -38,7 +38,6 @@ object HbeNotifications {
     fun showFromJson(context: Context, items: JSONArray) {
         ensureChannel(context)
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val seen = prefs.getStringSet(KEY_SEEN, emptySet())?.toMutableSet() ?: mutableSetOf()
         val nextSeen = mutableSetOf<String>()
 
         for (i in 0 until items.length()) {
@@ -49,11 +48,6 @@ object HbeNotifications {
             val screen = row.optString("screen")
             val count = row.opt("count")?.toString().orEmpty()
             val fingerprint = "$id|$count|$title|$body"
-            if (fingerprint in seen) {
-                nextSeen.add(fingerprint)
-                continue
-            }
-
             val notifId = stableId(id)
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -74,9 +68,10 @@ object HbeNotifications {
                 .setContentText(body)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(body))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setOnlyAlertOnce(true)
                 .setAutoCancel(true)
                 .setContentIntent(pending)
-                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
                 .build()
 
             try {

@@ -6462,20 +6462,6 @@
       border-radius: 20px;
       background: #fff;
     }
-    .md-web-link {
-      display: inline-block;
-      margin: 10px 0 4px;
-      padding: 0;
-      border: 0;
-      background: transparent;
-      font: inherit;
-      font-size: 14px;
-      font-weight: 600;
-      color: #1877F2;
-      letter-spacing: -0.01em;
-      cursor: pointer;
-      text-align: left;
-    }
     .md-empty {
       color: var(--muted);
       font-size: 12px;
@@ -6791,7 +6777,6 @@
               </div>
               <div id="md-items"><p class="md-empty">No menu sales in this period.</p></div>
             </section>
-            <button type="button" class="md-web-link" id="md-open-web">Open full web dashboard</button>
           </div>
           <div data-panel="indent-request" class="panel panel-indent-request" hidden>
             <div class="ap-head">
@@ -7913,7 +7898,7 @@
       || String(location.href || '').startsWith('file://')
       || /HBEAndroidApp\//i.test(navigator.userAgent || '');
     const IS_PRODUCTION_APP = IS_BUNDLED_APP || /belleliteaccounts\.com/i.test(location.hostname || '');
-    const USE_FLASK_SESSION = IS_PRODUCTION_APP && !IS_BUNDLED_APP;
+    const USE_FLASK_SESSION = /belleliteaccounts\.com/i.test(location.hostname || '');
     const FLASK_SESSION_TOKEN = 'cookie';
     const HBE_API_ROOT = (function () {
       if (IS_BUNDLED_APP) return HBE_PRODUCTION;
@@ -8022,16 +8007,8 @@
       listEl.innerHTML = hbeSkelHtml(n);
     }
     function handlePreviewSessionExpired(res, url) {
-      if (!res || res.status !== 401) return;
-      if (previewSessionExpiredGuard) return;
-      const path = String(url || '');
-      if (path.indexOf('/login') >= 0) return;
-      const auth = readPreviewAuth();
-      if (!auth || !auth.token) return;
-      previewSessionExpiredGuard = true;
-      clearPreviewAuth();
-      showLogin();
-      setLoginError('Session expired');
+      // A 401 on one request must not log the user off.
+      return;
     }
     function previewFetch(url, options) {
       const opts = Object.assign({}, options || {});
@@ -8175,18 +8152,21 @@
       if (typeof startNotifPolling === 'function') startNotifPolling();
     }
 
-    function showLogin() {
+    function showLogin(opts) {
+      const asLogout = !!(opts && opts.logout);
       const token = (readPreviewAuth() && readPreviewAuth().token) || '';
-      if (USE_FLASK_SESSION) {
-        flaskLogout();
-      } else if (token) {
-        previewFetch('/preview-api/logout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: token }),
-        }).catch(() => {});
+      if (asLogout) {
+        if (USE_FLASK_SESSION) {
+          flaskLogout();
+        } else if (token) {
+          previewFetch('/preview-api/logout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: token }),
+          }).catch(() => {});
+        }
+        clearPreviewAuth();
       }
-      clearPreviewAuth();
       setLoginError('');
       if (typeof setNotifOpen === 'function') setNotifOpen(false);
       if (notifTimer) {
@@ -8613,11 +8593,11 @@
       input.type = input.type === 'password' ? 'text' : 'password';
     });
     document.getElementById('btn-logout').addEventListener('click', () => {
-      showLogin();
+      showLogin({ logout: true });
     });
     document.getElementById('btn-nav-logout')?.addEventListener('click', () => {
       setNavOpen(false);
-      showLogin();
+      showLogin({ logout: true });
     });
     document.getElementById('btn-menu').addEventListener('click', () => {
       setNavOpen(sidebar.classList.contains('collapsed'));
@@ -14908,7 +14888,9 @@
         const res = await previewFetch(sessionPath);
         const data = await res.json();
         if (!res.ok || !data || !data.ok) {
-          clearPreviewAuth();
+          previewAccess = auth.access || {};
+          updateHomeWelcome(auth.displayName || '');
+          showWorkspace(auth.screen || 'home', auth.displayName || '');
           return;
         }
         previewAccess = data.access || {};
@@ -14921,7 +14903,9 @@
         updateHomeWelcome(data.display_name || auth.displayName || '');
         showWorkspace(auth.screen || 'home', data.display_name || auth.displayName || '');
       } catch (_err) {
-        clearPreviewAuth();
+        previewAccess = auth.access || {};
+        updateHomeWelcome(auth.displayName || '');
+        showWorkspace(auth.screen || 'home', auth.displayName || '');
       }
     })();
   </script>
