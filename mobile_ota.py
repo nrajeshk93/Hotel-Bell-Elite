@@ -16,11 +16,15 @@ ROOT = Path(__file__).resolve().parent
 MOBILE_DIR = ROOT / "static" / "mobile"
 MANIFEST_NAME = "version.json"
 APK_NAME = "hbemobile.apk"
+SHELL_APK_NAME = "hbe.apk"
+SHELL_MANIFEST_NAME = "hbe_shell_version.json"
 
 # Fallback when version.json has not been published yet (must match the
 # first sideloaded client so 0.1.0 phones do not try to update).
 DEFAULT_VERSION = "0.1.0"
 DEFAULT_VERSION_CODE = 1
+DEFAULT_SHELL_VERSION = "1.0.1"
+DEFAULT_SHELL_VERSION_CODE = 2
 
 _NO_CACHE = "no-store, no-cache, must-revalidate, private, max-age=0"
 
@@ -104,6 +108,74 @@ def apk_response():
         mimetype="application/vnd.android.package-archive",
         as_attachment=True,
         download_name=APK_NAME,
+        max_age=0,
+        conditional=False,
+        etag=False,
+    )
+    return _nocache(response)
+
+
+def shell_apk_path() -> Path:
+    return MOBILE_DIR / SHELL_APK_NAME
+
+
+def shell_manifest_path() -> Path:
+    return MOBILE_DIR / SHELL_MANIFEST_NAME
+
+
+def load_shell_manifest() -> dict:
+    """Manifest for the WebView Android shell (com.hotelbellelite.hbe)."""
+    payload = {
+        "version": DEFAULT_SHELL_VERSION,
+        "versionCode": DEFAULT_SHELL_VERSION_CODE,
+        "apk_url": f"/api/mobile/{SHELL_APK_NAME}",
+        "sha256": "",
+        "force": False,
+        "apk_available": False,
+        "package": "com.hotelbellelite.hbe",
+    }
+    path = shell_manifest_path()
+    if path.is_file():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                payload.update(data)
+        except (OSError, json.JSONDecodeError):
+            pass
+    apk = shell_apk_path()
+    apk_available = apk.is_file()
+    payload["apk_available"] = apk_available
+    if not payload.get("sha256") and apk_available:
+        try:
+            payload["sha256"] = sha256_file(apk)
+        except OSError:
+            pass
+    payload["apk_url"] = str(payload.get("apk_url") or f"/api/mobile/{SHELL_APK_NAME}")
+    try:
+        payload["versionCode"] = int(payload.get("versionCode") or DEFAULT_SHELL_VERSION_CODE)
+    except (TypeError, ValueError):
+        payload["versionCode"] = DEFAULT_SHELL_VERSION_CODE
+    payload["version"] = str(payload.get("version") or DEFAULT_SHELL_VERSION)
+    payload["force"] = bool(payload.get("force"))
+    payload["sha256"] = str(payload.get("sha256") or "")
+    payload["package"] = "com.hotelbellelite.hbe"
+    return payload
+
+
+def shell_manifest_response():
+    response = jsonify(load_shell_manifest())
+    return _nocache(response)
+
+
+def shell_apk_response():
+    path = shell_apk_path()
+    if not path.is_file():
+        return _nocache(jsonify({"ok": False, "error": "Shell APK not published yet."})), 404
+    response = send_file(
+        path,
+        mimetype="application/vnd.android.package-archive",
+        as_attachment=True,
+        download_name=SHELL_APK_NAME,
         max_age=0,
         conditional=False,
         etag=False,

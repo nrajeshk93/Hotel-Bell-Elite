@@ -253,7 +253,9 @@ class KotReportTests(unittest.TestCase):
         self.assertFalse(summary["A3"].font.bold)
         self.assertEqual(wb["KOTs"].cell(1, 1).fill.fgColor.rgb, "FF315A78")
         self.assertEqual(wb["KOTs"].cell(1, 1).font.color.rgb, "FFFFFFFF")
-        self.assertEqual(wb["KOTs"].cell(1, 10).value, "Cancel reason")
+        self.assertEqual(wb["KOTs"].cell(1, 10).value, "Created by")
+        self.assertEqual(wb["KOTs"].cell(1, 11).value, "Cancelled by")
+        self.assertEqual(wb["KOTs"].cell(1, 12).value, "Cancel reason")
 
     def test_restaurant_and_bar_rows_with_statuses(self):
         # Bill first so Generate Invoice frees T1 for later KOTs.
@@ -302,7 +304,9 @@ class KotReportTests(unittest.TestCase):
         cancel_id = cancel_save.get_json()["invoice"]["id"]
         conn = db_mod.get_db()
         try:
-            db_mod.cancel_pos_invoice(conn, cancel_id, reason="Guest left")
+            db_mod.cancel_pos_invoice(
+                conn, cancel_id, reason="Guest left", cancelled_by="Bar Captain"
+            )
             conn.commit()
         finally:
             conn.close()
@@ -336,6 +340,8 @@ class KotReportTests(unittest.TestCase):
         self.assertEqual(by_order["ORD-2608-KOT-CXL"]["outlet"], "bar")
         self.assertEqual(by_order["ORD-2608-KOT-CXL"]["invoice_no"], "")
         self.assertEqual(by_order["ORD-2608-KOT-CXL"]["cancel_reason"], "Guest left")
+        self.assertEqual(by_order["ORD-2608-KOT-CXL"]["cancelled_by"], "Bar Captain")
+        self.assertIn("created_by", by_order["ORD-2608-KOT-CXL"])
 
         self.assertIn("ORD-2608-KOT-SOFT", by_order)
         self.assertEqual(by_order["ORD-2608-KOT-SOFT"]["status"], STATUS_CANCELLED)
@@ -347,6 +353,12 @@ class KotReportTests(unittest.TestCase):
         self.assertGreaterEqual(payload["kpis"]["cancelled"], 2)
         self.assertGreaterEqual(payload["kpis"]["restaurant"], 1)
         self.assertGreaterEqual(payload["kpis"]["bar"], 1)
+
+        page = self.client.get("/reports/sales/kot")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn("Created by", html)
+        self.assertIn("Cancelled by Bar Captain", html)
 
         conn = db_mod.get_db()
         try:
@@ -360,6 +372,64 @@ class KotReportTests(unittest.TestCase):
             conn.close()
         self.assertTrue(all(r["outlet"] == "bar" for r in bar_only["rows"]))
         self.assertIn("ORD-2608-KOT-CXL", {r["order_no"] for r in bar_only["rows"]})
+
+    def test_status_filter_keeps_kpis_and_narrows_rows(self):
+        bill_save = self.client.post(
+            f"{self._api_base('restaurant')}/api/invoices",
+            json=self._payload("ORD-2608-KOT-ST-BILL", "T1", outlet="restaurant"),
+        )
+        self.assertEqual(bill_save.status_code, 200, bill_save.get_data(as_text=True))
+        bill_gen = self.client.post(
+            f"{self._api_base('restaurant')}/api/invoices",
+            json=self._payload(
+                "ORD-2608-KOT-ST-BILL",
+                "T1",
+                outlet="restaurant",
+                customerBill=True,
+            ),
+        )
+        self.assertEqual(bill_gen.status_code, 200, bill_gen.get_data(as_text=True))
+
+        open_save = self.client.post(
+            f"{self._api_base('restaurant')}/api/invoices",
+            json=self._payload("ORD-2608-KOT-ST-OPEN", "T2", outlet="restaurant"),
+        )
+        self.assertEqual(open_save.status_code, 200, open_save.get_data(as_text=True))
+
+        cancel_save = self.client.post(
+            f"{self._api_base('bar')}/api/invoices",
+            json=self._payload("ORD-2608-KOT-ST-CXL", "B1", outlet="bar"),
+        )
+        self.assertEqual(cancel_save.status_code, 200, cancel_save.get_data(as_text=True))
+        cancel_id = cancel_save.get_json()["invoice"]["id"]
+        conn = db_mod.get_db()
+        try:
+            db_mod.cancel_pos_invoice(conn, cancel_id, reason="Walked out")
+            conn.commit()
+            filtered = build_kot_report(
+                conn,
+                date_from=date(2026, 8, 1),
+                date_to=date(2026, 8, 31),
+                outlet="all",
+                status=STATUS_CANCELLED,
+            )
+        finally:
+            conn.close()
+
+        self.assertGreaterEqual(filtered["kpis"]["total"], 3)
+        self.assertGreaterEqual(filtered["kpis"]["cancelled"], 1)
+        self.assertGreaterEqual(filtered["kpis"]["open"], 1)
+        self.assertTrue(all(r["status"] == STATUS_CANCELLED for r in filtered["rows"]))
+        self.assertIn("ORD-2608-KOT-ST-CXL", {r["order_no"] for r in filtered["rows"]})
+        self.assertNotIn("ORD-2608-KOT-ST-OPEN", {r["order_no"] for r in filtered["rows"]})
+
+        page = self.client.get("/reports/sales/kot?status=cancelled")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn('id="sr-status-listbox"', html)
+        self.assertIn('name="status" value="cancelled"', html)
+        self.assertIn('data-label="All"', html)
+        self.assertIn("Invoice generated", html)
 
     def test_kot_endpoints_map_and_access_gate(self):
         self.assertEqual(get_endpoint_dashboard_module("sales_report_kot"), "reports")

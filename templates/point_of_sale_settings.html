@@ -32,7 +32,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=38">
 {% endif %}
 
-<div class="de-main-inner pos-settings-page" id="pos-settings-page" data-pos-settings data-pos-outlet="{{ pos_outlet|default('restaurant') }}" data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}">
+<div class="de-main-inner pos-settings-page" id="pos-settings-page" data-pos-settings data-settings-rev="invoice-v3" data-pos-outlet="{{ pos_outlet|default('restaurant') }}" data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}">
   <header class="pos-set-header">
     <div class="pos-set-header-main">
       <a class="pos-set-back" href="{{ url_for('settings') }}" data-pos-set-back aria-label="Back to Settings">
@@ -252,28 +252,16 @@
         <div class="pos-set-panel-head">
           <div>
             <h2>Invoice</h2>
-            <p>Numbering, branding, and guest copy.</p>
           </div>
         </div>
         <div class="pos-set-card-grid">
           <article class="pos-set-card">
             <h3>Numbering</h3>
             <div class="pos-set-fields">
-              <label class="pos-set-field"><span>Prefix</span><input type="text" data-pos-set-field></label>
-              <label class="pos-set-field"><span>Next number</span><input type="number" data-pos-set-field></label>
-              {{ ep_listbox('reset_cadence', 'Reset cadence', [
-                ('Never', 'Never'),
-                ('Yearly', 'Yearly'),
-                ('Monthly', 'Monthly')
-              ], '', placeholder='Select cadence…', field_id='pos-set-reset-cadence', extra_class='pos-set-listbox') }}
-            </div>
-          </article>
-          <article class="pos-set-card">
-            <h3>Guest copy</h3>
-            <div class="pos-set-fields">
-              <label class="pos-set-field"><span>Header line</span><input type="text" data-pos-set-field></label>
-              <label class="pos-set-field"><span>Footer</span><textarea rows="3" data-pos-set-field></textarea></label>
-              <label class="pos-set-toggle"><input type="checkbox" data-pos-set-field><span class="pos-set-toggle-ui"></span><span>Print QR for feedback</span></label>
+              <label class="pos-set-field">
+                <span>Prefix</span>
+                <input type="text" data-pos-set-field data-pos-set-key="invoice_prefix" id="pos-invoice-prefix" placeholder="{{ 'INV' if (pos_outlet|default('restaurant')) == 'bar' else 'SPC' }}" autocomplete="off">
+              </label>
             </div>
           </article>
         </div>
@@ -452,7 +440,7 @@
 </script>
 <script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=9"></script>
 <script src="{{ url_for('static', filename='pos_printers.js') }}?v=20"></script>
-<script src="{{ url_for('static', filename='pos_settings.js') }}?v=26"></script>
+<script src="{{ url_for('static', filename='pos_settings.js') }}?v=27"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

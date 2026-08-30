@@ -53,7 +53,7 @@
             <div id="dashboard-notifications-list" class="db-notification-list">
             {% if home_notifications|default([]) %}
               {% for item in home_notifications %}
-              <a class="db-notification-item db-notification-item--link" role="menuitem" href="{{ item.href }}" data-notification-id="{{ item.id }}">
+              <a class="db-notification-item db-notification-item--link" role="menuitem" href="{{ item.href }}" data-notification-id="{{ item.id }}"{% if item.count is defined and item.count is not none %} data-notification-count="{{ item.count }}"{% endif %}>
                 <span class="db-notification-item-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
                 </span>
@@ -72,6 +72,54 @@
             </div>
           </div>
         </div>
+        <script data-de-rerun="1">
+        (function () {
+          try {
+            var root = document.getElementById('dashboard-notifications');
+            var list = document.getElementById('dashboard-notifications-list');
+            if (!root || !list) return;
+            var seen = {};
+            try { seen = JSON.parse(localStorage.getItem('hbe-home-bell-seen-v3') || '{}') || {}; } catch (_e) { seen = {}; }
+            var links = list.querySelectorAll('.db-notification-item--link');
+            if (!links.length) {
+              root.classList.add('is-read');
+              root.classList.remove('has-unread');
+              return;
+            }
+            var emptyHtml =
+              '<div class="db-notification-item db-notification-item--empty">' +
+              '<strong class="db-notification-item-title">All caught up</strong>' +
+              '<span class="db-notification-item-body">No new notifications right now.</span>' +
+              '</div>';
+            var unseen = false;
+            for (var i = links.length - 1; i >= 0; i--) {
+              var link = links[i];
+              var id = (link.getAttribute('data-notification-id') || '').trim();
+              if (!id) continue;
+              var countAttr = link.getAttribute('data-notification-count');
+              var count = Number(countAttr);
+              if (!Number.isFinite(count)) {
+                var bodyEl = link.querySelector('.db-notification-item-body');
+                var m = ((bodyEl && bodyEl.textContent) || '').match(/(\d+)/);
+                count = m ? Number(m[1]) : 1;
+              }
+              if (!(id in seen) || count > Number(seen[id] || 0)) {
+                unseen = true;
+              } else {
+                link.parentNode && link.parentNode.removeChild(link);
+              }
+            }
+            if (!list.querySelector('.db-notification-item--link')) {
+              list.innerHTML = emptyHtml;
+              root.classList.add('is-read');
+              root.classList.remove('has-unread');
+            } else if (!unseen) {
+              root.classList.add('is-read');
+              root.classList.remove('has-unread');
+            }
+          } catch (_err) {}
+        })();
+        </script>
 
         <div class="db-profile" id="dashboard-profile">
           <button class="db-profile-trigger" type="button" id="dashboard-profile-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Account menu for {{ display_name }}">

@@ -337,6 +337,26 @@
     var series = kpi.sparkline_series || (kpi.sparkline || []).map(function (v, i) {
       return { date: String(i), value: v, change_pct: null };
     });
+    if (series.length === 1) {
+      series = [series[0], {
+        date: series[0].date,
+        value: series[0].value,
+        change_pct: null,
+      }];
+    }
+    var values = series.map(function (x) { return Number(x.value) || 0; });
+    var lo = values.length ? Math.min.apply(null, values) : 0;
+    var hi = values.length ? Math.max.apply(null, values) : 0;
+    var yAxis = { type: 'value', show: false };
+    if (!values.length || lo === hi) {
+      var mid = values.length ? lo : 0;
+      var pad = Math.max(Math.abs(mid) * 0.15, 1);
+      yAxis.min = mid - pad;
+      yAxis.max = mid + pad;
+      yAxis.scale = false;
+    } else {
+      yAxis.scale = true;
+    }
     return {
       animationDuration: 800,
       animationEasing: 'cubicOut',
@@ -360,11 +380,11 @@
         },
       },
       xAxis: { type: 'category', show: false, boundaryGap: false, data: series.map(function (x) { return x.date; }) },
-      yAxis: { type: 'value', show: false, scale: true },
+      yAxis: yAxis,
       series: [{
         type: 'line',
-        data: series.map(function (x) { return x.value; }),
-        smooth: true,
+        data: values,
+        smooth: values.length > 2,
         symbol: 'none',
         lineStyle: { width: 2, color: '#2563EB' },
         areaStyle: {

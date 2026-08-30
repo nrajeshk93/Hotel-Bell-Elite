@@ -264,6 +264,7 @@
                 {% endfor %}
                 <th class="pl-sortable pl-col-amount" data-sort="items" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Items</th>
                 <th class="pl-sortable pl-col-amount" data-sort="total" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Total</th>
+                <th class="pl-sortable" data-sort="created_by" scope="col" tabindex="0" aria-sort="none">Created by</th>
                 <th class="pl-col-actions">Actions</th>
               </tr>
             </thead>
@@ -283,7 +284,7 @@
                   data-settlement="{{ 'settled' if is_settled else ('cancelled' if is_cancelled else 'unsettled') }}"
                   data-generated="{{ '1' if inv.ledger_is_generated else '0' }}"
                   {% if not is_settled and not is_cancelled %}tabindex="0" role="button" aria-label="Settle invoice {{ inv.order_no }}"{% endif %}
-                  data-search="{{ [inv.order_no or '', inv.order_date or '', inv.saved_at or '', inv.customer_name or '', inv.customer_mobile or '', inv.order_type_label or '', inv.payment_mode_label or '', inv.table_label or '', inv.captain or '', inv.grand_total|string]|join(' ')|lower }}">
+                  data-search="{{ [inv.order_no or '', inv.order_date or '', inv.saved_at or '', inv.customer_name or '', inv.customer_mobile or '', inv.order_type_label or '', inv.payment_mode_label or '', inv.table_label or '', inv.captain or '', inv.created_by or '', inv.grand_total|string]|join(' ')|lower }}">
                 <td class="cp-col-check">
                   {% if not is_settled and not is_cancelled %}
                   <input type="checkbox" class="cp-expense-check pos-il-row-check" aria-label="Select invoice {{ inv.order_no }}">
@@ -308,6 +309,7 @@
                 {% endfor %}
                 <td class="pl-col-amount" data-sort-value="{{ inv.item_count }}">{{ inv.item_count }}</td>
                 <td class="pl-col-amount pl-amount" data-amount="{{ inv.grand_total }}" data-sort-value="{{ inv.grand_total }}">{{ inv.grand_total }}</td>
+                <td data-sort-value="{{ inv.created_by or '' }}">{{ inv.created_by or '—' }}</td>
                 <td class="pl-col-actions">
                   <div class="act-grp pl-action-btns">
                     <button type="button" class="act-btn edit pos-il-view-btn" data-tip="View" aria-label="View invoice {{ inv.order_no }}" data-invoice-id="{{ inv.id }}">

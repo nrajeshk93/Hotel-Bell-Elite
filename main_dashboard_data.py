@@ -176,6 +176,7 @@ def payment_mode_pct(digital, cash):
 
 
 def sparkline_series_from_values(dates, values):
+    """Build sparkline points. Single-day series is duplicated so charts draw a flat line."""
     series = []
     prev = None
     for iso, value in zip(dates, values):
@@ -188,6 +189,12 @@ def sparkline_series_from_values(dates, values):
             }
         )
         prev = val
+    if len(series) == 1:
+        only = series[0]
+        series = [
+            {"date": only["date"], "value": only["value"], "change_pct": None},
+            {"date": only["date"], "value": only["value"], "change_pct": None},
+        ]
     return series
 
 

@@ -284,3 +284,11 @@ class PayrollMobileApiTests(unittest.TestCase):
             resp = self.client.get("/api/mobile/payroll/employees")
         self.assertEqual(resp.status_code, 401)
         self.assertFalse(resp.get_json().get("ok"))
+
+    def test_preview_api_employees_proxy(self):
+        resp = self.client.get("/preview-api/payroll/employees?status=active")
+        self.assertEqual(resp.status_code, 200, resp.get_json())
+        data = resp.get_json()
+        self.assertTrue(data.get("ok"))
+        names = [e["name"] for e in data.get("employees") or []]
+        self.assertIn("Anita Rao", names)

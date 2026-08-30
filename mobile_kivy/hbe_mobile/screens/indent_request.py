@@ -55,13 +55,13 @@ class IndentRequestScreen(MDScreen):
         chips = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44), spacing=dp(8))
         self.btn_restaurant = MDRaisedButton(
             text="Restaurant",
-            md_bg_color=theme.THEME,
+            md_bg_color=theme.ACCENT,
             on_release=lambda *_: self._set_outlet("restaurant"),
         )
         self.btn_bar = MDFlatButton(
             text="Bar",
             theme_text_color="Custom",
-            text_color=theme.THEME,
+            text_color=theme.ACCENT,
             on_release=lambda *_: self._set_outlet("bar"),
         )
         chips.add_widget(self.btn_restaurant)
@@ -100,7 +100,7 @@ class IndentRequestScreen(MDScreen):
         self.pack_btn = MDFlatButton(
             text="Base unit",
             theme_text_color="Custom",
-            text_color=theme.THEME,
+            text_color=theme.ACCENT,
             on_release=lambda *_: self._cycle_pack(),
         )
         composer.add_widget(self.pack_btn)
@@ -115,7 +115,7 @@ class IndentRequestScreen(MDScreen):
         composer.add_widget(
             MDRaisedButton(
                 text="Add item",
-                md_bg_color=theme.THEME,
+                md_bg_color=theme.ACCENT,
                 on_release=lambda *_: self._add_line(),
             )
         )
@@ -156,14 +156,14 @@ class IndentRequestScreen(MDScreen):
             MDFlatButton(
                 text="Draft",
                 theme_text_color="Custom",
-                text_color=theme.THEME,
+                text_color=theme.ACCENT,
                 on_release=lambda *_: self._submit("save"),
             )
         )
         sticky.add_widget(
             MDRaisedButton(
                 text="Send for Approval",
-                md_bg_color=theme.THEME,
+                md_bg_color=theme.ACCENT,
                 on_release=lambda *_: self._submit("submit"),
             )
         )
@@ -179,10 +179,10 @@ class IndentRequestScreen(MDScreen):
             return
         self._outlet = next_outlet
         if self._outlet == "restaurant":
-            self.btn_restaurant.md_bg_color = theme.THEME
+            self.btn_restaurant.md_bg_color = theme.ACCENT
             self.btn_bar.md_bg_color = (0, 0, 0, 0)
         else:
-            self.btn_bar.md_bg_color = theme.THEME
+            self.btn_bar.md_bg_color = theme.ACCENT
             self.btn_restaurant.md_bg_color = (0, 0, 0, 0)
         self._lines = []
         self._picked = None

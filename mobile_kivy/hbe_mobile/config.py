@@ -134,3 +134,16 @@ def set_api_base_url(url: str) -> None:
     settings = load_settings()
     settings["api_base_url"] = (url or default_api_base_url()).rstrip("/")
     save_settings(settings)
+
+
+def httpx_verify():
+    """CA bundle for httpx. Never returns False."""
+    try:
+        import certifi
+
+        path = certifi.where()
+        if path:
+            return path
+    except Exception:
+        pass
+    return True

@@ -312,7 +312,7 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
 
         blocked = self.client.post(
             "/point-of-sale/api/invoices",
-            json=self._payload("SPC/BBBBBB/26-27", customerBill=True),
+            json=self._payload("SPC/26-27/710", customerBill=True),
         )
         self.assertEqual(blocked.status_code, 400, blocked.get_data(as_text=True))
         self.assertIn("reserved", blocked.get_json()["error"].lower())
@@ -340,3 +340,101 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
         )
         self.assertEqual(resume.status_code, 400, resume.get_data(as_text=True))
         self.assertIn("cancelled", resume.get_json()["error"].lower())
+
+    def test_settings_invoice_prefix_drives_allocation(self):
+        conn = db_mod.get_db()
+        try:
+            short_fy = db_mod.indian_fiscal_year_short_label()
+            # Default SPC series
+            first = db_mod.allocate_pos_restaurant_order_no(conn)
+            self.assertEqual(first, f"SPC/{short_fy}/1")
+
+            db_mod.save_pos_restaurant_settings(
+                conn,
+                {
+                    "panels": {
+                        "invoice": {
+                            "values": {
+                                "invoice_prefix": {
+                                    "kind": "text",
+                                    "value": "SPC/26-27/726",
+                                }
+                            }
+                        }
+                    }
+                },
+                outlet="restaurant",
+            )
+            stem, fy, floor = db_mod.pos_invoice_prefix_parts(conn, "restaurant")
+            self.assertEqual(stem, "SPC/26-27")
+            self.assertEqual(fy, "26-27")
+            self.assertEqual(floor, 726)
+
+            minted = db_mod.allocate_pos_restaurant_order_no(conn)
+            self.assertEqual(minted, "SPC/26-27/726")
+            # Persist so the next allocation advances past the floor.
+            conn.execute(
+                """INSERT INTO pos_invoices
+                   (order_no, order_date, order_type, table_label, customer_name, customer_mobile,
+                    captain, status, outlet, subtotal, discount_amount, gst_amount, service_amount,
+                    tip, round_off, grand_total, saved_at, customer_bill_sent, is_active)
+                   VALUES (?, '2026-07-29', 'takeaway', '', 'Guest', '',
+                           '', 'open', 'restaurant', 50, 0, 5, 0, 0, 0, 55,
+                           '2026-07-29 12:00:00', 1, 1)""",
+                (minted,),
+            )
+            minted2 = db_mod.allocate_pos_restaurant_order_no(conn)
+            self.assertEqual(minted2, "SPC/26-27/727")
+            conn.execute(
+                """INSERT INTO pos_invoices
+                   (order_no, order_date, order_type, table_label, customer_name, customer_mobile,
+                    captain, status, outlet, subtotal, discount_amount, gst_amount, service_amount,
+                    tip, round_off, grand_total, saved_at, customer_bill_sent, is_active)
+                   VALUES (?, '2026-07-29', 'takeaway', '', 'Guest', '',
+                           '', 'open', 'restaurant', 50, 0, 5, 0, 0, 0, 55,
+                           '2026-07-29 12:00:00', 1, 1)""",
+                (minted2,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        # End-to-end Generate Invoice uses the settings series
+        draft = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("SPC/ZZZZ01/26-27", customerBill=True),
+        )
+        self.assertEqual(draft.status_code, 200, draft.get_data(as_text=True))
+        self.assertEqual(draft.get_json()["invoice"]["order_no"], "SPC/26-27/728")
+
+    def test_generate_remints_when_settings_series_changes(self):
+        """Changing Prefix mid-draft forces a new series on Generate Invoice."""
+        conn = db_mod.get_db()
+        try:
+            db_mod.save_pos_restaurant_settings(
+                conn,
+                {
+                    "panels": {
+                        "invoice": {
+                            "values": {
+                                "invoice_prefix": {
+                                    "kind": "text",
+                                    "value": "SPC/27-28/",
+                                }
+                            }
+                        }
+                    }
+                },
+                outlet="restaurant",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        # Client somehow still holds an old-series official number (not yet billed).
+        bill = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("SPC/26-27/727", customerBill=True),
+        )
+        self.assertEqual(bill.status_code, 200, bill.get_data(as_text=True))
+        self.assertEqual(bill.get_json()["invoice"]["order_no"], "SPC/27-28/1")

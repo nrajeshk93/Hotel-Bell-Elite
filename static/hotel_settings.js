@@ -7,9 +7,10 @@
 
   var ROOMS_API = '/hotel/api/rooms';
   var SETTINGS_API = '/hotel/api/settings';
+  var PAIRING_API = '/hotel/api/print-agent/pairing-code';
   var PRINTERS_KEY = 'hbe_hotel_printers_v1';
   var SECTION_STORAGE_KEY = 'hbe_hotel_settings_section';
-  var VALID_SECTIONS = ['floor', 'rooms', 'tariff', 'taxes', 'invoice', 'payment', 'printers'];
+  var VALID_SECTIONS = ['floor', 'rooms', 'tariff', 'taxes', 'invoice', 'payment', 'printers', 'asia_tech'];
 
   var layout = { floors: [], rooms: [] };
   var hotelSettings = {};
@@ -38,6 +39,7 @@
     base = String(base).replace(/\/$/, '') || '/hotel';
     ROOMS_API = base + '/api/rooms';
     SETTINGS_API = base + '/api/settings';
+    PAIRING_API = base + '/api/print-agent/pairing-code';
   }
 
   function uid(prefix) {
@@ -436,6 +438,22 @@
                 value: String(data.taxRates.ugst_pct != null ? data.taxRates.ugst_pct : 2.5)
               };
             }
+            if (!seeded.panels.taxes.values.cgst_pct_above) {
+              seeded.panels.taxes.values.cgst_pct_above = {
+                kind: 'text',
+                value: String(
+                  data.taxRates.cgst_pct_above != null ? data.taxRates.cgst_pct_above : 9
+                )
+              };
+            }
+            if (!seeded.panels.taxes.values.ugst_pct_above) {
+              seeded.panels.taxes.values.ugst_pct_above = {
+                kind: 'text',
+                value: String(
+                  data.taxRates.ugst_pct_above != null ? data.taxRates.ugst_pct_above : 9
+                )
+              };
+            }
             applySettings(seeded);
           }
         }
@@ -506,6 +524,96 @@
       if (!key) return;
       el.value = data[key] != null ? String(data[key]) : '';
     });
+  }
+
+
+  function formatPairingExpiry(ttlSeconds, expiresAt) {
+    var ttl = Number(ttlSeconds);
+    var mins;
+    if (ttl > 0) {
+      mins = Math.max(1, Math.round(ttl / 60));
+      return 'Expires in ' + mins + ' minute' + (mins === 1 ? '' : 's');
+    }
+    if (expiresAt) return 'Expires ' + String(expiresAt);
+    return '';
+  }
+
+  function bindPairing(page) {
+    var btn = page.querySelector('[data-hotel-action="print-agent-pair"]');
+    if (!btn || btn.getAttribute('data-bound') === '1') return;
+    btn.setAttribute('data-bound', '1');
+    var result = page.querySelector('[data-hotel-pairing-result]');
+    var codeEl = page.querySelector('[data-hotel-pairing-code]');
+    var expiryEl = page.querySelector('[data-hotel-pairing-expiry]');
+    var copyBtn = page.querySelector('[data-hotel-pairing-copy]');
+    function showCode(code, ttl, expiresAt) {
+      if (codeEl) {
+        codeEl.value = code || '';
+        try {
+          codeEl.focus();
+          codeEl.select();
+        } catch (e) {}
+      }
+      if (expiryEl) expiryEl.textContent = formatPairingExpiry(ttl, expiresAt);
+      if (result) result.hidden = !code;
+    }
+    btn.addEventListener('click', function () {
+      btn.disabled = true;
+      fetch(PAIRING_API, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: '{}'
+      })
+        .then(function (resp) {
+          return resp.json().then(function (data) {
+            return { ok: resp.ok, status: resp.status, data: data };
+          });
+        })
+        .then(function (resultWrap) {
+          var data = resultWrap.data || {};
+          if (!resultWrap.ok || !data.ok) {
+            showToast(data.error || 'Could not generate pairing code');
+            return;
+          }
+          showCode(data.pairingCode, data.ttlSeconds, data.expiresAt);
+          showToast('Pairing code ready');
+        })
+        .catch(function () {
+          showToast('Could not generate pairing code');
+        })
+        .then(function () {
+          btn.disabled = false;
+        });
+    });
+    if (copyBtn && copyBtn.getAttribute('data-bound') !== '1') {
+      copyBtn.setAttribute('data-bound', '1');
+      copyBtn.addEventListener('click', function () {
+        var code = codeEl ? String(codeEl.value || '') : '';
+        if (!code) return;
+        function copied() {
+          showToast('Copied');
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(code).then(copied).catch(function () {
+            try {
+              codeEl.select();
+              document.execCommand('copy');
+              copied();
+            } catch (e) {}
+          });
+          return;
+        }
+        try {
+          codeEl.select();
+          document.execCommand('copy');
+          copied();
+        } catch (e2) {}
+      });
+    }
   }
 
   function bindPrinters(page) {
@@ -706,6 +814,7 @@
     bindNav(page);
     bindSettingsFields(page);
     bindPrinters(page);
+    bindPairing(page);
     bindFloorActions(page);
     bindRoomActions(page);
     applyPrinters();

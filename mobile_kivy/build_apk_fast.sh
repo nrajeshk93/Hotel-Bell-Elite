@@ -16,6 +16,13 @@ export PATH="$JAVA_HOME/bin:/opt/homebrew/bin:$PATH"
 mkdir -p "$OUT"
 echo "==> Syncing designed mobile UI into APK assets…"
 "$ROOT/.venv/bin/python" "$ROOT/scripts/sync_mobile_assets.py"
+# Fail the build if assets drifted from the preview source.
+PREVIEW_LINES="$(wc -l < "$ROOT/mobile_kivy/preview/mobile_ui_preview.html" | tr -d ' ')"
+ASSET_LINES="$(wc -l < "$ANDROID/app/src/main/assets/mobile/mobile_ui_preview.html" | tr -d ' ')"
+if [[ "$PREVIEW_LINES" != "$ASSET_LINES" ]]; then
+  echo "ERROR: asset HTML line count ($ASSET_LINES) != preview ($PREVIEW_LINES)" >&2
+  exit 1
+fi
 printf 'sdk.dir=%s\n' "$ANDROID_HOME" > "$ANDROID/local.properties"
 
 if [[ ! -x "$ANDROID/gradlew" ]]; then
@@ -32,4 +39,9 @@ chmod +x gradlew
 cp "$ANDROID/app/build/outputs/apk/debug/app-debug.apk" "$OUT/$APK_NAME"
 ls -lh "$OUT/$APK_NAME"
 echo "==> Done — install $OUT/$APK_NAME"
+echo "==> For auto-update on phones already running 1.0.2+:"
+echo "    .venv/bin/python scripts/publish_android_shell_apk.py"
+echo "    git add static/mobile/hbe.apk static/mobile/hbe_shell_version.json && git push && AWS sync"
+echo "==> UI HTML also updates live from https://belleliteaccounts.com/mobile-app/ after AWS sync"
+echo "    (no APK needed for HTML/CSS/JS). Deploy app.py + mobile_kivy/preview/ + mobile_preview_flask.py."
 echo "==> Deploy app.py + mobile_preview_flask.py to AWS so /mobile-app/ and /preview-api/ work on production."

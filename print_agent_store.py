@@ -15,7 +15,7 @@ import json
 import os
 import secrets
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
 from secret_key import PUBLIC_DEFAULT_SECRET_KEY, get_secret_key
@@ -58,6 +58,16 @@ def ensure_print_agent_schema(conn):
             "ALTER TABLE print_agents ADD COLUMN api_key_hash TEXT NOT NULL DEFAULT ''"
         )
     _migrate_plaintext_api_keys(conn)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS print_agent_pairing_codes (
+            code_hash TEXT PRIMARY KEY,
+            created_by INTEGER NOT NULL DEFAULT 0,
+            expires_at TEXT NOT NULL,
+            used_at TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
     conn.commit()
 
 
@@ -294,6 +304,20 @@ def register_print_agent(conn, payload: dict, request_host_url: str | None = Non
     }
 
 
+def verify_print_agent_bearer(conn, agent_id: str, bearer_token: str | None) -> bool:
+    ensure_print_agent_schema(conn)
+    aid = str(agent_id or "").strip()
+    if not aid or not bearer_token:
+        return False
+    row = conn.execute(
+        "SELECT token_hash, revoked FROM print_agents WHERE agent_id = ?",
+        (aid,),
+    ).fetchone()
+    if not row or int(row["revoked"] or 0) == 1:
+        return False
+    return _hashes_match(row["token_hash"] or "", bearer_token)
+
+
 def heartbeat_print_agent(conn, payload: dict, bearer_token: str | None) -> dict:
     ensure_print_agent_schema(conn)
     agent_id = str(payload.get("agentId") or payload.get("agent_id") or "").strip()
@@ -444,3 +468,68 @@ def print_agent_latest_update(current_version: str) -> dict:
         "message": "You are up to date.",
         "checkedAt": int(time.time()),
     }
+
+def existing_agent_accepts_key(conn, payload: dict) -> bool:
+    """True when this is a re-register of an enrolled agent presenting its API key."""
+    ensure_print_agent_schema(conn)
+    agent_id = str(payload.get("agentId") or payload.get("agent_id") or "").strip()
+    presented = str(payload.get("apiKey") or payload.get("api_key") or "").strip()
+    if not agent_id or not presented:
+        return False
+    row = conn.execute(
+        "SELECT api_key_hash, revoked FROM print_agents WHERE agent_id = ?",
+        (agent_id,),
+    ).fetchone()
+    if not row or int(row["revoked"] or 0) == 1:
+        return False
+    return _hashes_match(row["api_key_hash"] or "", presented)
+
+
+def create_print_agent_pairing_code(conn, created_by: int, ttl_seconds: int = 900) -> dict:
+    """Short-lived one-time code for a new Print Agent register (no session)."""
+    ensure_print_agent_schema(conn)
+    raw = secrets.token_hex(4).upper()
+    expires = (datetime.now() + timedelta(seconds=int(ttl_seconds or 900))).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+    conn.execute(
+        """
+        INSERT INTO print_agent_pairing_codes (code_hash, created_by, expires_at)
+        VALUES (?, ?, ?)
+        """,
+        (_hash_secret(raw), int(created_by or 0), expires),
+    )
+    conn.commit()
+    return {
+        "ok": True,
+        "pairingCode": raw,
+        "expiresAt": expires,
+        "ttlSeconds": int(ttl_seconds or 900),
+    }
+
+
+def consume_print_agent_pairing_code(conn, code: str) -> bool:
+    code = str(code or "").strip().upper()
+    if not code:
+        return False
+    ensure_print_agent_schema(conn)
+    now = _now()
+    rows = conn.execute(
+        """
+        SELECT code_hash, expires_at FROM print_agent_pairing_codes
+        WHERE used_at = ''
+        """
+    ).fetchall()
+    for row in rows:
+        if not _hashes_match(row["code_hash"] or "", code):
+            continue
+        if (row["expires_at"] or "") < now:
+            continue
+        conn.execute(
+            "UPDATE print_agent_pairing_codes SET used_at = ? WHERE code_hash = ?",
+            (now, row["code_hash"]),
+        )
+        conn.commit()
+        return True
+    return False
+

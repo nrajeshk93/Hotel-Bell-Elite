@@ -15,6 +15,13 @@
 
   window.stOutletChanged = function (root, value) {
     if (!root || !value) return;
+    if (
+      document.getElementById('st-inward-page') ||
+      document.getElementById('st-inward-indent-listbox') ||
+      document.getElementById('st-po-indent-listbox')
+    ) {
+      clearDirectInwardDraft();
+    }
     var endpoint = root.getAttribute('data-st-list-endpoint') || window.location.pathname;
     try {
       var url = new URL(endpoint, window.location.origin);
@@ -350,6 +357,7 @@
         try { qty.focus(); } catch (e) {}
       }
     }
+    scheduleDirectInwardDraftSave();
   };
 
   window.stPackPicked = function (root) {
@@ -373,6 +381,7 @@
     }
     syncUnitForPack(line);
     syncIndentLineTotals(line.closest('.st-lines-wrap'));
+    scheduleDirectInwardDraftSave();
   };
 
   function parseVariantsAttr(raw) {
@@ -547,6 +556,7 @@
     if (!wrap) return;
     var list = wrap.querySelector('.st-lines');
     appendEmptyLine(list);
+    scheduleDirectInwardDraftSave();
   }
 
   function removeLine(btn) {
@@ -571,10 +581,12 @@
       setApproxPrice(line, '');
       syncUnitVisibility(line);
       syncIndentLineTotals(list.closest('.st-lines-wrap') || list);
+      scheduleDirectInwardDraftSave();
       return;
     }
     line.remove();
     syncIndentLineTotals(list.closest('.st-lines-wrap') || list);
+    scheduleDirectInwardDraftSave();
   }
 
   function syncNotesCounter() {
@@ -1889,7 +1901,10 @@
       refreshStoresLedgerView();
       return;
     }
-    if (target.matches('[data-st-notes-counter]')) syncNotesCounter();
+    if (target.matches('[data-st-notes-counter]')) {
+      syncNotesCounter();
+      if (document.getElementById('st-inward-page')) scheduleDirectInwardDraftSave();
+    }
     if (
       target.matches('input[name="quantity"]')
       || target.matches('[data-st-approx-price]')
@@ -1898,6 +1913,9 @@
       var wrap = target.closest('.st-lines-wrap');
       if (wrap) syncIndentLineTotals(wrap);
       else syncIndentSendButtons(target.closest('form'));
+      if (wrap && wrap.querySelector('[data-st-inward-direct-row]')) {
+        scheduleDirectInwardDraftSave();
+      }
     }
   }
 
@@ -2460,11 +2478,213 @@
   // Legacy alias — older soft-nav caches may still reference this name.
   window.stInwardIndentChanged = window.stInwardPoChanged;
 
+  var DIRECT_DRAFT_PREFIX = 'hbe.st.inward.direct.draft:';
+  var directDraftSaveTimer = 0;
+  var directDraftLeaveObserver = null;
+
   function isDirectInwardMode() {
     var page = document.getElementById('st-inward-page');
     var confirmBtn = document.getElementById('st-inward-confirm');
     if (confirmBtn && confirmBtn.getAttribute('data-st-inward-mode') === 'direct') return true;
     return !!(page && page.getAttribute('data-st-inward-view') === 'direct');
+  }
+
+  function directDraftOutletKey() {
+    var confirmBtn = document.getElementById('st-inward-confirm');
+    var page = document.getElementById('st-inward-page');
+    var outlet = (confirmBtn && confirmBtn.getAttribute('data-st-outlet'))
+      || (page && page.getAttribute('data-st-inward-outlet'))
+      || '';
+    return DIRECT_DRAFT_PREFIX + (String(outlet || 'all').toLowerCase());
+  }
+
+  function isBrowserReload() {
+    try {
+      var entries = performance.getEntriesByType && performance.getEntriesByType('navigation');
+      if (entries && entries[0] && entries[0].type) {
+        return entries[0].type === 'reload';
+      }
+      if (performance.navigation) return performance.navigation.type === 1;
+    } catch (e) {}
+    return false;
+  }
+
+  function clearDirectInwardDraft(outletKey) {
+    try {
+      if (outletKey) {
+        sessionStorage.removeItem(outletKey);
+        return;
+      }
+      Object.keys(sessionStorage).forEach(function (key) {
+        if (key.indexOf(DIRECT_DRAFT_PREFIX) === 0) sessionStorage.removeItem(key);
+      });
+    } catch (e) {}
+  }
+
+  function readDirectInwardDraft() {
+    try {
+      var raw = sessionStorage.getItem(directDraftOutletKey());
+      if (!raw) return null;
+      var data = JSON.parse(raw);
+      if (!data || !Array.isArray(data.lines)) return null;
+      return data;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function serializeDirectInwardDraft() {
+    var form = document.getElementById('st-inward-form');
+    if (!form || !isDirectInwardMode()) return null;
+    var lines = [];
+    form.querySelectorAll('[data-st-inward-direct-row]').forEach(function (row) {
+      var itemEl = row.querySelector('[data-st-direct-item], input[name="item_name"]');
+      var itemName = itemEl ? String(itemEl.value || '').trim() : '';
+      var qtyEl = row.querySelector('[data-st-direct-qty], input[name="quantity"]');
+      var priceEl = row.querySelector('[data-st-direct-price], [data-st-approx-price]');
+      var taxEl = row.querySelector('[data-st-direct-tax]');
+      var unitEl = row.querySelector('[data-st-unit], input[name="unit"]');
+      var packLabel = row.querySelector('[data-st-pack-label]');
+      var packQty = row.querySelector('[data-st-pack-qty]');
+      var qty = qtyEl ? String(qtyEl.value || '').trim() : '';
+      var price = priceEl ? String(priceEl.value || '').trim() : '';
+      var tax = taxEl ? String(taxEl.value || '').trim() : '';
+      var pack = packLabel ? String(packLabel.value || '').trim() : '';
+      if (!itemName && !qty && !price && !tax && !pack) return;
+      var packQtyVal = '';
+      if (packQty && String(packQty.value || '') !== '') {
+        packQtyVal = String(packQty.value || '').trim();
+      }
+      lines.push({
+        item_name: itemName,
+        quantity: qty,
+        unit: unitEl ? String(unitEl.value || 'kg') : 'kg',
+        unit_price: price,
+        tax_percent: tax,
+        pack_label: pack,
+        pack_qty_in_base: packQtyVal
+      });
+    });
+    var notesEl = document.getElementById('st-inward-notes');
+    return {
+      v: 1,
+      outlet: directDraftOutletKey().slice(DIRECT_DRAFT_PREFIX.length),
+      notes: notesEl ? String(notesEl.value || '') : '',
+      lines: lines,
+      savedAt: Date.now()
+    };
+  }
+
+  function saveDirectInwardDraftNow() {
+    if (!isDirectInwardMode()) return;
+    var key = directDraftOutletKey();
+    var draft = serializeDirectInwardDraft();
+    if (!draft) return;
+    try {
+      if (!draft.lines.length && !(draft.notes || '').trim()) {
+        sessionStorage.removeItem(key);
+        return;
+      }
+      sessionStorage.setItem(key, JSON.stringify(draft));
+    } catch (e) {}
+  }
+
+  function scheduleDirectInwardDraftSave() {
+    if (!isDirectInwardMode()) return;
+    if (directDraftSaveTimer) window.clearTimeout(directDraftSaveTimer);
+    directDraftSaveTimer = window.setTimeout(function () {
+      directDraftSaveTimer = 0;
+      saveDirectInwardDraftNow();
+    }, 180);
+  }
+
+  function fillDirectLineFromDraft(line, draftLine) {
+    if (!line || !draftLine) return;
+    var itemName = String(draftLine.item_name || '').trim();
+    var productRoot = line.querySelector('.st-product-listbox');
+    var hidden = productRoot && productRoot.querySelector('input[type="hidden"]');
+    if (itemName && hidden && typeof window.resetEpListbox === 'function' && hidden.id) {
+      window.resetEpListbox(hidden.id, itemName, itemName);
+    } else if (hidden) {
+      hidden.value = itemName;
+    }
+    var selected = null;
+    if (productRoot) {
+      productRoot.querySelectorAll('.se-filter-listbox-option').forEach(function (opt) {
+        var on = (opt.getAttribute('data-value') || '') === itemName;
+        opt.classList.toggle('is-selected', on);
+        opt.setAttribute('aria-selected', on ? 'true' : 'false');
+        if (on) selected = opt;
+      });
+    }
+    var unit = String(draftLine.unit || '').trim()
+      || (selected && selected.getAttribute('data-unit'))
+      || 'kg';
+    setUnitListbox(line, unit);
+    syncPackOptions(line, selected, String(draftLine.pack_label || ''), { keepBaseWhenEmpty: true });
+    if (draftLine.pack_qty_in_base != null && String(draftLine.pack_qty_in_base) !== '') {
+      var packQtyInput = line.querySelector('[data-st-pack-qty]');
+      if (packQtyInput) packQtyInput.value = String(draftLine.pack_qty_in_base);
+    }
+    var qtyEl = line.querySelector('[data-st-direct-qty], input[name="quantity"]');
+    var priceEl = line.querySelector('[data-st-direct-price], [data-st-approx-price]');
+    var taxEl = line.querySelector('[data-st-direct-tax]');
+    if (qtyEl) qtyEl.value = draftLine.quantity != null ? String(draftLine.quantity) : '';
+    if (priceEl) priceEl.value = draftLine.unit_price != null ? String(draftLine.unit_price) : '';
+    if (taxEl) taxEl.value = draftLine.tax_percent != null ? String(draftLine.tax_percent) : '';
+    syncUnitVisibility(line);
+  }
+
+  function restoreDirectInwardDraft() {
+    if (!isDirectInwardMode()) return false;
+    var draft = readDirectInwardDraft();
+    if (!draft || !draft.lines || !draft.lines.length) {
+      if (draft && (draft.notes || '').trim()) {
+        var notesOnly = document.getElementById('st-inward-notes');
+        if (notesOnly) {
+          notesOnly.value = draft.notes;
+          syncNotesCounter();
+        }
+        return true;
+      }
+      return false;
+    }
+    var list = document.getElementById('st-inward-direct-lines');
+    if (!list) return false;
+    list.innerHTML = '';
+    draft.lines.forEach(function (row) {
+      var line = appendEmptyLine(list);
+      if (line) fillDirectLineFromDraft(line, row);
+    });
+    ensureTrailingEmptyLine(list);
+    var notesEl = document.getElementById('st-inward-notes');
+    if (notesEl) {
+      notesEl.value = draft.notes || '';
+      syncNotesCounter();
+    }
+    var wrap = list.closest('.st-lines-wrap') || list;
+    syncIndentLineTotals(wrap);
+    syncInwardConfirm();
+    return true;
+  }
+
+  function watchDirectInwardPageLeave() {
+    if (directDraftLeaveObserver) {
+      try { directDraftLeaveObserver.disconnect(); } catch (e) {}
+      directDraftLeaveObserver = null;
+    }
+    var page = document.getElementById('st-inward-page');
+    if (!page || !isDirectInwardMode()) return;
+    var key = directDraftOutletKey();
+    var host = page.closest('.de-main-wrapper') || page.parentElement;
+    if (!host || typeof MutationObserver !== 'function') return;
+    directDraftLeaveObserver = new MutationObserver(function () {
+      if (document.getElementById('st-inward-page')) return;
+      clearDirectInwardDraft(key);
+      try { directDraftLeaveObserver.disconnect(); } catch (e2) {}
+      directDraftLeaveObserver = null;
+    });
+    directDraftLeaveObserver.observe(host, { childList: true, subtree: true });
   }
 
   function selectedDirectInwardLines() {
@@ -2970,27 +3190,14 @@
     }
     setInwardApprovedHint(approvedTotal);
     syncInwardAmountWarn();
-    var descriptionEl = document.getElementById('st-inward-expense-description');
-    if (directMode) {
-      var notesEl = document.getElementById('st-inward-notes');
-      var notes = notesEl ? String(notesEl.value || '').trim() : '';
-      var description = 'Purchase without indent approval';
-      if (notes) description += ' — ' + notes;
-      if (descriptionEl) descriptionEl.value = description;
-    } else {
-      var indentNo = confirmBtn.getAttribute('data-st-inward-indent-no') || '';
-      var notesEl2 = document.getElementById('st-inward-notes');
-      var notes2 = notesEl2 ? String(notesEl2.value || '').trim() : '';
-      var description2 = 'Purchase ' + indentNo;
-      if (notes2) description2 += ' — ' + notes2;
-      if (descriptionEl) descriptionEl.value = description2;
-    }
+    /* Description stays blank — user must enter it. */
     if (!built.groups.length || built.missing.length) {
       setInwardExpenseError('Products need a Product Master category before confirming.');
     } else {
       setInwardExpenseError('');
     }
     openInwardModal(modal);
+    var descriptionEl = document.getElementById('st-inward-expense-description');
     if (descriptionEl) descriptionEl.focus();
   }
 
@@ -3129,6 +3336,7 @@
       if (!res.ok || !data.ok) {
         throw new Error(data.error || 'Could not confirm purchase.');
       }
+      if (directMode) clearDirectInwardDraft(directDraftOutletKey());
       closeInwardModal(modal);
       if (data.redirect) window.location.href = data.redirect;
       else if (typeof window.deSoftRefresh === 'function') window.deSoftRefresh();
@@ -3228,13 +3436,17 @@
       ))
     ) {
       syncIndentLineTotals(target.closest('.st-lines-wrap') || page);
+      scheduleDirectInwardDraftSave();
       return;
     }
     if (target.matches('[data-st-inward-qty], [data-st-inward-price], [data-st-inward-tax]')) {
       syncInwardConfirm();
       return;
     }
-    if (target.matches('[data-st-notes-counter]')) syncNotesCounter();
+    if (target.matches('[data-st-notes-counter]')) {
+      syncNotesCounter();
+      scheduleDirectInwardDraftSave();
+    }
   }
 
   function onInwardBulkTaxFocus(event) {
@@ -3466,8 +3678,14 @@
     }
     syncInwardPaymentVisibility();
     if (isDirectInwardMode()) {
+      if (isBrowserReload()) {
+        restoreDirectInwardDraft();
+      } else {
+        clearDirectInwardDraft(directDraftOutletKey());
+      }
       syncIndentLineTotals(page.querySelector('.st-inward-direct-lines-wrap') || page);
       syncInwardConfirm();
+      watchDirectInwardPageLeave();
     }
   }
 

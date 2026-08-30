@@ -104,6 +104,17 @@
     if (currentKpiFilter(page) === next && next !== 'total') {
       next = 'total';
     }
+    var form = $('#sr-filter-form', page);
+    var statusInput = form && $('#sr-status', form);
+    if (statusInput && page.id === 'kot-report-page') {
+      var statusValue = next === 'total' ? 'all' : next;
+      if (String(statusInput.value || 'all') !== statusValue) {
+        statusInput.value = statusValue;
+        statusInput.setAttribute('name', 'status');
+        prepareAndSubmit(form);
+        return;
+      }
+    }
     page.setAttribute('data-kpi-filter', next);
     syncKpiSelection(page);
     applyRowFilters(page);
@@ -113,7 +124,9 @@
     if (!page || page.id !== 'kot-report-page') return;
     if (page.getAttribute('data-kpi-bound') === '1') return;
     page.setAttribute('data-kpi-bound', '1');
-    page.setAttribute('data-kpi-filter', 'total');
+    if (!page.getAttribute('data-kpi-filter')) {
+      page.setAttribute('data-kpi-filter', 'total');
+    }
     syncKpiSelection(page);
 
     page.addEventListener('click', function (event) {

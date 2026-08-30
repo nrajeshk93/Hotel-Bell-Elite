@@ -499,6 +499,7 @@ def build_hub_home_notification(conn) -> dict | None:
         "title": title,
         "body": body[:180],
         "href": "",  # filled by caller with url_for
+        "count": total,
     }
 
 

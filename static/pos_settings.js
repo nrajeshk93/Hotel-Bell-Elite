@@ -453,6 +453,10 @@
       if (!values.prices_include_tax && values.f3) values.prices_include_tax = values.f3;
       if (!values.show_tax_breakdown && values.f4) values.show_tax_breakdown = values.f4;
     }
+    /* Invoice: map legacy Numbering Prefix auto-key f0 → invoice_prefix. */
+    if (panel.getAttribute('data-panel') === 'invoice' && values && typeof values === 'object') {
+      if (!values.invoice_prefix && values.f0) values.invoice_prefix = values.f0;
+    }
     settingsEls.forEach(function (el) {
       var key = el.getAttribute('data-pos-set-key');
       var field = key && values[key];

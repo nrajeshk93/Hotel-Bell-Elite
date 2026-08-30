@@ -7,16 +7,23 @@ Local creates, room assignments, and edits are stored in hotel settings under
 
 from __future__ import annotations
 
+import base64
 import copy
 import hashlib
+import hmac
 import os
 import re
+import secrets
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
+
+from secret_key import get_secret_key
 
 from asia_tech_http import DEFAULT_BASE_URL, clear_caches, fetch_bookings
 
 MASKED_API_KEY = "••••••••••••••••"
+_SEAL_PREFIX = "enc1$"
+_SEAL_PURPOSE = b"asia-tech-secret"
 STATUS_LABELS = {
     "upcoming": "Upcoming",
     "checked_in": "Checked In",
@@ -213,13 +220,215 @@ def panel_value(settings: Dict[str, Any], key: str, default: str = "") -> str:
     return str(raw).strip()
 
 
+def _pepper() -> bytes:
+    return get_secret_key().encode("utf-8")
+
+
+def _seal_secret(value: str) -> str:
+    raw = (value or "").encode("utf-8")
+    if not raw:
+        return ""
+    nonce = secrets.token_bytes(16)
+    stream = b""
+    counter = 0
+    while len(stream) < len(raw):
+        stream += hmac.new(
+            _pepper(), nonce + _SEAL_PURPOSE + counter.to_bytes(4, "big"), hashlib.sha256
+        ).digest()
+        counter += 1
+    ct = bytes(a ^ b for a, b in zip(raw, stream[: len(raw)]))
+    mac = hmac.new(_pepper(), nonce + ct, hashlib.sha256).digest()
+    blob = base64.urlsafe_b64encode(nonce + mac + ct).decode("ascii")
+    return _SEAL_PREFIX + blob
+
+
+def _unseal_secret(stored: str) -> str:
+    stored = stored or ""
+    if not stored:
+        return ""
+    if not stored.startswith(_SEAL_PREFIX):
+        return stored
+    try:
+        blob = base64.urlsafe_b64decode(stored[len(_SEAL_PREFIX) :].encode("ascii"))
+    except (ValueError, TypeError):
+        return ""
+    if len(blob) < 48:
+        return ""
+    nonce, mac, ct = blob[:16], blob[16:48], blob[48:]
+    expected = hmac.new(_pepper(), nonce + ct, hashlib.sha256).digest()
+    if not hmac.compare_digest(mac, expected):
+        return ""
+    stream = b""
+    counter = 0
+    while len(stream) < len(ct):
+        stream += hmac.new(
+            _pepper(), nonce + _SEAL_PURPOSE + counter.to_bytes(4, "big"), hashlib.sha256
+        ).digest()
+        counter += 1
+    try:
+        return bytes(a ^ b for a, b in zip(ct, stream[: len(ct)])).decode("utf-8")
+    except UnicodeDecodeError:
+        return ""
+
+
+def _plain_or_unseal(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text or _is_masked_secret(text):
+        return ""
+    if text.startswith(_SEAL_PREFIX):
+        return _unseal_secret(text)
+    return text
+
+
+def _seal_if_plain(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text or _is_masked_secret(text):
+        return ""
+    if text.startswith(_SEAL_PREFIX):
+        return text
+    return _seal_secret(text)
+
+
+def seal_settings_secrets(settings: Dict[str, Any]) -> Dict[str, Any]:
+    """Persist Asia Tech passwords/api keys sealed; never leave new plaintext in JSON."""
+    out = copy.deepcopy(settings) if isinstance(settings, dict) else {}
+    had_state = isinstance(out.get("asia_tech_state"), dict)
+    state = get_state(out)
+    secret = state.get("password") or state.get("api_key") or ""
+    if not secret:
+        panel_key = panel_value(out, "asia_tech_api_key", "")
+        panel_pw = panel_value(out, "asia_tech_password", "")
+        for candidate in (panel_pw, panel_key):
+            if candidate and not _is_masked_secret(candidate) and not str(candidate).startswith(_SEAL_PREFIX):
+                secret = candidate
+                break
+    cm_password = state.get("cm_password") or ""
+    if not cm_password:
+        panel_cm = panel_value(out, "asia_tech_cm_password", "")
+        if panel_cm and not _is_masked_secret(panel_cm) and not str(panel_cm).startswith(_SEAL_PREFIX):
+            cm_password = panel_cm
+    state["password"] = _seal_if_plain(secret)
+    state["api_key"] = _seal_if_plain(secret)
+    state["cm_password"] = _seal_if_plain(cm_password)
+    if had_state or secret or cm_password:
+        out["asia_tech_state"] = state
+    panels = out.get("panels") if isinstance(out.get("panels"), dict) else {}
+    asia = panels.get("asia_tech") if isinstance(panels.get("asia_tech"), dict) else {}
+    values = asia.get("values") if isinstance(asia.get("values"), dict) else {}
+    if values:
+        for key, has in (
+            ("asia_tech_api_key", bool(secret)),
+            ("asia_tech_password", bool(secret)),
+            ("asia_tech_cm_password", bool(cm_password)),
+        ):
+            values[key] = {"kind": "text", "value": MASKED_API_KEY if has else ""}
+        asia["values"] = values
+        panels["asia_tech"] = asia
+        out["panels"] = panels
+    return out
+
+
+def _is_plaintext_secret(value: Any) -> bool:
+    text = str(value or "").strip()
+    if not text or _is_masked_secret(text):
+        return False
+    return not text.startswith(_SEAL_PREFIX)
+
+
+def _panel_secret_slot(settings: Dict[str, Any], key: str):
+    panels = settings.get("panels") if isinstance(settings, dict) else None
+    if not isinstance(panels, dict):
+        return None, None
+    panel = panels.get("asia_tech")
+    if not isinstance(panel, dict):
+        return None, None
+    values = panel.get("values") if isinstance(panel.get("values"), dict) else panel
+    if not isinstance(values, dict) or key not in values:
+        return None, None
+    return values, values.get(key)
+
+
+def ensure_plaintext_secrets_sealed(settings: Dict[str, Any]) -> bool:
+    """Seal leftover plaintext Asia Tech secrets already in SQLite. Idempotent.
+
+    Does not reseal ``enc1$`` values (new nonce would rewrite the blob every read).
+    Masks panel password/api_key/cm_password once moved into sealed state.
+    Username and other visible fields are left alone.
+    """
+    if not isinstance(settings, dict):
+        return False
+    changed = False
+    state = settings.get("asia_tech_state")
+    if not isinstance(state, dict):
+        state = {}
+    had_state = isinstance(settings.get("asia_tech_state"), dict)
+
+    def take_plain(*candidates: Any) -> str:
+        for candidate in candidates:
+            if _is_plaintext_secret(candidate):
+                return str(candidate).strip()
+        return ""
+
+    panel_pw = panel_value(settings, "asia_tech_password", "")
+    panel_key = panel_value(settings, "asia_tech_api_key", "")
+    panel_cm = panel_value(settings, "asia_tech_cm_password", "")
+
+    secret = ""
+    raw_pw = state.get("password")
+    raw_key = state.get("api_key")
+    if _is_plaintext_secret(raw_pw) or _is_plaintext_secret(raw_key) or _is_plaintext_secret(panel_pw) or _is_plaintext_secret(panel_key):
+        if str(raw_pw or "").startswith(_SEAL_PREFIX):
+            secret = raw_pw
+        elif str(raw_key or "").startswith(_SEAL_PREFIX):
+            secret = raw_key
+        else:
+            secret = take_plain(raw_pw, raw_key, panel_pw, panel_key)
+        sealed = _seal_if_plain(secret)
+        if state.get("password") != sealed or state.get("api_key") != sealed:
+            state["password"] = sealed
+            state["api_key"] = sealed
+            changed = True
+
+    cm = ""
+    raw_cm = state.get("cm_password")
+    if _is_plaintext_secret(raw_cm) or _is_plaintext_secret(panel_cm):
+        if str(raw_cm or "").startswith(_SEAL_PREFIX):
+            cm = raw_cm
+        else:
+            cm = take_plain(raw_cm, panel_cm)
+        sealed_cm = _seal_if_plain(cm)
+        if state.get("cm_password") != sealed_cm:
+            state["cm_password"] = sealed_cm
+            changed = True
+
+    if changed and (had_state or state.get("password") or state.get("api_key") or state.get("cm_password")):
+        settings["asia_tech_state"] = state
+
+    for key, has in (
+        ("asia_tech_password", bool(state.get("password") or state.get("api_key"))),
+        ("asia_tech_api_key", bool(state.get("password") or state.get("api_key"))),
+        ("asia_tech_cm_password", bool(state.get("cm_password"))),
+    ):
+        values, field = _panel_secret_slot(settings, key)
+        if values is None:
+            continue
+        current = field.get("value") if isinstance(field, dict) else field
+        if not _is_plaintext_secret(current):
+            continue
+        values[key] = {"kind": "text", "value": MASKED_API_KEY if has else ""}
+        changed = True
+    return changed
+
+
 def get_state(settings: Dict[str, Any]) -> Dict[str, Any]:
     state = settings.get("asia_tech_state") if isinstance(settings, dict) else None
     if not isinstance(state, dict):
         state = {}
+    api_key = _plain_or_unseal(state.get("api_key"))
+    password = _plain_or_unseal(state.get("password")) or api_key
     return {
-        "api_key": str(state.get("api_key") or "").strip(),
-        "password": str(state.get("password") or state.get("api_key") or "").strip(),
+        "api_key": api_key or password,
+        "password": password or api_key,
         "username": str(state.get("username") or "").strip(),
         "hotel_id": str(state.get("hotel_id") or "").strip(),
         "base_url": str(state.get("base_url") or "").strip(),
@@ -240,7 +449,7 @@ def get_state(settings: Dict[str, Any]) -> Dict[str, Any]:
             else []
         ),
         "cm_email": str(state.get("cm_email") or "").strip(),
-        "cm_password": str(state.get("cm_password") or "").strip(),
+        "cm_password": _plain_or_unseal(state.get("cm_password")),
         "last_sync_meta": (
             dict(state["last_sync_meta"])
             if isinstance(state.get("last_sync_meta"), dict)
@@ -259,11 +468,11 @@ def get_api_key(settings: Dict[str, Any]) -> str:
     env = os.environ.get("ASIA_TECH_PASSWORD", "").strip()
     if env:
         return env
-    key = panel_value(settings, "asia_tech_api_key", "")
-    if not _is_masked_secret(key):
+    key = _plain_or_unseal(panel_value(settings, "asia_tech_api_key", ""))
+    if key:
         return key
-    password_panel = panel_value(settings, "asia_tech_password", "")
-    if not _is_masked_secret(password_panel):
+    password_panel = _plain_or_unseal(panel_value(settings, "asia_tech_password", ""))
+    if password_panel:
         return password_panel
     state = get_state(settings)
     return str(state.get("password") or state.get("api_key") or "").strip()
@@ -321,8 +530,8 @@ def get_cm_password(settings: Dict[str, Any]) -> str:
     env = os.environ.get("ASIA_TECH_CM_PASSWORD", "").strip()
     if env:
         return env
-    panel = panel_value(settings, "asia_tech_cm_password", "")
-    if not _is_masked_secret(panel):
+    panel = _plain_or_unseal(panel_value(settings, "asia_tech_cm_password", ""))
+    if panel:
         return panel
     return str(get_state(settings).get("cm_password") or "").strip()
 
@@ -489,7 +698,11 @@ def merge_settings_on_save(
     submitted_password = _submitted("asia_tech_password")
     secret = prev_key
     for candidate in (submitted_password, submitted_key):
-        if candidate and not _is_masked_secret(candidate):
+        if (
+            candidate
+            and not _is_masked_secret(candidate)
+            and not candidate.startswith(_SEAL_PREFIX)
+        ):
             secret = candidate
             break
 
@@ -500,7 +713,11 @@ def merge_settings_on_save(
             prev_cm_password = ""
     submitted_cm_password = _submitted("asia_tech_cm_password")
     cm_password = prev_cm_password
-    if submitted_cm_password and not _is_masked_secret(submitted_cm_password):
+    if (
+        submitted_cm_password
+        and not _is_masked_secret(submitted_cm_password)
+        and not submitted_cm_password.startswith(_SEAL_PREFIX)
+    ):
         cm_password = submitted_cm_password
     cm_email = (
         _submitted("asia_tech_cm_email")
@@ -514,13 +731,13 @@ def merge_settings_on_save(
     base_url = _submitted("asia_tech_base_url") or prev_state.get("base_url") or DEFAULT_BASE_URL
 
     state = get_state(incoming)
-    state["api_key"] = secret
-    state["password"] = secret
+    state["api_key"] = _seal_if_plain(secret)
+    state["password"] = _seal_if_plain(secret)
     state["username"] = username
     state["hotel_id"] = hotel_id
     state["base_url"] = base_url
     state["cm_email"] = cm_email
-    state["cm_password"] = cm_password
+    state["cm_password"] = _seal_if_plain(cm_password)
     incoming["asia_tech_state"] = state
 
     if isinstance(values, dict):
@@ -556,6 +773,9 @@ def update_state(settings: Dict[str, Any], **patches: Any) -> Dict[str, Any]:
     state = get_state(out)
     for key, value in patches.items():
         state[key] = value
+    state["password"] = _seal_if_plain(state.get("password") or "")
+    state["api_key"] = _seal_if_plain(state.get("api_key") or state.get("password") or "")
+    state["cm_password"] = _seal_if_plain(state.get("cm_password") or "")
     out["asia_tech_state"] = state
     return out
 

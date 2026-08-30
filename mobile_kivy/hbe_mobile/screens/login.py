@@ -1,4 +1,4 @@
-"""Login screen — clean hospitality card matching latest reference."""
+"""Login screen — light airy hospitality layout (no photo, no card chrome)."""
 
 from __future__ import annotations
 
@@ -6,19 +6,18 @@ import io
 from pathlib import Path
 
 from kivy.core.image import Image as CoreImage
-from kivy.graphics import Color, Rectangle, RoundedRectangle
+from kivy.graphics import Color, Line, Rectangle
 from kivy.metrics import dp
-from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.behaviors import ButtonBehavior
 from kivy.uix.image import Image
 from kivy.uix.scrollview import ScrollView
+from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
-from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.button import MDIconButton, MDRaisedButton, MDTextButton
-from kivymd.uix.card import MDCard
-from kivymd.uix.label import MDLabel
-from kivymd.uix.screen import MDScreen
-from kivymd.uix.textfield import MDTextField
 from kivymd.toast import toast
+from kivymd.uix.boxlayout import MDBoxLayout
+from kivymd.uix.button import MDIconButton, MDTextButton
+from kivymd.uix.label import MDIcon, MDLabel
+from kivymd.uix.screen import MDScreen
 
 from hbe_mobile import theme
 from hbe_mobile.api import auth as auth_api
@@ -26,29 +25,106 @@ from hbe_mobile.utils.async_jobs import run_async
 
 _ASSETS = Path(__file__).resolve().parents[2] / "assets"
 _BELLA_LIGHT_MARK = _ASSETS / "bella_light_mark.png"
-_LOGIN_BG = _ASSETS / "login_bg.jpg"
+
+_FIELD_BORDER = (0.886, 0.910, 0.941, 1)  # #E2E8F0
+_ICON_MUTED = (0.580, 0.639, 0.722, 1)  # #94A3B8
+_PLACEHOLDER = (0.580, 0.639, 0.722, 1)
 
 
-class _GoldOrnament(Widget):
-    """Thin gold rule with center diamond (reference divider)."""
+class _GoldRule(Widget):
+    """Short 32×2 gold rule under the mark."""
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.size_hint_y = None
-        self.height = dp(18)
+        self.height = dp(16)
         with self.canvas:
-            Color(0.77, 0.64, 0.42, 1)
-            self._left = Rectangle(size=(dp(48), dp(1)))
-            self._right = Rectangle(size=(dp(48), dp(1)))
-            self._diamond = RoundedRectangle(size=(dp(7), dp(7)), radius=[dp(1)])
+            Color(0.769, 0.643, 0.416, 1)  # #C4A46A
+            self._bar = Rectangle(size=(dp(32), dp(2)))
         self.bind(pos=self._layout, size=self._layout)
 
     def _layout(self, *_args):
-        cy = self.y + self.height / 2
-        cx = self.x + self.width / 2
-        self._left.pos = (cx - dp(64), cy)
-        self._right.pos = (cx + dp(16), cy)
-        self._diamond.pos = (cx - dp(3.5), cy - dp(3))
+        self._bar.size = (dp(32), dp(2))
+        self._bar.pos = (
+            self.x + (self.width - dp(32)) / 2,
+            self.y + (self.height - dp(2)) / 2,
+        )
+
+
+class _FieldBox(MDBoxLayout):
+    """White 52dp field, 20dp radius, 1px #E2E8F0 — no floating Material label."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation = "horizontal"
+        self.size_hint_y = None
+        self.height = dp(52)
+        self.padding = [dp(16), 0, dp(4), 0]
+        self.spacing = dp(8)
+        self.radius = [dp(20)]
+        self.md_bg_color = theme.SURFACE
+        with self.canvas.after:
+            Color(*_FIELD_BORDER)
+            self._stroke = Line(width=1.1)
+        self.bind(pos=self._sync_stroke, size=self._sync_stroke)
+
+    def _sync_stroke(self, *_args):
+        r = dp(20)
+        self._stroke.rounded_rectangle = (
+            self.x + 0.5,
+            self.y + 0.5,
+            max(0, self.width - 1),
+            max(0, self.height - 1),
+            r,
+        )
+
+
+class _PlainInput(TextInput):
+    """Transparent TextInput so the rounded field chrome shows through."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("multiline", False)
+        kwargs.setdefault("write_tab", False)
+        kwargs.setdefault("font_size", "15sp")
+        kwargs.setdefault("foreground_color", (0.102, 0.125, 0.173, 1))  # #1A202C
+        kwargs.setdefault("hint_text_color", _PLACEHOLDER)
+        kwargs.setdefault("cursor_color", (0.094, 0.467, 0.949, 1))  # #1877F2
+        kwargs.setdefault("padding", [0, dp(16), 0, dp(16)])
+        kwargs.setdefault("background_color", (1, 1, 1, 0))
+        super().__init__(**kwargs)
+        self.background_normal = ""
+        self.background_active = ""
+        self.background_disabled_normal = ""
+        self.background_disabled_active = ""
+        self.background_color = (1, 1, 1, 0)
+
+
+class _SignInPill(ButtonBehavior, MDBoxLayout):
+    """Full-width 52dp pill — MDFillRoundFlatButton equivalent that actually stretches."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation = "horizontal"
+        self.size_hint_x = 1
+        self.size_hint_y = None
+        self.height = dp(52)
+        self.radius = [dp(26)]
+        self.md_bg_color = theme.ACCENT
+        self.padding = [dp(16), 0]
+        self._label = MDLabel(
+            text="Sign In",
+            halign="center",
+            valign="middle",
+            theme_text_color="Custom",
+            text_color=(1, 1, 1, 1),
+            bold=True,
+            font_size="16sp",
+        )
+        self.add_widget(self._label)
+        self.bind(disabled=self._on_disabled)
+
+    def _on_disabled(self, _inst, value):
+        self.opacity = 0.55 if value else 1.0
 
 
 class LoginScreen(MDScreen):
@@ -58,165 +134,158 @@ class LoginScreen(MDScreen):
         self.name = "login"
         self._captcha_required = False
         self._password_hidden = True
+        self.md_bg_color = theme.BG
 
-        root = FloatLayout()
-
-        if _LOGIN_BG.is_file():
-            root.add_widget(
-                Image(
-                    source=str(_LOGIN_BG),
-                    allow_stretch=True,
-                    keep_ratio=False,
-                    size_hint=(1, 1),
-                    pos_hint={"x": 0, "y": 0},
-                )
-            )
-        root.add_widget(
-            MDBoxLayout(
-                md_bg_color=(0.92, 0.95, 0.98, 0.72),
-                size_hint=(1, 1),
-                pos_hint={"x": 0, "y": 0},
-            )
-        )
-        root.add_widget(
-            MDBoxLayout(
-                md_bg_color=(0.78, 0.88, 0.96, 0.45),
-                size_hint=(1.4, None),
-                height=dp(100),
-                pos_hint={"center_x": 0.5, "top": 1.06},
-                radius=[dp(80)],
-            )
-        )
-        root.add_widget(
-            MDBoxLayout(
-                md_bg_color=(0.82, 0.90, 0.97, 0.5),
-                size_hint=(1.4, None),
-                height=dp(110),
-                pos_hint={"center_x": 0.5, "y": -0.06},
-                radius=[dp(80)],
-            )
+        root = MDBoxLayout(
+            orientation="vertical",
+            md_bg_color=theme.BG,
+            size_hint=(1, 1),
+            padding=[0, dp(12), 0, dp(12)],
         )
 
         scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False, bar_width=0)
         scroll_body = MDBoxLayout(
             orientation="vertical",
             size_hint_y=None,
-            padding=[dp(18), dp(36), dp(18), dp(36)],
-            spacing=dp(8),
+            md_bg_color=theme.BG,
         )
         scroll_body.bind(minimum_height=scroll_body.setter("height"))
 
-        self._panel = MDCard(
+        def _fit(*_a):
+            min_h = scroll_body.minimum_height
+            scroll_body.height = max(min_h, scroll.height)
+
+        scroll.bind(height=_fit)
+        scroll_body.bind(minimum_height=_fit)
+
+        top_air = Widget(size_hint_y=None)
+        bottom_air = Widget(size_hint_y=None)
+
+        def _air(*_a):
+            extra = max(0, scroll.height - 560)
+            top_air.height = dp(56) + extra * 0.42
+            bottom_air.height = dp(32) + extra * 0.58
+            _fit()
+
+        scroll.bind(height=_air)
+
+        col = MDBoxLayout(
             orientation="vertical",
-            padding=[dp(22), dp(26), dp(22), dp(20)],
-            spacing=dp(10),
-            size_hint=(1, None),
-            height=dp(560),
-            radius=[dp(24)],
-            md_bg_color=theme.SURFACE,
-            elevation=2,
+            size_hint_y=None,
+            padding=[dp(32), 0, dp(32), 0],
+            spacing=0,
         )
+        col.bind(minimum_height=col.setter("height"))
+        self._panel = col
 
         mark = Image(
             source=str(_BELLA_LIGHT_MARK) if _BELLA_LIGHT_MARK.is_file() else "",
             size_hint=(None, None),
-            size=(dp(64), dp(64)),
+            size=(dp(56), dp(56)),
             pos_hint={"center_x": 0.5},
             allow_stretch=True,
             keep_ratio=True,
         )
-        self._panel.add_widget(mark)
-        self._panel.add_widget(
-            MDLabel(
-                text="Hotel Bell Elite",
-                font_style="H5",
-                bold=True,
-                halign="center",
-                theme_text_color="Custom",
-                text_color=theme.LOGIN_NAVY,
-                size_hint_y=None,
-                height=dp(36),
-            )
+        col.add_widget(mark)
+        col.add_widget(_GoldRule())
+
+        title = MDLabel(
+            text="Hotel Bell Elite",
+            halign="center",
+            theme_text_color="Custom",
+            text_color=theme.TEXT,
+            bold=True,
+            size_hint_y=None,
+            height=dp(40),
         )
-        self._panel.add_widget(_GoldOrnament())
-        self._panel.add_widget(
-            MDLabel(
-                text="HOSPITALITY  ·  COMFORT  ·  EXCELLENCE",
-                font_style="Caption",
-                halign="center",
-                theme_text_color="Custom",
-                text_color=theme.LOGIN_TAGLINE_GOLD,
-                size_hint_y=None,
-                height=dp(20),
-                bold=True,
-            )
+        title.font_size = "28sp"
+        col.add_widget(title)
+
+        subtitle = MDLabel(
+            text="Sign in to continue",
+            halign="center",
+            theme_text_color="Custom",
+            text_color=theme.TEXT_MUTED,
+            size_hint_y=None,
+            height=dp(28),
         )
-        self._panel.add_widget(
+        subtitle.font_size = "15sp"
+        col.add_widget(subtitle)
+        col.add_widget(Widget(size_hint_y=None, height=dp(36)))
+
+        col.add_widget(
             MDLabel(
-                text="Welcome Back",
-                font_style="H6",
-                bold=True,
-                halign="center",
-                theme_text_color="Custom",
-                text_color=theme.LOGIN_NAVY,
-                size_hint_y=None,
-                height=dp(30),
-            )
-        )
-        self._panel.add_widget(
-            MDLabel(
-                text="Sign in to access your account",
-                font_style="Body2",
-                halign="center",
+                text="Username",
                 theme_text_color="Custom",
                 text_color=theme.TEXT_MUTED,
                 size_hint_y=None,
-                height=dp(22),
+                height=dp(20),
+                font_size="12sp",
             )
         )
+        col.add_widget(Widget(size_hint_y=None, height=dp(8)))
+        user_box = _FieldBox()
+        user_box.add_widget(
+            MDIcon(
+                icon="account-outline",
+                theme_text_color="Custom",
+                text_color=_ICON_MUTED,
+                size_hint=(None, None),
+                size=(dp(22), dp(22)),
+                pos_hint={"center_y": 0.5},
+                font_size="20sp",
+            )
+        )
+        self.user_field = _PlainInput(hint_text="Username")
+        user_box.add_widget(self.user_field)
+        col.add_widget(user_box)
+        col.add_widget(Widget(size_hint_y=None, height=dp(16)))
 
-        self.user_field = MDTextField(
-            hint_text="Username",
-            helper_text="Enter your username",
-            helper_text_mode="on_focus",
-            mode="rectangle",
-            icon_left="account-outline",
-            size_hint_y=None,
-            height=dp(56),
+        col.add_widget(
+            MDLabel(
+                text="Password",
+                theme_text_color="Custom",
+                text_color=theme.TEXT_MUTED,
+                size_hint_y=None,
+                height=dp(20),
+                font_size="12sp",
+            )
         )
-        pass_row = MDBoxLayout(
-            orientation="horizontal",
-            size_hint_y=None,
-            height=dp(56),
-            spacing=dp(4),
+        col.add_widget(Widget(size_hint_y=None, height=dp(8)))
+        pass_box = _FieldBox()
+        pass_box.add_widget(
+            MDIcon(
+                icon="lock-outline",
+                theme_text_color="Custom",
+                text_color=_ICON_MUTED,
+                size_hint=(None, None),
+                size=(dp(22), dp(22)),
+                pos_hint={"center_y": 0.5},
+                font_size="20sp",
+            )
         )
-        self.pass_field = MDTextField(
-            hint_text="Password",
-            helper_text="Enter your password",
-            helper_text_mode="on_focus",
-            mode="rectangle",
-            icon_left="lock-outline",
-            password=True,
-            size_hint_x=0.86,
-        )
+        self.pass_field = _PlainInput(hint_text="Password", password=True)
+        pass_box.add_widget(self.pass_field)
         self._eye_btn = MDIconButton(
             icon="eye-outline",
             theme_icon_color="Custom",
-            icon_color=theme.TEXT_MUTED,
+            icon_color=_ICON_MUTED,
             on_release=lambda *_: self._toggle_password(),
+            pos_hint={"center_y": 0.5},
+            size_hint=(None, None),
+            size=(dp(40), dp(40)),
         )
-        pass_row.add_widget(self.pass_field)
-        pass_row.add_widget(self._eye_btn)
+        pass_box.add_widget(self._eye_btn)
+        col.add_widget(pass_box)
 
-        self.captcha_field = MDTextField(
-            hint_text="CAPTCHA",
-            mode="rectangle",
-            disabled=True,
-            size_hint_y=None,
-            height=0,
-            opacity=0,
-        )
         self.captcha_image = Image(size_hint_y=None, height=0, opacity=0)
+        captcha_box = _FieldBox()
+        captcha_box.height = 0
+        captcha_box.opacity = 0
+        captcha_box.disabled = True
+        self._captcha_box = captcha_box
+        self.captcha_field = _PlainInput(hint_text="CAPTCHA", disabled=True)
+        captcha_box.add_widget(self.captcha_field)
         self.refresh_captcha_btn = MDTextButton(
             text="Refresh CAPTCHA",
             pos_hint={"center_x": 0.5},
@@ -236,57 +305,32 @@ class LoginScreen(MDScreen):
             halign="center",
         )
 
-        self._panel.add_widget(self.user_field)
-        self._panel.add_widget(pass_row)
-        self._panel.add_widget(self.captcha_image)
-        self._panel.add_widget(self.captcha_field)
-        self._panel.add_widget(self.refresh_captcha_btn)
-        self._panel.add_widget(self.error_label)
+        col.add_widget(Widget(size_hint_y=None, height=dp(8)))
+        col.add_widget(self.captcha_image)
+        col.add_widget(captcha_box)
+        col.add_widget(self.refresh_captcha_btn)
+        col.add_widget(self.error_label)
+        col.add_widget(Widget(size_hint_y=None, height=dp(16)))
 
-        self.sign_in_btn = MDRaisedButton(
-            text="Sign In  →",
-            md_bg_color="#3B82F6",
-            size_hint_x=1,
-            pos_hint={"center_x": 0.5},
-            on_release=lambda *_: self._do_login(),
-        )
-        self._panel.add_widget(self.sign_in_btn)
+        # Full-width 52dp pill (MDFillRoundFlatButton in 1.2 kv-locks width to text).
+        self.sign_in_btn = _SignInPill(on_release=lambda *_: self._do_login())
+        col.add_widget(self.sign_in_btn)
 
-        trust = MDBoxLayout(
-            orientation="horizontal",
+        staff = MDLabel(
+            text="Staff",
+            halign="center",
+            theme_text_color="Custom",
+            text_color=_ICON_MUTED,
             size_hint_y=None,
-            height=dp(32),
-            spacing=dp(4),
-            padding=[dp(24), 0, dp(24), 0],
+            height=dp(36),
         )
-        trust.add_widget(
-            MDBoxLayout(md_bg_color=(0.9, 0.93, 0.96, 1), size_hint_y=None, height=dp(1))
-        )
-        trust.add_widget(
-            MDIconButton(
-                icon="shield-check-outline",
-                theme_icon_color="Custom",
-                icon_color="#8AA4BC",
-                icon_size="16sp",
-                disabled=True,
-            )
-        )
-        trust.add_widget(
-            MDLabel(
-                text="Secure & Trusted",
-                font_style="Caption",
-                theme_text_color="Custom",
-                text_color="#8AA4BC",
-                size_hint_x=None,
-                width=dp(110),
-            )
-        )
-        trust.add_widget(
-            MDBoxLayout(md_bg_color=(0.9, 0.93, 0.96, 1), size_hint_y=None, height=dp(1))
-        )
-        self._panel.add_widget(trust)
+        staff.font_size = "11sp"
+        col.add_widget(Widget(size_hint_y=None, height=dp(20)))
+        col.add_widget(staff)
 
-        scroll_body.add_widget(self._panel)
+        scroll_body.add_widget(top_air)
+        scroll_body.add_widget(col)
+        scroll_body.add_widget(bottom_air)
         scroll.add_widget(scroll_body)
         root.add_widget(scroll)
         self.add_widget(root)
@@ -304,22 +348,24 @@ class LoginScreen(MDScreen):
             self.captcha_image.height = dp(48)
             self.captcha_field.disabled = False
             self.captcha_field.opacity = 1
-            self.captcha_field.height = dp(56)
+            self._captcha_box.height = dp(52)
+            self._captcha_box.opacity = 1
+            self._captcha_box.disabled = False
             self.refresh_captcha_btn.opacity = 1
             self.refresh_captcha_btn.disabled = False
             self.refresh_captcha_btn.height = dp(36)
-            self._panel.height = dp(700)
         else:
             self.captcha_image.opacity = 0
             self.captcha_image.height = 0
             self.captcha_field.disabled = True
             self.captcha_field.text = ""
             self.captcha_field.opacity = 0
-            self.captcha_field.height = 0
+            self._captcha_box.height = 0
+            self._captcha_box.opacity = 0
+            self._captcha_box.disabled = True
             self.refresh_captcha_btn.opacity = 0
             self.refresh_captcha_btn.disabled = True
             self.refresh_captcha_btn.height = 0
-            self._panel.height = dp(560)
 
     def _do_login(self) -> None:
         username = (self.user_field.text or "").strip()
@@ -345,12 +391,12 @@ class LoginScreen(MDScreen):
                     self._set_captcha_visible(False)
                 return
             if session.must_change_password:
+                self.app.api.logout()
+                self.clear_fields()
                 self.error_label.text = "Password change required — use the web app first."
                 toast("Complete password change on web, then sign in again.")
-                self.app.api.logout()
                 return
-            self.error_label.text = ""
-            self._set_captcha_visible(False)
+            self.clear_fields()
             self.app.on_login_success(session)
 
         def err(exc):
@@ -377,3 +423,11 @@ class LoginScreen(MDScreen):
             toast(f"CAPTCHA unavailable: {exc}")
 
         run_async(work, ok, err)
+
+    def clear_fields(self) -> None:
+        """Wipe username, password, and captcha. Password is never persisted."""
+        self.user_field.text = ""
+        self.pass_field.text = ""
+        self.captcha_field.text = ""
+        self._set_captcha_visible(False)
+        self.error_label.text = ""

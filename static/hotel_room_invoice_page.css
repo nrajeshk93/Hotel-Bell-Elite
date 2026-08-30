@@ -107,9 +107,13 @@
   display:none !important;
 }
 #hri-discount-reason-field.is-shown{
-  display:grid !important;
+  display:flex !important;
+  flex-direction:column;
+  gap:6px;
+  margin-bottom:14px;
 }
-.hotel-room-invoice-page #hri-tool-discount.is-active{
+.hotel-room-invoice-page #hri-tool-discount.is-active,
+.hotel-room-invoice-page #hri-tool-discount.is-editing-discount{
   color:var(--pos-primary, #2563EB);
   background:var(--pos-primary-soft, #E8F1FE);
 }

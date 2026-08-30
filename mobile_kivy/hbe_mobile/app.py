@@ -128,6 +128,12 @@ class HbeMobileApp(MDApp):
             self.shell.apply_access({})
         toast("Signed out")
         if self.root_manager:
+            try:
+                login = self.root_manager.get_screen("login")
+                if hasattr(login, "clear_fields"):
+                    login.clear_fields()
+            except Exception:
+                pass
             self.root_manager.current = "login"
 
     def on_stop(self):

@@ -43,7 +43,7 @@
   }
 
   function injectFormToken(form) {
-    if (!form || form.method && methodOf(form.method) === 'GET') return;
+    if (!form || form.nodeName !== 'FORM') return;
     var method = methodOf(form.getAttribute('method') || form.method || 'GET');
     if (!UNSAFE[method]) return;
     var token = getToken();
@@ -60,6 +60,32 @@
     form.appendChild(input);
   }
 
+  function injectAllForms() {
+    Array.prototype.forEach.call(document.querySelectorAll('form'), injectFormToken);
+  }
+
+  function syncMetaToken(token) {
+    token = String(token || '').trim();
+    if (!token) return;
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    if (meta) {
+      meta.content = token;
+      return;
+    }
+    meta = document.createElement('meta');
+    meta.setAttribute('name', 'csrf-token');
+    meta.setAttribute('content', token);
+    if (document.head) document.head.appendChild(meta);
+  }
+
+  /* Soft-nav / form.submit() skip the submit event — expose helpers for those paths. */
+  global.HbeCsrf = {
+    getToken: getToken,
+    injectFormToken: injectFormToken,
+    injectAllForms: injectAllForms,
+    syncMetaToken: syncMetaToken,
+  };
+
   document.addEventListener(
     'submit',
     function (event) {
@@ -69,11 +95,9 @@
   );
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function () {
-      Array.prototype.forEach.call(document.querySelectorAll('form'), injectFormToken);
-    });
+    document.addEventListener('DOMContentLoaded', injectAllForms);
   } else {
-    Array.prototype.forEach.call(document.querySelectorAll('form'), injectFormToken);
+    injectAllForms();
   }
 
   var origFetch = global.fetch;

@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=55">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=37">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_settings.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_settings.css') }}?v=3">
 <script>
 (function(){
   try{
@@ -28,10 +28,10 @@
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=37">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_settings.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_settings.css') }}?v=3">
 {% endif %}
 
-<div class="de-main-inner pos-settings-page" id="hotel-settings-page" data-hotel-settings data-hotel-api-base="/hotel">
+<div class="de-main-inner pos-settings-page" id="hotel-settings-page" data-hotel-settings data-settings-rev="taxes-v4" data-hotel-api-base="/hotel">
   <header class="pos-set-header">
     <div class="pos-set-header-main">
       <a class="pos-set-back" href="{{ url_for('settings') }}" data-hotel-set-back aria-label="Back to Settings">
@@ -64,11 +64,11 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2H2v10l9.29 9.29a1 1 0 0 0 1.41 0l6.58-6.58a1 1 0 0 0 0-1.41L12 2Z"/><path d="M7 7h.01"/></svg>
           <span>Tariff</span>
         </button>
-        <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="taxes" data-search="taxes cgst ugst gst">
+        <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="taxes" data-search="taxes cgst ugst gst slab threshold tariff">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12M6 8h12"/><path d="M6 13h3c6.667 0 6.667-10 0-10"/><path d="M6 13l8.5 8"/></svg>
           <span>Taxes</span>
         </button>
-        <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="invoice" data-search="invoice folio prefix footer numbering">
+        <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="invoice" data-search="invoice folio prefix numbering hotel food beverage room transfer">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
           <span>Invoice</span>
         </button>
@@ -76,7 +76,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>
           <span>Payment</span>
         </button>
-        <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="printers" data-search="printers folio invoice station">
+        <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="printers" data-search="printers folio invoice station pairing print agent code">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V4h12v5"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M6 17h12v4H6z"/></svg>
           <span>Printers</span>
         </button>
@@ -155,14 +155,24 @@
         <div class="pos-set-panel-head">
           <div>
             <h2>Taxes</h2>
-            <p>CGST / UGST applied to room folio and invoices.</p>
+            <p>CGST / UGST by nightly room rent (tax-inclusive), applied to room folio and invoices.</p>
           </div>
         </div>
-        <div class="pos-set-card">
-          <div class="pos-set-fields pos-set-fields--inline">
-            <label class="pos-set-field"><span>CGST %</span><input type="number" step="0.01" min="0" data-hotel-set-field data-hotel-set-key="cgst_pct" inputmode="decimal"></label>
-            <label class="pos-set-field"><span>UGST %</span><input type="number" step="0.01" min="0" data-hotel-set-field data-hotel-set-key="ugst_pct" inputmode="decimal"></label>
-          </div>
+        <div class="pos-set-card-grid">
+          <article class="pos-set-card">
+            <h3>Room rent less than or equal to 7500</h3>
+            <div class="pos-set-fields pos-set-fields--inline">
+              <label class="pos-set-field"><span>CGST %</span><input type="number" step="0.01" min="0" data-hotel-set-field data-hotel-set-key="cgst_pct" inputmode="decimal"></label>
+              <label class="pos-set-field"><span>UGST %</span><input type="number" step="0.01" min="0" data-hotel-set-field data-hotel-set-key="ugst_pct" inputmode="decimal"></label>
+            </div>
+          </article>
+          <article class="pos-set-card">
+            <h3>Room rent greater than 7500</h3>
+            <div class="pos-set-fields pos-set-fields--inline">
+              <label class="pos-set-field"><span>CGST %</span><input type="number" step="0.01" min="0" data-hotel-set-field data-hotel-set-key="cgst_pct_above" inputmode="decimal"></label>
+              <label class="pos-set-field"><span>UGST %</span><input type="number" step="0.01" min="0" data-hotel-set-field data-hotel-set-key="ugst_pct_above" inputmode="decimal"></label>
+            </div>
+          </article>
         </div>
       </section>
 
@@ -170,22 +180,26 @@
         <div class="pos-set-panel-head">
           <div>
             <h2>Invoice</h2>
-            <p>Guest copy and branding for room invoices.</p>
+            <p>Numbering for hotel invoices and food &amp; beverage room-transfer invoices.</p>
           </div>
         </div>
         <div class="pos-set-card-grid">
           <article class="pos-set-card">
-            <h3>Numbering</h3>
+            <h3>Hotel Invoice</h3>
             <div class="pos-set-fields">
-              <label class="pos-set-field"><span>Prefix</span><input type="text" data-hotel-set-field data-hotel-set-key="invoice_prefix" placeholder="HBE"></label>
+              <label class="pos-set-field">
+                <span>Prefix</span>
+                <input type="text" data-hotel-set-field data-hotel-set-key="invoice_prefix" id="hotel-invoice-prefix" placeholder="HBE" autocomplete="off">
+              </label>
             </div>
           </article>
           <article class="pos-set-card">
-            <h3>Guest copy</h3>
+            <h3>Food &amp; Beverage Room Transfer</h3>
             <div class="pos-set-fields">
-              <label class="pos-set-field"><span>Header line</span><input type="text" data-hotel-set-field data-hotel-set-key="invoice_header"></label>
-              <label class="pos-set-field"><span>Footer</span><textarea rows="3" data-hotel-set-field data-hotel-set-key="invoice_footer"></textarea></label>
-              <label class="pos-set-field"><span>Notes</span><textarea rows="2" data-hotel-set-field data-hotel-set-key="invoice_notes"></textarea></label>
+              <label class="pos-set-field">
+                <span>Prefix</span>
+                <input type="text" data-hotel-set-field data-hotel-set-key="fb_invoice_prefix" id="hotel-fb-invoice-prefix" placeholder="FBE" autocomplete="off">
+              </label>
             </div>
           </article>
         </div>
@@ -233,6 +247,21 @@
             </label>
           </div>
         </div>
+        <article class="pos-set-card hotel-set-pairing-card">
+          <h3>Printer pairing</h3>
+          <p class="pos-set-help">Generate a short-lived code to enroll a new Print Agent. Already-enrolled printers keep using their API key and do not need to pair again.</p>
+          <div class="hotel-set-pairing-row">
+            <button type="button" class="pos-set-btn pos-set-btn--primary" data-hotel-action="print-agent-pair">Generate pairing code</button>
+            <div class="hotel-set-pairing-result" data-hotel-pairing-result hidden>
+              <label class="pos-set-field hotel-set-pairing-code-field">
+                <span>Pairing code</span>
+                <input type="text" data-hotel-pairing-code readonly autocomplete="off" spellcheck="false">
+              </label>
+              <p class="pos-set-hint" data-hotel-pairing-expiry></p>
+              <button type="button" class="pos-set-btn" data-hotel-pairing-copy>Copy code</button>
+            </div>
+          </div>
+        </article>
       </section>
 
       <section class="pos-set-panel" id="hotel-set-panel-asia_tech" data-panel="asia_tech" role="tabpanel" hidden>
@@ -340,7 +369,7 @@
 })(window);
 </script>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
-<script src="{{ url_for('static', filename='hotel_settings.js') }}?v=4"></script>
+<script src="{{ url_for('static', filename='hotel_settings.js') }}?v=10"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

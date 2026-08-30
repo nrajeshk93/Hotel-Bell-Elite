@@ -17,6 +17,7 @@ import httpx
 from hbe_mobile import config
 from hbe_mobile.update_check import (
     ANDROID_PACKAGE,
+    is_allowed_android_ota_origin,
     is_remote_newer,
     is_same_origin_url,
     parse_manifest,
@@ -88,13 +89,8 @@ def _http_client() -> httpx.Client:
         "timeout": httpx.Timeout(60.0, connect=20.0),
         "follow_redirects": False,
         "headers": {"User-Agent": f"HBE-Mobile-OTA/{APP_VERSION}", "Cache-Control": "no-cache"},
+        "verify": config.httpx_verify(),
     }
-    try:
-        import certifi
-
-        kwargs["verify"] = certifi.where()
-    except Exception:
-        pass
     return httpx.Client(**kwargs)
 
 
@@ -196,6 +192,9 @@ def check_and_apply_update() -> None:
     try:
         local_version, local_code = installed_version()
         base = config.get_api_base_url()
+        if not is_allowed_android_ota_origin(base):
+            log.error("HBE OTA: refusing non-HTTPS API origin on Android")
+            return
         manifest = fetch_manifest(base)
         if not is_remote_newer(
             local_version=local_version,

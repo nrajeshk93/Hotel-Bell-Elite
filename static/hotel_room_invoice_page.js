@@ -68,6 +68,38 @@
     return Math.round((Number(n) || 0) * 100) / 100;
   }
 
+  function taxFactor() {
+    return 1 + CGST_RATE + UGST_RATE;
+  }
+
+  /** Folio rates/amounts are tax-inclusive; line table shows exclusive. */
+  function exclFromInclusive(inclusive) {
+    var factor = taxFactor();
+    inclusive = round2(inclusive);
+    if (!(inclusive > 0) || !(factor > 0)) return inclusive;
+    return round2(inclusive / factor);
+  }
+
+  function inclusiveFromExcl(exclusive) {
+    var factor = taxFactor();
+    exclusive = round2(exclusive);
+    if (!(exclusive > 0) || !(factor > 0)) return exclusive;
+    return round2(exclusive * factor);
+  }
+
+  function lineDisplayAmount(line) {
+    return exclFromInclusive(Number(line && line.amount) || 0);
+  }
+
+  function lineDisplayRate(line) {
+    var qty = Number(line && line.qty) || 0;
+    if (qty > 0) {
+      var fromAmt = lineDisplayAmount(line);
+      if (fromAmt > 0) return round2(fromAmt / qty);
+    }
+    return exclFromInclusive(Number(line && line.rate) || 0);
+  }
+
   function escapeHtml(str) {
     return String(str == null ? '' : str)
       .replace(/&/g, '&amp;')
@@ -676,18 +708,14 @@
     if (discountInclusive > grossInclusive) discountInclusive = grossInclusive;
     /* Room rates / stay lines are tax-inclusive — extract CGST/UGST, do not add tax. */
     var inclusive = round2(Math.max(0, grossInclusive - discountInclusive));
-    var factor = 1 + CGST_RATE + UGST_RATE;
-    var taxable =
-      factor > 0 ? round2(inclusive / factor) : inclusive;
+    var factor = taxFactor();
+    var taxable = exclFromInclusive(inclusive);
     var cgst = round2(taxable * CGST_RATE);
     var ugst = round2(inclusive - taxable - cgst);
     if (ugst < 0) ugst = 0;
-    var displaySubtotal =
-      factor > 0 ? round2(grossInclusive / factor) : grossInclusive;
+    var displaySubtotal = exclFromInclusive(grossInclusive);
     var displayDiscount =
-      discountInclusive > 0 && factor > 0
-        ? round2(discountInclusive / factor)
-        : discountInclusive;
+      discountInclusive > 0 ? exclFromInclusive(discountInclusive) : discountInclusive;
     if (displayDiscount > displaySubtotal) displayDiscount = displaySubtotal;
     var total = inclusive;
     var advance = Math.max(0, Number((stay && stay.advancePaid) || 0));
@@ -839,10 +867,10 @@
               escapeHtml(String(row.qty || 1)) +
               '</td>' +
               '<td class="pos-inv-col-rate">' +
-              escapeHtml(money(row.rate)) +
+              escapeHtml(money(lineDisplayRate(row))) +
               '</td>' +
               '<td class="pos-inv-col-amt"><span class="pos-inv-amt">' +
-              escapeHtml(money(row.amount)) +
+              escapeHtml(money(lineDisplayAmount(row))) +
               '</span></td>' +
               '<td class="pos-inv-col-act"><div class="pos-inv-act-btns">' +
               '<button type="button" class="pos-inv-note-btn" data-hri-line-edit aria-label="Edit charge"' +
@@ -970,10 +998,10 @@
     if (pdfBtn) pdfBtn.disabled = !stay;
     if (discBtn) {
       discBtn.disabled = !hasEditAccess || !stay || invoiceLocked(stay, root);
-      discBtn.title = hasEditAccess
-        ? 'Add or change discount'
-        : 'Edit Access is required to change folio charges';
-      discBtn.classList.toggle('is-active', showDisc);
+      syncDiscountToolButton(root, showDisc);
+      if (!hasEditAccess) {
+        discBtn.title = 'Edit Access is required to change folio charges';
+      }
     }
     var customBtn = $('#hri-add-custom', root);
     if (customBtn) {
@@ -1500,6 +1528,35 @@
     }
   }
 
+  function hasActiveDiscount(stay) {
+    stay = stay || (lastRoom && lastRoom.stay);
+    if (!stay) return false;
+    var value = Number(
+      stay.discountValue != null ? stay.discountValue : stay.discount_value || 0
+    );
+    if (value > 0) return true;
+    return Number(stay.discountAmount || stay.discount_amount || 0) > 0;
+  }
+
+  function syncDiscountToolButton(root, hasDiscount) {
+    root = root || lastRoot || document.getElementById('hotel-room-invoice-page');
+    var discBtn = root ? $('#hri-tool-discount', root) : null;
+    if (!discBtn) discBtn = document.getElementById('hri-tool-discount');
+    if (!discBtn) return;
+    var editing =
+      hasDiscount != null ? !!hasDiscount : hasActiveDiscount();
+    var label =
+      (root && $('#hri-tool-discount-label', root)) ||
+      document.getElementById('hri-tool-discount-label') ||
+      discBtn.querySelector('span');
+    var text = editing ? 'Edit Discount' : 'Add Discount';
+    if (label) label.textContent = text;
+    discBtn.setAttribute('title', editing ? 'Edit discount' : 'Add discount');
+    discBtn.setAttribute('aria-label', text);
+    discBtn.classList.toggle('is-active', editing);
+    discBtn.classList.toggle('is-editing-discount', editing);
+  }
+
   function updateDiscountPreview() {
     var amountEl = document.getElementById('hri-discount-amount');
     var preview = document.getElementById('hri-discount-preview');
@@ -1522,12 +1579,23 @@
       if (!needs) reasonEl.value = '';
     }
     if (reasonField) {
-      reasonField.hidden = !needs;
       reasonField.classList.toggle('is-shown', needs);
+      reasonField.classList.toggle('is-required', needs);
+      if (needs) {
+        reasonField.removeAttribute('hidden');
+        reasonField.style.setProperty('display', 'flex', 'important');
+        reasonField.style.setProperty('flex-direction', 'column', 'important');
+        reasonField.style.setProperty('gap', '6px', 'important');
+        reasonField.style.setProperty('margin-bottom', '14px', 'important');
+      } else {
+        reasonField.setAttribute('hidden', '');
+        reasonField.style.setProperty('display', 'none', 'important');
+      }
     }
   }
 
-  function openDiscountModal() {
+  function openDiscountModal(opts) {
+    opts = opts || {};
     if (!requireEditAccess(lastRoot)) return;
     if (!lastRoom || !lastRoom.stay) {
       showToast('No active stay for discount.', true);
@@ -1540,29 +1608,86 @@
     var modal = document.getElementById('hri-discount-modal');
     if (!modal) return;
     var stay = lastRoom.stay;
+    var editing = !!opts.edit || hasActiveDiscount(stay);
     var type = stay.discountType || stay.discount_type || 'pct';
     var value = Number(
       stay.discountValue != null ? stay.discountValue : stay.discount_value || 0
     );
     syncDiscountTypeUi(type);
+    var title = document.getElementById('hri-discount-title');
+    var applyBtn = document.getElementById('hri-discount-apply');
+    var removeBtn = document.getElementById('hri-discount-remove');
+    if (title) title.textContent = editing ? 'Edit Discount' : 'Add Discount';
+    if (applyBtn) applyBtn.textContent = editing ? 'Update' : 'Apply';
+    if (removeBtn) removeBtn.hidden = !editing;
     var amountEl = document.getElementById('hri-discount-amount');
-    if (amountEl) amountEl.value = value > 0 ? String(value) : '';
+    if (amountEl) {
+      if (editing && value > 0) {
+        amountEl.value = String(value);
+        try {
+          amountEl.focus();
+          amountEl.select();
+        } catch (err) {}
+      } else {
+        amountEl.value = '';
+        try {
+          amountEl.focus();
+        } catch (err2) {}
+      }
+    }
     var reasonEl = document.getElementById('hri-discount-reason');
     if (reasonEl) {
-      reasonEl.value = stay.discountReason || stay.discount_reason || '';
+      reasonEl.value = editing
+        ? stay.discountReason || stay.discount_reason || ''
+        : '';
     }
     updateDiscountPreview();
     modal.hidden = false;
-    if (amountEl) {
-      try {
-        amountEl.focus();
-      } catch (err) {}
-    }
+    modal.removeAttribute('hidden');
   }
 
   function closeDiscountModal() {
     var modal = document.getElementById('hri-discount-modal');
-    if (modal) modal.hidden = true;
+    if (modal) {
+      modal.hidden = true;
+      modal.setAttribute('hidden', '');
+    }
+  }
+
+  function clearDiscount(root) {
+    root = root || lastRoot;
+    if (!requireEditAccess(root)) {
+      return Promise.reject(new Error('edit access required'));
+    }
+    var applyBtn = document.getElementById('hri-discount-apply');
+    var removeBtn = document.getElementById('hri-discount-remove');
+    if (applyBtn) applyBtn.disabled = true;
+    if (removeBtn) removeBtn.disabled = true;
+    return putAction(root, {
+      action: 'set_discount',
+      discountType: 'pct',
+      discountValue: 0,
+      discountReason: ''
+    })
+      .then(function (result) {
+        if (!result.ok || !result.data || !result.data.ok) {
+          throw new Error(
+            (result.data && result.data.error) || 'Could not remove discount.'
+          );
+        }
+        paintRoom(root, result.data.room);
+        closeDiscountModal();
+        showToast('Discount removed.');
+        return result.data.room;
+      })
+      .catch(function (err) {
+        showToast(err.message || 'Could not remove discount.', true);
+        throw err;
+      })
+      .finally(function () {
+        if (applyBtn) applyBtn.disabled = false;
+        if (removeBtn) removeBtn.disabled = false;
+      });
   }
 
   function lineIsPerNightRate(line) {
@@ -1576,16 +1701,21 @@
     var qty = Math.max(1, Number(line.qty) || 1);
     var rate = Number(line.rate);
     var amount = Number(line.amount);
+    var inclusive = 0;
     if (lineIsPerNightRate(line) && qty > 1 && isFinite(amount) && amount > 0) {
       /* Prefer true per-night rate; if rate was wrongly stored as the line total, derive it. */
       if (isFinite(rate) && rate > 0 && round2(rate) !== round2(amount)) {
-        return round2(rate);
+        inclusive = round2(rate);
+      } else {
+        inclusive = round2(amount / qty);
       }
-      return round2(amount / qty);
+    } else if (isFinite(rate) && rate > 0) {
+      inclusive = round2(rate);
+    } else if (isFinite(amount) && amount > 0) {
+      inclusive = round2(amount);
     }
-    if (isFinite(rate) && rate > 0) return round2(rate);
-    if (isFinite(amount) && amount > 0) return round2(amount);
-    return '';
+    /* Edit modal matches folio table: rate excluding GST. */
+    return inclusive > 0 ? exclFromInclusive(inclusive) : '';
   }
 
   function openCustomModal(editLine) {
@@ -1659,11 +1789,13 @@
     var rateEl = document.getElementById('hri-custom-rate');
     var chargeKey = keyEl ? String(keyEl.value || '').trim() : '';
     var label = nameEl ? String(nameEl.value || '').trim() : '';
-    var rate = rateEl ? Number(rateEl.value) : 0;
-    if (!(rate > 0)) {
+    var rateExcl = rateEl ? Number(rateEl.value) : 0;
+    if (!(rateExcl > 0)) {
       showToast('Enter a rate greater than zero.', true);
       return Promise.reject(new Error('rate required'));
     }
+    /* Modal shows excl-GST; APIs store tax-inclusive room/folio rates. */
+    var rate = inclusiveFromExcl(rateExcl);
     var saveBtn = document.getElementById('hri-custom-save');
     if (saveBtn) saveBtn.disabled = true;
 
@@ -1771,6 +1903,7 @@
       showToast('Enter a valid discount.', true);
       return Promise.reject(new Error('invalid discount'));
     }
+    var wasEditing = hasActiveDiscount();
     var subtotal = lastSummary
       ? lastSummary.grossInclusive != null
         ? lastSummary.grossInclusive
@@ -1800,7 +1933,11 @@
         paintRoom(root, result.data.room);
         closeDiscountModal();
         showToast(
-          value > 0 ? 'Discount applied.' : 'Discount cleared.'
+          value > 0
+            ? wasEditing
+              ? 'Discount updated.'
+              : 'Discount applied.'
+            : 'Discount removed.'
         );
         return result.data.room;
       })
@@ -2063,7 +2200,7 @@
           if (actionEl.disabled) return;
           generateInvoice(root);
         } else if (action === 'settle-bill') openSettleModal();
-        else if (action === 'discount') openDiscountModal();
+        else if (action === 'discount') openDiscountModal({ edit: hasActiveDiscount() });
         else if (action === 'add-custom') openCustomModal(null);
         else if (action === 'print') printInvoice({ autoPrint: false });
         else if (action === 'pdf') printInvoice({ autoPrint: false, skipAgent: true });
@@ -2107,6 +2244,11 @@
       if (event.target.closest('#hri-discount-apply')) {
         event.preventDefault();
         applyDiscount(root);
+        return;
+      }
+      if (event.target.closest('#hri-discount-remove')) {
+        event.preventDefault();
+        clearDiscount(root);
         return;
       }
       if (event.target.closest('#hri-custom-save')) {

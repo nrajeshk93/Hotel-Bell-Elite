@@ -15,10 +15,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=55">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=53">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=72">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=6">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=16">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice_page.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice_page.css') }}?v=14">
 <script>
 (function(){
   try{
@@ -33,10 +33,10 @@
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=53">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=72">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=6">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=16">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice_page.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice_page.css') }}?v=14">
 {% endif %}
 
 <div
@@ -228,7 +228,7 @@
     <div class="pos-inv-toolbar-tools">
       <button type="button" class="pos-inv-tool" id="hri-tool-discount" data-hri-action="discount" title="Add discount">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="2"/><circle cx="15" cy="15" r="2"/><path d="m7.5 16.5 9-9"/><rect x="3" y="3" width="18" height="18" rx="3"/></svg>
-        <span>Add Discount</span>
+        <span id="hri-tool-discount-label">Add Discount</span>
       </button>
       <button type="button" class="pos-inv-tool" id="hri-tool-print" data-hri-action="print" title="Print">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/></svg>
@@ -251,23 +251,26 @@
     <div class="pos-inv-modal-backdrop" data-hri-discount-close tabindex="-1" aria-hidden="true"></div>
     <div class="pos-inv-modal-box" role="dialog" aria-modal="true" aria-labelledby="hri-discount-title">
       <h3 id="hri-discount-title">Add Discount</h3>
-      <div class="pos-inv-field">
-        <span>Discount type</span>
-        <div class="pos-inv-seg" role="group" aria-label="Discount type">
-          <button type="button" class="pos-inv-seg-btn is-active" data-hri-adj-type="pct">%</button>
-          <button type="button" class="pos-inv-seg-btn" data-hri-adj-type="inr">₹</button>
+      <div class="pos-inv-adj-row">
+        <div class="pos-inv-field pos-inv-field--type">
+          <span>Type</span>
+          <div class="pos-inv-seg" role="group" aria-label="Discount type">
+            <button type="button" class="pos-inv-seg-btn is-active" data-hri-adj-type="pct">%</button>
+            <button type="button" class="pos-inv-seg-btn" data-hri-adj-type="inr">₹</button>
+          </div>
         </div>
+        <label class="pos-inv-field pos-inv-field--amount">
+          <span id="hri-discount-amount-label">Amount (%)</span>
+          <input type="number" id="hri-discount-amount" min="0" step="0.01" value="" placeholder="Enter discount" inputmode="decimal">
+        </label>
       </div>
-      <label class="pos-inv-field">
-        <span id="hri-discount-amount-label">Amount (%)</span>
-        <input type="number" id="hri-discount-amount" min="0" step="0.01" value="" placeholder="Enter discount" inputmode="decimal">
-      </label>
       <p class="pos-inv-modal-preview" id="hri-discount-preview">Discount: ₹0.00</p>
       <label class="pos-inv-field" id="hri-discount-reason-field" hidden>
-        <span>Reason <span class="pos-inv-summary-muted">(required over 15%)</span></span>
+        <span>Reason <span class="pos-inv-summary-muted" id="hri-discount-reason-hint">(required over 15%)</span></span>
         <input type="text" id="hri-discount-reason" maxlength="200" placeholder="Why is this discount over 15%?" autocomplete="off" disabled>
       </label>
       <div class="pos-inv-modal-actions">
+        <button type="button" class="pos-inv-btn pos-inv-btn--ghost pos-inv-btn--danger" id="hri-discount-remove" hidden>Remove</button>
         <button type="button" class="pos-inv-btn pos-inv-btn--ghost" data-hri-discount-close>Cancel</button>
         <button type="button" class="pos-inv-btn pos-inv-btn--primary" id="hri-discount-apply">Apply</button>
       </div>
@@ -300,7 +303,7 @@
 </div>
 
 <script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=33"></script>
-<script src="{{ url_for('static', filename='hotel_room_invoice_page.js') }}?v=33"></script>
+<script src="{{ url_for('static', filename='hotel_room_invoice_page.js') }}?v=35"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

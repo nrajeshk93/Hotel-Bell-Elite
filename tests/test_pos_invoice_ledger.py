@@ -122,6 +122,9 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertIn("18:00", html)
         self.assertIn("Guest One", html)
         self.assertIn("Payment Mode", html)
+        self.assertIn("Created by", html)
+        self.assertIn("Administrator", html)
+        self.assertIn('data-sort="created_by"', html)
         self.assertNotIn('data-sort="table"', html)
 
         save2 = self.client.post(
@@ -315,7 +318,8 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertEqual(headers[7], "UPI")
         self.assertEqual(headers[8], "Card")
         self.assertEqual(headers[9], "Room Transfer")
-        self.assertEqual(headers[-1], "Total")
+        self.assertEqual(headers[-2], "Total")
+        self.assertEqual(headers[-1], "Created by")
         self.assertEqual(ws["A1"].fill.fgColor.rgb, "FF315A78")
         self.assertEqual(ws.cell(3, 1).fill.fgColor.rgb, "FF315A78")
         self.assertEqual(ws["A1"].font.color.rgb, "FFFFFFFF")
@@ -326,11 +330,13 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertEqual(ws.cell(4, 1).font.size, 11)
         self.assertEqual(ws.cell(4, 1).font.color.rgb, "FF000000")
         self.assertEqual(ws.cell(4, 1).alignment.horizontal, "left")
-        self.assertEqual(ws.cell(4, ws.max_column).alignment.horizontal, "right")
+        self.assertEqual(ws.cell(4, ws.max_column - 1).alignment.horizontal, "right")
+        self.assertEqual(ws.cell(4, ws.max_column).alignment.horizontal, "left")
         self.assertIsNotNone(ws.cell(4, 1).border.left.style)
         self.assertEqual(ws.cell(4, 1).value, "ORD-2607-0001")
         self.assertEqual(ws.cell(4, 2).value, "2026-07-22")
         self.assertEqual(ws.cell(4, 3).value, "Guest One")
+        self.assertEqual(ws.cell(4, ws.max_column).value, "Administrator")
 
     def test_save_validation(self):
         empty = self.client.post(
@@ -810,6 +816,154 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertEqual(payload["settled_count"], 2)
         for row in payload["invoices"]:
             self.assertEqual(row["status"], "closed")
+
+    def test_zero_payable_generate_invoice_auto_settles(self):
+        """100% discount / ₹0 payable → Settled on Generate Invoice (no tender)."""
+        today = date.today().isoformat()
+        generated = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                order_no="SPC/ZERO01/26-27",
+                total=0,
+                customerBill=True,
+                orderDate=today,
+                savedAt=today + " 12:00:00",
+                orderType="takeaway",
+                table="",
+                discountType="pct",
+                discountValue=100,
+                totals={
+                    "subtotal": 500,
+                    "discount": 500,
+                    "discountType": "pct",
+                    "discountValue": 100,
+                    "gst": 0,
+                    "service": 0,
+                    "serviceType": "pct",
+                    "serviceValue": 0,
+                    "tip": 0,
+                    "roundOff": 0,
+                    "total": 0,
+                },
+            ),
+        )
+        self.assertEqual(generated.status_code, 200, generated.get_data(as_text=True))
+        inv = generated.get_json()["invoice"]
+        self.assertTrue(inv.get("customer_bill_sent"))
+        self.assertEqual(inv.get("status"), "closed")
+        self.assertLessEqual(float(inv.get("grand_total") or 0), 0.009)
+        self.assertTrue(str(inv.get("settled_at") or "").strip())
+        self.assertEqual(inv.get("payment_mode_label"), "Settled")
+        self.assertEqual(inv.get("payment_modes") or [], [])
+
+        page = self.client.get("/point-of-sale/invoice-ledger")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        row_open = html.split(f'data-invoice-id="{inv["id"]}"', 1)[0].rsplit("<tr", 1)[-1]
+        row_html = "<tr" + row_open + html.split(f'data-invoice-id="{inv["id"]}"', 1)[1].split("</tr>", 1)[0]
+        self.assertIn("is-settled", row_html)
+        self.assertNotIn("is-unsettled", row_html.split(">", 1)[0])
+        self.assertIn('class="pos-il-payment-mode"', row_html)
+        self.assertIn(">Settled<", row_html)
+        self.assertNotIn(">Unsettled<", row_html)
+
+    def test_legacy_zero_payable_open_bill_settles_on_ledger(self):
+        """Opening Invoice Ledger closes leftover open zero-payable generated bills."""
+        conn = db_mod.get_db()
+        try:
+            saved = db_mod.save_pos_invoice(
+                conn,
+                self._payload(
+                    order_no="SPC/LEGACY0/26-27",
+                    total=0,
+                    customerBill=True,
+                    orderType="takeaway",
+                    table="",
+                    discountType="pct",
+                    discountValue=100,
+                    totals={
+                        "subtotal": 200,
+                        "discount": 200,
+                        "discountType": "pct",
+                        "discountValue": 100,
+                        "gst": 0,
+                        "service": 0,
+                        "tip": 0,
+                        "roundOff": 0,
+                        "total": 0,
+                    },
+                ),
+                created_by="Administrator",
+                actor_is_admin=True,
+            )
+            # Simulate pre-fix row: generated but still open / unsettled.
+            conn.execute(
+                """
+                UPDATE pos_invoices
+                SET status = 'open', settled_at = ''
+                WHERE id = ?
+                """,
+                (saved["id"],),
+            )
+            conn.execute(
+                "DELETE FROM pos_invoice_payments WHERE invoice_id = ?",
+                (saved["id"],),
+            )
+            conn.commit()
+            invoice_id = saved["id"]
+        finally:
+            conn.close()
+
+        page = self.client.get("/point-of-sale/invoice-ledger")
+        self.assertEqual(page.status_code, 200)
+
+        conn = db_mod.get_db()
+        try:
+            row = db_mod.get_pos_invoice(conn, invoice_id)
+        finally:
+            conn.close()
+        self.assertEqual(row["status"], "closed")
+        self.assertEqual(row["payment_mode_label"], "Settled")
+
+    def test_settled_filter_includes_zero_payable_closed_bills(self):
+        """Status=Settled must include ₹0 closed bills (no tender rows)."""
+        today = date.today().isoformat()
+        generated = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                order_no="SPC/ZERO02/26-27",
+                total=0,
+                customerBill=True,
+                orderDate=today,
+                savedAt=today + " 13:00:00",
+                orderType="takeaway",
+                table="",
+                discountType="pct",
+                discountValue=100,
+                totals={
+                    "subtotal": 100,
+                    "discount": 100,
+                    "discountType": "pct",
+                    "discountValue": 100,
+                    "gst": 0,
+                    "service": 0,
+                    "tip": 0,
+                    "roundOff": 0,
+                    "total": 0,
+                },
+            ),
+        )
+        self.assertEqual(generated.status_code, 200, generated.get_data(as_text=True))
+        inv = generated.get_json()["invoice"]
+        self.assertEqual(inv["status"], "closed")
+
+        settled_page = self.client.get(
+            "/point-of-sale/invoice-ledger?settlement=settled"
+        )
+        self.assertEqual(settled_page.status_code, 200)
+        html = settled_page.get_data(as_text=True)
+        self.assertIn(inv["order_no"], html)
+        self.assertIn(f'data-invoice-id="{inv["id"]}"', html)
 
 
 if __name__ == "__main__":

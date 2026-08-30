@@ -1,8 +1,9 @@
-<script>
+<script data-de-rerun="1">
 (function(){
   const searchInput = document.getElementById('dashboard-search');
   const cards = Array.from(document.querySelectorAll('#dashboard-home-panel .db-home-card'));
-  if (searchInput) {
+  if (searchInput && searchInput.dataset.searchBound !== '1') {
+    searchInput.dataset.searchBound = '1';
     searchInput.addEventListener('input', function(){
       const query = this.value.trim().toLowerCase();
       cards.forEach((card) => {
@@ -18,9 +19,13 @@
   const notificationsTrigger = document.getElementById('dashboard-notifications-trigger');
   const notificationsList = document.getElementById('dashboard-notifications-list');
   const NOTIF_POLL_MS = 8000;
-  const BELL_ACK_FP_KEY = 'hbe-home-bell-ack-fp';
-  let notifFingerprint = '';
+  /* v3: { [id]: numberCount } — quiet until id is new or count increases. */
+  const BELL_SEEN_KEY = 'hbe-home-bell-seen-v3';
+  const LEGACY_KEYS = ['hbe-home-bell-seen-v2', 'hbe-home-bell-ack-ids'];
   let notifTimer = 0;
+  let lastItems = [];
+  /** Items shown for the current open menu session (frozen at open / click). */
+  let openSessionItems = null;
 
   function escHtml(s) {
     return String(s == null ? '' : s)
@@ -30,27 +35,112 @@
       .replace(/"/g, '&quot;');
   }
 
-  function fingerprintItems(items) {
-    return (items || [])
-      .map(function (item) {
-        return String(item.id || '') + '|' + String(item.title || '') + '|' + String(item.body || '');
-      })
-      .join('||');
+  function itemId(item) {
+    return String((item && item.id) || '').trim();
   }
 
-  function readBellAckFp() {
+  /** Stable numeric count for comparison (body text must never affect unread). */
+  function itemCount(item) {
+    if (!item) return 0;
+    if (item.count != null && String(item.count).trim() !== '') {
+      const n = Number(item.count);
+      return Number.isFinite(n) ? n : 0;
+    }
+    const body = String(item.body || '');
+    const m = body.match(/(\d+)/);
+    if (m) {
+      const n = Number(m[1]);
+      return Number.isFinite(n) ? n : 1;
+    }
+    return 1;
+  }
+
+  function readSeenMap() {
     try {
-      return String(sessionStorage.getItem(BELL_ACK_FP_KEY) || '');
+      const raw = localStorage.getItem(BELL_SEEN_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return {};
+      const out = {};
+      Object.keys(parsed).forEach(function (id) {
+        const n = Number(parsed[id]);
+        out[id] = Number.isFinite(n) ? n : 0;
+      });
+      return out;
     } catch (_err) {
-      return '';
+      return {};
     }
   }
 
-  function writeBellAckFp(fp) {
+  function writeSeenMap(map) {
     try {
-      if (fp) sessionStorage.setItem(BELL_ACK_FP_KEY, fp);
-      else sessionStorage.removeItem(BELL_ACK_FP_KEY);
+      const keys = Object.keys(map || {});
+      if (!keys.length) localStorage.removeItem(BELL_SEEN_KEY);
+      else localStorage.setItem(BELL_SEEN_KEY, JSON.stringify(map));
+      LEGACY_KEYS.forEach(function (k) {
+        try { localStorage.removeItem(k); } catch (_e) {}
+      });
+      try { sessionStorage.removeItem('hbe-home-bell-ack-fp'); } catch (_e) {}
     } catch (_err) {}
+  }
+
+  function pruneSeenToItems(items, seen) {
+    const next = {};
+    const liveIds = {};
+    (items || []).forEach(function (item) {
+      const id = itemId(item);
+      if (id) liveIds[id] = true;
+    });
+    Object.keys(seen || {}).forEach(function (id) {
+      if (liveIds[id]) next[id] = seen[id];
+    });
+    return next;
+  }
+
+  function markItemsSeen(items) {
+    const seen = readSeenMap();
+    (items || []).forEach(function (item) {
+      const id = itemId(item);
+      if (!id) return;
+      const count = itemCount(item);
+      /* Keep the higher watermark so a later lower count cannot re-trigger. */
+      seen[id] = Math.max(Number(seen[id] || 0), count);
+    });
+    /* Prune against the full live feed when known so single-item acks keep other watermarks. */
+    const live = lastItems.length ? lastItems : items;
+    writeSeenMap(pruneSeenToItems(live, seen));
+  }
+
+  function isItemUnseen(item, seen) {
+    const id = itemId(item);
+    if (!id) return false;
+    const count = itemCount(item);
+    return !(id in seen) || count > Number(seen[id] || 0);
+  }
+
+  function unseenItems(items) {
+    const seen = readSeenMap();
+    return (items || []).filter(function (item) {
+      return isItemUnseen(item, seen);
+    });
+  }
+
+  function hasUnseenItems(items) {
+    return unseenItems(items).length > 0;
+  }
+
+  function setBellQuiet(quiet) {
+    const root = document.getElementById('dashboard-notifications');
+    const trig = document.getElementById('dashboard-notifications-trigger');
+    if (!root) return;
+    if (quiet) {
+      root.classList.add('is-read');
+      root.classList.remove('has-unread');
+      if (trig) trig.classList.remove('db-home-bell--pulse');
+    } else {
+      root.classList.remove('is-read');
+      root.classList.add('has-unread');
+    }
   }
 
   function renderNotifications(items) {
@@ -65,11 +155,14 @@
     }
     notificationsList.innerHTML = items
       .map(function (item) {
+        const count = itemCount(item);
         return (
           '<a class="db-notification-item db-notification-item--link" role="menuitem" href="' +
           escHtml(item.href || '#') +
           '" data-notification-id="' +
           escHtml(item.id || '') +
+          '" data-notification-count="' +
+          escHtml(String(count)) +
           '">' +
           '<span class="db-notification-item-icon" aria-hidden="true">' +
           '<svg viewBox="0 0 24 24"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>' +
@@ -95,51 +188,90 @@
         const copy = el.querySelector('.db-notification-item-copy');
         const titleEl = copy ? copy.querySelector('.db-notification-item-title') : null;
         const bodyEl = copy ? copy.querySelector('.db-notification-item-body') : null;
-        return {
-          id: el.getAttribute('data-notification-id') || el.getAttribute('href') || '',
+        const countRaw = el.getAttribute('data-notification-count');
+        const item = {
+          id: el.getAttribute('data-notification-id') || '',
           title: (titleEl && titleEl.textContent) || '',
           body: (bodyEl && bodyEl.textContent) || '',
+          href: el.getAttribute('href') || '',
         };
+        if (countRaw != null && countRaw !== '') item.count = countRaw;
+        return item;
       }
     );
   }
 
   function applyNotifications(items, opts) {
     opts = opts || {};
-    const nextFp = fingerprintItems(items);
-    const willUnread = !!(items && items.length);
-    if (opts.acknowledge && nextFp) writeBellAckFp(nextFp);
-    const ackFp = readBellAckFp();
-    const wasQuiet = !!(notifications && notifications.classList.contains('is-read'));
-    if (notificationsList) renderNotifications(items || []);
-    if (notifications) {
-      if (!willUnread) {
-        notifications.classList.remove('has-unread');
-        notifications.classList.add('is-read');
-        writeBellAckFp('');
-      } else if (ackFp && ackFp === nextFp) {
-        /* Same set already opened — keep quiet. */
-        notifications.classList.add('has-unread');
-        notifications.classList.add('is-read');
-      } else {
-        /* New or unacknowledged set — attention. */
-        notifications.classList.add('has-unread');
-        notifications.classList.remove('is-read');
-        if (opts.announce && wasQuiet && notificationsTrigger) {
-          notificationsTrigger.classList.add('db-home-bell--pulse');
-          window.setTimeout(function () {
-            notificationsTrigger.classList.remove('db-home-bell--pulse');
-          }, 1200);
-        }
-      }
+    const list = Array.isArray(items) ? items : [];
+    lastItems = list;
+
+    if (opts.acknowledge) {
+      markItemsSeen(list);
+    } else if (list.length) {
+      /* Drop ids that left the feed so they can re-alert if they return. */
+      writeSeenMap(pruneSeenToItems(list, readSeenMap()));
     }
-    notifFingerprint = nextFp;
+    /* Do not wipe the seen map on a transient empty poll — only prune when we have items.
+       Empty successful feed: clear so a later return can notify. */
+    if (!list.length && opts.fromApi) {
+      writeSeenMap({});
+    }
+
+    const root = document.getElementById('dashboard-notifications');
+    const wasQuiet = !!(
+      root &&
+      (root.classList.contains('is-read') || !root.classList.contains('has-unread'))
+    );
+    const panelOpen = !!(root && root.classList.contains('is-open'));
+    let visible;
+    if (panelOpen && openSessionItems) {
+      /* Keep this open session's snapshot; refresh bodies from live feed when possible. */
+      const byId = {};
+      list.forEach(function (item) {
+        const id = itemId(item);
+        if (id) byId[id] = item;
+      });
+      visible = openSessionItems
+        .map(function (item) {
+          const id = itemId(item);
+          return (id && byId[id]) || item;
+        })
+        .filter(function (item) {
+          const id = itemId(item);
+          return id && byId[id];
+        });
+    } else {
+      visible = unseenItems(list);
+    }
+    if (notificationsList) renderNotifications(visible);
+
+    if (!list.length) {
+      setBellQuiet(true);
+      return;
+    }
+
+    const unseen = hasUnseenItems(list);
+    if (opts.fromOpen || opts.acknowledge) {
+      setBellQuiet(true);
+    } else {
+      setBellQuiet(!unseen);
+    }
+    const trig = document.getElementById('dashboard-notifications-trigger');
+    if (unseen && opts.announce && wasQuiet && trig) {
+      trig.classList.add('db-home-bell--pulse');
+      window.setTimeout(function () {
+        const t = document.getElementById('dashboard-notifications-trigger');
+        if (t) t.classList.remove('db-home-bell--pulse');
+      }, 1200);
+    }
   }
 
   function refreshNotifications(announce, opts) {
     opts = opts || {};
-    if (!notifications) return Promise.resolve();
-    const url = notifications.getAttribute('data-notifications-url') || '';
+    const root = document.getElementById('dashboard-notifications');
+    if (!root) return Promise.resolve();
+    const url = root.getAttribute('data-notifications-url') || '';
     if (!url) return Promise.resolve();
     return fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
       .then(function (res) {
@@ -152,76 +284,143 @@
         applyNotifications(res.data.notifications || [], {
           announce: !!announce,
           acknowledge: !!opts.acknowledge,
+          fromApi: true,
+          fromOpen: !!opts.fromOpen,
         });
       })
-      .catch(function (err) {
-      });
+      .catch(function () {});
   }
 
   function startNotificationPolling() {
-    if (notifTimer) return;
-    if (!notifFingerprint) notifFingerprint = fingerprintItems(itemsFromDom());
-    if (notifTimer) clearInterval(notifTimer);
-    if (window.__dbHomeNotifTimer) clearInterval(window.__dbHomeNotifTimer);
+    if (window.__dbHomeNotifTimer) {
+      clearInterval(window.__dbHomeNotifTimer);
+      window.__dbHomeNotifTimer = 0;
+    }
     notifTimer = window.setInterval(function () {
       if (!document.getElementById('dashboard-notifications')) return;
       if (document.hidden) return;
       refreshNotifications(true);
     }, NOTIF_POLL_MS);
     window.__dbHomeNotifTimer = notifTimer;
-    document.addEventListener('visibilitychange', function () {
+
+    if (window.__dbHomeNotifVisHandler) {
+      document.removeEventListener('visibilitychange', window.__dbHomeNotifVisHandler);
+    }
+    window.__dbHomeNotifVisHandler = function () {
       if (!document.hidden) refreshNotifications(true);
+    };
+    document.addEventListener('visibilitychange', window.__dbHomeNotifVisHandler);
+  }
+
+  function closeNotificationPanel() {
+    const root = document.getElementById('dashboard-notifications');
+    const trig = document.getElementById('dashboard-notifications-trigger');
+    if (!root) return;
+    const wasOpen = root.classList.contains('is-open');
+    root.classList.remove('is-open');
+    if (trig) trig.setAttribute('aria-expanded', 'false');
+    if (wasOpen) {
+      openSessionItems = null;
+      applyNotifications(lastItems.length ? lastItems : itemsFromDom());
+    }
+  }
+
+  function bindOutsideClose() {
+    if (window.__dbHomeOutsideClick) {
+      document.removeEventListener('click', window.__dbHomeOutsideClick);
+    }
+    window.__dbHomeOutsideClick = function (event) {
+      const notifEl = document.getElementById('dashboard-notifications');
+      const profileEl = document.getElementById('dashboard-profile');
+      const profileTrig = document.getElementById('dashboard-profile-trigger');
+      if (notifEl && !notifEl.contains(event.target)) {
+        closeNotificationPanel();
+      }
+      if (profileEl && !profileEl.contains(event.target)) {
+        profileEl.classList.remove('is-open');
+        if (profileTrig) profileTrig.setAttribute('aria-expanded', 'false');
+      }
+    };
+    document.addEventListener('click', window.__dbHomeOutsideClick);
+  }
+
+  function bindNotificationLinkAck() {
+    const listEl = document.getElementById('dashboard-notifications-list');
+    if (!listEl || listEl.dataset.notifLinkAckBound === '1') return;
+    listEl.dataset.notifLinkAckBound = '1';
+    listEl.addEventListener('click', function (event) {
+      const link = event.target.closest('.db-notification-item--link');
+      if (!link || !listEl.contains(link)) return;
+      const id = (link.getAttribute('data-notification-id') || '').trim();
+      if (!id) return;
+      const countRaw = link.getAttribute('data-notification-count');
+      const item = { id: id, count: countRaw };
+      const bodyEl = link.querySelector('.db-notification-item-body');
+      if (bodyEl) item.body = bodyEl.textContent || '';
+      markItemsSeen([item]);
+      if (openSessionItems) {
+        openSessionItems = openSessionItems.filter(function (row) {
+          return itemId(row) !== id;
+        });
+      }
+      setBellQuiet(!hasUnseenItems(lastItems.length ? lastItems : itemsFromDom()));
+      renderNotifications(
+        openSessionItems || unseenItems(lastItems.length ? lastItems : [])
+      );
     });
   }
 
   if (notifications && notificationsTrigger) {
-    /* Restore quiet state if this session already acknowledged the SSR set. */
-    if (notifications.classList.contains('has-unread')) {
-      const ssrFp = fingerprintItems(itemsFromDom());
-      const ackFp = readBellAckFp();
-      if (ssrFp && ackFp && ackFp === ssrFp) {
-        notifications.classList.add('is-read');
-      }
-      notifFingerprint = ssrFp;
+    /* Restore quiet state from seen map against SSR items. */
+    applyNotifications(itemsFromDom());
+    bindNotificationLinkAck();
+
+    if (notifications.dataset.bellBound !== '1') {
+      notifications.dataset.bellBound = '1';
+      notificationsTrigger.addEventListener('click', function (event) {
+        event.stopPropagation();
+        const root = document.getElementById('dashboard-notifications');
+        const trig = document.getElementById('dashboard-notifications-trigger');
+        if (!root || !trig) return;
+        if (root.classList.contains('is-open')) {
+          closeNotificationPanel();
+          return;
+        }
+        const current = lastItems.length ? lastItems : itemsFromDom();
+        openSessionItems = unseenItems(current);
+        if (current.length) markItemsSeen(current);
+        root.classList.add('is-open');
+        trig.setAttribute('aria-expanded', 'true');
+        setBellQuiet(true);
+        renderNotifications(openSessionItems);
+        refreshNotifications(false, { acknowledge: true, fromOpen: true });
+        if (profile) {
+          profile.classList.remove('is-open');
+          if (trigger) trigger.setAttribute('aria-expanded', 'false');
+        }
+      });
+      startNotificationPolling();
+      /* Sync with API once so SSR/body mismatches cannot leave a false unread. */
+      refreshNotifications(false);
+    } else {
+      startNotificationPolling();
+      applyNotifications(itemsFromDom());
+      refreshNotifications(false);
     }
-    notificationsTrigger.addEventListener('click', function(event){
-      event.stopPropagation();
-      const isOpen = notifications.classList.toggle('is-open');
-      notificationsTrigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-      if (isOpen) {
-        notifications.classList.add('is-read');
-        if (notifFingerprint) writeBellAckFp(notifFingerprint);
-        refreshNotifications(false, { acknowledge: true });
-      }
-      if (isOpen && profile) {
-        profile.classList.remove('is-open');
-        if (trigger) trigger.setAttribute('aria-expanded', 'false');
-      }
-    });
-    startNotificationPolling();
   }
 
-  if (profile && trigger) {
-    trigger.addEventListener('click', function(event){
+  if (profile && trigger && profile.dataset.profileBound !== '1') {
+    profile.dataset.profileBound = '1';
+    trigger.addEventListener('click', function (event) {
       event.stopPropagation();
       const isOpen = profile.classList.toggle('is-open');
       trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
       if (isOpen && notifications && notificationsTrigger) {
-        notifications.classList.remove('is-open');
-        notificationsTrigger.setAttribute('aria-expanded', 'false');
+        closeNotificationPanel();
       }
     });
   }
 
-  document.addEventListener('click', function(event){
-    if (notifications && !notifications.contains(event.target)) {
-      notifications.classList.remove('is-open');
-      if (notificationsTrigger) notificationsTrigger.setAttribute('aria-expanded', 'false');
-    }
-    if (profile && !profile.contains(event.target)) {
-      profile.classList.remove('is-open');
-      if (trigger) trigger.setAttribute('aria-expanded', 'false');
-    }
-  });
+  bindOutsideClose();
 })();
 </script>

@@ -531,6 +531,7 @@ _HOTEL_ROOMS_ENDPOINT_GROUPS = {
     "settings": {
         "hotel_settings",
         "hotel_settings_api",
+        "print_agent_pairing_code",
     },
 }
 _HOTEL_ROOMS_ENDPOINTS = set().union(*_HOTEL_ROOMS_ENDPOINT_GROUPS.values())
@@ -682,6 +683,12 @@ _SETTINGS_ENDPOINTS = {
     "settings",
 }
 
+# License is admin-gated in enforce_access (not a role dashboard module).
+_LICENSE_ENDPOINTS = {
+    "license_page",
+    "license_api",
+}
+
 _PUBLIC_ENDPOINTS = {
     "index",
     "login",
@@ -697,6 +704,8 @@ _PUBLIC_ENDPOINTS = {
     "sitemap_xml",
     "mobile_ota_manifest",
     "mobile_ota_apk",
+    "mobile_shell_ota_manifest",
+    "mobile_shell_ota_apk",
 }
 
 _OUTLET_WRITE_ENDPOINTS = {
@@ -1891,6 +1900,8 @@ def mobile_module_access(user):
             "approvals": False,
             "purchase_ledger": False,
             "cash_ledger": False,
+            "store": False,
+            "stock_audit": False,
             "payroll_employee": False,
             "payroll_attendance": False,
             "payroll_credit": False,
@@ -1917,6 +1928,8 @@ def mobile_module_access(user):
         "approvals": user_can_access_accounts_submodule(user, "purchase_verification"),
         "purchase_ledger": user_can_access_accounts_submodule(user, "purchase_ledger"),
         "cash_ledger": user_can_access_accounts_submodule(user, "cash_ledger"),
+        "store": user_can_access_stores_submodule(user, "stock"),
+        "stock_audit": user_can_access_stores_submodule(user, "stock_audit"),
         "payroll_employee": user_can_access_payroll_submodule(user, "employee"),
         "payroll_attendance": user_can_access_payroll_submodule(user, "attendance"),
         "payroll_credit": user_can_access_payroll_submodule(user, "credit"),

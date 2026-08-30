@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import os
 from pathlib import Path
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlparse
 
 from flask import Blueprint, jsonify, make_response, request, send_from_directory
 
@@ -108,17 +109,58 @@ _PREVIEW_CORS_HEADERS = {
 }
 
 
+def _origin_from_url(url: str) -> str:
+    text = (url or "").strip().rstrip("/")
+    if not text:
+        return ""
+    parsed = urlparse(text if "://" in text else "https://" + text)
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def _preview_allowed_origins() -> set[str]:
+    """Same-host app + explicit localhost preview ports. Never reflect arbitrary Origins."""
+    origins = {
+        "https://belleliteaccounts.com",
+        "https://www.belleliteaccounts.com",
+        "http://127.0.0.1:8002",
+        "http://localhost:8002",
+        "http://127.0.0.1:8765",
+        "http://localhost:8765",
+        "http://[::1]:8002",
+        "http://[::1]:8765",
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+    }
+    for env_key in ("APP_BASE_URL", "PREVIEW_CORS_ORIGINS", "MOBILE_PREVIEW_CORS_ORIGINS"):
+        raw = os.environ.get(env_key) or ""
+        for item in raw.split(","):
+            origin = _origin_from_url(item.strip())
+            if origin:
+                origins.add(origin)
+    try:
+        base = _origin_from_url(app_base_url())
+        if base:
+            origins.add(base)
+    except Exception:
+        pass
+    try:
+        host_origin = _origin_from_url(request.host_url or "")
+        if host_origin:
+            origins.add(host_origin)
+    except RuntimeError:
+        pass
+    return origins
+
+
 def _preview_cors_headers():
-    origin = (request.headers.get("Origin") or "").strip()
+    origin = (request.headers.get("Origin") or "").strip().rstrip("/")
     headers = dict(_PREVIEW_CORS_HEADERS)
-    if origin in {"", "null"}:
-        headers["Access-Control-Allow-Origin"] = "null"
-        headers["Access-Control-Allow-Credentials"] = "true"
-    elif origin:
+    if origin and origin in _preview_allowed_origins():
         headers["Access-Control-Allow-Origin"] = origin
         headers["Access-Control-Allow-Credentials"] = "true"
-    else:
-        headers["Access-Control-Allow-Origin"] = "*"
+        headers["Vary"] = "Origin"
     return headers
 
 
@@ -284,6 +326,97 @@ def preview_purchase_ledger_route():
         return _json(payload)
     except Exception as exc:  # noqa: BLE001
         return _json({"ok": False, "error": str(exc), "flask_base": ps.FLASK_BASE}, 500)
+
+
+
+@bp.route("/preview-api/store", methods=["GET"])
+def preview_store_route():
+    denied = _deny("store")
+    if denied:
+        return _json(denied, 403)
+    ps = _preview_serve()
+    qs = parse_qs(request.query_string.decode("utf-8"))
+    outlet = (qs.get("outlet") or ["both"])[0]
+    place = (qs.get("place") or ["warehouse"])[0]
+    try:
+        payload = ps.fetch_store_stock(outlet=outlet, place=place)
+        return _json(payload)
+    except Exception as exc:  # noqa: BLE001
+        return _json({"ok": False, "error": str(exc), "flask_base": ps.FLASK_BASE}, 500)
+
+
+@bp.route("/preview-api/stock-audit", methods=["GET"])
+def preview_stock_audit_route():
+    denied = _deny("stock_audit")
+    if denied:
+        return _json(denied, 403)
+    ps = _preview_serve()
+    qs = parse_qs(request.query_string.decode("utf-8"))
+    outlet = (qs.get("outlet") or ["both"])[0]
+    place = (qs.get("place") or ["warehouse"])[0]
+    try:
+        payload = ps.fetch_stock_audit(outlet=outlet, place=place)
+        return _json(payload)
+    except Exception as exc:  # noqa: BLE001
+        return _json({"ok": False, "error": str(exc), "flask_base": ps.FLASK_BASE}, 500)
+
+
+@bp.route("/preview-api/stock-audit/history", methods=["GET"])
+def preview_stock_audit_history_route():
+    denied = _deny("stock_audit")
+    if denied:
+        return _json(denied, 403)
+    ps = _preview_serve()
+    qs = parse_qs(request.query_string.decode("utf-8"))
+    outlet = (qs.get("outlet") or ["both"])[0]
+    place = (qs.get("place") or ["warehouse"])[0]
+    try:
+        payload = ps.fetch_stock_audit_history(outlet=outlet, place=place)
+        return _json(payload)
+    except Exception as exc:  # noqa: BLE001
+        return _json({"ok": False, "error": str(exc), "flask_base": ps.FLASK_BASE}, 500)
+
+
+@bp.route("/preview-api/stock-audit/verify", methods=["POST"])
+def preview_stock_audit_verify_route():
+    denied = _deny("stock_audit")
+    if denied:
+        return _json(denied, 403)
+    ps = _preview_serve()
+    payload = request.get_json(silent=True) or {}
+    try:
+        status, data = ps.verify_stock_audit(payload)
+        return _json(data, status or 200)
+    except Exception as exc:  # noqa: BLE001
+        return _json({"ok": False, "error": str(exc)}, 500)
+
+
+@bp.route("/preview-api/stock-audit/skip", methods=["POST"])
+def preview_stock_audit_skip_route():
+    denied = _deny("stock_audit")
+    if denied:
+        return _json(denied, 403)
+    ps = _preview_serve()
+    payload = request.get_json(silent=True) or {}
+    try:
+        status, data = ps.skip_stock_audit(payload)
+        return _json(data, status or 200)
+    except Exception as exc:  # noqa: BLE001
+        return _json({"ok": False, "error": str(exc)}, 500)
+
+
+@bp.route("/preview-api/stock-audit/new", methods=["POST"])
+def preview_stock_audit_new_route():
+    denied = _deny("stock_audit")
+    if denied:
+        return _json(denied, 403)
+    ps = _preview_serve()
+    payload = request.get_json(silent=True) or {}
+    try:
+        status, data = ps.new_stock_audit(payload)
+        return _json(data, status or 200)
+    except Exception as exc:  # noqa: BLE001
+        return _json({"ok": False, "error": str(exc)}, 500)
 
 
 @bp.route("/preview-api/cash-ledger", methods=["GET"])
@@ -487,6 +620,77 @@ def preview_pos_settle_route():
     if denied:
         return _json(denied, 403)
     status, data = ps.pos_settle_invoice(invoice_id, payload or None, outlet)
+    return _json(data, status or 200)
+
+
+@bp.route("/preview-api/print-jobs", methods=["POST"])
+def preview_print_jobs_create_route():
+    denied = _deny("pos")
+    if denied:
+        denied = _deny("pos_bar")
+    if denied:
+        denied = _deny("kot")
+    if denied:
+        denied = _deny("kot_bar")
+    if denied:
+        return _json(denied, 403)
+    from db import get_db
+    from print_job_service import create_print_job
+
+    payload = request.get_json(silent=True) or {}
+    conn = get_db()
+    try:
+        user = _flask_session_user()
+        uid = int(user.get("id") or 0) if user else 0
+        job = create_print_job(conn, payload, user_id=uid)
+        if job.get("error") and not job.get("jobId"):
+            return _json(job, 400)
+        return _json({"ok": True, "job": job, "duplicate": bool(job.get("duplicate"))})
+    finally:
+        conn.close()
+
+
+@bp.route("/preview-api/print-jobs/<job_id>", methods=["GET"])
+def preview_print_jobs_get_route(job_id: str):
+    denied = _deny("pos")
+    if denied:
+        denied = _deny("pos_bar")
+    if denied:
+        denied = _deny("kot")
+    if denied:
+        denied = _deny("kot_bar")
+    if denied:
+        return _json(denied, 403)
+    from db import get_db
+    from print_job_service import get_print_job
+
+    conn = get_db()
+    try:
+        job = get_print_job(conn, job_id)
+        if not job:
+            return _json({"ok": False, "error": "Print job not found."}, 404)
+        return _json({"ok": True, "job": job})
+    finally:
+        conn.close()
+
+
+@bp.route("/preview-api/payroll/<path:subpath>", methods=["GET", "POST"])
+def preview_payroll_route(subpath: str):
+    """Proxy Employee Payroll mobile JSON through serve.py → /api/mobile/payroll/*."""
+    ps = _preview_serve()
+    preview_path = f"/preview-api/payroll/{subpath}"
+    access_key = ps._payroll_preview_access_key(preview_path)
+    if not access_key:
+        return _json({"ok": False, "error": "Not found"}, 404)
+    denied = _deny(access_key)
+    if denied:
+        return _json(denied, 403)
+    query = request.query_string.decode("utf-8")
+    if request.method == "GET":
+        status, data = ps.proxy_payroll_mobile("GET", preview_path, query)
+    else:
+        payload = request.get_json(silent=True) or {}
+        status, data = ps.proxy_payroll_mobile("POST", preview_path, query, payload)
     return _json(data, status or 200)
 
 

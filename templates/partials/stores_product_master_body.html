@@ -38,7 +38,10 @@
 {%- endmacro %}
 
 {# Product add/edit modal — same overlay pattern as Employee Add Credit #}
-{% set _pm_list_url = url_for('stores_product_master', outlet=selected_outlet, **({'embed': 1} if embed_page_shell|default(false) else {})) %}
+{% set _pm_embed = {'embed': 1} if embed_page_shell|default(false) else {} %}
+{% set _pm_list_url = url_for('stores_product_master', outlet=selected_outlet, **_pm_embed) %}
+{% set _pm_edit_zero = url_for('stores_product_master', edit=0, outlet=selected_outlet, **_pm_embed) %}
+{% set _pm_delete_zero = url_for('stores_product_delete', product_id=0, outlet=selected_outlet, **_pm_embed) %}
 <div class="modal-overlay st-product-modal{% if show_form %} active{% endif %}"
      id="st-product-modal"
      data-st-list-url="{{ _pm_list_url }}"
@@ -286,7 +289,7 @@
               data-st-product-row
               data-product-id="{{ product.id }}"
               {% if has_packs %}data-has-packs="1" data-packs="{{ product.variants|tojson|forceescape }}" tabindex="0" role="button" aria-expanded="false"{% endif %}
-              data-search="{{ [product.category_name or '', product.name or '', product.outlet_label or '', product.default_unit or '', product.approximate_price_display or '', ((product.variants or [])|map(attribute='label')|list)|join(' ')]|join(' ')|lower }}">
+              data-search="{{ product.search_text }}">
             <td data-sort-value="{{ product.category_name }}">
               <span class="st-cat-pill">{{ product.category_name }}</span>
             </td>
@@ -309,7 +312,7 @@
             </td>
             <td class="pl-col-actions">
               <div class="act-grp">
-                <a href="{{ url_for('stores_product_master', edit=product.id, outlet=selected_outlet, **({'embed': 1} if embed_page_shell|default(false) else {})) }}"
+                <a href="{{ _pm_edit_zero|replace('edit=0', 'edit=' ~ product.id) }}"
                    class="act-btn edit" data-tip="Edit" aria-label="Edit {{ product.name }}">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#st-icon-edit"/></svg>
                 </a>
@@ -318,7 +321,7 @@
                    data-tip="Delete"
                    aria-label="Delete {{ product.name }}"
                    data-st-product-delete
-                   data-delete-url="{{ url_for('stores_product_delete', product_id=product.id, outlet=selected_outlet, **({'embed': 1} if embed_page_shell|default(false) else {})) }}"
+                   data-delete-url="{{ _pm_delete_zero|replace('/product-master/0/', '/product-master/' ~ product.id ~ '/') }}"
                    data-product-id="{{ product.id }}"
                    data-product-name="{{ product.name }}">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#st-icon-del"/></svg>

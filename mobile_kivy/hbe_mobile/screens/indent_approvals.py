@@ -49,13 +49,13 @@ class IndentApprovalsScreen(MDScreen):
         tabs = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44), spacing=dp(8))
         self.btn_pending = MDRaisedButton(
             text="Waiting",
-            md_bg_color=theme.THEME,
+            md_bg_color=theme.ACCENT,
             on_release=lambda *_: self._set_view("pending"),
         )
         self.btn_recent = MDFlatButton(
             text="Recent",
             theme_text_color="Custom",
-            text_color=theme.THEME,
+            text_color=theme.ACCENT,
             on_release=lambda *_: self._set_view("recent"),
         )
         tabs.add_widget(self.btn_pending)
@@ -89,10 +89,10 @@ class IndentApprovalsScreen(MDScreen):
     def _set_view(self, view: str) -> None:
         self._view = "recent" if view == "recent" else "pending"
         if self._view == "pending":
-            self.btn_pending.md_bg_color = theme.THEME
+            self.btn_pending.md_bg_color = theme.ACCENT
             self.btn_recent.md_bg_color = (0, 0, 0, 0)
         else:
-            self.btn_recent.md_bg_color = theme.THEME
+            self.btn_recent.md_bg_color = theme.ACCENT
             self.btn_pending.md_bg_color = (0, 0, 0, 0)
         self.refresh()
 

@@ -9,4 +9,5 @@
     <string name="file_chooser_title">Choose file</string>
     <string name="notif_channel_name">Approvals &amp; alerts</string>
     <string name="notif_channel_desc">Purchase and indent approval reminders</string>
+    <string name="press_back_again">Press back again to exit</string>
 </resources>

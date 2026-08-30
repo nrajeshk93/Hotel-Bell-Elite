@@ -195,6 +195,17 @@ def mobile_payroll_employee_detail(emp_id):
         "address": emp.get("address") or "",
         "sex": emp.get("sex") or "",
         "total_off": int(emp.get("total_off") or 0),
+        "gross_actual": _money(emp.get("gross_actual")),
+        "basic": _money(emp.get("basic")),
+        "epf": _money(emp.get("epf")),
+        "esic": _money(emp.get("esic")),
+        "lop_deduction": _money(emp.get("lop_deduction")),
+        "lop_days": emp.get("lop_days") if emp.get("lop_days") is not None else 0,
+        "sunday_incentive": _money(emp.get("sunday_incentive")),
+        "tip_incentive": _money(emp.get("tip_incentive")),
+        "credit_repayment": _money(emp.get("credit_repayment")),
+        "epf_exempt": bool(emp.get("epf_exempt")),
+        "esic_exempt": bool(emp.get("esic_exempt")),
     })
     return jsonify(payload)
 

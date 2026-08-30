@@ -1400,6 +1400,13 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   flex-shrink:0;
   white-space:nowrap;
 }
+.pos-inv-btn--danger{
+  color:#DC2626 !important;
+}
+.pos-inv-btn--danger:hover,
+.pos-inv-btn--danger:focus-visible{
+  background:#FEF2F2 !important;
+}
 .pos-inv-summary-muted{
   font-weight:500;
   color:#94A3B8;
@@ -1643,23 +1650,57 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
 }
 .pos-inv-seg{
   display:inline-flex;
+  align-self:flex-start;
+  width:fit-content;
+  max-width:100%;
   padding:3px;
   border:1px solid var(--pos-border);
   border-radius:10px;
   background:#F8FAFC;
   gap:2px;
 }
-.pos-inv-seg-btn{
-  min-width:52px;
+.pos-inv-adj-row{
+  display:flex;
+  align-items:flex-end;
+  gap:12px;
+  margin-bottom:14px;
+}
+.pos-inv-adj-row > .pos-inv-field{
+  margin-bottom:0;
+}
+.pos-inv-adj-row .pos-inv-field--type{
+  flex:0 0 auto;
+}
+.pos-inv-adj-row .pos-inv-field--amount{
+  flex:1 1 auto;
+  min-width:0;
+}
+.pos-inv-adj-row .pos-inv-seg{
+  height:42px;
+  box-sizing:border-box;
+  align-items:center;
+}
+.pos-inv-adj-row .pos-inv-seg-btn{
   min-height:36px;
-  padding:0 14px;
+  height:36px;
+}
+.pos-inv-adj-row .pos-inv-field--amount input{
+  height:42px;
+  box-sizing:border-box;
+}
+.pos-inv-seg-btn{
+  min-width:40px;
+  min-height:36px;
+  width:40px;
+  padding:0;
   border:0;
   border-radius:8px;
   background:transparent;
   color:var(--pos-muted);
   font:inherit;
-  font-size:14px;
+  font-size:15px;
   font-weight:700;
+  line-height:1;
   cursor:pointer;
 }
 .pos-inv-seg-btn:hover{color:var(--pos-text)}

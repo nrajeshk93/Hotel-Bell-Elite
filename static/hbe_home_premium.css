@@ -425,6 +425,8 @@ body.home-module .de-main-inner.db-main-inner--home{
     display:none;
   }
   .db-home .db-notifications.has-unread:not(.is-read) .db-home-bell-dot{display:block}
+  .db-home .db-notifications.is-read .db-home-bell-dot,
+  .db-home .db-notifications:not(.has-unread) .db-home-bell-dot{display:none !important}
   /* Soft-nav sets animation:none!important on .de-main-wrapper *; beat it like Rooms tiles. */
   html.de-soft-nav-session .de-main-wrapper .db-home .db-notifications.has-unread:not(.is-read) .db-home-bell,
   html.de-soft-navigating .de-main-wrapper .db-home .db-notifications.has-unread:not(.is-read) .db-home-bell,
@@ -433,6 +435,18 @@ body.home-module .de-main-inner.db-main-inner--home{
     border-color:#93C5FD;
     background:#EFF6FF;
     animation:dbHomeBellAttention 1.4s ease-in-out infinite !important;
+  }
+  html.de-soft-nav-session .de-main-wrapper .db-home .db-notifications.is-read .db-home-bell,
+  html.de-soft-navigating .de-main-wrapper .db-home .db-notifications.is-read .db-home-bell,
+  .db-home .db-notifications.is-read .db-home-bell,
+  html.de-soft-nav-session .de-main-wrapper .db-home .db-notifications:not(.has-unread) .db-home-bell,
+  html.de-soft-navigating .de-main-wrapper .db-home .db-notifications:not(.has-unread) .db-home-bell,
+  .db-home .db-notifications:not(.has-unread) .db-home-bell{
+    color:#111827;
+    border-color:#E5E7EB;
+    background:#FFFFFF;
+    animation:none !important;
+    box-shadow:none;
   }
   html.de-soft-nav-session .de-main-wrapper .db-home .db-notifications.has-unread:not(.is-read) .db-home-bell-dot,
   html.de-soft-navigating .de-main-wrapper .db-home .db-notifications.has-unread:not(.is-read) .db-home-bell-dot,

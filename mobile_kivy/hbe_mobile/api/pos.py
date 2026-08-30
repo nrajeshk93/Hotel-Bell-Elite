@@ -67,6 +67,15 @@ class PosApi:
             raise ApiError(str(data.get("error") or "KOT tokens load failed"), payload=data)
         return data if isinstance(data, dict) else {}
 
+    def queue_print_job(self, payload: dict[str, Any]) -> dict[str, Any]:
+        data = self.client.post_json("/api/print-jobs", payload)
+        if not isinstance(data, dict) or not data.get("ok"):
+            raise ApiError(
+                str((data or {}).get("error") if isinstance(data, dict) else "Print queue failed"),
+                payload=data,
+            )
+        return data
+
     def reduce_kot_tokens(
         self,
         changes: list[dict[str, Any]],

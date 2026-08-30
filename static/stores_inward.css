@@ -638,6 +638,31 @@ body.su-module .st-sr-only{
 body.su-module #st-inward-expense-modal .st-inward-expense-box{
   overflow:visible;
 }
+body.su-module #st-inward-expense-modal .st-inward-expense-top-row{
+  grid-template-columns:minmax(0, 1fr) minmax(9.25rem, 9.5rem);
+  align-items:end;
+}
+body.su-module #st-inward-expense-modal .st-inward-expense-top-row:has(#st-inward-supplier-field[hidden]){
+  grid-template-columns:minmax(9.25rem, 9.5rem);
+  justify-content:end;
+}
+body.su-module #st-inward-expense-modal .st-inward-expense-top-row #st-inward-supplier-field{
+  min-width:0;
+}
+body.su-module #st-inward-expense-modal .st-inward-expense-date-field{
+  min-width:0;
+}
+body.su-module #st-inward-expense-modal .st-inward-expense-date-field .pl-date-input{
+  min-width:0;
+  width:100%;
+}
+@media (max-width:560px){
+  body.su-module #st-inward-expense-modal .st-inward-expense-top-row,
+  body.su-module #st-inward-expense-modal .st-inward-expense-top-row:has(#st-inward-supplier-field[hidden]){
+    grid-template-columns:1fr;
+    justify-content:stretch;
+  }
+}
 body.su-module #st-inward-expense-modal .staff-credit-actions{
   display:flex;
   align-items:center;
@@ -667,13 +692,14 @@ body.su-module #st-inward-expense-modal .se-filter-chip-value.is-placeholder{
 
 /* Purchase date — same field as Expense Ledger Add Purchase */
 body.su-module #st-inward-expense-modal .staff-input.pl-date-input{
+  position:relative;
   width:100%;
   height:44px;
   min-height:44px;
   border:1px solid var(--border,#E2E8F0);
   border-radius:6px;
   background:#fff;
-  padding:0 14px;
+  padding:0 10px;
   font:600 14px Inter,system-ui,sans-serif;
   color:var(--txt,#1A202C);
   box-sizing:border-box;
@@ -683,7 +709,15 @@ body.su-module #st-inward-expense-modal .staff-input.pl-date-input:focus{
   border-color:var(--acc,#1877F2);
   box-shadow:0 0 0 3px rgba(24,119,242,.08);
 }
+/* Hide native calendar icon so the date text stays fully visible in the narrow column */
 body.su-module #st-inward-expense-modal .staff-input.pl-date-input::-webkit-calendar-picker-indicator{
+  opacity:0;
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  margin:0;
+  padding:0;
   cursor:pointer;
 }
 
@@ -861,7 +895,6 @@ body.su-module #st-inward-page .st-inward-direct-head-cols > span{
   min-width:0;
   text-align:center;
 }
-body.su-module #st-inward-page .st-inward-direct-head-cols > span:first-child{text-align:left}
 body.su-module #st-inward-page .st-inward-direct-head-cols > span:last-child{
   font-size:0;
   line-height:0;
@@ -893,6 +926,38 @@ body.su-module #st-inward-page .st-inward-direct-line > .st-line-remove-wrap{
   align-self:center;
   margin:0;
 }
+/* Center all listbox / input text in the invoice row */
+body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-product-listbox .se-filter-chip-control,
+body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-pack-listbox .se-filter-chip-control,
+body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-unit-listbox .se-filter-chip-control{
+  justify-content:center;
+}
+body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-product-listbox input.se-filter-chip-combobox,
+body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-product-listbox .se-filter-chip-trigger,
+body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-pack-listbox .se-filter-chip-trigger,
+body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-unit-listbox .se-filter-chip-trigger{
+  text-align:center !important;
+  justify-content:center;
+}
+body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-pack-listbox .se-filter-chip-value,
+body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-unit-listbox .se-filter-chip-value{
+  width:100%;
+  text-align:center;
+}
+body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-product-listbox .se-filter-chip-chev{
+  position:absolute;
+  right:12px;
+  top:50%;
+  transform:translateY(-50%);
+  pointer-events:none;
+}
+body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-product-listbox .se-filter-chip-control{
+  position:relative;
+}
+body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-product-listbox input.se-filter-chip-combobox{
+  padding-left:28px;
+  padding-right:28px;
+}
 /* Pack / Unit listboxes — no chevron (cleaner invoice row) */
 body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-pack-listbox .se-filter-chip-chev,
 body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-unit-listbox .se-filter-chip-chev{
@@ -900,6 +965,7 @@ body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-unit-listbox .se
 }
 body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-pack-listbox .se-filter-chip-trigger,
 body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-unit-listbox .se-filter-chip-trigger{
+  padding-left:14px;
   padding-right:14px;
 }
 body.su-module #st-inward-page .st-inward-direct-line .st-field--qty input[type="number"],
@@ -935,8 +1001,10 @@ body.su-module #st-inward-page .st-inward-direct-line .st-field--tax input[type=
   box-shadow:0 0 0 4px rgba(37,99,235,.1);
 }
 body.su-module #st-inward-page .st-inward-direct-line .st-line-total{
+  display:flex;
   width:100%;
   min-height:52px;
+  align-items:center;
   justify-content:center;
   text-align:center;
 }
@@ -1009,30 +1077,73 @@ body.su-module #st-inward-page .st-inward-direct-line .st-line-remove.act-btn[da
   visibility:visible;
 }
 body.su-module #st-inward-page .st-inward-direct-footer{
+  /* Same column track as line rows — Total sits under line-item total. */
+  display:grid;
   margin-top:14px;
-  padding-top:12px;
-  padding-bottom:0;
+  padding:12px 4px 0;
   border-top:1px solid #E8EDF5;
+  align-items:start;
+  justify-content:stretch;
+}
+body.su-module #st-inward-page .st-inward-direct-footer .st-inward-direct-footer-total{
+  grid-column:7;
+  display:flex;
+  flex-direction:column;
   align-items:center;
+  justify-content:center;
+  gap:4px;
+  width:100%;
+  min-height:52px;
+  box-sizing:border-box;
+  padding:8px 10px;
+  border:1px solid #E2E8F0;
+  border-radius:12px;
+  background:#F8FAFD;
+  text-align:center;
 }
 body.su-module #st-inward-page .st-inward-direct-footer .st-lines-footer-label{
-  grid-column:1 / 7;
-  justify-self:end;
-  align-self:center;
-  font:650 12px Inter,system-ui,sans-serif;
+  grid-column:auto;
+  justify-self:auto;
+  align-self:auto;
+  font:650 11px/1.2 Inter,system-ui,sans-serif;
   color:#64748B;
   text-transform:uppercase;
   letter-spacing:.04em;
-  padding-right:0;
+  padding:0;
+  text-align:center;
+  display:block;
 }
 body.su-module #st-inward-page .st-inward-direct-footer .st-lines-footer-value{
-  grid-column:7;
-  justify-self:stretch;
-  align-self:center;
+  grid-column:auto;
+  justify-self:auto;
+  align-self:auto;
   text-align:center;
-  font:700 15px Inter,system-ui,sans-serif;
+  font:700 15px/1.2 Inter,system-ui,sans-serif;
   color:#0F172A;
   padding:0;
+  display:block;
+}
+body.su-module #st-inward-page .st-inward-direct-footer .st-lines-footer-value::before{
+  content:none;
+}
+body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-items-notes{
+  grid-template-columns:minmax(0, min(720px, 100%));
+  justify-items:end;
+  justify-content:end;
+  text-align:left;
+}
+body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-items-notes .st-notes-left{
+  justify-content:flex-end;
+  width:100%;
+}
+body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-items-notes .st-notes-right{
+  width:100%;
+  max-width:720px;
+}
+body.su-module #st-inward-page .st-inward-direct-lines-wrap .st-items-notes .st-notes-right textarea{
+  text-align:left;
+  padding-left:14px;
+  padding-right:72px;
 }
 @container st-inward-direct-lines (max-width:900px){
   body.su-module #st-inward-page .st-inward-direct-head-cols{display:none}
@@ -1054,7 +1165,7 @@ body.su-module #st-inward-page .st-inward-direct-footer .st-lines-footer-value{
   body.su-module #st-inward-page .st-inward-direct-line > .st-field--line-total{grid-column:1 / -1}
   body.su-module #st-inward-page .st-inward-direct-line > .st-line-remove-wrap{
     grid-column:1 / -1;
-    justify-self:end;
+    justify-self:center;
   }
   body.su-module #st-inward-page .st-inward-direct-line > .st-field[data-st-label]::before{
     content:attr(data-st-label);
@@ -1064,19 +1175,17 @@ body.su-module #st-inward-page .st-inward-direct-footer .st-lines-footer-value{
     color:#94A3B8;
     text-transform:uppercase;
     letter-spacing:.04em;
+    text-align:center;
   }
   body.su-module #st-inward-page .st-inward-direct-footer{
-    grid-template-columns:1fr auto;
+    display:flex;
+    justify-content:flex-end;
     padding-left:4px;
     padding-right:4px;
+    grid-template-columns:none;
   }
-  body.su-module #st-inward-page .st-inward-direct-footer .st-lines-footer-label{
-    grid-column:1;
-    justify-self:start;
-  }
-  body.su-module #st-inward-page .st-inward-direct-footer .st-lines-footer-value{
-    grid-column:2;
-    justify-self:end;
-    text-align:right;
+  body.su-module #st-inward-page .st-inward-direct-footer .st-inward-direct-footer-total{
+    grid-column:auto;
+    width:min(180px, 100%);
   }
 }

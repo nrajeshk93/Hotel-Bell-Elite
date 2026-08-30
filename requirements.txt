@@ -9,3 +9,4 @@ reportlab>=4.0.0
 Pillow>=10.0.0
 pillow-heif>=0.16.0
 pypdf>=4.0.0
+simple-websocket>=1.0.0

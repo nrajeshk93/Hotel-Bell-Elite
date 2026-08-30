@@ -1798,6 +1798,7 @@
     }
     var tipRow = $('#pos-inv-sum-tip-row', page);
     if (tipRow) tipRow.hidden = !(Number(t.tip) > 0);
+    syncAdjToolButtons(page);
   }
 
   function lineKitchenSentQty(line) {
@@ -2124,6 +2125,14 @@
     var menu = findMenuItem(line.menuId || line.menu_item_id);
     if (menu && String(menu.outlet || '').toLowerCase() === 'bar') return 'bar';
     return 'restaurant';
+  }
+
+  function shouldSkipClientKotPrint() {
+    return (
+      global.HotelPrintAgent &&
+      typeof global.HotelPrintAgent.serverQueueEnabled === 'function' &&
+      global.HotelPrintAgent.serverQueueEnabled()
+    );
   }
 
   function printKotTicket(page, pending) {
@@ -2710,10 +2719,11 @@
         }
         syncKotSentFromInvoice(result.data.invoice);
         if (
-          !global.hbePosPrinterPrefs ||
+          !shouldSkipClientKotPrint() &&
+          (!global.hbePosPrinterPrefs ||
           global.hbePosPrinterPrefs.shouldAutoPrintKot(
             (page && page.getAttribute('data-pos-outlet')) || undefined
-          )
+          ))
         ) {
           printKotTicket(page, pending);
         }
@@ -2820,10 +2830,11 @@
       syncFloorOccupancyAfterSave(page, payload, invoice);
       persistInvoiceResumeContext();
       if (
-        !global.hbePosPrinterPrefs ||
+        !shouldSkipClientKotPrint() &&
+        (!global.hbePosPrinterPrefs ||
         global.hbePosPrinterPrefs.shouldAutoPrintKot(
           (page && page.getAttribute('data-pos-outlet')) || undefined
-        )
+        ))
       ) {
         printKotTicket(page, pending);
       }
@@ -2974,11 +2985,24 @@
       syncFloorOccupancyAfterSave(page, payload, invoice);
       markInvoiceGenerated(page, invoice);
       printCustomerBill(page, invoice || null);
-      toast(
-        'Invoice generated for ' +
-          ((invoice && invoice.order_no) || state.orderNo) +
-          (isBrowserOnline() ? '. Settle the bill to continue.' : ' (offline — will sync).')
-      );
+      var autoSettled =
+        !!(invoice &&
+          (String(invoice.status || '').toLowerCase() === 'closed' ||
+            String(invoice.settled_at || '').trim()));
+      if (autoSettled) {
+        toast(
+          'Invoice generated for ' +
+            ((invoice && invoice.order_no) || state.orderNo) +
+            '. Zero payable — settled automatically.'
+        );
+        resetOrderSession(page);
+      } else {
+        toast(
+          'Invoice generated for ' +
+            ((invoice && invoice.order_no) || state.orderNo) +
+            (isBrowserOnline() ? '. Settle the bill to continue.' : ' (offline — will sync).')
+        );
+      }
     }
 
     function runCustomerSave() {
@@ -3730,6 +3754,7 @@
       else el.removeAttribute('aria-disabled');
     });
 
+    syncAdjToolButtons(page);
     updateSettleBillButton(page);
     renderLines(page);
     syncMenuBlockedUi(page);
@@ -3979,8 +4004,21 @@
     return 'pos-inv-' + kind + '-modal';
   }
 
+  function openInvModal(page, kind) {
+    closeAllInvModals(page);
+    var id = modalId(kind);
+    var modal =
+      (page && page.querySelector('#' + id)) ||
+      document.getElementById(id);
+    if (!modal) return;
+    modal.hidden = false;
+  }
+
   function closeInvModal(page, kind) {
-    var modal = $('#' + modalId(kind), page);
+    var id = modalId(kind);
+    var modal =
+      (page && page.querySelector('#' + id)) ||
+      document.getElementById(id);
     if (modal) modal.hidden = true;
   }
 
@@ -3989,13 +4027,6 @@
     INV_MODALS.forEach(function (kind) {
       closeInvModal(page, kind);
     });
-  }
-
-  function openInvModal(page, kind) {
-    closeAllInvModals(page);
-    var modal = $('#' + modalId(kind), page);
-    if (!modal) return;
-    modal.hidden = false;
   }
 
   function updateLineNoteCount(page) {
@@ -4291,31 +4322,214 @@
     closeInvModal(page, 'custom');
   }
 
-  function openDiscountModal(page) {
+  function hasActiveDiscount() {
+    var value = Number(state.discountValue) || 0;
+    if (value > 0) return true;
+    try {
+      return Number(calcTotals().discount) > 0;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function hasActiveService() {
+    var value = Number(state.serviceValue) || 0;
+    if (value > 0) return true;
+    try {
+      return Number(calcTotals().service) > 0;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function hasActiveTip() {
+    return (Number(state.tipAmount) || 0) > 0;
+  }
+
+  function hasActiveCoupon() {
+    return String(state.couponCode || '').trim() !== '';
+  }
+
+  function syncAdjToolButton(page, cfg) {
+    var root = page || document.getElementById('pos-invoice-page');
+    if (!root) return;
+    var btn =
+      root.querySelector(cfg.buttonId) ||
+      root.querySelector('[data-inv-action="' + cfg.action + '"]');
+    if (!btn) return;
+    var label = root.querySelector(cfg.labelId) || btn.querySelector('span');
+    var editing = !!cfg.editing;
+    var text = editing ? cfg.editText : cfg.addText;
+    if (label) label.textContent = text;
+    else btn.textContent = text;
+    btn.setAttribute('title', editing ? cfg.editTitle : cfg.addTitle);
+    btn.setAttribute('aria-label', text);
+    btn.classList.toggle(cfg.editingClass, editing);
+  }
+
+  function syncDiscountToolButton(page) {
+    syncAdjToolButton(page, {
+      action: 'discount',
+      buttonId: '#pos-inv-tool-discount',
+      labelId: '#pos-inv-tool-discount-label',
+      editing: hasActiveDiscount(),
+      addText: 'Add Discount',
+      editText: 'Edit Discount',
+      addTitle: 'Add discount',
+      editTitle: 'Edit discount',
+      editingClass: 'is-editing-discount'
+    });
+  }
+
+  function syncServiceToolButton(page) {
+    syncAdjToolButton(page, {
+      action: 'service',
+      buttonId: '#pos-inv-tool-service',
+      labelId: '#pos-inv-tool-service-label',
+      editing: hasActiveService(),
+      addText: 'Add Service Charge',
+      editText: 'Edit Service Charge',
+      addTitle: 'Add service charge',
+      editTitle: 'Edit service charge',
+      editingClass: 'is-editing-service'
+    });
+  }
+
+  function syncTipToolButton(page) {
+    syncAdjToolButton(page, {
+      action: 'tip',
+      buttonId: '#pos-inv-tool-tip',
+      labelId: '#pos-inv-tool-tip-label',
+      editing: hasActiveTip(),
+      addText: 'Add Tip',
+      editText: 'Edit Tip',
+      addTitle: 'Add tip',
+      editTitle: 'Edit tip',
+      editingClass: 'is-editing-tip'
+    });
+  }
+
+  function syncCouponToolButton(page) {
+    syncAdjToolButton(page, {
+      action: 'coupon',
+      buttonId: '#pos-inv-tool-coupon',
+      labelId: '#pos-inv-tool-coupon-label',
+      editing: hasActiveCoupon(),
+      addText: 'Apply Coupon',
+      editText: 'Edit Coupon',
+      addTitle: 'Apply coupon',
+      editTitle: 'Edit coupon',
+      editingClass: 'is-editing-coupon'
+    });
+  }
+
+  function syncAdjToolButtons(page) {
+    syncDiscountToolButton(page);
+    syncServiceToolButton(page);
+    syncTipToolButton(page);
+    syncCouponToolButton(page);
+  }
+
+  function clearDiscount(page, opts) {
+    var silent = !!(opts && opts.silent);
+    state.discountType = 'pct';
+    state.discountValue = 0;
+    state.discountLineUids = [];
+    state.discountReason = '';
+    closeInvModal(page, 'discount');
+    renderLines(page);
+    renderSummary(page);
+    markOrderDirty(page);
+    if (!silent) toast('Discount removed.');
+  }
+
+  function isDiscountEditingContext(page) {
+    if (hasActiveDiscount()) return true;
+    var root = page || document.getElementById('pos-invoice-page');
+    if (!root) return false;
+    var btn = root.querySelector('#pos-inv-tool-discount');
+    if (btn && btn.classList.contains('is-editing-discount')) return true;
+    var row = root.querySelector('#pos-inv-sum-discount-row');
+    if (row && !row.hidden) return true;
+    return false;
+  }
+
+  function openDiscountEditor(page) {
+    if (guardInvoiceLocked()) return;
+    if (isDiscountEditingContext(page)) {
+      openDiscountModal(page, { edit: true });
+      return;
+    }
+    beginDiscountSelectMode(page, 'discount');
+  }
+
+  function openDiscountModal(page, opts) {
+    opts = opts || {};
     openInvModal(page, 'discount');
     var amount = $('#pos-inv-discount-amount', page);
     var reasonEl = $('#pos-inv-discount-reason', page);
+    var title = $('#pos-inv-discount-title', page);
+    var removeBtn = $('#pos-inv-discount-remove', page);
+    var applyBtn = $('#pos-inv-discount-apply', page);
+    var editing = !!opts.edit || hasActiveDiscount();
     syncAdjTypeUi(page, 'discount', state.discountType || 'pct');
+    if (title) title.textContent = editing ? 'Edit Discount' : 'Add Discount';
+    if (applyBtn) applyBtn.textContent = editing ? 'Update' : 'Apply';
+    if (removeBtn) removeBtn.hidden = !editing;
     if (amount) {
-      /* Always start blank — staff must enter the discount each time. */
-      amount.value = '';
-      amount.focus();
+      if (editing && Number(state.discountValue) > 0) {
+        amount.value = String(state.discountValue);
+        amount.focus();
+        amount.select();
+      } else {
+        /* New discount — staff must enter the amount. */
+        amount.value = '';
+        amount.focus();
+      }
     }
-    if (reasonEl) reasonEl.value = '';
+    if (reasonEl) reasonEl.value = editing ? String(state.discountReason || '') : '';
     updateAdjPreview(page, 'discount');
     syncDiscountReasonUi(page);
   }
 
-  function openServiceModal(page) {
+  function openServiceModal(page, opts) {
+    opts = opts || {};
     openInvModal(page, 'service');
     var amount = $('#pos-inv-service-amount', page);
-    syncAdjTypeUi(page, 'service', state.serviceType);
+    var title = $('#pos-inv-service-title', page);
+    var removeBtn = $('#pos-inv-service-remove', page);
+    var applyBtn = $('#pos-inv-service-apply', page);
+    var editing = !!opts.edit || hasActiveService();
+    syncAdjTypeUi(page, 'service', state.serviceType || 'pct');
+    if (title) title.textContent = editing ? 'Edit Service Charge' : 'Add Service Charge';
+    if (applyBtn) applyBtn.textContent = editing ? 'Update' : 'Apply';
+    if (removeBtn) removeBtn.hidden = !editing;
     if (amount) {
-      amount.value = String(state.serviceValue || 0);
-      amount.focus();
-      amount.select();
+      if (editing && Number(state.serviceValue) > 0) {
+        amount.value = String(state.serviceValue);
+        amount.focus();
+        amount.select();
+      } else {
+        amount.value = '';
+        amount.focus();
+      }
     }
     updateAdjPreview(page, 'service');
+  }
+
+  function clearService(page, opts) {
+    var silent = !!(opts && opts.silent);
+    state.serviceType = 'pct';
+    state.serviceValue = 0;
+    closeInvModal(page, 'service');
+    renderSummary(page);
+    markOrderDirty(page);
+    if (!silent) toast('Service charge removed.');
+  }
+
+  function openServiceEditor(page) {
+    if (guardInvoiceLocked()) return;
+    openServiceModal(page, { edit: hasActiveService() });
   }
 
   function tipConfig(page) {
@@ -4369,6 +4583,13 @@
   function openTipModal(page) {
     openInvModal(page, 'tip');
     setTipError(page, '');
+    var title = $('#pos-inv-tip-title', page);
+    var removeBtn = $('#pos-inv-tip-remove', page);
+    var applyBtn = $('#pos-inv-tip-apply', page);
+    var editing = hasActiveTip() || !!state.tipPayrollId;
+    if (title) title.textContent = editing ? 'Edit Tip' : 'Add Tip';
+    if (applyBtn) applyBtn.textContent = editing ? 'Update' : 'Apply';
+    if (removeBtn) removeBtn.hidden = !editing;
     var amount = $('#pos-inv-tip-amount', page);
     var note = $('#pos-inv-tip-note', page);
     var emp = $('#pos-inv-tip-employee', page);
@@ -4404,6 +4625,42 @@
     if (amount) {
       amount.focus();
     }
+  }
+
+  function clearTip(page, opts) {
+    var silent = !!(opts && opts.silent);
+    var applyBtn = $('#pos-inv-tip-apply', page);
+    function finishClear() {
+      state.tipAmount = 0;
+      state.tipEmployeeId = '';
+      state.tipNote = '';
+      state.tipPayrollId = null;
+      closeInvModal(page, 'tip');
+      renderSummary(page);
+      if (!silent) toast('Tip removed.');
+    }
+    var req = state.tipPayrollId
+      ? deleteTipFromPayroll(page)
+      : Promise.resolve({ ok: true, data: { ok: true } });
+    if (applyBtn) applyBtn.disabled = true;
+    req
+      .then(function (res) {
+        if (!res.ok || !res.data || !res.data.ok) {
+          throw new Error((res.data && res.data.error) || 'Could not remove tip from payroll.');
+        }
+        finishClear();
+      })
+      .catch(function (err) {
+        setTipError(page, err.message || 'Could not remove tip from payroll.');
+      })
+      .then(function () {
+        if (applyBtn) applyBtn.disabled = false;
+      });
+  }
+
+  function openTipEditor(page) {
+    if (guardInvoiceLocked()) return;
+    openTipModal(page);
   }
 
   function persistTipToPayroll(page, amount, employeeId, note) {
@@ -4519,14 +4776,46 @@
       });
   }
 
-  function openCouponModal(page) {
+  function openCouponModal(page, opts) {
+    opts = opts || {};
     openInvModal(page, 'coupon');
     var code = $('#pos-inv-coupon-code', page);
+    var title = $('#pos-inv-coupon-title', page);
+    var removeBtn = $('#pos-inv-coupon-remove', page);
+    var applyBtn = $('#pos-inv-coupon-apply', page);
+    var editing = !!opts.edit || hasActiveCoupon();
+    if (title) title.textContent = editing ? 'Edit Coupon' : 'Apply Coupon';
+    if (applyBtn) applyBtn.textContent = editing ? 'Update' : 'Apply';
+    if (removeBtn) removeBtn.hidden = !editing;
     if (code) {
-      code.value = state.couponCode || '';
-      code.focus();
-      code.select();
+      if (editing && state.couponCode) {
+        code.value = state.couponCode;
+        code.focus();
+        code.select();
+      } else {
+        code.value = editing ? String(state.couponCode || '') : '';
+        code.focus();
+        if (editing && code.value) code.select();
+      }
     }
+  }
+
+  function clearCoupon(page, opts) {
+    var silent = !!(opts && opts.silent);
+    state.couponCode = '';
+    closeInvModal(page, 'coupon');
+    renderSummary(page);
+    markOrderDirty(page);
+    if (!silent) toast('Coupon removed.');
+  }
+
+  function openCouponEditor(page) {
+    if (guardInvoiceLocked()) return;
+    if (hasActiveCoupon()) {
+      openCouponModal(page, { edit: true });
+      return;
+    }
+    beginDiscountSelectMode(page, 'coupon');
   }
 
   function applyDiscountModal(page) {
@@ -4559,9 +4848,11 @@
       pruneDiscountLineUids();
     }
     closeInvModal(page, 'discount');
+    renderLines(page);
     renderSummary(page);
+    syncAdjToolButtons(page);
     markOrderDirty(page);
-    toast(n ? 'Discount applied.' : 'Discount cleared.');
+    toast(n ? 'Discount updated.' : 'Discount removed.');
   }
 
   function applyServiceModal(page) {
@@ -4574,6 +4865,7 @@
     state.serviceValue = n;
     closeInvModal(page, 'service');
     renderSummary(page);
+    markOrderDirty(page);
     toast(n ? 'Service charge updated.' : 'Service charge cleared.');
   }
 
@@ -5122,23 +5414,19 @@
       return;
     }
     if (action === 'discount') {
-      if (guardInvoiceLocked()) return;
-      beginDiscountSelectMode(page, 'discount');
+      openDiscountEditor(page);
       return;
     }
     if (action === 'service') {
-      if (guardInvoiceLocked()) return;
-      openServiceModal(page);
+      openServiceEditor(page);
       return;
     }
     if (action === 'tip') {
-      if (guardInvoiceLocked()) return;
-      openTipModal(page);
+      openTipEditor(page);
       return;
     }
     if (action === 'coupon') {
-      if (guardInvoiceLocked()) return;
-      beginDiscountSelectMode(page, 'coupon');
+      openCouponEditor(page);
       return;
     }
     if (action === 'add-custom') {
@@ -5734,12 +6022,37 @@
 
     var discountApply = $('#pos-inv-discount-apply', page);
     if (discountApply) discountApply.addEventListener('click', function () { applyDiscountModal(page); });
+    var discountRemove = $('#pos-inv-discount-remove', page);
+    if (discountRemove) {
+      discountRemove.addEventListener('click', function () { clearDiscount(page); });
+    }
+    var discountTool = $('#pos-inv-tool-discount', page) || page.querySelector('[data-inv-action="discount"]');
+    if (discountTool && discountTool.getAttribute('data-discount-tool-bound') !== '1') {
+      discountTool.setAttribute('data-discount-tool-bound', '1');
+      discountTool.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        openDiscountEditor(page);
+      });
+    }
     var serviceApply = $('#pos-inv-service-apply', page);
     if (serviceApply) serviceApply.addEventListener('click', function () { applyServiceModal(page); });
+    var serviceRemove = $('#pos-inv-service-remove', page);
+    if (serviceRemove) {
+      serviceRemove.addEventListener('click', function () { clearService(page); });
+    }
     var tipApply = $('#pos-inv-tip-apply', page);
     if (tipApply) tipApply.addEventListener('click', function () { applyTipModal(page); });
+    var tipRemove = $('#pos-inv-tip-remove', page);
+    if (tipRemove) {
+      tipRemove.addEventListener('click', function () { clearTip(page); });
+    }
     var couponApply = $('#pos-inv-coupon-apply', page);
     if (couponApply) couponApply.addEventListener('click', function () { applyCouponModal(page); });
+    var couponRemove = $('#pos-inv-coupon-remove', page);
+    if (couponRemove) {
+      couponRemove.addEventListener('click', function () { clearCoupon(page); });
+    }
 
     var selectAllBtn = $('#pos-inv-discount-select-all', page);
     if (selectAllBtn) {

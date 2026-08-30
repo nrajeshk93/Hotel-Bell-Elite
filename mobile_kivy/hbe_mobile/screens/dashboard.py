@@ -2,10 +2,23 @@
 
 from __future__ import annotations
 
+import math
 import webbrowser
 
+from kivy.graphics import (
+    Color,
+    Mesh,
+    Rectangle,
+    RoundedRectangle,
+    StencilPop,
+    StencilPush,
+    StencilUnUse,
+    StencilUse,
+)
+from kivy.uix.relativelayout import RelativeLayout
 from kivy.metrics import dp
 from kivy.uix.behaviors import ButtonBehavior
+from kivy.uix.widget import Widget
 from kivymd.toast import toast
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.button import MDTextButton
@@ -18,7 +31,6 @@ from kivymd.uix.scrollview import MDScrollView
 from hbe_mobile import theme
 from hbe_mobile.api.dashboard import dashboard_webview_url, fetch_dashboard
 from hbe_mobile.utils.async_jobs import run_async
-from hbe_mobile.widgets.kpi_card import ExecKpiCard
 
 PERIODS = (("today", "Today"), ("7d", "7D"), ("30d", "30D"), ("mtd", "MTD"))
 OUTLETS = (("All", "All"), ("Hotel", "Hotel"), ("Restaurant", "Restaurant"), ("Bar", "Bar"))
@@ -29,6 +41,18 @@ KPI_LABELS = {
     "expense": "Expense",
     "difference": "Difference",
 }
+KPI_TONES = {
+    "actual_sales": "#4B8BF5",
+    "digital_transactions": "#22C55E",
+    "cash": "#3B82F6",
+    "expense": "#F97316",
+    "difference": "#8B5CF6",
+}
+
+_GOLD = theme.LOGIN_GOLD  # #C4A46A
+_CHIP_BORDER = "#E2E8F0"
+_CARD_LINE = "#EEF1F4"
+_WHITE = "#FFFFFF"
 
 
 def _bind_h(widget) -> None:
@@ -50,6 +74,23 @@ def _label(text, *, style="Body1", color=None, height=None, bold=False, shorten=
     return MDLabel(**kwargs)
 
 
+class _GoldRule(Widget):
+    """Short 32×2 gold rule under the Dashboard title (left-aligned)."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.size_hint_y = None
+        self.height = dp(16)
+        with self.canvas:
+            Color(0.769, 0.643, 0.416, 1)  # #C4A46A
+            self._bar = Rectangle(size=(dp(32), dp(2)))
+        self.bind(pos=self._layout, size=self._layout)
+
+    def _layout(self, *_args):
+        self._bar.size = (dp(32), dp(2))
+        self._bar.pos = (self.x, self.y + (self.height - dp(2)) / 2)
+
+
 class _FilterChip(ButtonBehavior, MDBoxLayout):
     def __init__(self, key: str, caption: str, on_select, **kwargs):
         super().__init__(**kwargs)
@@ -57,9 +98,9 @@ class _FilterChip(ButtonBehavior, MDBoxLayout):
         self._on_select = on_select
         self.size_hint = (None, None)
         self.height = dp(32)
-        self.width = max(dp(56), dp(22) + len(caption) * dp(7.2))
-        self.padding = [dp(10), 0, dp(10), 0]
-        self.radius = [dp(16)]
+        self.width = max(dp(56), dp(28) + len(caption) * dp(7.4))
+        self.padding = [dp(14), 0, dp(14), 0]
+        self.radius = [dp(20)]
         self.line_width = 1
         self._caption = MDLabel(
             text=caption,
@@ -75,12 +116,12 @@ class _FilterChip(ButtonBehavior, MDBoxLayout):
 
     def set_selected(self, selected: bool) -> None:
         if selected:
-            self.md_bg_color = theme.ACCENT_SOFT
-            self.line_color = theme.ACCENT_BORDER
-            self._caption.text_color = theme.ACCENT
+            self.md_bg_color = theme.ACCENT
+            self.line_color = theme.ACCENT
+            self._caption.text_color = _WHITE
         else:
             self.md_bg_color = theme.SURFACE
-            self.line_color = theme.BORDER
+            self.line_color = _CHIP_BORDER
             self._caption.text_color = theme.TEXT
 
     def on_release(self):
@@ -112,19 +153,26 @@ class _ChipRow(MDBoxLayout):
             chip.set_selected(k == key)
 
 
-def _section_card(title: str) -> tuple[MDCard, MDBoxLayout]:
+def _quiet_card() -> MDCard:
     card = MDCard(
         orientation="vertical",
         size_hint_y=None,
-        padding=dp(14),
-        spacing=dp(8),
-        radius=[dp(12)],
+        padding=[dp(20), dp(18), dp(20), dp(18)],
+        spacing=dp(12),
+        radius=[dp(20)],
         md_bg_color=theme.SURFACE,
-        elevation=1,
+        elevation=0,
+        line_color=_CARD_LINE,
+        line_width=1,
     )
     _bind_h(card)
+    return card
+
+
+def _section_card(title: str) -> tuple[MDCard, MDBoxLayout]:
+    card = _quiet_card()
     card.add_widget(_label(title, style="Subtitle1", bold=True, height=dp(24)))
-    body = MDBoxLayout(orientation="vertical", spacing=dp(8), size_hint_y=None)
+    body = MDBoxLayout(orientation="vertical", spacing=dp(12), size_hint_y=None)
     _bind_h(body)
     card.add_widget(body)
     return card, body
@@ -142,20 +190,130 @@ def _share_bar(pct, *, color=None) -> MDBoxLayout:
     track = MDBoxLayout(
         orientation="horizontal",
         size_hint_y=None,
-        height=dp(6),
-        md_bg_color=theme.BG,
-        radius=[dp(3)],
+        height=dp(4),
+        md_bg_color="#EEF1F4",
+        radius=[dp(2)],
         spacing=0,
     )
     fill = MDBoxLayout(
         size_hint_x=max(share / 100.0, 0.001),
         md_bg_color=color or theme.ACCENT,
-        radius=[dp(3)],
+        radius=[dp(2)],
     )
     track.add_widget(fill)
     if share < 100:
         track.add_widget(MDBoxLayout(size_hint_x=max((100.0 - share) / 100.0, 0.001)))
     return track
+
+
+def _hex_rgba(hex_color: str, alpha: float = 1.0):
+    h = hex_color.lstrip("#")
+    return (
+        int(h[0:2], 16) / 255.0,
+        int(h[2:4], 16) / 255.0,
+        int(h[4:6], 16) / 255.0,
+        alpha,
+    )
+
+
+def _wave_mesh_data(x, y, w, h):
+    """One thin pastel band along the bottom-right edge."""
+    n = 36
+    verts = []
+    indices = []
+    start = 0.28
+    amp = 0.28
+    for i in range(n + 1):
+        t = i / n
+        px = x + w * (start + (1.0 - start) * t)
+        envelope = t ** 0.7
+        hill = 0.55 + 0.45 * math.sin(t * math.pi * 0.95)
+        py = y + h * amp * envelope * hill
+        verts.extend((px, py, 0.0, 0.0, px, y, 0.0, 0.0))
+        if i:
+            a = (i - 1) * 2
+            indices.extend((a, a + 1, a + 2, a + 1, a + 3, a + 2))
+    return verts, indices
+
+
+class _KpiArt(Widget):
+    """Left accent bar + one thin bottom-right wave, clipped to the card."""
+
+    def __init__(self, accent: str, **kwargs):
+        super().__init__(**kwargs)
+        self._accent = accent
+        with self.canvas:
+            StencilPush()
+            Color(1, 1, 1, 1)
+            self._clip = RoundedRectangle(radius=[dp(16)])
+            StencilUse()
+            self._w1c = Color(*_hex_rgba(accent, 0.12))
+            self._w1 = Mesh(mode="triangles")
+            self._bar_c = Color(*_hex_rgba(accent))
+            self._bar = RoundedRectangle()
+            StencilUnUse()
+            StencilPop()
+        self.bind(pos=self._layout, size=self._layout)
+
+    def _layout(self, *_args):
+        self._clip.pos = (self.x, self.y)
+        self._clip.size = (self.width, self.height)
+        self._bar.size = (dp(7), self.height)
+        self._bar.pos = (self.x, self.y)
+        self._bar.radius = [dp(16), 0, 0, dp(16)]
+        verts, indices = _wave_mesh_data(self.x, self.y, self.width, self.height)
+        self._w1.vertices, self._w1.indices = verts, indices
+
+
+def _kpi_card(title: str, value: str, *, big: bool = True, accent: str = "#4B8BF5", hero: bool = False) -> MDCard:
+    card = MDCard(
+        orientation="vertical",
+        size_hint_y=None,
+        padding=0,
+        spacing=0,
+        radius=[dp(16)],
+        md_bg_color=_WHITE,
+        elevation=1,
+        line_color=(0, 0, 0, 0),
+        line_width=0,
+    )
+    rel = RelativeLayout(size_hint_y=None)
+    art = _KpiArt(accent)
+    art.size_hint = (1, 1)
+    pad_x = dp(20)
+    pad_y = dp(22) if hero else dp(12)
+    content = MDBoxLayout(
+        orientation="vertical",
+        size_hint_y=None,
+        padding=[pad_x, pad_y, dp(16), pad_y],
+        spacing=dp(8) if hero else dp(4),
+    )
+    title_lbl = _label(title, style="Caption", color=accent, height=dp(20), bold=True)
+    value_lbl = _label(
+        value,
+        style="H4" if hero else "H5",
+        bold=True,
+        height=dp(44) if hero else dp(30),
+    )
+    if hero:
+        title_lbl.halign = "center"
+        value_lbl.halign = "center"
+    content.add_widget(title_lbl)
+    content.add_widget(value_lbl)
+    _bind_h(content)
+
+    def _sync_h(*_args):
+        rel.height = content.height
+
+    content.bind(height=_sync_h)
+    _sync_h()
+    rel.add_widget(art)
+    rel.add_widget(content)
+    card.add_widget(rel)
+    card.title_lbl = title_lbl
+    card.value_lbl = value_lbl
+    _bind_h(card)
+    return card
 
 
 class DashboardScreen(MDScreen):
@@ -175,8 +333,8 @@ class DashboardScreen(MDScreen):
         scroll = MDScrollView()
         root = MDBoxLayout(
             orientation="vertical",
-            padding=[dp(12), dp(12), dp(12), dp(28)],
-            spacing=dp(10),
+            padding=[dp(24), dp(12), dp(24), dp(28)],
+            spacing=dp(8),
             size_hint_y=None,
         )
         _bind_h(root)
@@ -184,38 +342,37 @@ class DashboardScreen(MDScreen):
         root.add_widget(
             _label("Dashboard", style="H5", bold=True, height=dp(36), color=theme.TEXT)
         )
-        root.add_widget(_label("Period", style="Caption", color=theme.TEXT_MUTED, height=dp(18)))
+        root.add_widget(_GoldRule())
         self._period_chips = _ChipRow(PERIODS, "today", self._set_period)
         root.add_widget(self._period_chips)
-        root.add_widget(_label("Outlet", style="Caption", color=theme.TEXT_MUTED, height=dp(18)))
         self._outlet_chips = _ChipRow(OUTLETS, "All", self._set_location)
         root.add_widget(self._outlet_chips)
 
-        self.status = _label("Loading…", style="Caption", color=theme.TEXT_MUTED, height=dp(22))
+        self.status = _label("", style="Caption", color=theme.TEXT_MUTED, height=dp(18))
         root.add_widget(self.status)
 
-        self.grid = MDGridLayout(cols=2, spacing=dp(10), size_hint_y=None, padding=0)
+        hero = _kpi_card("Total Sales", "—", accent=KPI_TONES["actual_sales"], hero=True)
+        self._hero_label = hero.title_lbl
+        self._hero_value = hero.value_lbl
+        root.add_widget(hero)
+
+        self.grid = MDGridLayout(cols=2, spacing=dp(12), size_hint_y=None, padding=0)
         _bind_h(self.grid)
         root.add_widget(self.grid)
 
+        self._meta_grid = MDGridLayout(cols=2, spacing=dp(12), size_hint_y=None, padding=0)
+        _bind_h(self._meta_grid)
+        root.add_widget(self._meta_grid)
+
         self._trend_card, self._trend_body = _section_card("Sales trend")
         root.add_widget(self._trend_card)
-        self._outlets_card, self._outlets_body = _section_card("Top outlets")
-        root.add_widget(self._outlets_card)
         self._pay_card, self._pay_body = _section_card("Payment mix")
         root.add_widget(self._pay_card)
+        self._outlets_card, self._outlets_body = _section_card("Top outlets")
+        root.add_widget(self._outlets_card)
 
-        items_card = MDCard(
-            orientation="vertical",
-            size_hint_y=None,
-            padding=dp(14),
-            spacing=dp(8),
-            radius=[dp(12)],
-            md_bg_color=theme.SURFACE,
-            elevation=1,
-        )
-        _bind_h(items_card)
-        items_head = MDBoxLayout(orientation="vertical", spacing=dp(6), size_hint_y=None)
+        items_card = _quiet_card()
+        items_head = MDBoxLayout(orientation="vertical", spacing=dp(10), size_hint_y=None)
         _bind_h(items_head)
         items_head.add_widget(_label("Top selling items", style="Subtitle1", bold=True, height=dp(24)))
         self._sort_chips = _ChipRow(
@@ -225,7 +382,7 @@ class DashboardScreen(MDScreen):
         )
         items_head.add_widget(self._sort_chips)
         items_card.add_widget(items_head)
-        self._items_body = MDBoxLayout(orientation="vertical", spacing=dp(6), size_hint_y=None)
+        self._items_body = MDBoxLayout(orientation="vertical", spacing=dp(4), size_hint_y=None)
         _bind_h(self._items_body)
         items_card.add_widget(self._items_body)
         root.add_widget(items_card)
@@ -236,7 +393,7 @@ class DashboardScreen(MDScreen):
                 theme_text_color="Custom",
                 text_color=theme.ACCENT,
                 size_hint_y=None,
-                height=dp(36),
+                height=dp(40),
                 on_release=lambda *_: self._open_web(),
             )
         )
@@ -302,27 +459,56 @@ class DashboardScreen(MDScreen):
         self._sort_chips.height = dp(36) if (has_qty and has_rev) else 0
         self._render_items(snap)
 
+    def _kpi_value(self, kpi) -> str:
+        if not isinstance(kpi, dict):
+            return "—"
+        return str(kpi.get("value_display") or kpi.get("value_compact") or "—")
+
     def _render_kpis(self, snap) -> None:
         self.grid.clear_widgets()
+        self._meta_grid.clear_widgets()
         kpis = list(getattr(snap, "kpis", None) or [])
+        by_key: dict[str, dict] = {}
+        for kpi in kpis:
+            if isinstance(kpi, dict) and kpi.get("key"):
+                by_key[str(kpi.get("key"))] = kpi
+
+        sales = by_key.get("actual_sales")
+        self._hero_label.text = KPI_LABELS.get("actual_sales", "Total Sales")
+        if sales:
+            self._hero_value.text = self._kpi_value(sales)
+        elif not kpis:
+            self._hero_value.text = "—"
+        else:
+            self._hero_value.text = "—"
+
         if not kpis:
             self.grid.add_widget(_empty("No KPI data for this period."))
             if not self.status.text:
                 self.status.text = "No data for this period"
             return
-        for kpi in kpis[:5]:
-            if not isinstance(kpi, dict):
-                continue
-            key = str(kpi.get("key") or "")
-            title = KPI_LABELS.get(key) or str(kpi.get("label") or "KPI")
-            value = str(kpi.get("value_display") or kpi.get("value_compact") or "—")
-            change = kpi.get("change_pct")
+
+        for key in ("digital_transactions", "cash"):
+            src = by_key.get(key)
+            title = KPI_LABELS.get(key) or key
             self.grid.add_widget(
-                ExecKpiCard(
-                    title=title,
-                    value=value,
-                    change_pct=change,
-                    subtitle="vs prior" if change is not None else "",
+                _kpi_card(
+                    title,
+                    self._kpi_value(src) if src else "—",
+                    big=True,
+                    accent=KPI_TONES.get(key, "#4B8BF5"),
+                )
+            )
+
+        for key in ("expense", "difference"):
+            src = by_key.get(key)
+            title = KPI_LABELS.get(key) or key
+            self._meta_grid.add_widget(
+                _kpi_card(
+                    title,
+                    self._kpi_value(src) if src else "—",
+                    big=False,
+                    accent=KPI_TONES.get(key, "#4B8BF5"),
                 )
             )
 
@@ -334,31 +520,33 @@ class DashboardScreen(MDScreen):
             body.add_widget(_empty("No sales in this period."))
             return
         avg = trend.get("avg_display") or "—"
-        body.add_widget(self._stat_row("Avg", str(avg)))
         best = trend.get("best") if isinstance(trend.get("best"), dict) else None
         lowest = trend.get("lowest") if isinstance(trend.get("lowest"), dict) else None
-        body.add_widget(
+        row = MDBoxLayout(orientation="horizontal", size_hint_y=None, spacing=dp(16), height=dp(64))
+        row.add_widget(self._stat_row("Avg", str(avg)))
+        row.add_widget(
             self._stat_row(
                 "Best",
                 str((best or {}).get("amount_display") or "—"),
                 str((best or {}).get("label") or ""),
             )
         )
-        body.add_widget(
+        row.add_widget(
             self._stat_row(
                 "Lowest",
                 str((lowest or {}).get("amount_display") or "—"),
                 str((lowest or {}).get("label") or ""),
             )
         )
+        body.add_widget(row)
 
     def _stat_row(self, label: str, value: str, meta: str = "") -> MDBoxLayout:
-        row = MDBoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(2))
+        row = MDBoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
         row.add_widget(_label(label, style="Caption", color=theme.TEXT_MUTED, height=dp(16)))
         row.add_widget(_label(value, style="Body1", bold=True, height=dp(22)))
         extra = (meta or "").strip()
         row.add_widget(_label(extra, style="Caption", color=theme.TEXT_MUTED, height=dp(16) if extra else 0))
-        row.height = dp(54) if extra else dp(38)
+        row.height = dp(62) if extra else dp(42)
         return row
 
     def _render_outlets(self, snap) -> None:
@@ -368,22 +556,19 @@ class DashboardScreen(MDScreen):
         if not rows:
             body.add_widget(_empty("No settled outlet sales in this period."))
             return
-        for i, row in enumerate(rows, start=1):
+        for row in rows:
             if not isinstance(row, dict):
                 continue
             name = str(row.get("name") or row.get("label") or "Outlet")
             amount = str(row.get("amount_display") or row.get("sales_compact") or "—")
             share = row.get("share_pct")
-            block = MDBoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
+            block = MDBoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(8))
             top = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(22))
-            top.add_widget(_label(f"{i}. {name}", style="Body2", shorten=True))
+            top.add_widget(_label(name, style="Body2", bold=True, shorten=True))
             top.add_widget(_label(amount, style="Body2", bold=True, height=dp(22)))
             block.add_widget(top)
             block.add_widget(_share_bar(share if share is not None else 0))
-            meta = f"{share:g}% contribution" if share is not None else ""
-            if meta:
-                block.add_widget(_label(meta, style="Caption", color=theme.TEXT_MUTED, height=dp(16)))
-            block.height = dp(48) if meta else dp(32)
+            block.height = dp(34)
             body.add_widget(block)
 
     def _render_payment(self, snap) -> None:
@@ -400,16 +585,16 @@ class DashboardScreen(MDScreen):
             return
         dig_f = float(dig or 0)
         cash_f = float(cash or 0)
-        pair = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(40), spacing=dp(12))
+        pair = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(52), spacing=dp(16))
         pair.add_widget(self._mix_stat("Digital", f"{dig_f:g}%"))
         pair.add_widget(self._mix_stat("Cash", f"{cash_f:g}%"))
         body.add_widget(pair)
         bar = MDBoxLayout(
             orientation="horizontal",
             size_hint_y=None,
-            height=dp(10),
-            radius=[dp(5)],
-            md_bg_color=theme.BG,
+            height=dp(8),
+            radius=[dp(4)],
+            md_bg_color="#EEF1F4",
         )
         total = dig_f + cash_f
         if total <= 0:
@@ -419,22 +604,22 @@ class DashboardScreen(MDScreen):
             MDBoxLayout(
                 size_hint_x=max(dig_f / total, 0.001),
                 md_bg_color=theme.ACCENT,
-                radius=[dp(5), 0, 0, dp(5)] if cash_f else [dp(5)],
+                radius=[dp(4), 0, 0, dp(4)] if cash_f else [dp(4)],
             )
         )
         bar.add_widget(
             MDBoxLayout(
                 size_hint_x=max(cash_f / total, 0.001),
-                md_bg_color=theme.TEXT_MUTED,
-                radius=[0, dp(5), dp(5), 0] if dig_f else [dp(5)],
+                md_bg_color=_GOLD,
+                radius=[0, dp(4), dp(4), 0] if dig_f else [dp(4)],
             )
         )
         body.add_widget(bar)
 
     def _mix_stat(self, label: str, value: str) -> MDBoxLayout:
-        col = MDBoxLayout(orientation="vertical", size_hint_y=None, height=dp(40))
+        col = MDBoxLayout(orientation="vertical", size_hint_y=None, height=dp(52), spacing=dp(4))
         col.add_widget(_label(label, style="Caption", color=theme.TEXT_MUTED, height=dp(16)))
-        col.add_widget(_label(value, style="H6", bold=True, height=dp(24)))
+        col.add_widget(_label(value, style="H5", bold=True, height=dp(32)))
         return col
 
     def _render_items(self, snap) -> None:
@@ -450,7 +635,7 @@ class DashboardScreen(MDScreen):
         if not rows:
             body.add_widget(_empty("No menu sales in this period."))
             return
-        for i, row in enumerate(rows, start=1):
+        for row in rows:
             if not isinstance(row, dict):
                 continue
             name = str(row.get("name") or row.get("item_name") or "Item")
@@ -468,9 +653,17 @@ class DashboardScreen(MDScreen):
                     or row.get("sale_value_compact")
                     or "—"
                 )
-            line = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(28))
-            line.add_widget(_label(f"{i}. {name}", style="Body2", shorten=True))
-            line.add_widget(_label(metric, style="Caption", color=theme.TEXT_MUTED, height=dp(28)))
+            line = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(36), spacing=dp(8))
+            rank = _label(str(i), style="Caption", color=theme.TEXT_MUTED, height=dp(36))
+            rank.size_hint_x = None
+            rank.width = dp(20)
+            line.add_widget(rank)
+            line.add_widget(_label(name, style="Body2", bold=True, shorten=True))
+            metric_lbl = _label(metric, style="Caption", color=theme.TEXT_MUTED, height=dp(36))
+            metric_lbl.size_hint_x = None
+            metric_lbl.width = dp(88)
+            metric_lbl.halign = "right"
+            line.add_widget(metric_lbl)
             body.add_widget(line)
 
     def _open_web(self) -> None:

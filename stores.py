@@ -1618,6 +1618,296 @@ def _adjust_stock(
     return float(qty_delta)
 
 
+_INDENT_NO_RE = re.compile(r"\b(IND-[A-Z0-9-]+)\b", re.IGNORECASE)
+
+
+def _void_receive_movements(
+    conn,
+    movements,
+    *,
+    note: str,
+    user_id=None,
+    void_ref_id: int | None = None,
+) -> str | None:
+    """Reverse receive qty on-hand, drop original receive rows, write audit adjusts.
+
+    Returns an error string when stock is insufficient; otherwise None.
+    """
+    rows = list(movements or [])
+    if not rows:
+        return None
+
+    # Preflight so we never partially reverse.
+    for mov in rows:
+        try:
+            qty = float(mov["qty_delta"] or 0)
+        except (TypeError, ValueError, KeyError):
+            qty = 0.0
+        if qty <= 0.0001:
+            continue
+        place = ""
+        try:
+            place = str(mov["place"] or "").strip()
+        except (KeyError, TypeError):
+            place = ""
+        place = _normalize_stock_place(place or STOCK_PLACE_WAREHOUSE)
+        on_hand = _stock_qty_on_hand(
+            conn,
+            str(mov["outlet"] or ""),
+            place,
+            str(mov["item_name"] or ""),
+            str(mov["unit"] or ""),
+        )
+        if on_hand + 0.0001 < qty:
+            name = str(mov["item_name"] or "item").strip() or "item"
+            unit = str(mov["unit"] or "").strip()
+            suffix = f" ({unit})" if unit else ""
+            return (
+                f"Cannot delete purchase — not enough stock left for {name}{suffix}. "
+                "Reverse sales or stock use first."
+            )
+
+    for mov in rows:
+        try:
+            qty = float(mov["qty_delta"] or 0)
+        except (TypeError, ValueError, KeyError):
+            qty = 0.0
+        if qty <= 0.0001:
+            conn.execute("DELETE FROM store_stock_movements WHERE id = ?", (int(mov["id"]),))
+            continue
+        place = ""
+        try:
+            place = str(mov["place"] or "").strip()
+        except (KeyError, TypeError):
+            place = ""
+        place = _normalize_stock_place(place or STOCK_PLACE_WAREHOUSE)
+        try:
+            _adjust_stock(
+                conn,
+                outlet=str(mov["outlet"] or ""),
+                place=place,
+                item_name=str(mov["item_name"] or ""),
+                unit=str(mov["unit"] or ""),
+                qty_delta=-qty,
+                movement_type="adjust",
+                ref_type="purchase_delete",
+                ref_id=void_ref_id,
+                notes=note,
+                user_id=user_id,
+                allow_shortfall=False,
+            )
+        except ValueError as exc:
+            return str(exc)
+        conn.execute("DELETE FROM store_stock_movements WHERE id = ?", (int(mov["id"]),))
+    return None
+
+
+def _restore_indent_received_qty(conn, indent_id: int, mov) -> None:
+    """Reduce indent / PO quantity_received after voiding a stock_inward receive."""
+    item_name = str(mov["item_name"] or "").strip()
+    unit = str(mov["unit"] or "").strip()
+    try:
+        stock_qty = float(mov["qty_delta"] or 0)
+    except (TypeError, ValueError, KeyError):
+        stock_qty = 0.0
+    if not item_name or stock_qty <= 0.0001:
+        return
+
+    line = conn.execute(
+        """
+        SELECT id, COALESCE(quantity_received, 0) AS quantity_received,
+               pack_label, pack_qty_in_base
+        FROM store_indent_lines
+        WHERE indent_id = ?
+          AND lower(item_name) = lower(?)
+          AND lower(COALESCE(unit, '')) = lower(?)
+        ORDER BY id ASC
+        LIMIT 1
+        """,
+        (int(indent_id), item_name, unit),
+    ).fetchone()
+    if not line:
+        return
+
+    purchase_qty = stock_qty
+    pack_qty = _row_pack_qty_in_base(line)
+    if pack_qty is not None and pack_qty > 0.0001:
+        purchase_qty = stock_qty / pack_qty
+
+    try:
+        already = float(line["quantity_received"] or 0)
+    except (TypeError, ValueError):
+        already = 0.0
+    new_received = already - purchase_qty
+    if new_received < 0:
+        new_received = 0.0
+    conn.execute(
+        "UPDATE store_indent_lines SET quantity_received = ? WHERE id = ?",
+        (round(new_received, 3), int(line["id"])),
+    )
+
+    po_rows = conn.execute(
+        """
+        SELECT id, COALESCE(quantity_received, 0) AS quantity_received
+        FROM store_purchase_order_lines
+        WHERE line_id = ?
+        ORDER BY id ASC
+        """,
+        (int(line["id"]),),
+    ).fetchall()
+    remaining = purchase_qty
+    for po in po_rows:
+        if remaining <= 0.0001:
+            break
+        try:
+            po_recv = float(po["quantity_received"] or 0)
+        except (TypeError, ValueError):
+            po_recv = 0.0
+        if po_recv <= 0.0001:
+            continue
+        take = po_recv if po_recv <= remaining else remaining
+        conn.execute(
+            "UPDATE store_purchase_order_lines SET quantity_received = ? WHERE id = ?",
+            (round(po_recv - take, 3), int(po["id"])),
+        )
+        remaining -= take
+
+
+def reverse_stock_for_deleted_purchase_expense(
+    conn, expense_id, *, user_id=None
+) -> str | None:
+    """Remove warehouse stock that was received for this purchase expense.
+
+    Direct inward rows use ``ref_type=stock_inward_direct`` / ``ref_id=expense_id``.
+    Indent inward rows share ``ref_type=stock_inward`` / ``ref_id=indent_id`` and
+    are matched by expense category when multiple category expenses exist.
+
+    Returns an error message, or None when successful / nothing to reverse.
+    """
+    try:
+        expense_id = int(expense_id)
+    except (TypeError, ValueError):
+        return None
+
+    tables = {
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+    if "store_stock_movements" not in tables or "store_stock_items" not in tables:
+        return None
+
+    expense = conn.execute(
+        """
+        SELECT id, expense_code, description, category
+        FROM sales_update_expenses
+        WHERE id = ?
+        """,
+        (expense_id,),
+    ).fetchone()
+    if not expense:
+        return None
+
+    code = str(expense["expense_code"] or "").strip() or f"#{expense_id}"
+    note = f"Purchase deleted · {code}"
+
+    direct = conn.execute(
+        """
+        SELECT id, outlet, place, item_name, unit, qty_delta
+        FROM store_stock_movements
+        WHERE ref_type = 'stock_inward_direct'
+          AND ref_id = ?
+          AND movement_type = 'receive'
+          AND qty_delta > 0
+        ORDER BY id ASC
+        """,
+        (expense_id,),
+    ).fetchall()
+    if direct:
+        return _void_receive_movements(
+            conn,
+            direct,
+            note=note,
+            user_id=user_id,
+            void_ref_id=expense_id,
+        )
+
+    description = str(expense["description"] or "")
+    match = _INDENT_NO_RE.search(description)
+    if not match or "store_indents" not in tables:
+        return None
+
+    indent_no = match.group(1).upper()
+    indent = conn.execute(
+        "SELECT id, indent_no, status FROM store_indents WHERE UPPER(indent_no) = ?",
+        (indent_no,),
+    ).fetchone()
+    if not indent:
+        return None
+
+    indent_id = int(indent["id"])
+    all_mov = conn.execute(
+        """
+        SELECT id, outlet, place, item_name, unit, qty_delta
+        FROM store_stock_movements
+        WHERE ref_type = 'stock_inward'
+          AND ref_id = ?
+          AND movement_type = 'receive'
+          AND qty_delta > 0
+        ORDER BY id ASC
+        """,
+        (indent_id,),
+    ).fetchall()
+    if not all_mov:
+        return None
+
+    sibling_count = conn.execute(
+        """
+        SELECT COUNT(*) AS c
+        FROM sales_update_expenses
+        WHERE id != ?
+          AND instr(upper(COALESCE(description, '')), ?) > 0
+        """,
+        (expense_id, indent_no),
+    ).fetchone()["c"]
+
+    to_void = list(all_mov)
+    expense_cat = str(expense["category"] or "").strip()
+    if int(sibling_count or 0) > 0 and expense_cat:
+        product_cat_map = _product_category_by_item_name(conn, stores_outlet=None)
+        filtered = []
+        for mov in all_mov:
+            pm_cat = product_cat_map.get(str(mov["item_name"] or "").casefold(), "")
+            resolved = _resolve_expense_category_from_product_category(pm_cat)
+            if resolved and resolved[0] == expense_cat:
+                filtered.append(mov)
+        if filtered:
+            to_void = filtered
+
+    err = _void_receive_movements(
+        conn,
+        to_void,
+        note=note,
+        user_id=user_id,
+        void_ref_id=expense_id,
+    )
+    if err:
+        return err
+
+    if "store_indent_lines" in tables:
+        for mov in to_void:
+            _restore_indent_received_qty(conn, indent_id, mov)
+
+    status = str(indent["status"] or "").strip().lower()
+    if status == "stocked":
+        conn.execute(
+            "UPDATE store_indents SET status = 'approved' WHERE id = ?",
+            (indent_id,),
+        )
+    return None
+
+
 def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None):
     """Deduct recipe ingredients for a closed POS invoice (idempotent).
 
@@ -2520,7 +2810,7 @@ def _load_flat_products(conn, stores_outlet: str | None = None) -> list[dict[str
     rows = conn.execute(
         f"""
         SELECT p.id, p.name, p.default_unit, p.outlet, p.approximate_price, p.category_id,
-               c.name AS category_name, c.sort_order AS category_sort, p.sort_order
+               c.name AS category_name
         FROM store_products p
         JOIN store_product_categories c ON c.id = p.category_id
         WHERE p.is_active = 1 AND c.is_active = 1{outlet_sql}
@@ -2529,19 +2819,41 @@ def _load_flat_products(conn, stores_outlet: str | None = None) -> list[dict[str
         params,
     ).fetchall()
     products = []
+    product_ids: list[int] = []
     for row in rows:
-        item = dict(row)
-        item["outlet"] = _parse_product_outlet(item.get("outlet"))
-        item["outlet_label"] = _product_outlet_label(item["outlet"])
-        item["approximate_price_display"] = _format_optional_price(item.get("approximate_price"))
-        products.append(item)
-    variants_by_product = _load_variants_by_product_ids(
-        conn, [int(p["id"]) for p in products]
-    )
+        outlet = _parse_product_outlet(row["outlet"])
+        outlet_label = _product_outlet_label(outlet)
+        price_display = _format_optional_price(row["approximate_price"])
+        pid = int(row["id"])
+        product_ids.append(pid)
+        products.append({
+            "id": pid,
+            "name": row["name"],
+            "default_unit": row["default_unit"],
+            "outlet": outlet,
+            "outlet_label": outlet_label,
+            "approximate_price": row["approximate_price"],
+            "approximate_price_display": price_display,
+            "category_id": row["category_id"],
+            "category_name": row["category_name"],
+            "variants": [],
+            "variant_count": 0,
+            "search_text": "",
+        })
+    variants_by_product = _load_variants_by_product_ids(conn, product_ids)
     for item in products:
         variants = variants_by_product.get(int(item["id"]), [])
         item["variants"] = variants
         item["variant_count"] = len(variants)
+        labels = " ".join(str(v.get("label") or "") for v in variants)
+        item["search_text"] = " ".join((
+            str(item["category_name"] or ""),
+            str(item["name"] or ""),
+            str(item["outlet_label"] or ""),
+            str(item["default_unit"] or ""),
+            str(item["approximate_price_display"] or ""),
+            labels,
+        )).lower()
     return products
 
 
@@ -3064,8 +3376,9 @@ def stores_product_master():
                 form["default_unit"] = preselect_unit
 
         # List UI uses flat products only — skip the nested catalog load.
-        if _heal_product_prices_from_last_inward(conn):
-            conn.commit()
+        # Skip full last-inward heal on this page: inward already writes prices,
+        # and the edit path heals a single product. Scanning stock history here
+        # made every Product Master open expensive.
         products = _load_flat_products(conn, stores_outlet=outlet)
         categories = conn.execute(
             """
@@ -7442,12 +7755,16 @@ def stores_confirm_stock_inward_expense():
             conn.rollback()
             return jsonify({"ok": False, "error": group_error}), 400
 
+        description = (data.get("description") or "").strip()
+        if not description:
+            conn.rollback()
+            return jsonify({"ok": False, "error": "Please enter a purchase description."}), 400
+
         expense_data = {
             "company": data.get("company") or app_module.DEFAULT_COMPANY,
             "location": app_module.OUTLET_HOTEL,
             "date": data.get("date") or date.today().isoformat(),
-            "description": (data.get("description") or "").strip()
-            or f"Purchase {indent['indent_no']}",
+            "description": description,
             "amount": data.get("amount"),
             "payment_type": data.get("payment_type"),
             "transaction_id": data.get("transaction_id"),
@@ -7740,9 +8057,8 @@ def stores_confirm_direct_stock_inward_expense():
         invoice_number = (data.get("invoice_number") or "").strip()
         description = (data.get("description") or "").strip()
         if not description:
-            description = "Purchase without indent approval"
-            if invoice_number:
-                description = f"{description} · Inv {invoice_number}"
+            conn.rollback()
+            return jsonify({"ok": False, "error": "Please enter a purchase description."}), 400
 
         expense_data = {
             "company": data.get("company") or app_module.DEFAULT_COMPANY,
@@ -9187,26 +9503,23 @@ def stores_stock_audit():
     )
 
 
-@stores_bp.route("/stores/stock-audit/verify", methods=["POST"])
-def stores_stock_audit_verify():
-    user = _get_user() if _get_user else None
+def stock_audit_verify_action(conn, user, data) -> tuple[int, dict[str, Any]]:
+    """Verify an audit line and reconcile live stock. Shared by web + mobile."""
     if not user:
-        return jsonify({"ok": False, "error": "You must be logged in."}), 401
-    data = request.get_json(silent=True) or request.form
+        return 401, {"ok": False, "error": "You must be logged in."}
     try:
         line_id = int(data.get("line_id"))
     except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "Select an audit line."}), 400
+        return 400, {"ok": False, "error": "Select an audit line."}
     try:
         actual_qty = float(data.get("actual_qty"))
     except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "Enter a valid actual count."}), 400
+        return 400, {"ok": False, "error": "Enter a valid actual count."}
     if actual_qty < 0:
-        return jsonify({"ok": False, "error": "Actual count cannot be negative."}), 400
+        return 400, {"ok": False, "error": "Actual count cannot be negative."}
     reason = str(data.get("reason") or "").strip().lower()
     remarks = str(data.get("remarks") or "").strip()[:200]
     go_next = str(data.get("go_next") or "").strip().lower() in ("1", "true", "yes")
-    conn = get_db()
     try:
         ensure_stores_schema(conn)
         line_row = conn.execute(
@@ -9219,11 +9532,11 @@ def stores_stock_audit_verify():
             (line_id,),
         ).fetchone()
         if not line_row:
-            return jsonify({"ok": False, "error": "Audit line not found."}), 404
+            return 404, {"ok": False, "error": "Audit line not found."}
         if (line_row["audit_status"] or "") != "open":
-            return jsonify({"ok": False, "error": "This audit is already completed."}), 400
+            return 400, {"ok": False, "error": "This audit is already completed."}
         if (line_row["status"] or "") == "verified":
-            return jsonify({"ok": False, "error": "This item is already verified."}), 400
+            return 400, {"ok": False, "error": "This item is already verified."}
         system_qty = float(line_row["system_qty"] or 0)
         variance = round(actual_qty - system_qty, 3)
         if abs(variance) > STOCK_AUDIT_EPS:
@@ -9233,9 +9546,7 @@ def stores_stock_audit_verify():
                 else STOCK_AUDIT_REASON_KEYS_NEGATIVE
             )
             if reason not in allowed:
-                return jsonify(
-                    {"ok": False, "error": "Please select reason to save"}
-                ), 400
+                return 400, {"ok": False, "error": "Please select reason to save"}
         if abs(variance) <= STOCK_AUDIT_EPS:
             reason = reason if reason in STOCK_AUDIT_REASON_KEYS else ""
         unit_cost = line_row["unit_cost"]
@@ -9332,108 +9643,87 @@ def stores_stock_audit_verify():
                 break
         serialized = _serialize_audit_line(current or {})
         serialized["qty_on_hand"] = round(actual_qty, 3)
-        return jsonify(
-            {
-                "ok": True,
-                "line": serialized,
-                "next_line_id": next_line.get("id") if next_line else None,
-                "kpis": kpis,
-                "message": "Stock verified"
-                + (" and adjusted." if adjusted or abs(variance) > STOCK_AUDIT_EPS else "."),
-            }
-        )
+        return 200, {
+            "ok": True,
+            "line": serialized,
+            "next_line_id": next_line.get("id") if next_line else None,
+            "kpis": kpis,
+            "message": "Stock verified"
+            + (" and adjusted." if adjusted or abs(variance) > STOCK_AUDIT_EPS else "."),
+        }
     except ValueError as exc:
         conn.rollback()
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return 400, {"ok": False, "error": str(exc)}
     except Exception as exc:
         conn.rollback()
         logger.exception("stock audit verify failed")
-        return jsonify({"ok": False, "error": str(exc) or "Could not verify."}), 500
-    finally:
-        conn.close()
+        return 500, {"ok": False, "error": str(exc) or "Could not verify."}
 
 
-@stores_bp.route("/stores/stock-audit/skip", methods=["POST"])
-def stores_stock_audit_skip():
-    user = _get_user() if _get_user else None
+def stock_audit_skip_action(conn, user, data) -> tuple[int, dict[str, Any]]:
+    """Leave an audit line pending (skip for now). Shared by web + mobile."""
     if not user:
-        return jsonify({"ok": False, "error": "You must be logged in."}), 401
-    data = request.get_json(silent=True) or request.form
+        return 401, {"ok": False, "error": "You must be logged in."}
     try:
         line_id = int(data.get("line_id"))
     except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "Select an audit line."}), 400
-    conn = get_db()
-    try:
-        ensure_stores_schema(conn)
-        line_row = conn.execute(
-            """
-            SELECT l.*, a.status AS audit_status, a.id AS audit_pk
-            FROM store_stock_audit_lines l
-            JOIN store_stock_audits a ON a.id = l.audit_id
-            WHERE l.id = ?
-            """,
-            (line_id,),
-        ).fetchone()
-        if not line_row:
-            return jsonify({"ok": False, "error": "Audit line not found."}), 404
-        if (line_row["audit_status"] or "") != "open":
-            return jsonify({"ok": False, "error": "This audit is already completed."}), 400
-        # Skip for Now leaves the item pending so it stays in the queue.
-        conn.execute(
-            """
-            UPDATE store_stock_audit_lines
-            SET status = 'pending', verified_at = NULL, verified_by = NULL
-            WHERE id = ?
-            """,
-            (line_id,),
-        )
-        conn.commit()
-        lines = _load_audit_lines(conn, int(line_row["audit_pk"]))
-        kpis = _audit_kpis(lines)
-        next_line = None
-        for line in lines:
-            if line.get("status") == "pending" and int(line.get("id") or 0) != line_id:
-                next_line = line
-                break
-        return jsonify(
-            {
-                "ok": True,
-                "kpis": kpis,
-                "next_line_id": next_line.get("id") if next_line else None,
-                "message": "Left as pending.",
-            }
-        )
-    finally:
-        conn.close()
-
-
-@stores_bp.route("/stores/stock-audit/history")
-def stores_stock_audit_history():
-    filter_outlet = _parse_outlet_filter(request.args.get("outlet"))
-    outlet = _audit_concrete_outlet(filter_outlet)
-    place = _parse_stock_place(
-        request.args.get("place") if request.args.get("place") is not None else None
+        return 400, {"ok": False, "error": "Select an audit line."}
+    ensure_stores_schema(conn)
+    line_row = conn.execute(
+        """
+        SELECT l.*, a.status AS audit_status, a.id AS audit_pk
+        FROM store_stock_audit_lines l
+        JOIN store_stock_audits a ON a.id = l.audit_id
+        WHERE l.id = ?
+        """,
+        (line_id,),
+    ).fetchone()
+    if not line_row:
+        return 404, {"ok": False, "error": "Audit line not found."}
+    if (line_row["audit_status"] or "") != "open":
+        return 400, {"ok": False, "error": "This audit is already completed."}
+    # Skip for Now leaves the item pending so it stays in the queue.
+    conn.execute(
+        """
+        UPDATE store_stock_audit_lines
+        SET status = 'pending', verified_at = NULL, verified_by = NULL
+        WHERE id = ?
+        """,
+        (line_id,),
     )
-    conn = get_db()
-    try:
-        ensure_stores_schema(conn)
-        rows = conn.execute(
-            """
-            SELECT a.*, u.full_name AS started_by_name,
-                   (SELECT COUNT(*) FROM store_stock_audit_lines l WHERE l.audit_id = a.id) AS line_count,
-                   (SELECT COUNT(*) FROM store_stock_audit_lines l
-                    WHERE l.audit_id = a.id AND l.status = 'verified') AS verified_count
-            FROM store_stock_audits a
-            LEFT JOIN users u ON u.id = a.started_by
-            WHERE a.outlet = ? AND a.place = ? AND a.status = 'completed'
-            ORDER BY a.completed_at DESC, a.id DESC
-            LIMIT 50
-            """,
-            (outlet, place),
-        ).fetchall()
-    finally:
-        conn.close()
+    conn.commit()
+    lines = _load_audit_lines(conn, int(line_row["audit_pk"]))
+    kpis = _audit_kpis(lines)
+    next_line = None
+    for line in lines:
+        if line.get("status") == "pending" and int(line.get("id") or 0) != line_id:
+            next_line = line
+            break
+    return 200, {
+        "ok": True,
+        "kpis": kpis,
+        "next_line_id": next_line.get("id") if next_line else None,
+        "message": "Left as pending.",
+    }
+
+
+def stock_audit_history_payload(conn, outlet: str, place: str, limit: int = 50) -> dict[str, Any]:
+    """Completed audits for an outlet+place (JSON)."""
+    ensure_stores_schema(conn)
+    rows = conn.execute(
+        """
+        SELECT a.*, u.full_name AS started_by_name,
+               (SELECT COUNT(*) FROM store_stock_audit_lines l WHERE l.audit_id = a.id) AS line_count,
+               (SELECT COUNT(*) FROM store_stock_audit_lines l
+                WHERE l.audit_id = a.id AND l.status = 'verified') AS verified_count
+        FROM store_stock_audits a
+        LEFT JOIN users u ON u.id = a.started_by
+        WHERE a.outlet = ? AND a.place = ? AND a.status = 'completed'
+        ORDER BY a.completed_at DESC, a.id DESC
+        LIMIT ?
+        """,
+        (outlet, place, int(limit)),
+    ).fetchall()
     history = []
     for row in rows:
         item = dict(row)
@@ -9448,23 +9738,20 @@ def stores_stock_audit_history():
                 "verified_count": int(item.get("verified_count") or 0),
             }
         )
-    return jsonify({"ok": True, "outlet": outlet, "history": history})
+    return {"ok": True, "outlet": outlet, "place": place, "history": history}
 
 
-@stores_bp.route("/stores/stock-audit/new", methods=["POST"])
-def stores_stock_audit_new():
-    user = _get_user() if _get_user else None
+def stock_audit_new_action(conn, user, data) -> tuple[int, dict[str, Any]]:
+    """Complete the open audit (if any) and seed a new one. Shared by web + mobile."""
     if not user:
-        return jsonify({"ok": False, "error": "You must be logged in."}), 401
-    data = request.get_json(silent=True) or request.form
+        return 401, {"ok": False, "error": "You must be logged in."}
     filter_outlet = _parse_outlet_filter(
-        data.get("outlet") if data.get("outlet") is not None else request.args.get("outlet")
+        data.get("outlet") if data.get("outlet") is not None else None
     )
     outlet = _audit_concrete_outlet(filter_outlet)
     place = _parse_stock_place(
-        data.get("place") if data.get("place") is not None else request.args.get("place")
+        data.get("place") if data.get("place") is not None else None
     )
-    conn = get_db()
     try:
         ensure_stores_schema(conn)
         open_row = conn.execute(
@@ -9492,18 +9779,77 @@ def stores_stock_audit_new():
             _seed_audit_lines(conn, audit["id"], outlet, place)
             conn.commit()
             lines = _load_audit_lines(conn, audit["id"])
-        return jsonify(
-            {
-                "ok": True,
-                "audit_id": audit["id"],
-                "redirect": url_for("stores_stock_audit", outlet=outlet, place=place),
-                "line_count": len(lines),
-            }
-        )
+        return 200, {
+            "ok": True,
+            "audit_id": audit["id"],
+            "line_count": len(lines),
+            "outlet": outlet,
+            "place": place,
+        }
     except Exception as exc:
         conn.rollback()
         logger.exception("stock audit new failed")
-        return jsonify({"ok": False, "error": str(exc) or "Could not start audit."}), 500
+        return 500, {"ok": False, "error": str(exc) or "Could not start audit."}
+
+
+@stores_bp.route("/stores/stock-audit/verify", methods=["POST"])
+def stores_stock_audit_verify():
+    user = _get_user() if _get_user else None
+    data = request.get_json(silent=True) or request.form
+    conn = get_db()
+    try:
+        status, payload = stock_audit_verify_action(conn, user, data)
+        return jsonify(payload), status
+    finally:
+        conn.close()
+
+
+@stores_bp.route("/stores/stock-audit/skip", methods=["POST"])
+def stores_stock_audit_skip():
+    user = _get_user() if _get_user else None
+    data = request.get_json(silent=True) or request.form
+    conn = get_db()
+    try:
+        status, payload = stock_audit_skip_action(conn, user, data)
+        return jsonify(payload), status
+    finally:
+        conn.close()
+
+
+@stores_bp.route("/stores/stock-audit/history")
+def stores_stock_audit_history():
+    filter_outlet = _parse_outlet_filter(request.args.get("outlet"))
+    outlet = _audit_concrete_outlet(filter_outlet)
+    place = _parse_stock_place(
+        request.args.get("place") if request.args.get("place") is not None else None
+    )
+    conn = get_db()
+    try:
+        payload = stock_audit_history_payload(conn, outlet, place, limit=50)
+    finally:
+        conn.close()
+    return jsonify(payload)
+
+
+@stores_bp.route("/stores/stock-audit/new", methods=["POST"])
+def stores_stock_audit_new():
+    user = _get_user() if _get_user else None
+    data = request.get_json(silent=True) or request.form
+    merged = dict(data) if hasattr(data, "keys") else {}
+    if request.args.get("outlet") is not None and merged.get("outlet") is None:
+        merged["outlet"] = request.args.get("outlet")
+    if request.args.get("place") is not None and merged.get("place") is None:
+        merged["place"] = request.args.get("place")
+    conn = get_db()
+    try:
+        status, payload = stock_audit_new_action(conn, user, merged)
+        if payload.get("ok"):
+            payload["redirect"] = url_for(
+                "stores_stock_audit",
+                outlet=payload.get("outlet"),
+                place=payload.get("place"),
+            )
+        return jsonify(payload), status
     finally:
         conn.close()
 

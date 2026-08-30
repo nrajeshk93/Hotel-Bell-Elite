@@ -57,9 +57,6 @@
     <article class="st-card st-inward-card st-inward-direct">
       <div class="st-card-head">
         <div class="st-card-title-wrap">
-          <span class="st-card-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>
-          </span>
           <h2 class="st-card-title">Invoice Items</h2>
         </div>
       </div>
@@ -99,8 +96,10 @@
           {% include 'partials/stores_inward_direct_line.html' %}
         </div>
         <div class="st-lines-footer st-inward-direct-footer" aria-live="polite">
-          <span class="st-lines-footer-label">Total</span>
-          <strong class="st-lines-footer-value" id="st-inward-direct-grand-total" data-st-inward-direct-grand-total>—</strong>
+          <div class="st-inward-direct-footer-total">
+            <span class="st-lines-footer-label">Total</span>
+            <strong class="st-lines-footer-value" id="st-inward-direct-grand-total" data-st-inward-direct-grand-total>—</strong>
+          </div>
         </div>
         <template id="st-inward-direct-line-template">
           {% set fid = 'st-direct-item-new' %}
@@ -109,19 +108,6 @@
           {% set line = {"item_name": "", "quantity": "", "unit": "kg", "approximate_price": "", "approximate_price_display": "", "tax_percent": ""} %}
           {% include 'partials/stores_inward_direct_line.html' %}
         </template>
-        <div class="st-items-notes">
-          <div class="st-notes-left">
-            <span class="st-card-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h4"/></svg>
-            </span>
-            <h3 class="st-card-title">Notes</h3>
-          </div>
-          <div class="st-notes-right">
-            <label class="st-sr-only" for="st-inward-notes">Notes</label>
-            <textarea id="st-inward-notes" name="notes" maxlength="500" rows="2" placeholder="Optional note for Approvals." data-st-notes-counter></textarea>
-            <div class="st-notes-count"><span data-st-notes-count>0</span> / 500</div>
-          </div>
-        </div>
         {% endif %}
         {% endif %}
       </div>
@@ -448,54 +434,56 @@
         </div>
       </div>
       <div id="st-inward-expense-error" class="staff-credit-error"></div>
-      <div class="staff-field">
-        <label for="st-inward-expense-date">Purchase date *</label>
-        <input id="st-inward-expense-date"
-               class="staff-input pl-date-input"
-               type="date"
-               value="{{ today_iso }}"
-               max="{{ today_iso }}"
-               required>
-      </div>
-      <div class="staff-field" id="st-inward-supplier-field"{% if inward_view != 'direct' %} hidden{% endif %}>
-        <span class="staff-supplier-field-label" id="st-inward-supplier-label">Supplier *</span>
-        <div class="se-filter-chip se-filter-chip--location se-filter-chip--listbox ep-form-listbox ep-combobox-listbox staff-expense-supplier-listbox"
-             data-se-listbox data-se-listbox-searchable data-se-listbox-combobox
-             id="st-inward-supplier-listbox">
-          <div class="se-filter-chip-control">
-            <span class="se-filter-chip-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-            </span>
-            <input type="hidden" id="st-inward-supplier-input" value="{% if inward_view != 'direct' and selected_po %}{{ selected_po.supplier_id or '' }}{% endif %}">
-            <input type="search"
-                   class="se-filter-chip-trigger se-filter-chip-combobox{% if inward_view == 'direct' or not selected_po or not selected_po.supplier_id %} is-placeholder{% endif %}"
-                   id="st-inward-supplier-trigger"
-                   role="combobox"
-                   aria-autocomplete="list"
-                   aria-haspopup="listbox"
-                   aria-expanded="false"
-                   aria-controls="st-inward-supplier-list"
-                   aria-labelledby="st-inward-supplier-label"
-                   value="{% if inward_view != 'direct' and selected_po and selected_po.supplier_name and selected_po.supplier_name != '—' %}{{ selected_po.supplier_name }}{% endif %}"
-                   placeholder="Search by name or GST…"
-                   autocomplete="off"
-                   spellcheck="false"
-                   {% if inward_view != 'direct' %}tabindex="-1" readonly{% endif %}>
-            <span class="se-filter-chip-chev" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-            </span>
-          </div>
-          <div class="se-filter-listbox staff-expense-supplier-panel" id="st-inward-supplier-list" role="listbox" aria-labelledby="st-inward-supplier-label" hidden>
-            <div class="ep-listbox-options staff-supplier-options" id="st-inward-supplier-options">
-              {% for supplier in suppliers|default([]) %}
-              <button type="button" class="se-filter-listbox-option staff-supplier-option{% if inward_view != 'direct' and selected_po and selected_po.supplier_id == supplier.id %} is-selected{% endif %}" role="option" data-value="{{ supplier.id }}" data-label="{{ supplier.name }}" data-name="{{ supplier.name|lower }} {{ (supplier.gst or '')|lower }}" data-gst="{{ (supplier.gst or '')|lower }}" aria-selected="{% if inward_view != 'direct' and selected_po and selected_po.supplier_id == supplier.id %}true{% else %}false{% endif %}">
-                <span class="staff-supplier-option-name">{{ supplier.name }}</span>
-                <span class="staff-supplier-option-gst">{{ supplier.gst or '' }}</span>
-              </button>
-              {% endfor %}
+      <div class="staff-grid st-inward-expense-top-row">
+        <div class="staff-field staff-field--inline" id="st-inward-supplier-field"{% if inward_view != 'direct' %} hidden{% endif %}>
+          <span class="staff-supplier-field-label" id="st-inward-supplier-label">Supplier *</span>
+          <div class="se-filter-chip se-filter-chip--location se-filter-chip--listbox ep-form-listbox ep-combobox-listbox staff-expense-supplier-listbox"
+               data-se-listbox data-se-listbox-searchable data-se-listbox-combobox
+               id="st-inward-supplier-listbox">
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+              </span>
+              <input type="hidden" id="st-inward-supplier-input" value="{% if inward_view != 'direct' and selected_po %}{{ selected_po.supplier_id or '' }}{% endif %}">
+              <input type="search"
+                     class="se-filter-chip-trigger se-filter-chip-combobox{% if inward_view == 'direct' or not selected_po or not selected_po.supplier_id %} is-placeholder{% endif %}"
+                     id="st-inward-supplier-trigger"
+                     role="combobox"
+                     aria-autocomplete="list"
+                     aria-haspopup="listbox"
+                     aria-expanded="false"
+                     aria-controls="st-inward-supplier-list"
+                     aria-labelledby="st-inward-supplier-label"
+                     value="{% if inward_view != 'direct' and selected_po and selected_po.supplier_name and selected_po.supplier_name != '—' %}{{ selected_po.supplier_name }}{% endif %}"
+                     placeholder="Search by name or GST…"
+                     autocomplete="off"
+                     spellcheck="false"
+                     {% if inward_view != 'direct' %}tabindex="-1" readonly{% endif %}>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
             </div>
-            <div class="staff-supplier-empty se-filter-listbox-status" id="st-inward-supplier-empty" data-ep-empty hidden>No suppliers match your search.</div>
+            <div class="se-filter-listbox staff-expense-supplier-panel" id="st-inward-supplier-list" role="listbox" aria-labelledby="st-inward-supplier-label" hidden>
+              <div class="ep-listbox-options staff-supplier-options" id="st-inward-supplier-options">
+                {% for supplier in suppliers|default([]) %}
+                <button type="button" class="se-filter-listbox-option staff-supplier-option{% if inward_view != 'direct' and selected_po and selected_po.supplier_id == supplier.id %} is-selected{% endif %}" role="option" data-value="{{ supplier.id }}" data-label="{{ supplier.name }}" data-name="{{ supplier.name|lower }} {{ (supplier.gst or '')|lower }}" data-gst="{{ (supplier.gst or '')|lower }}" aria-selected="{% if inward_view != 'direct' and selected_po and selected_po.supplier_id == supplier.id %}true{% else %}false{% endif %}">
+                  <span class="staff-supplier-option-name">{{ supplier.name }}</span>
+                  <span class="staff-supplier-option-gst">{{ supplier.gst or '' }}</span>
+                </button>
+                {% endfor %}
+              </div>
+              <div class="staff-supplier-empty se-filter-listbox-status" id="st-inward-supplier-empty" data-ep-empty hidden>No suppliers match your search.</div>
+            </div>
           </div>
+        </div>
+        <div class="staff-field staff-field--inline st-inward-expense-date-field">
+          <label for="st-inward-expense-date">Purchase date *</label>
+          <input id="st-inward-expense-date"
+                 class="staff-input pl-date-input"
+                 type="date"
+                 value="{{ today_iso }}"
+                 max="{{ today_iso }}"
+                 required>
         </div>
       </div>
       <div class="staff-grid pl-add-category-row">

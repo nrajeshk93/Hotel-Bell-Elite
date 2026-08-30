@@ -5,11 +5,39 @@ from __future__ import annotations
 import json
 import re
 from typing import Any, Optional
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
 from hbe_mobile import config
+from hbe_mobile.update_check import is_same_origin_url
+
+
+
+def _location_path(location: str) -> str:
+    raw = (location or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("//") or "://" in raw.split("?", 1)[0]:
+        return (urlparse(raw).path or "").rstrip("/") or "/"
+    path = raw.split("?", 1)[0].split("#", 1)[0]
+    if not path.startswith("/"):
+        path = "/" + path
+    return path.rstrip("/") or "/"
+
+
+def _is_same_origin_location(base_url: str, location: str) -> bool:
+    raw = (location or "").strip()
+    if not raw or raw.startswith("//"):
+        return False
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return is_same_origin_url(base_url, raw)
+    return True
+
+
+def _is_app_path(location: str, expected: str) -> bool:
+    want = (expected or "").rstrip("/") or "/"
+    return _location_path(location) == want
 
 
 class ApiError(Exception):
@@ -112,6 +140,7 @@ class ApiClient:
             timeout=config.REQUEST_TIMEOUT_S,
             follow_redirects=False,
             headers={"User-Agent": "HBE-Mobile-Kivy/0.1"},
+            verify=config.httpx_verify(),
         )
         self.username = ""
         self.authenticated = False
@@ -132,6 +161,7 @@ class ApiClient:
             follow_redirects=False,
             headers={"User-Agent": "HBE-Mobile-Kivy/0.1"},
             cookies=cookies,
+            verify=config.httpx_verify(),
         )
         config.set_api_base_url(url)
 
@@ -274,24 +304,30 @@ class ApiClient:
         )
         location = response.headers.get("location") or ""
         if response.status_code in (301, 302, 303, 307, 308):
-            if "/change-password" in location:
+            if _is_same_origin_location(self.base_url, location) and _is_app_path(
+                location, "/change-password"
+            ):
                 self.authenticated = True
                 self.username = username
                 return {"ok": True, "must_change_password": True}
-            if "/home" in location or location.endswith("/home"):
+            if _is_same_origin_location(self.base_url, location) and _is_app_path(
+                location, "/home"
+            ):
                 self.authenticated = True
                 self.username = username
                 # Follow to seed CSRF cookie
                 self.request("GET", "/home", follow_redirects=True)
                 return {"ok": True, "must_change_password": False}
-            # Other redirects — follow once
+            # Other redirects — follow once, same-origin only
             next_path = location
             if location.startswith(self.base_url):
                 next_path = location[len(self.base_url) :] or "/"
-            elif location.startswith("http"):
+            elif location.startswith("http") or location.startswith("//"):
                 return {"ok": False, "error": f"Unexpected redirect: {location}", "captcha_required": False}
             followed = self._client.get(next_path, follow_redirects=True)
-            if "/home" in str(followed.url):
+            if _is_same_origin_location(self.base_url, str(followed.url)) and _is_app_path(
+                str(followed.url), "/home"
+            ):
                 self.authenticated = True
                 self.username = username
                 return {"ok": True, "must_change_password": False}

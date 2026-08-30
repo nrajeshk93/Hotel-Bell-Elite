@@ -143,6 +143,70 @@ class PrintAgentApiTests(unittest.TestCase):
         self.assertIn("hotel_invoice", data.get("roles") or [])
         self.assertIn("https://belleliteaccounts.com", data.get("allowedOrigins") or [])
         self.assertEqual(data.get("cloudOrigin"), "https://belleliteaccounts.com")
+        self.assertIn("serverPrintQueue", data)
+        self.assertIn("printQueuePrimary", data)
+
+    def test_register_rejected_without_session_or_pairing(self):
+        self._get_user_patch.stop()
+        try:
+            with self.client.session_transaction() as sess:
+                sess.clear()
+            reg = self.client.post(
+                "/api/print-agent/register",
+                json={
+                    "agentId": "99999999-8888-7777-6666-555555555555",
+                    "businessId": "biz-demo",
+                },
+            )
+            self.assertEqual(reg.status_code, 401)
+        finally:
+            self._get_user_patch.start()
+
+    def test_pairing_code_allows_new_register_and_heartbeat_without_session(self):
+        minted = self.client.post("/hotel/api/print-agent/pairing-code")
+        self.assertEqual(minted.status_code, 200, minted.get_data(as_text=True))
+        minted_body = minted.get_json() or {}
+        code = minted_body.get("pairingCode")
+        self.assertTrue(code)
+        self.assertTrue(minted_body.get("expiresAt"))
+        self.assertGreaterEqual(int(minted_body.get("ttlSeconds") or 0), 60)
+        self._get_user_patch.stop()
+        try:
+            with self.client.session_transaction() as sess:
+                sess.clear()
+            cfg = self.client.get("/api/print-agent/config")
+            self.assertEqual(cfg.status_code, 401)
+            reg = self.client.post(
+                "/api/print-agent/register",
+                json={
+                    "agentId": "aaaaaaaa-bbbb-cccc-dddd-ffffffffffff",
+                    "businessId": "biz-demo",
+                    "pairingCode": code,
+                    "deviceName": "NEW-PC",
+                },
+            )
+            self.assertEqual(reg.status_code, 200, reg.get_data(as_text=True))
+            body = reg.get_json() or {}
+            self.assertTrue(body.get("ok"))
+            hb = self.client.post(
+                "/api/print-agent/heartbeat",
+                headers={"Authorization": "Bearer " + body["token"]},
+                json={"agentId": "aaaaaaaa-bbbb-cccc-dddd-ffffffffffff"},
+            )
+            self.assertEqual(hb.status_code, 200, hb.get_data(as_text=True))
+            self.assertTrue((hb.get_json() or {}).get("ok"))
+            reused = self.client.post(
+                "/api/print-agent/register",
+                json={
+                    "agentId": "bbbbbbbb-cccc-dddd-eeee-ffffffffffff",
+                    "businessId": "biz-demo",
+                    "pairingCode": code,
+                },
+            )
+            self.assertEqual(reused.status_code, 401)
+        finally:
+            self._get_user_patch.start()
+
 
 
 if __name__ == "__main__":

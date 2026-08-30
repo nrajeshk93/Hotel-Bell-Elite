@@ -61,6 +61,7 @@ from db import (
     ensure_stores_schema,
     enrich_pos_floor_tables_for_display,
     enrich_pos_floor_tables_with_open_orders,
+    get_app_license,
     get_customer,
     get_agency,
     get_db,
@@ -78,6 +79,9 @@ from db import (
     get_hotel_tariff_rates,
     hotel_room_invoice_kpis,
     aggregate_invoice_sales_kpis,
+    license_is_active,
+    list_license_renewals,
+    update_app_license,
     aggregate_invoice_sales_kpis_by_day,
     hotel_sales_entry_from_invoices,
     pos_sales_entry_from_invoices,
@@ -130,6 +134,7 @@ from db import (
     list_customers,
     list_agencies,
     list_pos_invoices,
+    auto_settle_zero_payable_pos_invoices,
     list_pos_kot_pending_summary,
     list_pos_kot_tokens,
     apply_pos_kot_token_reductions,
@@ -182,6 +187,7 @@ from workspace_access import (
     _DASHBOARD_MODULE_LABELS,
     _DASHBOARD_MODULES,
     _HOTEL_SUBMODULE_LABELS,
+    _LICENSE_ENDPOINTS,
     _MASTER_SUBMODULE_LABELS,
     _PUBLIC_ENDPOINTS,
     _PAYROLL_SUBMODULE_LABELS,
@@ -271,6 +277,8 @@ from embed_helpers import (
     is_partial_main_request,
 )
 from hotel_id_documents import (
+    id_document_is_linked_to_guest,
+    id_document_owner_user_id,
     open_id_document_payload,
     persist_id_document_bytes,
     process_uploaded_id_documents,
@@ -651,6 +659,9 @@ register_employee_payroll(
     queue_auth_notice=_queue_auth_notice,
 )
 register_payroll_mobile(app)
+from print_jobs_api import register_print_jobs
+
+register_print_jobs(app)
 register_stores(
     app,
     pop_auth_notice=_pop_auth_notice,
@@ -815,7 +826,65 @@ def enforce_access():
             return jsonify({"ok": False, "error": "Not signed in"}), 401
         if request.path.startswith("/preview-api/") or request.path.startswith("/mobile-app"):
             return None
+        # Print-agent heartbeat/updates use a stored agent token. New register is
+        # authorized in the handler (session or pairing code).
+        if endpoint in {
+            "print_agent_heartbeat",
+            "print_agent_updates_latest",
+            "print_agent_register",
+            "print_agent_browser_config",
+            "print_jobs_pending",
+            "print_jobs_ack",
+            "print_agent_ws",
+        } or (request.path or "").startswith("/api/print-agent/heartbeat"):
+            return None
         return redirect(url_for("index"))
+
+    # Application license window — block the product when expired.
+    license_active = True
+    try:
+        conn = get_db()
+        try:
+            license_active = bool(license_is_active(conn))
+        finally:
+            conn.close()
+    except Exception:
+        license_active = True
+    g.license_active = license_active
+    g.license_expired = not license_active
+
+    if not license_active:
+        allowed_when_expired = {
+            "logout",
+            "change_password",
+            "favicon",
+            "license_page",
+            "license_api",
+        }
+        if endpoint not in allowed_when_expired and endpoint not in _PUBLIC_ENDPOINTS:
+            msg = "Your Hotel Bell Elite license has expired. Renew it to continue."
+            xhr = (
+                request.headers.get("X-Requested-With") == "XMLHttpRequest"
+                or request.is_json
+                or request.path.startswith("/api/")
+                or "/api/" in (request.path or "")
+            )
+            if xhr:
+                return jsonify({"ok": False, "error": msg, "license_expired": True}), 403
+            return redirect(url_for("license_page"))
+
+    if endpoint in _LICENSE_ENDPOINTS:
+        is_admin = bool(user.get("is_admin"))
+        if endpoint == "license_api" and request.method in ("PUT", "POST", "PATCH"):
+            if not is_admin:
+                return _permission_denied_response(
+                    "Only Super Administrators can update the license."
+                )
+        elif not is_admin and license_active:
+            return _permission_denied_response(
+                "You do not have access to License."
+            )
+        return None
 
     required_dashboard = get_endpoint_dashboard_module(endpoint)
     if required_dashboard and not user_can_access_dashboard(user, required_dashboard):
@@ -989,6 +1058,17 @@ def inject_phone_country_codes():
 @app.context_processor
 def inject_auth_context():
     user = get_current_user()
+    license_expired = bool(getattr(g, "license_expired", False))
+    if user and not hasattr(g, "license_expired"):
+        try:
+            conn = get_db()
+            try:
+                license_expired = not bool(license_is_active(conn))
+            finally:
+                conn.close()
+        except Exception:
+            license_expired = False
+    show_license_nav = bool(user and (user.get("is_admin") or license_expired))
     return {
         "is_partial_main": is_partial_main_request(),
         "current_user": user,
@@ -1030,6 +1110,8 @@ def inject_auth_context():
         "user_can_cancel_invoices": user_can_cancel_invoices,
         "user_can_edit_unsettled_invoices": user_can_edit_unsettled_invoices,
         "user_can_approve_transactions": user_can_approve_transactions,
+        "license_expired": license_expired,
+        "show_license_nav": show_license_nav,
         "dashboard_module_labels": _DASHBOARD_MODULE_LABELS,
         "sales_analytics_submodule_labels": _SALES_ANALYTICS_SUBMODULE_LABELS,
         "payroll_module_labels": _PAYROLL_SUBMODULE_LABELS,
@@ -5527,11 +5609,13 @@ DASHBOARD_KPI_KEYS = tuple(key for key, _label in DASHBOARD_KPI_CARDS)
 
 
 def _dashboard_kpi_spark_series(conn, date_from, date_to, company=None, location=None, difference_mode=None):
-    """Daily KPI values for sparklines from invoices over the selected range."""
+    """Daily KPI values for sparklines over the selected range only.
+
+    Single-day filters stay single-day (flat spark matching the KPI), so Today
+    at ₹0 does not plot unrelated prior-week peaks.
+    """
     spark_from = date_from
     spark_to = date_to
-    if spark_from == spark_to:
-        spark_from = spark_to - timedelta(days=13)
 
     by_day = aggregate_invoice_sales_kpis_by_day(conn, spark_from, spark_to, location=location)
 
@@ -5679,7 +5763,7 @@ def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
     if date_from == date_to:
         prev_to = date_from - timedelta(days=1)
         prev_from = prev_to
-        spark_from = date_to - timedelta(days=13)
+        spark_from = date_from
     else:
         span_days = (date_to - date_from).days + 1
         prev_to = date_from - timedelta(days=1)
@@ -5688,6 +5772,7 @@ def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
     spark_to = date_to
 
     # Total Sales = invoice ledger totals (Hotel + Restaurant + Bar).
+    # Sparklines track the selected range only (same days the KPI aggregates).
     spark_dates = date_range_days(spark_from, spark_to)
 
     daily_series = []
@@ -5734,7 +5819,7 @@ def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
                 "key": key,
                 "label": label,
                 "value": bundle["current"][key],
-                "value_compact": inr_compact(bundle["current"][key]),
+                "value_compact": inr_format(bundle["current"][key], 0),
                 "change_pct": bundle["trends"].get(key),
                 "sparkline_series": sparkline_series_from_values(spark_dates, values),
             }
@@ -8030,7 +8115,20 @@ def _kot_report_filters(args):
     if outlet not in ("all", POS_OUTLET_RESTAURANT, POS_OUTLET_BAR):
         outlet = "all"
     base["selected_outlet"] = outlet
+    status = (args.get("status") or "all").strip().lower()
+    if status not in ("all", "open", "invoice_generated", "cancelled"):
+        status = "all"
+    base["selected_status"] = status
     return base
+
+
+def _kot_report_status_labels():
+    return {
+        "all": "All",
+        "open": "Open",
+        "invoice_generated": "Invoice generated",
+        "cancelled": "Cancelled",
+    }
 
 
 def _kot_report_page():
@@ -8042,6 +8140,7 @@ def _kot_report_page():
             date_from=filters["date_from"] if filters["date_filter_active"] else None,
             date_to=filters["date_to"] if filters["date_filter_active"] else None,
             outlet=filters["selected_outlet"],
+            status=filters["selected_status"],
         )
     finally:
         conn.close()
@@ -8055,8 +8154,11 @@ def _kot_report_page():
         export_kwargs["date_to"] = filters["date_to"].isoformat()
     if filters["selected_outlet"] != "all":
         export_kwargs["outlet"] = filters["selected_outlet"]
+    if filters["selected_status"] != "all":
+        export_kwargs["status"] = filters["selected_status"]
     clear_kwargs = dict(filter_kwargs)
     outlet_labels = _sales_report_outlet_labels()
+    status_labels = _kot_report_status_labels()
     return render_template(
         "kot_report.html",
         de_nav_section="report",
@@ -8068,6 +8170,10 @@ def _kot_report_page():
         date_from=filters["date_from"].isoformat() if filters["date_from"] else "",
         date_to=filters["date_to"].isoformat() if filters["date_to"] else "",
         active_date_filter=filters["date_filter_active"],
+        selected_status=filters["selected_status"],
+        selected_status_label=status_labels.get(
+            filters["selected_status"], "All"
+        ),
         selected_outlet=filters["selected_outlet"],
         selected_outlet_label=outlet_labels.get(
             filters["selected_outlet"], "All"
@@ -8095,6 +8201,7 @@ def _kot_report_export():
             date_from=filters["date_from"] if filters["date_filter_active"] else None,
             date_to=filters["date_to"] if filters["date_filter_active"] else None,
             outlet=filters["selected_outlet"],
+            status=filters["selected_status"],
         )
     finally:
         conn.close()
@@ -8901,6 +9008,149 @@ def settings():
     )
 
 
+def _format_license_display_date(value):
+    raw = str(value or "").strip()[:10]
+    if not raw:
+        return "—"
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d").strftime("%d %b %Y")
+    except ValueError:
+        return raw
+
+
+def _license_payload(conn, *, include_renewals=True):
+    license_row = get_app_license(conn) or {}
+    days = license_row.get("days_remaining")
+    status = license_row.get("status") or "expired"
+    if status == "expired":
+        status_label = "Expired"
+        status_message = (
+            "Your license has expired. Renew it to restore full access to Hotel Bell Elite."
+        )
+        remaining_label = "Expired"
+    elif status == "expiring_soon":
+        status_label = "Expiring soon"
+        day_word = "day" if days == 1 else "days"
+        status_message = (
+            f"Your license is active but expires soon. "
+            f"{days} {day_word} remaining."
+        )
+        remaining_label = f"{days} {day_word} remaining"
+    else:
+        status_label = "Active"
+        day_word = "day" if days == 1 else "days"
+        status_message = (
+            "Your license is active. You can access all features until the expiration date."
+        )
+        remaining_label = f"{days} {day_word} remaining" if days is not None else "Active"
+    payload = {
+        "ok": True,
+        "license": {
+            "license_type": license_row.get("license_type") or "",
+            "license_key": license_row.get("license_key") or "",
+            "valid_from": license_row.get("valid_from") or "",
+            "valid_to": license_row.get("valid_to") or "",
+            "valid_from_display": _format_license_display_date(license_row.get("valid_from")),
+            "valid_to_display": _format_license_display_date(license_row.get("valid_to")),
+            "status": status,
+            "status_label": status_label,
+            "status_message": status_message,
+            "days_remaining": days,
+            "remaining_label": remaining_label,
+            "created_at": license_row.get("created_at") or "",
+            "updated_at": license_row.get("updated_at") or "",
+            "created_at_display": _format_license_display_date(license_row.get("created_at")),
+            "updated_at_display": _format_license_display_date(license_row.get("updated_at")),
+            "is_active": status != "expired",
+        },
+    }
+    if include_renewals:
+        renewals = []
+        for row in list_license_renewals(conn):
+            renewals.append(
+                {
+                    "id": row.get("id"),
+                    "valid_from": row.get("valid_from") or "",
+                    "valid_to": row.get("valid_to") or "",
+                    "valid_from_display": _format_license_display_date(row.get("valid_from")),
+                    "valid_to_display": _format_license_display_date(row.get("valid_to")),
+                    "note": row.get("note") or "",
+                    "updated_by": row.get("updated_by") or "",
+                    "created_at": row.get("created_at") or "",
+                    "created_at_display": _format_license_display_date(row.get("created_at")),
+                }
+            )
+        payload["renewals"] = renewals
+    return payload
+
+
+@app.route("/license")
+def license_page():
+    """Application license status for Super Admins (or anyone when expired)."""
+    conn = get_db()
+    try:
+        payload = _license_payload(conn)
+    finally:
+        conn.close()
+    return render_template(
+        "license.html",
+        de_nav_section="license",
+        de_nav_license_view="home",
+        license=payload["license"],
+        renewals=payload.get("renewals") or [],
+        copyright_year=date.today().year,
+    )
+
+
+@app.route("/license/api", methods=["GET", "PUT"])
+def license_api():
+    """Read or update the application license window."""
+    user = get_current_user()
+    if request.method == "GET":
+        conn = get_db()
+        try:
+            return jsonify(_license_payload(conn))
+        finally:
+            conn.close()
+
+    if not user or not user.get("is_admin"):
+        return jsonify({"ok": False, "error": "Only Super Administrators can update the license."}), 403
+
+    body = request.get_json(silent=True) or {}
+    valid_to = (body.get("valid_to") or "").strip()
+    valid_from = (body.get("valid_from") or "").strip() or None
+    license_type = body.get("license_type")
+    license_key = body.get("license_key")
+    note = (body.get("note") or "").strip()
+    if not valid_to:
+        return jsonify({"ok": False, "error": "valid_to is required (YYYY-MM-DD)."}), 400
+
+    conn = get_db()
+    try:
+        try:
+            update_app_license(
+                conn,
+                valid_to=valid_to,
+                valid_from=valid_from,
+                license_type=license_type,
+                license_key=license_key,
+                note=note,
+                updated_by=(user.get("username") or user.get("full_name") or "admin"),
+            )
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        except Exception:
+            conn.rollback()
+            raise
+        payload = _license_payload(conn)
+        payload["ok"] = True
+        return jsonify(payload)
+    finally:
+        conn.close()
+
+
 def _pos_outlet_from_request():
     """Resolve restaurant|bar from path or endpoint (Bar twin routes)."""
     path = request.path or ""
@@ -8910,6 +9160,44 @@ def _pos_outlet_from_request():
     if endpoint.startswith("bar_point_of_sale") or endpoint.startswith("bar_export_pos"):
         return POS_OUTLET_BAR
     return POS_OUTLET_RESTAURANT
+
+
+def _pos_pending_kot_items(invoice):
+    """Lines with unsent kitchen qty — snapshot before send_pos_invoice_pending_kot."""
+    pending = []
+    if not invoice:
+        return pending
+    for line in invoice.get("lines") or []:
+        if not isinstance(line, dict):
+            continue
+        try:
+            qty = float(line.get("qty") or 0)
+            sent = float(line.get("sent_qty") or 0)
+        except (TypeError, ValueError):
+            continue
+        if qty > sent + 1e-9:
+            pending.append({"line": line, "delta_qty": qty - sent})
+    return pending
+
+
+def _enqueue_kot_print_jobs(conn, invoice, pending_items):
+    """Best-effort server print queue for web + mobile KOT."""
+    if os.environ.get("PRINT_SERVER_ENQUEUE", "1").strip().lower() in ("0", "false", "no", "off"):
+        return []
+    if not invoice or not pending_items:
+        return []
+    try:
+        from print_job_service import enqueue_kot_jobs_for_invoice
+
+        user = get_current_user()
+        return enqueue_kot_jobs_for_invoice(
+            conn,
+            invoice,
+            pending_items,
+            user_id=int(user.get("id") or 0) if user else 0,
+        )
+    except Exception:
+        return []
 
 
 def _pos_bulk_outlet_from_request():
@@ -9857,6 +10145,7 @@ def hotel_invoice_ledger_export():
         "Balance",
         "Payment Mode",
         *[label for _key, label in HOTEL_PAYMENT_AMOUNT_COLUMNS],
+        "Created by",
     )
     for col, title in enumerate(headers, start=1):
         cell = ws.cell(row=3, column=col, value=title)
@@ -9886,6 +10175,11 @@ def hotel_invoice_ledger_export():
                 column=13 + offset,
                 value=round(float(amounts.get(key) or 0), 2),
             )
+        ws.cell(
+            row=idx,
+            column=13 + len(HOTEL_PAYMENT_AMOUNT_COLUMNS),
+            value=row.get("created_by") or "",
+        )
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -10927,10 +11221,12 @@ def hotel_id_document_upload():
             result.get("storedName") or result.get("urlPath") or ""
         )
         if stored:
+            user = get_current_user() or {}
             persist_id_document_bytes(
                 stored.name,
                 stored.read_bytes(),
                 result.get("mime") or "application/pdf",
+                owner_user_id=int(user.get("id") or 0),
             )
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
@@ -10972,9 +11268,31 @@ def _inline_content_disposition(filename):
     return f"inline; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}"
 
 
+def _user_can_view_hotel_id_documents(user):
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
+    return user_can_access_hotel_rooms_submodule(
+        user, "rooms"
+    ) or user_can_access_hotel_rooms_submodule(user, "reservations")
+
+
 def _send_hotel_id_document(stored_name):
     from io import BytesIO
 
+    user = get_current_user()
+    if not _user_can_view_hotel_id_documents(user):
+        abort(404)
+    conn = get_db()
+    try:
+        linked = id_document_is_linked_to_guest(conn, stored_name)
+        owner_id = id_document_owner_user_id(conn, stored_name)
+        uid = int((user or {}).get("id") or 0)
+        if not linked and owner_id != uid:
+            abort(404)
+    finally:
+        conn.close()
     data, mime, filename = open_id_document_payload(stored_name)
     if not data:
         abort(404)
@@ -11436,6 +11754,15 @@ def hotel_room_detail_api(room_id):
                         or data.get("payment_reference"),
                         "note": note,
                     }
+                actor = get_current_user()
+                created_by = ""
+                if actor:
+                    created_by = str(
+                        actor.get("full_name")
+                        or actor.get("username")
+                        or actor.get("id")
+                        or ""
+                    ).strip()
                 result = generate_hotel_room_invoice(
                     conn,
                     room_id,
@@ -11443,6 +11770,7 @@ def hotel_room_detail_api(room_id):
                     payment_splits=payment_splits if isinstance(payment_splits, list) else None,
                     note=note,
                     invoice_kind=invoice_kind,
+                    created_by=created_by,
                 )
                 conn.commit()
                 return jsonify(
@@ -12043,6 +12371,11 @@ def point_of_sale_invoice_ledger():
     conn = get_db()
     try:
         ensure_pos_schema(conn)
+        # Legacy open zero-payable bills (e.g. 100% discount) → Settled.
+        repair = auto_settle_zero_payable_pos_invoices(conn, outlet=outlet)
+        if repair.get("changed"):
+            sync_pos_floor_occupancy_from_open_orders(conn, outlet)
+            conn.commit()
         invoices = list_pos_invoices(
             conn,
             date_from=filters["query_date_from"].isoformat(),
@@ -12211,15 +12544,16 @@ def export_pos_invoice_ledger_report():
         "Service",
         "Tip",
         "Total",
+        "Created by",
     )
     col_count = len(headers)
     # Tender amount columns sit after Payment Mode (col 6).
     tender_col_start = 7
     tender_col_count = len(POS_PAYMENT_METHODS)
     amount_cols = set(range(tender_col_start, tender_col_start + tender_col_count))
-    # Items + money columns after Captain
+    # Items + money columns after Captain (exclude final Created by text column).
     post_captain_start = tender_col_start + tender_col_count + 1  # Items
-    amount_cols.update(range(post_captain_start, col_count + 1))
+    amount_cols.update(range(post_captain_start, col_count))
 
     wb = Workbook()
     ws = wb.active
@@ -12251,6 +12585,7 @@ def export_pos_invoice_ledger_report():
             _whole_or_float(round_half_up(inv.get("service"), 2)),
             _whole_or_float(round_half_up(inv.get("tip"), 2)),
             _whole_or_float(round_half_up(inv.get("grand_total"), 2)),
+            inv.get("created_by") or "",
         )
         for col, value in enumerate(values, start=1):
             ws.cell(row=idx, column=col, value=value)
@@ -12311,6 +12646,7 @@ def export_pos_invoice_ledger_report():
         12,
         10,
         12,
+        18,
     )
     for col, width in enumerate(col_widths, start=1):
         max_len = width
@@ -12602,7 +12938,9 @@ def point_of_sale_api_invoice_send_kot(invoice_id):
             existing = get_pos_invoice(conn, invoice_id)
             if not existing or not _pos_invoice_belongs_to_outlet(existing, outlet):
                 return jsonify({"ok": False, "error": "Invoice not found."}), 404
+            pending_items = _pos_pending_kot_items(existing)
             invoice = send_pos_invoice_pending_kot(conn, invoice_id)
+            _enqueue_kot_print_jobs(conn, invoice, pending_items)
             kot_pending = list_pos_kot_pending_summary(conn, outlet)
             conn.commit()
         except ValueError as exc:
@@ -12627,7 +12965,10 @@ def point_of_sale_api_kot_pending_send_all():
         for entry in summary.get("tables") or []:
             invoice_id = entry.get("invoice_id")
             try:
+                existing = get_pos_invoice(conn, invoice_id)
+                pending_items = _pos_pending_kot_items(existing)
                 invoice = send_pos_invoice_pending_kot(conn, invoice_id)
+                _enqueue_kot_print_jobs(conn, invoice, pending_items)
                 sent.append({"invoice_id": invoice_id, "table": entry.get("name") or "", "order_no": invoice.get("order_no")})
             except ValueError as exc:
                 errors.append({"invoice_id": invoice_id, "error": str(exc)})
@@ -12801,7 +13142,14 @@ def point_of_sale_api_invoice_delete(invoice_id):
             existing = get_pos_invoice(conn, invoice_id)
             if not existing or not _pos_invoice_belongs_to_outlet(existing, outlet):
                 return jsonify({"ok": False, "error": "Invoice not found."}), 404
-            result = cancel_pos_invoice(conn, invoice_id, reason=reason)
+            cancelled_by = ""
+            if user:
+                cancelled_by = str(
+                    user.get("full_name") or user.get("username") or user.get("id") or ""
+                ).strip()
+            result = cancel_pos_invoice(
+                conn, invoice_id, reason=reason, cancelled_by=cancelled_by
+            )
             sync_pos_floor_occupancy_from_open_orders(conn, outlet)
             conn.commit()
         except ValueError as exc:
@@ -13335,6 +13683,7 @@ def _home_notifications(user):
                 "title": "Purchases awaiting approval",
                 "body": f"{pending_count} {label} waiting for your review.",
                 "href": url_for("purchase_verification"),
+                "count": pending_count,
             })
     if user_can_access_stores_submodule(user, "approvals"):
         conn = get_db()
@@ -13353,6 +13702,7 @@ def _home_notifications(user):
                 "title": "Indents awaiting approval",
                 "body": f"{pending_count} {label} waiting for your review.",
                 "href": url_for("stores_approvals"),
+                "count": pending_count,
             })
     if user_can_access_dashboard(user, "communication_hub"):
         from communication_hub import build_hub_home_notification, pull_hub_mirror_into
@@ -14717,6 +15067,17 @@ def _delete_purchase_ledger_expense(conn, user, data):
             "SELECT name FROM sqlite_master WHERE type='table'"
         ).fetchall()
     }
+
+    from stores import reverse_stock_for_deleted_purchase_expense
+
+    stock_error = reverse_stock_for_deleted_purchase_expense(
+        conn,
+        expense_id,
+        user_id=(user or {}).get("id"),
+    )
+    if stock_error:
+        return None, stock_error
+
     if "credit_payment_allocations" in tables:
         conn.execute(
             "DELETE FROM credit_payment_allocations WHERE expense_id = ?",
@@ -19766,14 +20127,53 @@ def delete_access_user(user_id):
 
 # ── Print Agent (Windows silent printing bridge) ─────────────────────────────
 
+def _user_can_enroll_print_agent(user):
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
+    return bool(
+        user_can_access_hotel_rooms_submodule(user, "settings")
+        or user_can_access_hotel_rooms_submodule(user, "rooms")
+        or user_can_access_dashboard(user, "hotel_rooms")
+    )
+
+
 @app.route("/api/print-agent/register", methods=["POST"], endpoint="print_agent_register")
 def print_agent_register():
     """First-launch registration from Hotel Print Agent desktop app."""
-    from print_agent_store import register_print_agent
+    from print_agent_store import (
+        consume_print_agent_pairing_code,
+        existing_agent_accepts_key,
+        register_print_agent,
+    )
 
     payload = request.get_json(silent=True) or {}
+    user = get_current_user()
+    pairing = str(
+        payload.get("pairingCode")
+        or payload.get("pairing_code")
+        or request.headers.get("X-Print-Agent-Pairing")
+        or ""
+    ).strip()
     conn = get_db()
     try:
+        if existing_agent_accepts_key(conn, payload):
+            pass
+        elif _user_can_enroll_print_agent(user):
+            pass
+        elif consume_print_agent_pairing_code(conn, pairing):
+            pass
+        else:
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": "Pairing code or signed-in hotel user required.",
+                    }
+                ),
+                401,
+            )
         result = register_print_agent(conn, payload, request_host_url=request.host_url)
         status = 200 if result.get("ok") else 400
         return jsonify(result), status
@@ -19791,6 +20191,18 @@ def print_agent_heartbeat():
     conn = get_db()
     try:
         result = heartbeat_print_agent(conn, payload, bearer)
+        if result.get("ok"):
+            from print_job_service import (
+                assign_queued_jobs_for_agent,
+                deliver_pending_jobs_for_agent,
+                recover_stale_print_jobs,
+            )
+
+            agent_id = str(payload.get("agentId") or payload.get("agent_id") or "").strip()
+            recover_stale_print_jobs(conn)
+            if agent_id:
+                assign_queued_jobs_for_agent(conn, agent_id)
+                deliver_pending_jobs_for_agent(conn, agent_id)
         status = 200 if result.get("ok") else 401
         return jsonify(result), status
     finally:
@@ -19810,6 +20222,9 @@ def print_agent_browser_config():
     """Browser-facing hint: local agent URL + cloud origins."""
     from print_agent_store import default_print_agent_origins
 
+    if not get_current_user():
+        return jsonify({"ok": False, "error": "Sign in required."}), 401
+
     return jsonify(
         {
             "ok": True,
@@ -19827,8 +20242,37 @@ def print_agent_browser_config():
                 "/"
             ),
             "allowedOrigins": default_print_agent_origins(request.host_url),
+            "serverPrintQueue": os.environ.get("PRINT_SERVER_ENQUEUE", "1").strip().lower()
+            not in ("0", "false", "no", "off"),
+            "printQueuePrimary": os.environ.get("PRINT_QUEUE_PRIMARY", "1").strip().lower()
+            not in ("0", "false", "no", "off"),
         }
     )
+
+
+@app.route(
+    "/hotel/api/print-agent/pairing-code",
+    methods=["POST"],
+    endpoint="print_agent_pairing_code",
+)
+def print_agent_pairing_code():
+    """Super Admin / hotel settings: mint a short-lived code for a new Print Agent."""
+    from print_agent_store import create_print_agent_pairing_code
+
+    user = get_current_user()
+    if not user:
+        return jsonify({"ok": False, "error": "Sign in required."}), 401
+    if not (
+        user.get("is_admin")
+        or user_can_access_hotel_rooms_submodule(user, "settings")
+    ):
+        return jsonify({"ok": False, "error": "Hotel settings access required."}), 403
+    conn = get_db()
+    try:
+        result = create_print_agent_pairing_code(conn, int(user.get("id") or 0))
+        return jsonify(result)
+    finally:
+        conn.close()
 
 
 @app.route("/api/print-agent/browser-pair", methods=["GET"], endpoint="print_agent_browser_pair")
@@ -19934,19 +20378,39 @@ def mobile_ota_apk():
     return mobile_ota.apk_response()
 
 
+@app.route("/api/mobile/shell/version", methods=["GET"], endpoint="mobile_shell_ota_manifest")
+def mobile_shell_ota_manifest():
+    import mobile_ota
+
+    return mobile_ota.shell_manifest_response()
+
+
+@app.route("/api/mobile/hbe.apk", methods=["GET"], endpoint="mobile_shell_ota_apk")
+def mobile_shell_ota_apk():
+    import mobile_ota
+
+    return mobile_ota.shell_apk_response()
+
+
 from mobile_preview_flask import register_mobile_preview_routes
 
 register_mobile_preview_routes(app)
 
 
+def flask_debug_enabled(raw=None):
+    """Debug is off unless FLASK_DEBUG is an explicit truthy value (1/true/yes/on)."""
+    if raw is None:
+        raw = os.environ.get("FLASK_DEBUG") or ""
+    text = str(raw).strip().lower()
+    if not text:
+        return False
+    return text in ("1", "true", "yes", "on")
+
+
 if __name__ == "__main__":
     init_db()
-    _flask_env = (
-        os.environ.get("FLASK_ENV") or os.environ.get("ENV") or os.environ.get("APP_ENV") or ""
-    ).strip().lower()
-    _debug_raw = (os.environ.get("FLASK_DEBUG") or "").strip()
-    if _debug_raw:
-        _debug = _debug_raw.lower() in ("1", "true", "yes", "on")
-    else:
-        _debug = _flask_env not in ("production", "prod")
-    app.run(debug=_debug, host="127.0.0.1", port=8002)
+    # Default off. Set FLASK_DEBUG=1 for local auto-reload; production stays off.
+    _debug = flask_debug_enabled()
+    if _debug:
+        app.config["TEMPLATES_AUTO_RELOAD"] = True
+    app.run(debug=_debug, use_reloader=_debug, host="127.0.0.1", port=8002)

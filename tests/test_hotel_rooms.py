@@ -2344,6 +2344,9 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertIn(inv_no, html)
         self.assertIn("is-open", html)
         self.assertIn("Un Settled", html)
+        self.assertIn("Created by", html)
+        self.assertIn('data-sort="created_by"', html)
+        self.assertIn("Administrator", html)
         self.assertIn('data-hil-kpi="settled"', html)
         self.assertIn('data-sort="guest"', html)
         self.assertIn('data-sort="agency"', html)
@@ -2461,18 +2464,20 @@ class HotelRoomsTests(unittest.TestCase):
         wb = load_workbook(BytesIO(export.data))
         ws = wb.active
         headers = [ws.cell(3, col).value for col in range(1, ws.max_column + 1)]
-        self.assertEqual(headers[10], "Payment Mode")
-        self.assertEqual(headers[11], "Cash")
-        self.assertEqual(headers[12], "UPI")
-        self.assertEqual(headers[13], "Card")
+        self.assertEqual(headers[11], "Payment Mode")
+        self.assertEqual(headers[12], "Cash")
+        self.assertEqual(headers[13], "UPI")
+        self.assertEqual(headers[14], "Card")
+        self.assertEqual(headers[-1], "Created by")
         order_row = None
         for row in range(4, ws.max_row + 1):
             if ws.cell(row, 1).value == inv_no:
                 order_row = row
                 break
         self.assertIsNotNone(order_row)
-        self.assertAlmostEqual(float(ws.cell(order_row, 12).value), cash_part, places=2)
-        self.assertAlmostEqual(float(ws.cell(order_row, 13).value), upi_part, places=2)
+        self.assertAlmostEqual(float(ws.cell(order_row, 13).value), cash_part, places=2)
+        self.assertAlmostEqual(float(ws.cell(order_row, 14).value), upi_part, places=2)
+        self.assertEqual(ws.cell(order_row, ws.max_column).value, "Administrator")
 
     def test_fb_transfer_folio_keeps_pos_vat_not_hotel_gst(self):
         """Room-transfer folio tax must follow the POS invoice (e.g. VAT 10%)."""
@@ -2633,14 +2638,23 @@ class HotelRoomsTests(unittest.TestCase):
             db_mod.upsert_pos_room_transfer_invoice(
                 conn, bar["room"], bar["charge"]
             )
+            rt_spc = db_mod._pos_room_transfer_ledger_invoice_number(
+                conn, "SPC/26-27/12"
+            )
+            rt_bar = db_mod._pos_room_transfer_ledger_invoice_number(
+                conn, "BAR/26-27/1"
+            )
             conn.commit()
         finally:
             conn.close()
 
+        self.assertTrue(str(rt_spc or "").startswith("RT/"))
+        self.assertTrue(str(rt_bar or "").startswith("RT/"))
+
         page = self.client.get("/hotel/invoice-ledger")
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
-        self.assertNotIn("SPC/26-27/12", html)
+        self.assertNotIn(rt_spc, html)
         self.assertIn("hil-open-room-transfer", html)
         self.assertIn("/hotel/room-transfer-invoices", html)
         self.assertNotIn("hil-rt-overlay", html)
@@ -2650,8 +2664,8 @@ class HotelRoomsTests(unittest.TestCase):
         room_transfer = self.client.get("/hotel/room-transfer-invoices")
         self.assertEqual(room_transfer.status_code, 200)
         rt_html = room_transfer.get_data(as_text=True)
-        self.assertIn("SPC/26-27/12", rt_html)
-        self.assertIn("BAR/26-27/1", rt_html)
+        self.assertIn(rt_spc, rt_html)
+        self.assertIn(rt_bar, rt_html)
         self.assertIn("Invoice yet to generate", rt_html)
         self.assertIn('id="hrt-kpi-open">2<', rt_html)
         self.assertIn("Yet to generate", rt_html)
@@ -2683,16 +2697,16 @@ class HotelRoomsTests(unittest.TestCase):
             "/hotel/room-transfer-invoices?outlet=restaurant"
         )
         restaurant_html = restaurant_only.get_data(as_text=True)
-        self.assertIn("SPC/26-27/12", restaurant_html)
-        self.assertNotIn("BAR/26-27/1", restaurant_html)
+        self.assertIn(rt_spc, restaurant_html)
+        self.assertNotIn(rt_bar, restaurant_html)
         self.assertIn('id="hrt-kpi-open">1<', restaurant_html)
         bar_only = self.client.get("/hotel/room-transfer-invoices?outlet=bar")
         bar_html = bar_only.get_data(as_text=True)
-        self.assertIn("BAR/26-27/1", bar_html)
-        self.assertNotIn("SPC/26-27/12", bar_html)
+        self.assertIn(rt_bar, bar_html)
+        self.assertNotIn(rt_spc, bar_html)
 
         hotel_only = self.client.get("/hotel/invoice-ledger?invoice=hotel")
-        self.assertNotIn("SPC/26-27/12", hotel_only.get_data(as_text=True))
+        self.assertNotIn(rt_spc, hotel_only.get_data(as_text=True))
 
         stay = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]["stay"]
         balance_before = float(stay["balanceAmount"])
@@ -2723,7 +2737,7 @@ class HotelRoomsTests(unittest.TestCase):
         filtered = self.client.get("/hotel/room-transfer-invoices?status=open")
         self.assertEqual(filtered.status_code, 200)
         filtered_html = filtered.get_data(as_text=True)
-        self.assertIn("SPC/26-27/12", filtered_html)
+        self.assertIn(rt_spc, filtered_html)
         self.assertIn("Invoice yet to generate", filtered_html)
 
     def test_invoice_ledger_filters_by_agency_name(self):

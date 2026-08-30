@@ -224,8 +224,8 @@ class AppShellPwaTests(unittest.TestCase):
         page = self.client.get("/settings")
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
-        self.assertIn("sd-pwa-hint", html)
-        self.assertRegex(html, re.compile(r"HTTPS|Install this app", re.I))
+        self.assertNotIn("sd-pwa-hint", html)
+        self.assertNotRegex(html, re.compile(r"Install this app over HTTPS", re.I))
 
 
 if __name__ == "__main__":

@@ -14,6 +14,8 @@ _NON_DIGIT = re.compile(r"[^\d]+")
 
 ANDROID_PACKAGE = "com.hotelbellelite.hbemobile"
 DEFAULT_APK_RELATIVE = "api/mobile/hbemobile.apk"
+# HTTP is only for explicit local/dev hosts — never the Android production default.
+_ANDROID_OTA_HTTP_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "10.0.2.2"})
 
 
 def version_tuple(value: str) -> tuple[int, ...]:
@@ -106,6 +108,22 @@ def resolve_apk_url(base_url: str, apk_url: str) -> str:
     if not is_same_origin_url(base_url, resolved):
         return default
     return resolved
+
+
+
+
+def is_allowed_android_ota_origin(base_url: str) -> bool:
+    """Android silent OTA: HTTPS required, except explicit localhost/dev HTTP."""
+    parsed = urlparse((base_url or "").strip())
+    scheme = (parsed.scheme or "").lower()
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return False
+    if scheme == "https":
+        return True
+    if scheme == "http" and host in _ANDROID_OTA_HTTP_HOSTS:
+        return True
+    return False
 
 
 def sha256_file(path: str) -> str:

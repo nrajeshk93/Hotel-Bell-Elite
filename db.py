@@ -330,25 +330,181 @@ def _pos_order_no_taken(conn, order_no, *, outlet=None, ignore_invoice_id=None):
     return True
 
 
-def mint_provisional_pos_order_no(outlet=None, order_date=None):
+def mint_provisional_pos_order_no(outlet=None, order_date=None, conn=None):
     """Server-side draft order number: PREFIX/{hex}/{yy-yy} until Generate Invoice."""
     short_fy = indian_fiscal_year_short_label(order_date)
     suffix = secrets.token_hex(3).upper()
-    if normalize_pos_outlet(outlet) == POS_OUTLET_BAR:
-        return f"INV/{suffix}/{short_fy}"
-    return f"SPC/{suffix}/{short_fy}"
+    outlet_key = normalize_pos_outlet(outlet)
+    brand = (
+        POS_DEFAULT_BAR_INVOICE_PREFIX
+        if outlet_key == POS_OUTLET_BAR
+        else POS_DEFAULT_RESTAURANT_INVOICE_PREFIX
+    )
+    if conn is not None:
+        try:
+            brand = pos_invoice_prefix_brand(conn, outlet_key)
+        except Exception:
+            pass
+    return f"{brand}/{suffix}/{short_fy}"
 
 
-def _next_prefixed_invoice_seq(conn, outlet, prefix, fy_re, legacy_long_fy_re, legacy_re, fiscal_year):
+_POS_INVOICE_PREFIX_WITH_SEQ_RE = re.compile(
+    r"^(?P<stem>.+?)/(?P<fy>\d{2}-\d{2})/(?P<seq>\d+)$",
+    re.IGNORECASE,
+)
+_POS_INVOICE_PREFIX_FY_ONLY_RE = re.compile(
+    r"^(?P<stem>.+?)/(?P<fy>\d{2}-\d{2})$",
+    re.IGNORECASE,
+)
+POS_DEFAULT_RESTAURANT_INVOICE_PREFIX = "SPC"
+POS_DEFAULT_BAR_INVOICE_PREFIX = "INV"
+
+
+def _normalize_pos_invoice_prefix(prefix, default):
+    """Trim and strip trailing slashes; fall back to default when empty."""
+    text = str(prefix or "").strip()
+    while text.endswith("/"):
+        text = text[:-1].rstrip()
+    return text or str(default or "").strip() or "SPC"
+
+
+def _pos_settings_text_field(values, named_key, legacy_index=None):
+    """Read a text setting value (named key, else optional legacy fN)."""
+    if not isinstance(values, dict):
+        return None
+    field = values.get(named_key)
+    if field is None and legacy_index is not None:
+        field = values.get(f"f{int(legacy_index)}")
+    if field is None:
+        return None
+    if isinstance(field, dict):
+        return field.get("value")
+    return field
+
+
+def parse_pos_invoice_prefix_setting(raw, default="SPC"):
+    """Parse settings Prefix into (stem, embedded_fy|None, next_seq_floor|None).
+
+    Accepts:
+      SPC
+      SPC/26-27/
+      SPC/26-27/726   → stem SPC/26-27, floor 726
+    """
+    default = _normalize_pos_invoice_prefix(default, "SPC")
+    text = _normalize_pos_invoice_prefix(raw, default)
+    match = _POS_INVOICE_PREFIX_WITH_SEQ_RE.match(text)
+    if match:
+        stem = _normalize_pos_invoice_prefix(
+            f"{match.group('stem')}/{match.group('fy')}", default
+        )
+        try:
+            floor = int(match.group("seq"))
+        except (TypeError, ValueError):
+            floor = None
+        return stem, match.group("fy"), floor
+    match = _POS_INVOICE_PREFIX_FY_ONLY_RE.match(text)
+    if match:
+        return text, match.group("fy"), None
+    return text, None, None
+
+
+def pos_invoice_prefix_parts(conn, outlet=POS_OUTLET_RESTAURANT):
+    """Return (stem, embedded_fy, next_seq_floor) for the outlet invoice series."""
+    outlet = normalize_pos_outlet(outlet)
+    default = (
+        POS_DEFAULT_BAR_INVOICE_PREFIX
+        if outlet == POS_OUTLET_BAR
+        else POS_DEFAULT_RESTAURANT_INVOICE_PREFIX
+    )
+    settings = get_pos_restaurant_settings(conn, outlet)
+    values = _pos_settings_panel_values(settings, "invoice")
+    # Prefer named key; fall back to legacy auto-key f0 from the Numbering card.
+    raw = _pos_settings_text_field(values, "invoice_prefix", legacy_index=0)
+    return parse_pos_invoice_prefix_setting(raw, default)
+
+
+def pos_invoice_prefix(conn, outlet=POS_OUTLET_RESTAURANT):
+    """Series stem from POS Settings → Invoice → Prefix."""
+    stem, _fy, _floor = pos_invoice_prefix_parts(conn, outlet)
+    return stem
+
+
+def pos_invoice_prefix_brand(conn, outlet=POS_OUTLET_RESTAURANT):
+    """First path segment of the invoice prefix (e.g. SPC from SPC/26-27)."""
+    stem = pos_invoice_prefix(conn, outlet)
+    brand = str(stem or "").split("/", 1)[0].strip().upper()
+    outlet = normalize_pos_outlet(outlet)
+    if brand:
+        return brand
+    return (
+        POS_DEFAULT_BAR_INVOICE_PREFIX
+        if outlet == POS_OUTLET_BAR
+        else POS_DEFAULT_RESTAURANT_INVOICE_PREFIX
+    )
+
+
+def _pos_invoice_fy_order_re(stem, embedded_fy=None):
+    """Compile matcher for PREFIX/{yy-yy}/{n} or PREFIX_WITH_FY/{n}."""
+    stem = _normalize_pos_invoice_prefix(stem, "SPC")
+    escaped = re.escape(stem)
+    if embedded_fy:
+        return re.compile(rf"^{escaped}/(\d+)$", re.IGNORECASE), 1, None
+    return re.compile(rf"^{escaped}/(\d{{2}}-\d{{2}})/(\d+)$", re.IGNORECASE), 1, 2
+
+
+def _pos_invoice_nill_order_re(stem, embedded_fy=None):
+    """Compile matcher for PREFIX/{yy-yy}/Nill/{n} or PREFIX_WITH_FY/Nill/{n}."""
+    stem = _normalize_pos_invoice_prefix(stem, "SPC")
+    escaped = re.escape(stem)
+    if embedded_fy:
+        return re.compile(rf"^{escaped}/Nill/(\d+)$", re.IGNORECASE), 1, None
+    return re.compile(rf"^{escaped}/(\d{{2}}-\d{{2}})/Nill/(\d+)$", re.IGNORECASE), 1, 2
+
+
+def format_pos_invoice_order_no(stem, short_fy, seq, *, nil_tax=False, embedded_fy=None):
+    """Build official POS order number from settings stem + FY + sequence."""
+    stem = _normalize_pos_invoice_prefix(stem, "SPC")
+    try:
+        seq_n = int(seq)
+    except (TypeError, ValueError):
+        seq_n = 0
+    fy = str(embedded_fy or short_fy or "").strip() or indian_fiscal_year_short_label()
+    if embedded_fy:
+        if nil_tax:
+            return f"{stem}/Nill/{seq_n}"
+        return f"{stem}/{seq_n}"
+    if nil_tax:
+        return f"{stem}/{fy}/Nill/{seq_n}"
+    return f"{stem}/{fy}/{seq_n}"
+
+
+def _next_prefixed_invoice_seq(
+    conn,
+    outlet,
+    prefix,
+    fy_re,
+    legacy_long_fy_re,
+    legacy_re,
+    fiscal_year,
+    *,
+    fy_group=1,
+    seq_group=2,
+    min_seq=1,
+):
     """Next numeric sequence for PREFIX/{yy-yy}/{n} within an outlet + FY.
 
     Only the new PREFIX/{yy-yy}/{n} series is counted. Legacy PREFIX/{n}/{YYYY-YY}
     numbers must not advance this series (otherwise seq jumps to 100000+).
     Returns the smallest unused positive integer so the series can start at 1
     even if a bad high number was minted earlier.
+    When min_seq is set (from settings like SPC/26-27/726), allocation starts there.
     """
     short_fy = indian_fiscal_year_short_label(fiscal_year)
     prefix = str(prefix or "").strip().upper()
+    try:
+        floor = max(1, int(min_seq or 1))
+    except (TypeError, ValueError):
+        floor = 1
     used = set()
     rows = conn.execute(
         """
@@ -361,99 +517,170 @@ def _next_prefixed_invoice_seq(conn, outlet, prefix, fy_re, legacy_long_fy_re, l
     ).fetchall()
     for row in rows:
         order_no = str(row["order_no"] or "").strip()
-        match = fy_re.match(order_no)
-        if match and match.group(1) == short_fy:
-            try:
-                used.add(int(match.group(2)))
-            except (TypeError, ValueError):
-                pass
-    n = 1
+        match = fy_re.match(order_no) if fy_re is not None else None
+        if not match:
+            continue
+        try:
+            if seq_group is None:
+                # Embedded-FY form: PREFIX/yy-yy/{n} → only one capture group.
+                used.add(int(match.group(fy_group)))
+            else:
+                if match.group(fy_group) != short_fy:
+                    continue
+                used.add(int(match.group(seq_group)))
+        except (TypeError, ValueError, IndexError):
+            pass
+    n = floor
     while n in used:
         n += 1
     return n
 
 
-def next_restaurant_invoice_seq(conn, fiscal_year):
-    """Next SPC sequence for Restaurant within the given FY."""
+def next_restaurant_invoice_seq(conn, fiscal_year, prefix=None, min_seq=1, embedded_fy=None):
+    """Next sequence for Restaurant within the given FY (settings-driven prefix)."""
+    stem = _normalize_pos_invoice_prefix(
+        prefix if prefix is not None else POS_DEFAULT_RESTAURANT_INVOICE_PREFIX,
+        POS_DEFAULT_RESTAURANT_INVOICE_PREFIX,
+    )
+    if prefix is None and embedded_fy is None:
+        stem, embedded_fy, floor = pos_invoice_prefix_parts(conn, POS_OUTLET_RESTAURANT)
+        if min_seq == 1 and floor:
+            min_seq = floor
+    fy_re, fy_group, seq_group = _pos_invoice_fy_order_re(stem, embedded_fy)
     return _next_prefixed_invoice_seq(
         conn,
         POS_OUTLET_RESTAURANT,
-        "SPC",
-        _SPC_FY_ORDER_RE,
+        stem,
+        fy_re,
         _SPC_LEGACY_LONG_FY_ORDER_RE,
         _SPC_LEGACY_ORDER_RE,
-        fiscal_year,
+        fiscal_year if not embedded_fy else embedded_fy,
+        fy_group=fy_group,
+        seq_group=seq_group,
+        min_seq=min_seq,
     )
 
 
-def next_restaurant_nill_invoice_seq(conn, fiscal_year):
-    """Next SPC/{yy-yy}/Nill sequence for Restaurant within the given FY."""
+def next_restaurant_nill_invoice_seq(conn, fiscal_year, prefix=None, min_seq=1, embedded_fy=None):
+    """Next Nill sequence for Restaurant within the given FY."""
+    stem = _normalize_pos_invoice_prefix(
+        prefix if prefix is not None else POS_DEFAULT_RESTAURANT_INVOICE_PREFIX,
+        POS_DEFAULT_RESTAURANT_INVOICE_PREFIX,
+    )
+    if prefix is None and embedded_fy is None:
+        stem, embedded_fy, floor = pos_invoice_prefix_parts(conn, POS_OUTLET_RESTAURANT)
+        if min_seq == 1 and floor:
+            min_seq = floor
+    fy_re, fy_group, seq_group = _pos_invoice_nill_order_re(stem, embedded_fy)
     return _next_prefixed_invoice_seq(
         conn,
         POS_OUTLET_RESTAURANT,
-        "SPC",
-        _SPC_NILL_FY_ORDER_RE,
+        stem,
+        fy_re,
         _SPC_LEGACY_LONG_FY_ORDER_RE,
         _SPC_LEGACY_ORDER_RE,
-        fiscal_year,
+        fiscal_year if not embedded_fy else embedded_fy,
+        fy_group=fy_group,
+        seq_group=seq_group,
+        min_seq=min_seq,
     )
 
 
-def next_bar_invoice_seq(conn, fiscal_year):
-    """Next INV sequence for Bar within the given FY."""
+def next_bar_invoice_seq(conn, fiscal_year, prefix=None, min_seq=1, embedded_fy=None):
+    """Next sequence for Bar within the given FY (settings-driven prefix)."""
+    stem = _normalize_pos_invoice_prefix(
+        prefix if prefix is not None else POS_DEFAULT_BAR_INVOICE_PREFIX,
+        POS_DEFAULT_BAR_INVOICE_PREFIX,
+    )
+    if prefix is None and embedded_fy is None:
+        stem, embedded_fy, floor = pos_invoice_prefix_parts(conn, POS_OUTLET_BAR)
+        if min_seq == 1 and floor:
+            min_seq = floor
+    fy_re, fy_group, seq_group = _pos_invoice_fy_order_re(stem, embedded_fy)
     return _next_prefixed_invoice_seq(
         conn,
         POS_OUTLET_BAR,
-        "INV",
-        _INV_FY_ORDER_RE,
+        stem,
+        fy_re,
         _INV_LEGACY_LONG_FY_ORDER_RE,
         _INV_LEGACY_ORDER_RE,
-        fiscal_year,
+        fiscal_year if not embedded_fy else embedded_fy,
+        fy_group=fy_group,
+        seq_group=seq_group,
+        min_seq=min_seq,
     )
 
 
-def next_bar_nill_invoice_seq(conn, fiscal_year):
-    """Next INV/{yy-yy}/Nill sequence for Bar within the given FY."""
+def next_bar_nill_invoice_seq(conn, fiscal_year, prefix=None, min_seq=1, embedded_fy=None):
+    """Next Nill sequence for Bar within the given FY."""
+    stem = _normalize_pos_invoice_prefix(
+        prefix if prefix is not None else POS_DEFAULT_BAR_INVOICE_PREFIX,
+        POS_DEFAULT_BAR_INVOICE_PREFIX,
+    )
+    if prefix is None and embedded_fy is None:
+        stem, embedded_fy, floor = pos_invoice_prefix_parts(conn, POS_OUTLET_BAR)
+        if min_seq == 1 and floor:
+            min_seq = floor
+    fy_re, fy_group, seq_group = _pos_invoice_nill_order_re(stem, embedded_fy)
     return _next_prefixed_invoice_seq(
         conn,
         POS_OUTLET_BAR,
-        "INV",
-        _INV_NILL_FY_ORDER_RE,
+        stem,
+        fy_re,
         _INV_LEGACY_LONG_FY_ORDER_RE,
         _INV_LEGACY_ORDER_RE,
-        fiscal_year,
+        fiscal_year if not embedded_fy else embedded_fy,
+        fy_group=fy_group,
+        seq_group=seq_group,
+        min_seq=min_seq,
     )
 
 
 def allocate_pos_restaurant_order_no(conn, order_date=None, nil_tax=False):
-    """Allocate SPC/{yy-yy}/{n} or SPC/{yy-yy}/Nill/{n} for a Restaurant invoice."""
+    """Allocate settings-driven PREFIX/{yy-yy}/{n} (or …/Nill/{n}) for Restaurant."""
+    stem, embedded_fy, floor = pos_invoice_prefix_parts(conn, POS_OUTLET_RESTAURANT)
     fy = indian_fiscal_year_label(order_date)
-    short_fy = indian_fiscal_year_short_label(fy)
+    short_fy = embedded_fy or indian_fiscal_year_short_label(fy)
+    min_seq = floor or 1
     for _ in range(10000):
         if nil_tax:
-            seq = next_restaurant_nill_invoice_seq(conn, fy)
-            candidate = f"SPC/{short_fy}/Nill/{seq}"
+            seq = next_restaurant_nill_invoice_seq(
+                conn, fy, prefix=stem, min_seq=min_seq, embedded_fy=embedded_fy
+            )
         else:
-            seq = next_restaurant_invoice_seq(conn, fy)
-            candidate = f"SPC/{short_fy}/{seq}"
+            seq = next_restaurant_invoice_seq(
+                conn, fy, prefix=stem, min_seq=min_seq, embedded_fy=embedded_fy
+            )
+        candidate = format_pos_invoice_order_no(
+            stem, short_fy, seq, nil_tax=nil_tax, embedded_fy=embedded_fy
+        )
         if not _pos_order_no_taken(conn, candidate, outlet=POS_OUTLET_RESTAURANT):
             return candidate
+        min_seq = seq + 1
     raise ValueError("Unable to allocate a restaurant invoice number.")
 
 
 def allocate_pos_bar_order_no(conn, order_date=None, nil_tax=False):
-    """Allocate INV/{yy-yy}/{n} or INV/{yy-yy}/Nill/{n} for a Bar invoice."""
+    """Allocate settings-driven PREFIX/{yy-yy}/{n} (or …/Nill/{n}) for Bar."""
+    stem, embedded_fy, floor = pos_invoice_prefix_parts(conn, POS_OUTLET_BAR)
     fy = indian_fiscal_year_label(order_date)
-    short_fy = indian_fiscal_year_short_label(fy)
+    short_fy = embedded_fy or indian_fiscal_year_short_label(fy)
+    min_seq = floor or 1
     for _ in range(10000):
         if nil_tax:
-            seq = next_bar_nill_invoice_seq(conn, fy)
-            candidate = f"INV/{short_fy}/Nill/{seq}"
+            seq = next_bar_nill_invoice_seq(
+                conn, fy, prefix=stem, min_seq=min_seq, embedded_fy=embedded_fy
+            )
         else:
-            seq = next_bar_invoice_seq(conn, fy)
-            candidate = f"INV/{short_fy}/{seq}"
+            seq = next_bar_invoice_seq(
+                conn, fy, prefix=stem, min_seq=min_seq, embedded_fy=embedded_fy
+            )
+        candidate = format_pos_invoice_order_no(
+            stem, short_fy, seq, nil_tax=nil_tax, embedded_fy=embedded_fy
+        )
         if not _pos_order_no_taken(conn, candidate, outlet=POS_OUTLET_BAR):
             return candidate
+        min_seq = seq + 1
     raise ValueError("Unable to allocate a bar invoice number.")
 
 
@@ -964,6 +1191,10 @@ def ensure_pos_schema(conn):
     if "cancelled_at" not in invoice_cols:
         cursor.execute(
             "ALTER TABLE pos_invoices ADD COLUMN cancelled_at TEXT NOT NULL DEFAULT ''"
+        )
+    if "cancelled_by" not in invoice_cols:
+        cursor.execute(
+            "ALTER TABLE pos_invoices ADD COLUMN cancelled_by TEXT NOT NULL DEFAULT ''"
         )
     cursor.execute(
         """
@@ -3789,6 +4020,8 @@ def _pos_invoice_row_to_dict(conn, row, *, include_lines=False):
         "created_at": row["created_at"] or "",
         "updated_at": row["updated_at"] or "",
         "status": row["status"] or "open",
+        "settled_at": (row["settled_at"] or "") if "settled_at" in row.keys() else "",
+        "payment_notes": (row["payment_notes"] or "") if "payment_notes" in row.keys() else "",
         "kot_sent": bool(row["kot_sent"]),
         "first_kot_at": row["first_kot_at"] or "",
         "kot_no": (row["kot_no"] or "").strip() if "kot_no" in row.keys() else "",
@@ -3796,6 +4029,7 @@ def _pos_invoice_row_to_dict(conn, row, *, include_lines=False):
         "customer_bill_at": (row["customer_bill_at"] or "") if "customer_bill_at" in row.keys() else "",
         "cancel_reason": (row["cancel_reason"] or "") if "cancel_reason" in row.keys() else "",
         "cancelled_at": (row["cancelled_at"] or "") if "cancelled_at" in row.keys() else "",
+        "cancelled_by": (row["cancelled_by"] or "").strip() if "cancelled_by" in row.keys() else "",
         "stock_deducted_at": (row["stock_deducted_at"] or "") if "stock_deducted_at" in row.keys() else "",
         "outlet": normalize_pos_outlet(row["outlet"]) if "outlet" in row.keys() else POS_OUTLET_RESTAURANT,
         "item_count": int(row["item_count"]) if "item_count" in row.keys() else 0,
@@ -3938,32 +4172,47 @@ def _pos_room_transfer_room_numbers_by_order_no(conn, order_nos, invoice_ids=Non
     mapping = {}
     ensure_hotel_room_invoices_schema(conn)
     placeholders = ",".join("?" for _ in needles)
+    pos_placeholders = ",".join("lower(?)" for _ in needles)
     rows = conn.execute(
         f"""
         SELECT invoice_number, room_number, payload_json
         FROM hotel_room_invoices
-        WHERE invoice_number IN ({placeholders})
-          AND source = ?
+        WHERE source = ?
+          AND (
+            invoice_number IN ({placeholders})
+            OR lower(trim(COALESCE(json_extract(payload_json, '$.posOrderNo'), '')))
+               IN ({pos_placeholders})
+          )
         """,
-        [*needles, HOTEL_INVOICE_SOURCE_POS_TRANSFER],
+        [HOTEL_INVOICE_SOURCE_POS_TRANSFER, *needles, *needles],
     ).fetchall()
+    needle_set = {n.lower() for n in needles}
     for row in rows:
-        order_no = str(row["invoice_number"] or "").strip()
+        try:
+            payload = json.loads(row["payload_json"] or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        pos_order = str(payload.get("posOrderNo") or "").strip()
+        inv_no = str(row["invoice_number"] or "").strip()
+        order_no = ""
+        if pos_order and pos_order.lower() in needle_set:
+            order_no = pos_order
+        elif inv_no and inv_no.lower() in needle_set:
+            order_no = inv_no
+        if not order_no:
+            continue
         room_no = str(row["room_number"] or "").strip()
         if not room_no:
-            try:
-                payload = json.loads(row["payload_json"] or "{}")
-            except (TypeError, ValueError, json.JSONDecodeError):
-                payload = {}
-            if isinstance(payload, dict):
-                room_no = str(payload.get("number") or "").strip()
-                stay = payload.get("stay") if isinstance(payload.get("stay"), dict) else {}
-                if not room_no:
-                    room_no = str(
-                        stay.get("mergeRoomLabel")
-                        or stay.get("merge_room_label")
-                        or ""
-                    ).strip()
+            room_no = str(payload.get("number") or "").strip()
+            stay = payload.get("stay") if isinstance(payload.get("stay"), dict) else {}
+            if not room_no:
+                room_no = str(
+                    stay.get("mergeRoomLabel")
+                    or stay.get("merge_room_label")
+                    or ""
+                ).strip()
         if order_no and room_no and order_no not in mapping:
             mapping[order_no] = room_no
 
@@ -4055,7 +4304,12 @@ def _apply_pos_invoice_payment_modes(conn, invoice):
     if not invoice or not invoice.get("id"):
         return invoice
     payments = list_pos_invoice_payments(conn, invoice["id"])
-    methods = [p.get("payment_method") for p in payments]
+    # Ignore ₹0 tender rows (auto-settled complimentary / historical imports) so
+    # Payment Mode shows Settled for closed zero-payable bills, not "Cash".
+    tender_payments = [
+        p for p in payments if _pos_money((p or {}).get("amount")) > 0.009
+    ]
+    methods = [p.get("payment_method") for p in tender_payments]
     labels = _pos_payment_mode_labels_from_methods(methods)
     unique_modes = []
     seen = set()
@@ -4131,9 +4385,12 @@ def _enrich_pos_invoices_payment_modes(conn, invoices):
     notes_by_id = {}
     for pay in pay_rows:
         inv_id = int(pay["invoice_id"])
-        methods_by_id.setdefault(inv_id, []).append(pay["payment_method"])
         amounts_by_id.setdefault(inv_id, []).append(pay)
         notes_by_id.setdefault(inv_id, []).append(pay["notes"] or "")
+        # Skip ₹0 tender so zero-payable closed bills label as Settled.
+        if _pos_money(pay["amount"]) <= 0.009:
+            continue
+        methods_by_id.setdefault(inv_id, []).append(pay["payment_method"])
     transfer_order_nos = []
     prepared = []
     for inv in rows:
@@ -5019,13 +5276,15 @@ def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, cre
         invoice = get_pos_invoice(conn, invoice_id)
         if not invoice:
             raise ValueError(f"Invoice #{invoice_id} not found.")
-        if invoice.get("customer_bill_sent"):
-            raise ValueError(
-                f'Invoice for {invoice.get("table") or "table"} is already generated.'
-            )
-        if str(invoice.get("status") or "").strip().lower() != "open":
+        status_key = str(invoice.get("status") or "open").strip().lower() or "open"
+        if status_key == "closed":
+            raise ValueError("Settled invoices cannot be updated from Kitchen Order Tokens.")
+        if status_key == "cancelled":
+            raise ValueError("Cancelled invoices cannot be updated from Kitchen Order Tokens.")
+        if status_key != "open":
             raise ValueError("Only open invoices can be updated from Kitchen Order Tokens.")
 
+        bill_sent = bool(invoice.get("customer_bill_sent"))
         next_lines = []
         changed = False
         invoice_has_reduction = False
@@ -5063,6 +5322,10 @@ def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, cre
                 )
                 continue
             if new_sent > old_sent:
+                if bill_sent:
+                    raise ValueError(
+                        f'Invoice for {invoice.get("table") or "table"} is already generated.'
+                    )
                 delta = new_sent - old_sent
                 new_qty = old_qty + delta
                 changed = True
@@ -5086,6 +5349,12 @@ def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, cre
             if new_qty <= 1e-9:
                 changed = True
                 continue
+            if bill_sent:
+                # Generated bills: only a full cancel (all lines to zero) is allowed.
+                raise ValueError(
+                    f'Invoice for {invoice.get("table") or "table"} is already generated. '
+                    "Cancel the whole order, or cancel the invoice from Invoice Ledger."
+                )
             changed = True
             next_lines.append(
                 {
@@ -5104,20 +5373,16 @@ def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, cre
             continue
         table_label = invoice.get("table") or invoice.get("table_label") or ""
         if not next_lines:
-            # Full kitchen cancel — drop the open pre-invoice bill so the table
-            # can return to available (do not Close & Free; that deducts stock).
-            # Persist reason before soft-delete (same pattern as cancel_pos_invoice).
-            conn.execute(
-                f"""
-                UPDATE pos_invoices
-                SET cancel_reason = ?,
-                    cancelled_at = {SQL_NOW},
-                    updated_at = {SQL_NOW}
-                WHERE id = ?
-                """,
-                (reason_text, invoice_id),
+            # Full kitchen cancel — void via cancel_pos_invoice so generated /
+            # official numbers stay as status=cancelled (KOT report) and drafts soft-delete.
+            if not reason_text:
+                raise ValueError("Enter a reason for reducing or cancelling kitchen items.")
+            cancel_pos_invoice(
+                conn,
+                invoice_id,
+                reason=reason_text,
+                cancelled_by=created_by,
             )
-            soft_delete_pos_invoice(conn, invoice_id)
             updated.append(
                 {
                     "id": invoice_id,
@@ -5127,9 +5392,15 @@ def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, cre
                     "outlet": invoice.get("outlet"),
                     "order_no": invoice.get("order_no"),
                     "cancel_reason": reason_text,
+                    "cancelled_by": " ".join(str(created_by or "").split()).strip(),
                 }
             )
             continue
+
+        if bill_sent:
+            raise ValueError(
+                f'Invoice for {invoice.get("table") or "table"} is already generated.'
+            )
 
         subtotal = _pos_money(sum(_pos_money(l["rate"]) * _pos_money(l["qty"]) for l in next_lines))
         # Preserve discount/service/tip structure; totals recomputed in save_pos_invoice.
@@ -5307,8 +5578,9 @@ def _parse_pos_payment_splits(raw_splits, target_total):
     if target < 0:
         raise ValueError("Bill total cannot be negative.")
     if not isinstance(raw_splits, list) or not raw_splits:
+        # Zero-payable bills need no tender — settle with an empty split list.
         if target <= 0:
-            return [{"payment_method": "cash", "amount": 0.0, "transaction_id": ""}]
+            return []
         raise ValueError("Add at least one payment mode.")
 
     parsed = []
@@ -6085,7 +6357,7 @@ def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, ac
     # Restaurant/Bar keep provisional PREFIX/{hex}/{yy-yy} through Save/KOT.
     # Official PREFIX/{yy-yy}/{n} is minted only on Generate Invoice (below).
     if outlet in (POS_OUTLET_RESTAURANT, POS_OUTLET_BAR) and not order_no:
-        order_no = mint_provisional_pos_order_no(outlet, order_date)
+        order_no = mint_provisional_pos_order_no(outlet, order_date, conn=conn)
 
     customer_mobile = "".join(
         ch for ch in str(payload.get("customerMobile") or payload.get("customer_mobile") or "") if ch.isdigit()
@@ -6324,9 +6596,20 @@ def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, ac
     # Official series only when Generate Invoice runs; lookup already used the
     # provisional order_no so the same row is updated with the new number.
     # Zero CGST+UGST and VAT uses PREFIX/{yy-yy}/Nill/{n}; otherwise PREFIX/{yy-yy}/{n}.
+    # Also remint when Prefix settings changed (e.g. SPC/26-27 → SPC/27-28) and this
+    # bill has not been generated yet — otherwise an already-official old-series
+    # draft number would stick forever.
     if outlet in (POS_OUTLET_RESTAURANT, POS_OUTLET_BAR) and customer_bill:
-        if not order_no or is_provisional_pos_order_no(order_no, outlet):
-            nil_tax = pos_invoice_is_nil_tax(gst_amount, vat_amount)
+        nil_tax = pos_invoice_is_nil_tax(gst_amount, vat_amount)
+        needs_mint = (not order_no) or is_provisional_pos_order_no(order_no, outlet)
+        if not needs_mint and not was_bill_sent:
+            stem, embedded_fy, _floor = pos_invoice_prefix_parts(conn, outlet)
+            if nil_tax:
+                series_re, _g1, _g2 = _pos_invoice_nill_order_re(stem, embedded_fy)
+            else:
+                series_re, _g1, _g2 = _pos_invoice_fy_order_re(stem, embedded_fy)
+            needs_mint = not bool(series_re.match(str(order_no or "").strip()))
+        if needs_mint:
             if outlet == POS_OUTLET_BAR:
                 order_no = allocate_pos_bar_order_no(conn, order_date, nil_tax=nil_tax)
             else:
@@ -6528,7 +6811,86 @@ def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, ac
             order_date=order_date,
         )
 
-    return get_pos_invoice(conn, invoice_id)
+    invoice = get_pos_invoice(conn, invoice_id)
+    # Generated bills with nothing left to collect — no separate settle step.
+    if (
+        next_bill_sent
+        and invoice
+        and _pos_money(invoice.get("grand_total")) <= 0.009
+        and str(invoice.get("status") or "open").strip().lower() == "open"
+    ):
+        invoice = settle_pos_invoice(
+            conn,
+            invoice_id,
+            payment_splits=[],
+            notes="",
+        )
+    return invoice
+
+
+def auto_settle_zero_payable_pos_invoices(conn, *, outlet=None):
+    """Close open, generated POS bills whose grand total is already zero.
+
+    Repairs legacy rows that stayed Unsettled after a 100% discount (or other
+    zero-payable) Generate Invoice before auto-settle existed.
+    Also drops ₹0 tender rows so Payment Mode shows Settled, not Cash.
+    """
+    ensure_pos_schema(conn)
+    clauses = [
+        "is_active = 1",
+        "lower(COALESCE(status, 'open')) = 'open'",
+        "COALESCE(customer_bill_sent, 0) = 1",
+        "COALESCE(grand_total, 0) <= 0.009",
+    ]
+    params = []
+    if outlet is not None:
+        clauses.append("outlet = ?")
+        params.append(normalize_pos_outlet(outlet))
+    rows = conn.execute(
+        f"""
+        SELECT id
+        FROM pos_invoices
+        WHERE {" AND ".join(clauses)}
+        ORDER BY id ASC
+        """,
+        params,
+    ).fetchall()
+    settled = []
+    for row in rows:
+        try:
+            settled.append(
+                settle_pos_invoice(
+                    conn,
+                    int(row["id"]),
+                    payment_splits=[],
+                    notes="",
+                )
+            )
+        except ValueError:
+            continue
+    # Complimentary / zero-payable bills may still have a historical ₹0 Cash row.
+    zero_pay_clauses = [
+        "i.is_active = 1",
+        "COALESCE(i.grand_total, 0) <= 0.009",
+        "COALESCE(i.customer_bill_sent, 0) = 1",
+    ]
+    zero_pay_params = []
+    if outlet is not None:
+        zero_pay_clauses.append("i.outlet = ?")
+        zero_pay_params.append(normalize_pos_outlet(outlet))
+    cur = conn.execute(
+        f"""
+        DELETE FROM pos_invoice_payments
+        WHERE invoice_id IN (
+            SELECT i.id FROM pos_invoices i
+            WHERE {" AND ".join(zero_pay_clauses)}
+        )
+        AND COALESCE(amount, 0) <= 0.009
+        """,
+        zero_pay_params,
+    )
+    cleaned = int(cur.rowcount or 0)
+    return {"settled": settled, "cleaned_payments": cleaned, "changed": bool(settled or cleaned)}
 
 
 def get_pos_invoice(conn, invoice_id):
@@ -6583,7 +6945,7 @@ def soft_delete_pos_invoice(conn, invoice_id):
     return True
 
 
-def cancel_pos_invoice(conn, invoice_id, reason=""):
+def cancel_pos_invoice(conn, invoice_id, reason="", cancelled_by=""):
     """Cancel an unsettled invoice.
 
     Issued official numbers (SPC|INV/{yy-yy}/{n}) stay on an active row with
@@ -6607,6 +6969,7 @@ def cancel_pos_invoice(conn, invoice_id, reason=""):
     reason_text = " ".join(str(reason or "").split()).strip()[:500]
     if not reason_text:
         raise ValueError("Enter a reason for cancellation.")
+    actor = " ".join(str(cancelled_by or "").split()).strip()[:160]
 
     order_no = str(invoice.get("order_no") or "").strip()
     outlet = normalize_pos_outlet(invoice.get("outlet"))
@@ -6626,10 +6989,11 @@ def cancel_pos_invoice(conn, invoice_id, reason=""):
             UPDATE pos_invoices
             SET cancel_reason = ?,
                 cancelled_at = ?,
+                cancelled_by = ?,
                 updated_at = {SQL_NOW}
             WHERE id = ?
             """,
-            (reason_text, cancelled_at, invoice_id),
+            (reason_text, cancelled_at, actor, invoice_id),
         )
         soft_delete_pos_invoice(conn, invoice_id)
         return {"mode": "deleted", "invoice": None}
@@ -6640,6 +7004,7 @@ def cancel_pos_invoice(conn, invoice_id, reason=""):
         SET status = 'cancelled',
             cancel_reason = ?,
             cancelled_at = ?,
+            cancelled_by = ?,
             table_label = CASE
                 WHEN order_type = 'dine_in' THEN ''
                 ELSE table_label
@@ -6647,7 +7012,7 @@ def cancel_pos_invoice(conn, invoice_id, reason=""):
             updated_at = {SQL_NOW}
         WHERE id = ?
         """,
-        (reason_text, cancelled_at, invoice_id),
+        (reason_text, cancelled_at, actor, invoice_id),
     )
     return {"mode": "cancelled", "invoice": get_pos_invoice(conn, invoice_id)}
 
@@ -6722,8 +7087,10 @@ def list_pos_invoices(
         clauses.append(
             """
             (
-                EXISTS (
-                    SELECT 1 FROM pos_invoice_payments p WHERE p.invoice_id = i.id
+                lower(COALESCE(i.status, 'open')) = 'closed'
+                OR EXISTS (
+                    SELECT 1 FROM pos_invoice_payments p
+                    WHERE p.invoice_id = i.id AND COALESCE(p.amount, 0) > 0.009
                 )
                 OR TRIM(COALESCE(i.settled_at, '')) != ''
             )
@@ -6732,11 +7099,12 @@ def list_pos_invoices(
     elif settlement_key == "unsettled":
         clauses.append(
             """
-            NOT EXISTS (
-                SELECT 1 FROM pos_invoice_payments p WHERE p.invoice_id = i.id
+            lower(COALESCE(i.status, 'open')) = 'open'
+            AND NOT EXISTS (
+                SELECT 1 FROM pos_invoice_payments p
+                WHERE p.invoice_id = i.id AND COALESCE(p.amount, 0) > 0.009
             )
             AND TRIM(COALESCE(i.settled_at, '')) = ''
-            AND lower(COALESCE(i.status, 'open')) = 'open'
             """
         )
     needle = " ".join(str(q or "").split()).strip().lower()
@@ -8203,6 +8571,10 @@ def ensure_stores_schema(conn):
         ON store_stock_movements(outlet, place, created_at DESC)
     """)
     cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_movements_ref_item
+        ON store_stock_movements(ref_type, item_name, id)
+    """)
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS store_product_categories (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             name       TEXT    NOT NULL UNIQUE,
@@ -8266,6 +8638,10 @@ def ensure_stores_schema(conn):
         ON store_products(outlet, is_active, name)
     """)
     cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_products_active_price
+        ON store_products(is_active, approximate_price)
+    """)
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS store_product_variants (
             id                 INTEGER PRIMARY KEY AUTOINCREMENT,
             product_id         INTEGER NOT NULL,
@@ -8280,6 +8656,10 @@ def ensure_stores_schema(conn):
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_store_product_variants_product
         ON store_product_variants(product_id, is_active, sort_order, id)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_product_variants_active_price
+        ON store_product_variants(is_active, approximate_price, product_id)
     """)
     pr_line_cols = {
         row[1]
@@ -9027,6 +9407,14 @@ def ensure_hotel_rooms_schema(conn):
     )
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS room_transfer_invoice_seq (
+            fiscal_year TEXT PRIMARY KEY,
+            last_seq    INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS hotel_settings (
             id         INTEGER PRIMARY KEY CHECK (id = 1),
             payload    TEXT    NOT NULL DEFAULT '{}',
@@ -9046,14 +9434,26 @@ def ensure_hotel_id_documents_schema(conn):
             stored_name TEXT PRIMARY KEY,
             mime        TEXT NOT NULL DEFAULT 'application/pdf',
             payload     BLOB NOT NULL,
-            created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            owner_user_id INTEGER NOT NULL DEFAULT 0
         )
         """
     )
+    cols = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(hotel_id_documents)").fetchall()
+    }
+    if "owner_user_id" not in cols:
+        conn.execute(
+            "ALTER TABLE hotel_id_documents ADD COLUMN owner_user_id INTEGER NOT NULL DEFAULT 0"
+        )
 
 
 HOTEL_DEFAULT_CGST_PCT = 2.5
 HOTEL_DEFAULT_UGST_PCT = 2.5
+HOTEL_DEFAULT_CGST_PCT_ABOVE = 9.0
+HOTEL_DEFAULT_UGST_PCT_ABOVE = 9.0
+HOTEL_DEFAULT_TAX_SLAB_THRESHOLD = 7500.0
 
 HOTEL_DEFAULT_TARIFF_RATES = {
     "premium_without_balcony": 3500.0,
@@ -9076,7 +9476,29 @@ def get_hotel_settings(conn):
         parsed = json.loads(row["payload"] or "{}")
     except (TypeError, ValueError):
         return {}
-    return parsed if isinstance(parsed, dict) else {}
+    if not isinstance(parsed, dict):
+        return {}
+    try:
+        import asia_tech_client
+
+        if asia_tech_client.ensure_plaintext_secrets_sealed(parsed):
+            was_in_tx = bool(getattr(conn, "in_transaction", False))
+            blob = json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
+            conn.execute(
+                f"""
+                INSERT INTO hotel_settings (id, payload, updated_at)
+                VALUES (1, ?, {SQL_NOW})
+                ON CONFLICT(id) DO UPDATE SET
+                    payload = excluded.payload,
+                    updated_at = {SQL_NOW}
+                """,
+                (blob,),
+            )
+            if not was_in_tx:
+                conn.commit()
+    except Exception:
+        pass
+    return parsed
 
 
 def save_hotel_settings(conn, settings):
@@ -9084,6 +9506,12 @@ def save_hotel_settings(conn, settings):
     ensure_hotel_rooms_schema(conn)
     if not isinstance(settings, dict):
         settings = {}
+    try:
+        import asia_tech_client
+
+        settings = asia_tech_client.seal_settings_secrets(settings)
+    except Exception:
+        pass
     blob = json.dumps(settings, ensure_ascii=False, separators=(",", ":"))
     conn.execute(
         f"""
@@ -9099,17 +9527,153 @@ def save_hotel_settings(conn, settings):
 
 
 def get_hotel_tax_rates(conn):
-    """Return CGST/UGST fractions (0–1) from Hotel Settings → Taxes."""
+    """Return CGST/UGST slab fractions (0–1) from Hotel Settings → Taxes."""
     settings = get_hotel_settings(conn)
     values = _pos_settings_panel_values(settings, "taxes")
     cgst_pct = _pos_settings_pct(values, "cgst_pct", 0, HOTEL_DEFAULT_CGST_PCT)
     ugst_pct = _pos_settings_pct(values, "ugst_pct", 1, HOTEL_DEFAULT_UGST_PCT)
+    cgst_pct_above = _pos_settings_pct(
+        values, "cgst_pct_above", 2, HOTEL_DEFAULT_CGST_PCT_ABOVE
+    )
+    ugst_pct_above = _pos_settings_pct(
+        values, "ugst_pct_above", 3, HOTEL_DEFAULT_UGST_PCT_ABOVE
+    )
+    threshold = _hotel_settings_money(
+        values, "tax_slab_threshold", HOTEL_DEFAULT_TAX_SLAB_THRESHOLD
+    )
     return {
+        "threshold": threshold,
         "cgst_pct": cgst_pct,
         "ugst_pct": ugst_pct,
         "cgst": round(cgst_pct / 100.0, 6),
         "ugst": round(ugst_pct / 100.0, 6),
+        "cgst_pct_above": cgst_pct_above,
+        "ugst_pct_above": ugst_pct_above,
+        "cgst_above": round(cgst_pct_above / 100.0, 6),
+        "ugst_above": round(ugst_pct_above / 100.0, 6),
     }
+
+
+def hotel_tax_rates_for_tariff(rates, room_rate):
+    """Pick CGST/UGST for a tax-inclusive nightly room tariff.
+
+    ``room_rate > threshold`` uses the above-slab rates; ``<=`` uses the
+    standard slab. Plain ``{cgst, ugst}`` blobs (no above keys) are returned as-is.
+    """
+    base = _hotel_tax_rates_or_default(rates)
+    cgst_pct = round(float(base["cgst"]) * 100.0, 4)
+    ugst_pct = round(float(base["ugst"]) * 100.0, 4)
+    if isinstance(rates, dict):
+        if rates.get("cgst_pct") is not None:
+            try:
+                cgst_pct = float(rates["cgst_pct"])
+            except (TypeError, ValueError):
+                pass
+        if rates.get("ugst_pct") is not None:
+            try:
+                ugst_pct = float(rates["ugst_pct"])
+            except (TypeError, ValueError):
+                pass
+    result = {
+        "cgst": base["cgst"],
+        "ugst": base["ugst"],
+        "cgst_pct": cgst_pct,
+        "ugst_pct": ugst_pct,
+        "slab": "standard",
+    }
+    if not isinstance(rates, dict):
+        return result
+    has_above = any(
+        key in rates
+        for key in ("cgst_above", "ugst_above", "cgst_pct_above", "ugst_pct_above")
+    )
+    if not has_above:
+        return result
+    try:
+        threshold = float(rates.get("threshold", HOTEL_DEFAULT_TAX_SLAB_THRESHOLD))
+    except (TypeError, ValueError):
+        threshold = HOTEL_DEFAULT_TAX_SLAB_THRESHOLD
+    if threshold != threshold or threshold < 0:
+        threshold = HOTEL_DEFAULT_TAX_SLAB_THRESHOLD
+    try:
+        tariff = float(room_rate or 0)
+    except (TypeError, ValueError):
+        tariff = 0.0
+    if tariff != tariff or tariff < 0:
+        tariff = 0.0
+    if tariff <= threshold:
+        return result
+    try:
+        cgst_above = float(rates.get("cgst_above"))
+    except (TypeError, ValueError):
+        cgst_above = None
+    try:
+        ugst_above = float(rates.get("ugst_above"))
+    except (TypeError, ValueError):
+        ugst_above = None
+    if cgst_above is None or cgst_above != cgst_above or cgst_above < 0:
+        try:
+            cgst_pct_above = float(
+                rates.get("cgst_pct_above", HOTEL_DEFAULT_CGST_PCT_ABOVE)
+            )
+        except (TypeError, ValueError):
+            cgst_pct_above = HOTEL_DEFAULT_CGST_PCT_ABOVE
+        cgst_above = round(cgst_pct_above / 100.0, 6)
+    else:
+        cgst_pct_above = round(cgst_above * 100.0, 4)
+    if ugst_above is None or ugst_above != ugst_above or ugst_above < 0:
+        try:
+            ugst_pct_above = float(
+                rates.get("ugst_pct_above", HOTEL_DEFAULT_UGST_PCT_ABOVE)
+            )
+        except (TypeError, ValueError):
+            ugst_pct_above = HOTEL_DEFAULT_UGST_PCT_ABOVE
+        ugst_above = round(ugst_pct_above / 100.0, 6)
+    else:
+        ugst_pct_above = round(ugst_above * 100.0, 4)
+    if rates.get("cgst_pct_above") is not None:
+        try:
+            cgst_pct_above = float(rates["cgst_pct_above"])
+            cgst_above = round(cgst_pct_above / 100.0, 6)
+        except (TypeError, ValueError):
+            pass
+    if rates.get("ugst_pct_above") is not None:
+        try:
+            ugst_pct_above = float(rates["ugst_pct_above"])
+            ugst_above = round(ugst_pct_above / 100.0, 6)
+        except (TypeError, ValueError):
+            pass
+    return {
+        "cgst": cgst_above,
+        "ugst": ugst_above,
+        "cgst_pct": cgst_pct_above,
+        "ugst_pct": ugst_pct_above,
+        "slab": "above",
+    }
+
+
+def _hotel_stay_tariff_for_tax_slab(stay):
+    """Tax-inclusive nightly tariff used to pick the CGST/UGST slab."""
+    if not isinstance(stay, dict):
+        return 0.0
+    try:
+        tariff = float(stay.get("roomRate") or stay.get("room_rate") or 0)
+    except (TypeError, ValueError):
+        tariff = 0.0
+    if tariff != tariff or tariff < 0:
+        tariff = 0.0
+    nightly = stay.get("nightlyRates") or stay.get("nightly_rates") or []
+    if isinstance(nightly, list):
+        for row in nightly:
+            if not isinstance(row, dict):
+                continue
+            try:
+                rate = float(row.get("roomRate") or row.get("room_rate") or 0)
+            except (TypeError, ValueError):
+                continue
+            if rate == rate and rate > tariff:
+                tariff = rate
+    return round(tariff, 2)
 
 
 def _hotel_settings_money(values, key, default_amount):
@@ -9238,6 +9802,7 @@ def ensure_hotel_room_invoices_schema(conn):
             status               TEXT NOT NULL DEFAULT 'open',
             source               TEXT NOT NULL DEFAULT 'hotel',
             payload_json         TEXT NOT NULL DEFAULT '{}',
+            created_by           TEXT NOT NULL DEFAULT '',
             updated_at           TEXT NOT NULL DEFAULT (datetime('now','localtime'))
         )
         """
@@ -9265,6 +9830,13 @@ def ensure_hotel_room_invoices_schema(conn):
             """
             ALTER TABLE hotel_room_invoices
             ADD COLUMN cancelled_at TEXT NOT NULL DEFAULT ''
+            """
+        )
+    if "created_by" not in columns:
+        conn.execute(
+            """
+            ALTER TABLE hotel_room_invoices
+            ADD COLUMN created_by TEXT NOT NULL DEFAULT ''
             """
         )
     conn.execute(
@@ -9553,7 +10125,11 @@ def hotel_invoice_credit_paid_total(conn, credit_id):
 _HOTEL_RM_INVOICE_RE = re.compile(r"^HBE/RM/(\d+)/(\d{4}-\d{2})$", re.IGNORECASE)
 _HOTEL_HBE_FY_INVOICE_RE = re.compile(r"^HBE/(\d{2}-\d{2})/(\d+)$", re.IGNORECASE)
 _HOTEL_FBE_FY_INVOICE_RE = re.compile(r"^FBE/(\d{2}-\d{2})/(\d+)$", re.IGNORECASE)
+_HOTEL_INVOICE_PREFIX_FY_RE = re.compile(r"/(\d{2}-\d{2})$", re.IGNORECASE)
 HOTEL_INVOICE_SEQ_WIDTH = 5
+HOTEL_DEFAULT_INVOICE_PREFIX = "HBE"
+HOTEL_DEFAULT_FB_INVOICE_PREFIX = "FBE"
+HOTEL_DEFAULT_ROOM_TRANSFER_PREFIX = "RT"
 HOTEL_ROOM_PAYMENT_METHODS = ("cash", "upi", "card", "bank_transfer", "credit", "bor")
 HOTEL_ROOM_PAYMENT_METHOD_LABELS = {
     "cash": "Cash",
@@ -9595,9 +10171,102 @@ def _hotel_payment_amounts_from_payments(rows):
     return amounts
 
 
-def _hotel_hbe_fy_seq_from_number(invoice_number, short_fy):
-    """Return the integer sequence from HBE/{yy-yy}/{n}, else None."""
-    match = _HOTEL_HBE_FY_INVOICE_RE.match(str(invoice_number or "").strip())
+def _normalize_hotel_invoice_prefix(prefix, default=HOTEL_DEFAULT_INVOICE_PREFIX):
+    """Trim and strip trailing slashes; fall back to default when empty."""
+    text = str(prefix or "").strip()
+    while text.endswith("/"):
+        text = text[:-1].rstrip()
+    return text or str(default or HOTEL_DEFAULT_INVOICE_PREFIX)
+
+
+def _hotel_settings_invoice_prefix_value(conn, key, default):
+    """Read a text prefix from Hotel Settings → Invoice panel."""
+    settings = get_hotel_settings(conn)
+    values = _pos_settings_panel_values(settings, "invoice")
+    field = values.get(key) if isinstance(values, dict) else None
+    raw = None
+    if isinstance(field, dict):
+        raw = field.get("value")
+    elif field is not None:
+        raw = field
+    return _normalize_hotel_invoice_prefix(raw, default)
+
+
+def hotel_room_invoice_prefix(conn):
+    """Invoice series stem from Hotel Settings → Invoice → Hotel Invoice Prefix."""
+    return _hotel_settings_invoice_prefix_value(
+        conn, "invoice_prefix", HOTEL_DEFAULT_INVOICE_PREFIX
+    )
+
+
+def hotel_fb_invoice_prefix(conn):
+    """Series stem for F&B room-transfer invoices (Hotel Settings → Invoice → F&B Room Transfer)."""
+    return _hotel_settings_invoice_prefix_value(
+        conn, "fb_invoice_prefix", HOTEL_DEFAULT_FB_INVOICE_PREFIX
+    )
+
+
+def hotel_room_transfer_invoice_prefix(conn):
+    """Series stem for per-order room-transfer ledger rows (default RT)."""
+    return _hotel_settings_invoice_prefix_value(
+        conn, "room_transfer_prefix", HOTEL_DEFAULT_ROOM_TRANSFER_PREFIX
+    )
+
+
+def _hotel_invoice_prefix_embedded_fy(prefix, default=HOTEL_DEFAULT_INVOICE_PREFIX):
+    """Return yy-yy when prefix already ends with a fiscal year segment, else None."""
+    stem = _normalize_hotel_invoice_prefix(prefix, default)
+    match = _HOTEL_INVOICE_PREFIX_FY_RE.search(stem)
+    if not match:
+        return None
+    return match.group(1)
+
+
+def format_hotel_room_invoice_number(
+    prefix, short_fy, seq, default=HOTEL_DEFAULT_INVOICE_PREFIX
+):
+    """Build invoice number from settings prefix + FY + zero-padded seq."""
+    stem = _normalize_hotel_invoice_prefix(prefix, default)
+    try:
+        seq_n = int(seq)
+    except (TypeError, ValueError):
+        seq_n = 0
+    seq_s = f"{seq_n:0{HOTEL_INVOICE_SEQ_WIDTH}d}"
+    if _hotel_invoice_prefix_embedded_fy(stem, default):
+        return f"{stem}/{seq_s}"
+    fy = str(short_fy or "").strip() or indian_fiscal_year_short_label()
+    return f"{stem}/{fy}/{seq_s}"
+
+
+def _hotel_room_invoice_seq_from_number(
+    invoice_number, prefix, short_fy, default=HOTEL_DEFAULT_INVOICE_PREFIX
+):
+    """Return sequence int from a number matching the active prefix series, else None."""
+    number = str(invoice_number or "").strip()
+    if not number:
+        return None
+    stem = _normalize_hotel_invoice_prefix(prefix, default)
+    embedded = _hotel_invoice_prefix_embedded_fy(stem, default)
+    if embedded:
+        pattern = re.compile(
+            r"^" + re.escape(stem) + r"/(\d+)$",
+            re.IGNORECASE,
+        )
+        match = pattern.match(number)
+        if not match:
+            return None
+        # Only count against the FY encoded in the prefix when it matches the active FY.
+        if embedded.lower() != str(short_fy or "").strip().lower():
+            return None
+        try:
+            return int(match.group(1))
+        except (TypeError, ValueError):
+            return None
+    pattern = re.compile(
+        r"^" + re.escape(stem) + r"/(\d{2}-\d{2})/(\d+)$",
+        re.IGNORECASE,
+    )
+    match = pattern.match(number)
     if not match:
         return None
     if match.group(1).lower() != str(short_fy or "").strip().lower():
@@ -9608,19 +10277,37 @@ def _hotel_hbe_fy_seq_from_number(invoice_number, short_fy):
         return None
 
 
-def _max_hotel_hbe_fy_seq(conn, short_fy):
-    """Highest HBE/{yy-yy}/{n} already used on ledger rows or live stays."""
+def _hotel_hbe_fy_seq_from_number(invoice_number, short_fy):
+    """Return the integer sequence from HBE/{yy-yy}/{n}, else None."""
+    return _hotel_room_invoice_seq_from_number(
+        invoice_number, HOTEL_DEFAULT_INVOICE_PREFIX, short_fy
+    )
+
+
+def _max_hotel_room_invoice_seq(
+    conn, prefix, short_fy, default=HOTEL_DEFAULT_INVOICE_PREFIX
+):
+    """Highest seq already used for this prefix + FY on ledger rows or live stays."""
+    stem = _normalize_hotel_invoice_prefix(prefix, default)
+    fy = str(short_fy or "").strip()
+    embedded = _hotel_invoice_prefix_embedded_fy(stem, default)
+    if embedded:
+        like = f"{stem}/%"
+    else:
+        like = f"{stem}/{fy}/%"
     used_max = 0
     rows = conn.execute(
         """
         SELECT invoice_number
         FROM hotel_room_invoices
-        WHERE upper(invoice_number) LIKE ?
+        WHERE upper(invoice_number) LIKE upper(?)
         """,
-        (f"HBE/{short_fy}/%",),
+        (like,),
     ).fetchall()
     for row in rows:
-        seq = _hotel_hbe_fy_seq_from_number(row["invoice_number"], short_fy)
+        seq = _hotel_room_invoice_seq_from_number(
+            row["invoice_number"], stem, fy, default=default
+        )
         if seq and seq > used_max:
             used_max = seq
     try:
@@ -9635,126 +10322,219 @@ def _max_hotel_hbe_fy_seq(conn, short_fy):
             else {}
         )
         for blob in (stay, upcoming):
-            seq = _hotel_hbe_fy_seq_from_number(
-                blob.get("invoiceNumber") or blob.get("invoice_number"),
-                short_fy,
-            )
-            if seq and seq > used_max:
-                used_max = seq
+            for key in (
+                "invoiceNumber",
+                "invoice_number",
+                "fbTransferInvoiceNumber",
+                "fb_transfer_invoice_number",
+            ):
+                seq = _hotel_room_invoice_seq_from_number(
+                    blob.get(key), stem, fy, default=default
+                )
+                if seq and seq > used_max:
+                    used_max = seq
     return used_max
 
 
-def next_hotel_room_invoice_seq(conn, fiscal_year):
-    """Next HBE/{yy-yy}/{n} sequence for the given Indian fiscal year."""
+def _max_hotel_hbe_fy_seq(conn, short_fy):
+    """Highest HBE/{yy-yy}/{n} already used on ledger rows or live stays."""
+    return _max_hotel_room_invoice_seq(conn, HOTEL_DEFAULT_INVOICE_PREFIX, short_fy)
+
+
+def _sqlite_begin_immediate(conn):
+    """Take a reserved write lock so concurrent invoice seq allocators serialize.
+
+    No-op when this connection is already inside a transaction (cannot nest BEGIN).
+    """
+    try:
+        if conn.in_transaction:
+            return
+    except Exception:
+        pass
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+    except sqlite3.OperationalError:
+        pass
+
+
+_INVOICE_SEQ_TABLES = frozenset(
+    {
+        "hotel_room_invoice_seq",
+        "fb_transfer_invoice_seq",
+        "room_transfer_invoice_seq",
+    }
+)
+
+
+def _bump_named_invoice_seq(conn, table, fiscal_year, scanned):
+    """Atomically set last_seq = max(stored, scanned)+1 for one FY row."""
+    if table not in _INVOICE_SEQ_TABLES:
+        raise ValueError("unknown invoice sequence table")
+    fy = str(fiscal_year or "").strip()
+    scanned_n = int(scanned or 0)
+    conn.execute(
+        f"INSERT OR IGNORE INTO {table} (fiscal_year, last_seq) VALUES (?, 0)",
+        (fy,),
+    )
+    conn.execute(
+        f"""
+        UPDATE {table}
+        SET last_seq = MAX(last_seq, ?) + 1
+        WHERE fiscal_year = ?
+        """,
+        (scanned_n, fy),
+    )
+    row = conn.execute(
+        f"SELECT last_seq FROM {table} WHERE fiscal_year = ?",
+        (fy,),
+    ).fetchone()
+    return int(row["last_seq"] or 1) if row else scanned_n + 1
+
+
+def next_hotel_room_invoice_seq(conn, fiscal_year, prefix=None):
+    """Next sequence for the active hotel invoice prefix + Indian fiscal year."""
     ensure_hotel_rooms_schema(conn)
+    _sqlite_begin_immediate(conn)
+    stem = (
+        _normalize_hotel_invoice_prefix(prefix)
+        if prefix is not None
+        else hotel_room_invoice_prefix(conn)
+    )
     fy = str(fiscal_year or "").strip()
     if not fy:
         fy = indian_fiscal_year_label()
-    short_fy = indian_fiscal_year_short_label(fy)
-    scanned = _max_hotel_hbe_fy_seq(conn, short_fy)
-    stored = 0
-    row = conn.execute(
-        "SELECT last_seq FROM hotel_room_invoice_seq WHERE fiscal_year = ?",
-        (short_fy,),
-    ).fetchone()
-    if row:
-        stored = int(row["last_seq"] or 0)
-    nxt = max(scanned, stored) + 1
-    conn.execute(
-        """
-        INSERT INTO hotel_room_invoice_seq (fiscal_year, last_seq)
-        VALUES (?, ?)
-        ON CONFLICT(fiscal_year) DO UPDATE SET last_seq = excluded.last_seq
-        """,
-        (short_fy, nxt),
+    short_fy = _hotel_invoice_prefix_embedded_fy(stem) or indian_fiscal_year_short_label(
+        fy
     )
-    return nxt
+    scanned = _max_hotel_room_invoice_seq(conn, stem, short_fy)
+    return _bump_named_invoice_seq(conn, "hotel_room_invoice_seq", short_fy, scanned)
 
 
 def allocate_hotel_room_invoice_number(conn, when=None):
-    """Allocate HBE/{yy-yy}/{n} (5-digit seq) for a room stay invoice."""
+    """Allocate {prefix}/{yy-yy}/{n} (or series-root/{n}) for a room stay invoice."""
+    prefix = hotel_room_invoice_prefix(conn)
     fy = indian_fiscal_year_label(when)
-    short_fy = indian_fiscal_year_short_label(fy)
-    seq = next_hotel_room_invoice_seq(conn, fy)
-    return f"HBE/{short_fy}/{seq:0{HOTEL_INVOICE_SEQ_WIDTH}d}"
+    short_fy = _hotel_invoice_prefix_embedded_fy(prefix) or indian_fiscal_year_short_label(
+        fy
+    )
+    seq = next_hotel_room_invoice_seq(conn, fy, prefix=prefix)
+    return format_hotel_room_invoice_number(prefix, short_fy, seq)
 
 
-def _hotel_fbe_fy_seq_from_number(invoice_number, short_fy):
-    """Return the integer sequence from FBE/{yy-yy}/{n}, else None."""
-    match = _HOTEL_FBE_FY_INVOICE_RE.match(str(invoice_number or "").strip())
-    if not match:
-        return None
-    if match.group(1).lower() != str(short_fy or "").strip().lower():
-        return None
-    try:
-        return int(match.group(2))
-    except (TypeError, ValueError):
-        return None
+def _hotel_fbe_fy_seq_from_number(invoice_number, short_fy, prefix=None):
+    """Return the integer sequence from FBE/{yy-yy}/{n} (or custom prefix), else None."""
+    stem = _normalize_hotel_invoice_prefix(
+        prefix, HOTEL_DEFAULT_FB_INVOICE_PREFIX
+    )
+    return _hotel_room_invoice_seq_from_number(
+        invoice_number,
+        stem,
+        short_fy,
+        default=HOTEL_DEFAULT_FB_INVOICE_PREFIX,
+    )
 
 
-def _max_hotel_fbe_fy_seq(conn, short_fy):
-    """Highest FBE/{yy-yy}/{n} already used on ledger rows or live stays."""
-    used_max = 0
-    rows = conn.execute(
-        """
-        SELECT invoice_number
-        FROM hotel_room_invoices
-        WHERE upper(invoice_number) LIKE ?
-        """,
-        (f"FBE/{short_fy}/%",),
-    ).fetchall()
-    for row in rows:
-        seq = _hotel_fbe_fy_seq_from_number(row["invoice_number"], short_fy)
-        if seq and seq > used_max:
-            used_max = seq
-    layout = get_hotel_rooms_layout(conn)
-    for room in layout.get("rooms") or []:
-        for blob in (room.get("stay"), room.get("upcomingStay")):
-            if not isinstance(blob, dict):
-                continue
-            seq = _hotel_fbe_fy_seq_from_number(
-                blob.get("fbTransferInvoiceNumber")
-                or blob.get("fb_transfer_invoice_number"),
-                short_fy,
-            )
-            if seq and seq > used_max:
-                used_max = seq
-    return used_max
+def _max_hotel_fbe_fy_seq(conn, short_fy, prefix=None):
+    """Highest F&B transfer invoice seq already used on ledger rows or live stays."""
+    stem = (
+        _normalize_hotel_invoice_prefix(prefix, HOTEL_DEFAULT_FB_INVOICE_PREFIX)
+        if prefix is not None
+        else hotel_fb_invoice_prefix(conn)
+    )
+    return _max_hotel_room_invoice_seq(
+        conn, stem, short_fy, default=HOTEL_DEFAULT_FB_INVOICE_PREFIX
+    )
 
 
-def next_fb_transfer_invoice_seq(conn, fiscal_year):
-    """Next FBE/{yy-yy}/{n} sequence for the given Indian fiscal year."""
+def next_fb_transfer_invoice_seq(conn, fiscal_year, prefix=None):
+    """Next F&B transfer invoice sequence for the given Indian fiscal year."""
     ensure_hotel_rooms_schema(conn)
+    _sqlite_begin_immediate(conn)
+    stem = (
+        _normalize_hotel_invoice_prefix(prefix, HOTEL_DEFAULT_FB_INVOICE_PREFIX)
+        if prefix is not None
+        else hotel_fb_invoice_prefix(conn)
+    )
     fy = str(fiscal_year or "").strip()
     if not fy:
         fy = indian_fiscal_year_label()
-    short_fy = indian_fiscal_year_short_label(fy)
-    scanned = _max_hotel_fbe_fy_seq(conn, short_fy)
-    stored = 0
-    row = conn.execute(
-        "SELECT last_seq FROM fb_transfer_invoice_seq WHERE fiscal_year = ?",
-        (short_fy,),
-    ).fetchone()
-    if row:
-        stored = int(row["last_seq"] or 0)
-    nxt = max(scanned, stored) + 1
-    conn.execute(
-        """
-        INSERT INTO fb_transfer_invoice_seq (fiscal_year, last_seq)
-        VALUES (?, ?)
-        ON CONFLICT(fiscal_year) DO UPDATE SET last_seq = excluded.last_seq
-        """,
-        (short_fy, nxt),
-    )
-    return nxt
+    short_fy = _hotel_invoice_prefix_embedded_fy(
+        stem, HOTEL_DEFAULT_FB_INVOICE_PREFIX
+    ) or indian_fiscal_year_short_label(fy)
+    scanned = _max_hotel_fbe_fy_seq(conn, short_fy, prefix=stem)
+    return _bump_named_invoice_seq(conn, "fb_transfer_invoice_seq", short_fy, scanned)
 
 
 def allocate_fb_transfer_invoice_number(conn, when=None):
-    """Allocate FBE/{yy-yy}/{n} for a combined restaurant+bar room-transfer invoice."""
+    """Allocate {fb_prefix}/{yy-yy}/{n} for a combined restaurant+bar room-transfer invoice."""
+    prefix = hotel_fb_invoice_prefix(conn)
     fy = indian_fiscal_year_label(when)
-    short_fy = indian_fiscal_year_short_label(fy)
-    seq = next_fb_transfer_invoice_seq(conn, fy)
-    return f"FBE/{short_fy}/{seq:0{HOTEL_INVOICE_SEQ_WIDTH}d}"
+    short_fy = _hotel_invoice_prefix_embedded_fy(
+        prefix, HOTEL_DEFAULT_FB_INVOICE_PREFIX
+    ) or indian_fiscal_year_short_label(fy)
+    seq = next_fb_transfer_invoice_seq(conn, fy, prefix=prefix)
+    return format_hotel_room_invoice_number(
+        prefix, short_fy, seq, default=HOTEL_DEFAULT_FB_INVOICE_PREFIX
+    )
+
+
+def next_room_transfer_invoice_seq(conn, fiscal_year, prefix=None):
+    """Next per-order room-transfer ledger sequence for the given fiscal year."""
+    ensure_hotel_rooms_schema(conn)
+    _sqlite_begin_immediate(conn)
+    stem = (
+        _normalize_hotel_invoice_prefix(prefix, HOTEL_DEFAULT_ROOM_TRANSFER_PREFIX)
+        if prefix is not None
+        else hotel_room_transfer_invoice_prefix(conn)
+    )
+    fy = str(fiscal_year or "").strip()
+    if not fy:
+        fy = indian_fiscal_year_label()
+    short_fy = _hotel_invoice_prefix_embedded_fy(
+        stem, HOTEL_DEFAULT_ROOM_TRANSFER_PREFIX
+    ) or indian_fiscal_year_short_label(fy)
+    scanned = _max_hotel_room_invoice_seq(
+        conn, stem, short_fy, default=HOTEL_DEFAULT_ROOM_TRANSFER_PREFIX
+    )
+    return _bump_named_invoice_seq(conn, "room_transfer_invoice_seq", short_fy, scanned)
+
+
+def allocate_room_transfer_invoice_number(conn, when=None):
+    """Allocate {rt_prefix}/{yy-yy}/{n} for a POS room-transfer ledger row."""
+    prefix = hotel_room_transfer_invoice_prefix(conn)
+    fy = indian_fiscal_year_label(when)
+    short_fy = _hotel_invoice_prefix_embedded_fy(
+        prefix, HOTEL_DEFAULT_ROOM_TRANSFER_PREFIX
+    ) or indian_fiscal_year_short_label(fy)
+    seq = next_room_transfer_invoice_seq(conn, fy, prefix=prefix)
+    return format_hotel_room_invoice_number(
+        prefix, short_fy, seq, default=HOTEL_DEFAULT_ROOM_TRANSFER_PREFIX
+    )
+
+
+def _pos_room_transfer_ledger_invoice_number(conn, order_no):
+    """Ledger invoice_number for a POS room-transfer order (legacy or RT series)."""
+    needle = str(order_no or "").strip()
+    if not needle:
+        return None
+    ensure_hotel_room_invoices_schema(conn)
+    row = conn.execute(
+        """
+        SELECT invoice_number
+        FROM hotel_room_invoices
+        WHERE source = ?
+          AND (
+            invoice_number = ?
+            OR lower(trim(COALESCE(json_extract(payload_json, '$.posOrderNo'), '')))
+               = lower(?)
+          )
+        LIMIT 1
+        """,
+        (HOTEL_INVOICE_SOURCE_POS_TRANSFER, needle, needle),
+    ).fetchone()
+    if not row:
+        return None
+    return str(row["invoice_number"] or "").strip() or None
 
 
 def _hotel_folio_is_fb_transfer(line):
@@ -11155,7 +11935,7 @@ def _hotel_preserve_invoice_merge_roster(payload, stay):
 
 
 def upsert_hotel_room_invoice_from_room(
-    conn, room, invoice_number=None, snapshot_stay=None, estimated_total=None
+    conn, room, invoice_number=None, snapshot_stay=None, estimated_total=None, created_by=""
 ):
     """Persist / refresh a ledger row from an occupied (or snapshot) room dict."""
     if not isinstance(room, dict):
@@ -11264,14 +12044,24 @@ def upsert_hotel_room_invoice_from_room(
         blob = json.dumps(payload, separators=(",", ":"))
 
     room_number_display = _hotel_invoice_frozen_room_display(existing, stay, room)
+    creator = _hotel_str(created_by, 160)
+    if not creator:
+        creator = _hotel_str(
+            stay.get("invoiceCreatedBy") or stay.get("invoice_created_by"), 160
+        )
+    if not creator and existing:
+        try:
+            creator = _hotel_str(existing["created_by"], 160)
+        except (KeyError, IndexError, TypeError):
+            creator = ""
     conn.execute(
         """
         INSERT INTO hotel_room_invoices (
             invoice_number, room_id, room_number, room_type_label,
             guest_name, booking_number, check_in_date, check_out_date,
             invoice_generated_at, estimated_total, advance_paid, balance_amount,
-            status, payload_json, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+            status, payload_json, created_by, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
         ON CONFLICT(invoice_number) DO UPDATE SET
             room_id = excluded.room_id,
             room_number = excluded.room_number,
@@ -11292,6 +12082,10 @@ def upsert_hotel_room_invoice_from_room(
             balance_amount = excluded.balance_amount,
             status = excluded.status,
             payload_json = excluded.payload_json,
+            created_by = COALESCE(
+                NULLIF(hotel_room_invoices.created_by, ''),
+                excluded.created_by
+            ),
             updated_at = datetime('now','localtime')
         WHERE hotel_room_invoices.status != 'cancelled'
         """,
@@ -11312,6 +12106,7 @@ def upsert_hotel_room_invoice_from_room(
             balance,
             status,
             blob,
+            creator,
         ),
     )
     return invoice_number
@@ -11370,6 +12165,7 @@ def _retire_pos_room_transfer_invoice(conn, order_no, fb_invoice_number="", reas
     order_no = _hotel_str(order_no, 60)
     if not order_no:
         return 0
+    ledger_no = _pos_room_transfer_ledger_invoice_number(conn, order_no) or order_no
     fb_no = _hotel_str(fb_invoice_number, 60)
     reason_text = _hotel_str(reason, 500) or (
         f"Combined into {fb_no}" if fb_no else "Combined into F&B transfer invoice"
@@ -11380,7 +12176,7 @@ def _retire_pos_room_transfer_invoice(conn, order_no, fb_invoice_number="", reas
         FROM hotel_room_invoices
         WHERE invoice_number = ? AND source = ?
         """,
-        (order_no, HOTEL_INVOICE_SOURCE_POS_TRANSFER),
+        (ledger_no, HOTEL_INVOICE_SOURCE_POS_TRANSFER),
     ).fetchone()
     if not existing:
         return 0
@@ -11391,6 +12187,7 @@ def _retire_pos_room_transfer_invoice(conn, order_no, fb_invoice_number="", reas
         payload = {}
     if not isinstance(payload, dict):
         payload = {}
+    payload["posOrderNo"] = order_no
     if fb_no:
         payload["fbCombinedInvoiceNumber"] = fb_no
         stay = payload.get("stay") if isinstance(payload.get("stay"), dict) else {}
@@ -11411,7 +12208,7 @@ def _retire_pos_room_transfer_invoice(conn, order_no, fb_invoice_number="", reas
                 WHERE invoice_number = ?
                   AND source = ?
                 """,
-                (reason_text, blob, order_no, HOTEL_INVOICE_SOURCE_POS_TRANSFER),
+                (reason_text, blob, ledger_no, HOTEL_INVOICE_SOURCE_POS_TRANSFER),
             )
         elif fb_no:
             conn.execute(
@@ -11422,7 +12219,7 @@ def _retire_pos_room_transfer_invoice(conn, order_no, fb_invoice_number="", reas
                 WHERE invoice_number = ?
                   AND source = ?
                 """,
-                (blob, order_no, HOTEL_INVOICE_SOURCE_POS_TRANSFER),
+                (blob, ledger_no, HOTEL_INVOICE_SOURCE_POS_TRANSFER),
             )
         return 0
     if status not in ("open", "settled"):
@@ -11440,12 +12237,14 @@ def _retire_pos_room_transfer_invoice(conn, order_no, fb_invoice_number="", reas
           AND source = ?
           AND status IN ('open', 'settled')
         """,
-        (reason_text, blob, order_no, HOTEL_INVOICE_SOURCE_POS_TRANSFER),
+        (reason_text, blob, ledger_no, HOTEL_INVOICE_SOURCE_POS_TRANSFER),
     )
     return 1
 
 
-def upsert_fb_combined_transfer_invoice(conn, room, invoice_number=None, transfer_lines=None):
+def upsert_fb_combined_transfer_invoice(
+    conn, room, invoice_number=None, transfer_lines=None, created_by=""
+):
     """Persist the combined restaurant+bar room-transfer invoice (FBE) ledger row."""
     if not isinstance(room, dict):
         return None
@@ -11558,14 +12357,24 @@ def upsert_fb_combined_transfer_invoice(conn, room, invoice_number=None, transfe
 
     guest_name = _hotel_invoice_guest_name(stay)
     room_number_display = _hotel_invoice_frozen_room_display(existing, stay, room)
+    creator = _hotel_str(created_by, 160)
+    if not creator:
+        creator = _hotel_str(
+            stay.get("invoiceCreatedBy") or stay.get("invoice_created_by"), 160
+        )
+    if not creator and existing:
+        try:
+            creator = _hotel_str(existing["created_by"], 160)
+        except (KeyError, IndexError, TypeError):
+            creator = ""
     conn.execute(
         """
         INSERT INTO hotel_room_invoices (
             invoice_number, room_id, room_number, room_type_label,
             guest_name, booking_number, check_in_date, check_out_date,
             invoice_generated_at, estimated_total, advance_paid, balance_amount,
-            status, source, payload_json, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+            status, source, payload_json, created_by, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
         ON CONFLICT(invoice_number) DO UPDATE SET
             room_id = excluded.room_id,
             room_number = excluded.room_number,
@@ -11587,6 +12396,10 @@ def upsert_fb_combined_transfer_invoice(conn, room, invoice_number=None, transfe
             status = excluded.status,
             source = excluded.source,
             payload_json = excluded.payload_json,
+            created_by = COALESCE(
+                NULLIF(hotel_room_invoices.created_by, ''),
+                excluded.created_by
+            ),
             updated_at = datetime('now','localtime')
         WHERE hotel_room_invoices.status != 'cancelled'
         """,
@@ -11606,6 +12419,7 @@ def upsert_fb_combined_transfer_invoice(conn, room, invoice_number=None, transfe
             status,
             HOTEL_INVOICE_SOURCE_FB_COMBINED,
             blob,
+            creator,
         ),
     )
     return invoice_number
@@ -11746,18 +12560,23 @@ def upsert_pos_room_transfer_invoice(conn, room, folio_line):
     if fbe_no:
         _retire_pos_room_transfer_invoice(conn, order_no, fbe_no)
         return order_no
-    existing = conn.execute(
-        """
-        SELECT invoice_number, status, advance_paid, balance_amount,
-               estimated_total, payload_json, cancel_reason
-        FROM hotel_room_invoices
-        WHERE invoice_number = ?
-        """,
-        (order_no,),
-    ).fetchone()
+    ledger_no = _pos_room_transfer_ledger_invoice_number(conn, order_no)
+    existing = None
+    if ledger_no:
+        existing = conn.execute(
+            """
+            SELECT invoice_number, status, advance_paid, balance_amount,
+                   estimated_total, payload_json, cancel_reason
+            FROM hotel_room_invoices
+            WHERE invoice_number = ?
+            """,
+            (ledger_no,),
+        ).fetchone()
     if existing and str(existing["status"] or "").strip().lower() == "cancelled":
         # Keep cancelled combined rows stable; do not reopen.
         return order_no
+    if not ledger_no:
+        ledger_no = allocate_room_transfer_invoice_number(conn)
     folio_settled = bool(folio_line.get("settled"))
     already_settled = bool(
         existing
@@ -11789,7 +12608,7 @@ def upsert_pos_room_transfer_invoice(conn, room, folio_line):
         "bookingNumber": stay.get("bookingNumber") or "",
         "agencyName": agency_name,
         "agency_name": agency_name,
-        "invoiceNumber": order_no,
+        "invoiceNumber": ledger_no,
         "invoiceGenerated": True,
         "invoiceGeneratedAt": generated_at,
         "folioCharges": [dict(folio_line)],
@@ -11808,7 +12627,7 @@ def upsert_pos_room_transfer_invoice(conn, room, folio_line):
             }
         ]
     slim_stay = _normalize_hotel_room_stay(slim_stay)
-    slim_stay["invoiceNumber"] = order_no
+    slim_stay["invoiceNumber"] = ledger_no
     slim_stay["invoiceGenerated"] = True
     payload = {
         "id": room.get("id") or "",
@@ -11818,6 +12637,7 @@ def upsert_pos_room_transfer_invoice(conn, room, folio_line):
         "floorId": room.get("floorId") or room.get("floor_id") or "",
         "status": room.get("status") or "occupied",
         "source": HOTEL_INVOICE_SOURCE_POS_TRANSFER,
+        "posOrderNo": order_no,
         "posInvoiceId": _hotel_str(
             folio_line.get("invoiceId") or folio_line.get("invoice_id"), 40
         ),
@@ -11831,14 +12651,37 @@ def upsert_pos_room_transfer_invoice(conn, room, folio_line):
     if existing and already_settled:
         return order_no
     blob = json.dumps(payload, separators=(",", ":"))
+    creator = ""
+    pos_invoice_id = _hotel_str(
+        folio_line.get("invoiceId") or folio_line.get("invoice_id"), 40
+    )
+    if pos_invoice_id:
+        try:
+            pos_row = conn.execute(
+                "SELECT created_by FROM pos_invoices WHERE id = ?",
+                (int(pos_invoice_id),),
+            ).fetchone()
+            if pos_row:
+                creator = _hotel_str(pos_row["created_by"], 160)
+        except (TypeError, ValueError):
+            creator = ""
+    if not creator:
+        creator = _hotel_str(
+            stay.get("invoiceCreatedBy") or stay.get("invoice_created_by"), 160
+        )
+    if not creator and existing:
+        try:
+            creator = _hotel_str(existing["created_by"], 160)
+        except (KeyError, IndexError, TypeError):
+            creator = ""
     conn.execute(
         """
         INSERT INTO hotel_room_invoices (
             invoice_number, room_id, room_number, room_type_label,
             guest_name, booking_number, check_in_date, check_out_date,
             invoice_generated_at, estimated_total, advance_paid, balance_amount,
-            status, source, payload_json, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+            status, source, payload_json, created_by, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
         ON CONFLICT(invoice_number) DO UPDATE SET
             room_id = excluded.room_id,
             room_number = excluded.room_number,
@@ -11853,11 +12696,15 @@ def upsert_pos_room_transfer_invoice(conn, room, folio_line):
             status = excluded.status,
             source = excluded.source,
             payload_json = excluded.payload_json,
+            created_by = COALESCE(
+                NULLIF(hotel_room_invoices.created_by, ''),
+                excluded.created_by
+            ),
             updated_at = datetime('now','localtime')
         WHERE hotel_room_invoices.status != 'cancelled'
         """,
         (
-            order_no,
+            ledger_no,
             _hotel_str(room.get("id"), 40),
             _hotel_str(stay.get("mergeRoomLabel") or room.get("number"), 80)
             or _hotel_str(room.get("number"), 20),
@@ -11873,6 +12720,7 @@ def upsert_pos_room_transfer_invoice(conn, room, folio_line):
             status,
             HOTEL_INVOICE_SOURCE_POS_TRANSFER,
             blob,
+            creator,
         ),
     )
     return order_no
@@ -12000,17 +12848,30 @@ def sync_pos_room_transfer_invoices_for_stay(conn, room):
             SET payload_json = json_set(
                 COALESCE(NULLIF(payload_json, ''), '{}'),
                 '$.stayInvoiceNumber',
+                ?,
+                '$.posOrderNo',
                 ?
             )
-            WHERE invoice_number = ?
-              AND source = ?
+            WHERE source = ?
+              AND (
+                invoice_number = ?
+                OR lower(trim(COALESCE(json_extract(payload_json, '$.posOrderNo'), '')))
+                   = lower(?)
+              )
             """,
-            (stay_invoice, order_no, HOTEL_INVOICE_SOURCE_POS_TRANSFER),
+            (
+                stay_invoice,
+                order_no,
+                HOTEL_INVOICE_SOURCE_POS_TRANSFER,
+                order_no,
+                order_no,
+            ),
         )
         if line.get("settled"):
+            ledger_no = _pos_room_transfer_ledger_invoice_number(conn, order_no) or order_no
             _mark_pos_room_transfer_invoice_settled(
                 conn,
-                order_no,
+                ledger_no,
                 note="Collected with F&B transfer invoice",
             )
 
@@ -12086,8 +12947,8 @@ def import_hotel_room_invoice_snapshot(conn, room):
             invoice_number, room_id, room_number, room_type_label,
             guest_name, booking_number, check_in_date, check_out_date,
             invoice_generated_at, estimated_total, advance_paid, balance_amount,
-            status, payload_json, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+            status, payload_json, created_by, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
         ON CONFLICT(invoice_number) DO UPDATE SET
             room_id = excluded.room_id,
             room_number = excluded.room_number,
@@ -12105,6 +12966,10 @@ def import_hotel_room_invoice_snapshot(conn, room):
             balance_amount = excluded.balance_amount,
             status = excluded.status,
             payload_json = excluded.payload_json,
+            created_by = COALESCE(
+                NULLIF(hotel_room_invoices.created_by, ''),
+                excluded.created_by
+            ),
             updated_at = datetime('now','localtime')
         WHERE hotel_room_invoices.status != 'cancelled'
         """,
@@ -12125,6 +12990,9 @@ def import_hotel_room_invoice_snapshot(conn, room):
             balance,
             status,
             blob,
+            _hotel_str(
+                stay.get("invoiceCreatedBy") or stay.get("invoice_created_by"), 160
+            ),
         ),
     )
     return {"invoice_number": invoice_number, "created": existing is None, "status": status}
@@ -12278,7 +13146,7 @@ def _hotel_pos_transfer_payment_mode_label(item, payload=None):
                 if not isinstance(line, dict):
                     continue
                 tagged = _hotel_folio_line_invoiced_no(line)
-                if tagged.upper().startswith("FBE/"):
+                if tagged:
                     fb_no = tagged
                     break
     return (
@@ -12344,6 +13212,14 @@ def _hotel_invoice_row_to_dict(row):
     agency_name = _hotel_str(stay.get("agencyName") or stay.get("agency_name"), 160)
     item["agency_name"] = agency_name
     item["allow_credit"] = bool(agency_name)
+    item["pos_order_no"] = _hotel_str(
+        payload.get("posOrderNo") or payload.get("pos_order_no"), 60
+    )
+    item["created_by"] = _hotel_str(item.get("created_by"), 160)
+    if not item["created_by"]:
+        item["created_by"] = _hotel_str(
+            stay.get("invoiceCreatedBy") or stay.get("invoice_created_by"), 160
+        )
     return item
 
 
@@ -12418,12 +13294,13 @@ def list_hotel_room_invoices(
               OR lower(room_number) LIKE ?
               OR lower(booking_number) LIKE ?
               OR lower(room_type_label) LIKE ?
+              OR lower(COALESCE(created_by, '')) LIKE ?
               OR lower(COALESCE(payload_json, '')) LIKE ?
             )
             """
         )
         like = f"%{needle}%"
-        params.extend([like, like, like, like, like, like])
+        params.extend([like, like, like, like, like, like, like])
 
     where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
     rows = conn.execute(
@@ -12432,7 +13309,7 @@ def list_hotel_room_invoices(
                guest_name, booking_number, check_in_date, check_out_date,
                invoice_generated_at, estimated_total, advance_paid,
                balance_amount, status, source, payload_json, updated_at,
-               cancel_reason, cancelled_at
+               cancel_reason, cancelled_at, created_by
         FROM hotel_room_invoices
         {where}
         ORDER BY invoice_generated_at DESC, invoice_number DESC
@@ -13165,6 +14042,22 @@ def get_hotel_room_invoice(conn, invoice_number):
         """,
         (number,),
     ).fetchone()
+    if not row:
+        # Room-transfer rows may be keyed by RT series while callers still pass POS order no.
+        alt = _pos_room_transfer_ledger_invoice_number(conn, number)
+        if alt and alt != number:
+            row = conn.execute(
+                """
+                SELECT invoice_number, room_id, room_number, room_type_label,
+                       guest_name, booking_number, check_in_date, check_out_date,
+                       invoice_generated_at, estimated_total, advance_paid,
+                       balance_amount, status, source, payload_json, updated_at,
+                       cancel_reason, cancelled_at
+                FROM hotel_room_invoices
+                WHERE invoice_number = ?
+                """,
+                (alt,),
+            ).fetchone()
     if not row:
         return None
     item = _hotel_invoice_row_to_dict(row)
@@ -14355,7 +15248,8 @@ def _hotel_heal_merge_group_occupancy(rooms, tariff_rates=None):
 
 def _normalize_hotel_rooms_payload(floors, rooms, tax_rates=None, tariff_rates=None):
     """Sanitize floors/rooms lists into a stable layout payload."""
-    rates = _hotel_tax_rates_or_default(tax_rates)
+    # Pass the full slab blob through so each stay can pick ≤ / > threshold rates.
+    rates = tax_rates if isinstance(tax_rates, dict) else _hotel_tax_rates_or_default(None)
     norm_floors = []
     seen_floor = set()
     if isinstance(floors, list):
@@ -15095,6 +15989,9 @@ def _normalize_hotel_room_stay(stay, tax_rates=None):
             if "invoiceEditOpen" in stay
             else stay.get("invoice_edit_open")
         ),
+        "invoiceCreatedBy": _hotel_str(
+            stay.get("invoiceCreatedBy") or stay.get("invoice_created_by"), 160
+        ),
         "billedInvoiceNumber": _hotel_str(
             stay.get("billedInvoiceNumber") or stay.get("billed_invoice_number"), 60
         ),
@@ -15721,8 +16618,11 @@ def _normalize_hotel_room_stay(stay, tax_rates=None):
     out["discountReason"] = discount_reason
     # Room rate / extras / folio on the stay are tax-inclusive.
     inclusive = round(max(gross - discount_amount, 0), 2)
+    slab_rates = hotel_tax_rates_for_tariff(
+        tax_rates, _hotel_stay_tariff_for_tax_slab(out)
+    )
     _taxable, _cgst, _ugst, estimated = _hotel_split_inclusive_tax(
-        inclusive, tax_rates
+        inclusive, slab_rates
     )
     out["estimatedTotal"] = estimated
     # Prefer computed balance so folio posts stay in sync.
@@ -16810,7 +17710,7 @@ def set_hotel_room_discount(
 
 
 def generate_hotel_room_invoice(
-    conn, room_id, payment=None, payment_splits=None, note="", invoice_kind=None
+    conn, room_id, payment=None, payment_splits=None, note="", invoice_kind=None, created_by=""
 ):
     """Mint HBE and/or FBE and optionally record payment.
 
@@ -16837,6 +17737,10 @@ def generate_hotel_room_invoice(
         raise ValueError(
             "This room is merged for billing. Open the primary room to generate the invoice."
         )
+
+    creator = str(created_by or "").strip()
+    if creator:
+        stay["invoiceCreatedBy"] = creator
 
     kind = str(invoice_kind or "all").strip().lower()
     if kind in ("room", "hbe", "hotel"):
@@ -17386,22 +18290,32 @@ def _record_pos_room_transfer_invoice_payment(
     if live_stay:
         folio = list(live_stay.get("folioCharges") or [])
         target_line = None
+        payload_folio = ""
+        payload_order = ""
+        try:
+            raw = conn.execute(
+                "SELECT payload_json FROM hotel_room_invoices WHERE invoice_number = ?",
+                (inv_no,),
+            ).fetchone()
+            blob = json.loads((raw["payload_json"] if raw else "") or "{}")
+            if isinstance(blob, dict):
+                payload_folio = _hotel_str(blob.get("folioId"), 40)
+                payload_order = _hotel_str(
+                    blob.get("posOrderNo") or blob.get("pos_order_no"), 60
+                )
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload_folio = ""
+            payload_order = ""
         for line in folio:
             if not line:
                 continue
             order_no = _hotel_str(line.get("orderNo") or line.get("order_no"), 60)
             folio_id = _hotel_str(line.get("id"), 40)
-            payload_folio = ""
-            try:
-                raw = conn.execute(
-                    "SELECT payload_json FROM hotel_room_invoices WHERE invoice_number = ?",
-                    (inv_no,),
-                ).fetchone()
-                blob = json.loads((raw["payload_json"] if raw else "") or "{}")
-                payload_folio = _hotel_str((blob or {}).get("folioId"), 40)
-            except (TypeError, ValueError, json.JSONDecodeError):
-                payload_folio = ""
-            if order_no == inv_no or (payload_folio and folio_id == payload_folio):
+            if (
+                order_no == inv_no
+                or (payload_order and order_no == payload_order)
+                or (payload_folio and folio_id == payload_folio)
+            ):
                 target_line = line
                 break
         if target_line and not target_line.get("settled"):
@@ -17449,7 +18363,7 @@ def _record_pos_room_transfer_invoice_payment(
         ).fetchone()
         existing_payload = json.loads((raw["payload_json"] if raw else "") or "{}")
         if isinstance(existing_payload, dict):
-            for key in ("posInvoiceId", "folioId", "outlet", "stayInvoiceNumber"):
+            for key in ("posInvoiceId", "folioId", "outlet", "stayInvoiceNumber", "posOrderNo"):
                 if existing_payload.get(key) and not payload.get(key):
                     payload[key] = existing_payload.get(key)
     except (TypeError, ValueError, json.JSONDecodeError):
@@ -19899,6 +20813,236 @@ def get_hotel_room(conn, room_id):
     return None
 
 
+APP_LICENSE_ROW_ID = 1
+LICENSE_EXPIRING_SOON_DAYS = 30
+
+
+def _license_parse_date(value):
+    text = str(value or "").strip()[:10]
+    if not text:
+        return None
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def ensure_app_license_schema(conn):
+    """Create app license + renewal history tables and seed a default active row."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_license (
+            id            INTEGER PRIMARY KEY CHECK (id = 1),
+            license_type  TEXT    NOT NULL DEFAULT 'Business Standard',
+            license_key   TEXT    NOT NULL DEFAULT '',
+            valid_from    TEXT    NOT NULL,
+            valid_to      TEXT    NOT NULL,
+            status        TEXT    NOT NULL DEFAULT 'active',
+            created_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_license_renewals (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            valid_from  TEXT    NOT NULL,
+            valid_to    TEXT    NOT NULL,
+            note        TEXT    NOT NULL DEFAULT '',
+            updated_by  TEXT    NOT NULL DEFAULT '',
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_app_license_renewals_created
+        ON app_license_renewals(id DESC)
+        """
+    )
+    row = conn.execute(
+        "SELECT id FROM app_license WHERE id = ?",
+        (APP_LICENSE_ROW_ID,),
+    ).fetchone()
+    if row:
+        return
+    today = date.today()
+    valid_from = today.isoformat()
+    valid_to = (today + timedelta(days=365)).isoformat()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    key = f"HBE-STD-{today.year}-SEED-0001"
+    conn.execute(
+        """
+        INSERT INTO app_license (
+            id, license_type, license_key, valid_from, valid_to, status,
+            created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
+        """,
+        (
+            APP_LICENSE_ROW_ID,
+            "Business Standard",
+            key,
+            valid_from,
+            valid_to,
+            now,
+            now,
+        ),
+    )
+    conn.execute(
+        """
+        INSERT INTO app_license_renewals (
+            valid_from, valid_to, note, updated_by, created_at
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        (valid_from, valid_to, "Initial license seed", "system", now),
+    )
+
+
+def _license_status_for_dates(valid_from, valid_to, when=None):
+    """Return active | expiring_soon | expired from date window."""
+    today = when if isinstance(when, date) else date.today()
+    if isinstance(when, datetime):
+        today = when.date()
+    start = _license_parse_date(valid_from)
+    end = _license_parse_date(valid_to)
+    if end is None:
+        return "expired"
+    if start and today < start:
+        return "expired"
+    if today > end:
+        return "expired"
+    days = (end - today).days
+    if days <= LICENSE_EXPIRING_SOON_DAYS:
+        return "expiring_soon"
+    return "active"
+
+
+def license_days_remaining(conn, when=None):
+    """Days until valid_to (0 if expired same day end; negative if past)."""
+    ensure_app_license_schema(conn)
+    row = conn.execute(
+        "SELECT valid_to FROM app_license WHERE id = ?",
+        (APP_LICENSE_ROW_ID,),
+    ).fetchone()
+    end = _license_parse_date(row["valid_to"] if row else None)
+    if end is None:
+        return None
+    today = when if isinstance(when, date) else date.today()
+    if isinstance(when, datetime):
+        today = when.date()
+    return (end - today).days
+
+
+def license_is_active(conn, when=None):
+    """True when today is within valid_from..valid_to inclusive."""
+    ensure_app_license_schema(conn)
+    row = conn.execute(
+        "SELECT valid_from, valid_to FROM app_license WHERE id = ?",
+        (APP_LICENSE_ROW_ID,),
+    ).fetchone()
+    if not row:
+        return False
+    return _license_status_for_dates(row["valid_from"], row["valid_to"], when) != "expired"
+
+
+def get_app_license(conn):
+    """Current license row as a dict (creates schema/seed if needed)."""
+    ensure_app_license_schema(conn)
+    row = conn.execute(
+        """
+        SELECT id, license_type, license_key, valid_from, valid_to, status,
+               created_at, updated_at
+        FROM app_license
+        WHERE id = ?
+        """,
+        (APP_LICENSE_ROW_ID,),
+    ).fetchone()
+    if not row:
+        return None
+    data = dict(row)
+    status = _license_status_for_dates(data.get("valid_from"), data.get("valid_to"))
+    data["status"] = status
+    days = license_days_remaining(conn)
+    data["days_remaining"] = days
+    return data
+
+
+def list_license_renewals(conn, limit=50):
+    """Newest-first renewal history rows."""
+    ensure_app_license_schema(conn)
+    lim = max(1, min(int(limit or 50), 200))
+    rows = conn.execute(
+        """
+        SELECT id, valid_from, valid_to, note, updated_by, created_at
+        FROM app_license_renewals
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (lim,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def update_app_license(
+    conn,
+    *,
+    valid_to,
+    valid_from=None,
+    license_type=None,
+    license_key=None,
+    note="",
+    updated_by="",
+):
+    """Update the current license window and append a renewal history row."""
+    ensure_app_license_schema(conn)
+    current = get_app_license(conn)
+    if not current:
+        raise ValueError("License record is missing.")
+    end = _license_parse_date(valid_to)
+    if end is None:
+        raise ValueError("valid_to must be YYYY-MM-DD.")
+    start = _license_parse_date(valid_from) if valid_from is not None else _license_parse_date(
+        current.get("valid_from")
+    )
+    if start is None:
+        start = date.today()
+    if end < start:
+        raise ValueError("valid_to must be on or after valid_from.")
+    typ = str(license_type if license_type is not None else current.get("license_type") or "").strip()
+    if not typ:
+        typ = "Business Standard"
+    key = str(license_key if license_key is not None else current.get("license_key") or "").strip()
+    if not key:
+        key = f"HBE-STD-{start.year}-SEED-0001"
+    status = _license_status_for_dates(start.isoformat(), end.isoformat())
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn.execute(
+        """
+        UPDATE app_license
+        SET license_type = ?, license_key = ?, valid_from = ?, valid_to = ?,
+            status = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (typ, key, start.isoformat(), end.isoformat(), status, now, APP_LICENSE_ROW_ID),
+    )
+    conn.execute(
+        """
+        INSERT INTO app_license_renewals (
+            valid_from, valid_to, note, updated_by, created_at
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            start.isoformat(),
+            end.isoformat(),
+            str(note or "").strip(),
+            str(updated_by or "").strip(),
+            now,
+        ),
+    )
+    return get_app_license(conn)
+
+
 def init_db():
     conn = get_db()
     conn.execute("PRAGMA journal_mode=WAL")
@@ -20568,6 +21712,7 @@ def init_db():
     get_hotel_rooms_layout(conn)
     ensure_agencies_schema(conn)
     ensure_communication_hub_schema(conn)
+    ensure_app_license_schema(conn)
 
     conn.commit()
     conn.close()

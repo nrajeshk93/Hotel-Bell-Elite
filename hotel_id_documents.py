@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import re
 import shutil
@@ -73,7 +74,7 @@ def _mime_for_suffix(suffix):
     }.get(str(suffix or "").lower(), "application/pdf")
 
 
-def persist_id_document_bytes(stored_name, data, mime="application/pdf"):
+def persist_id_document_bytes(stored_name, data, mime="application/pdf", owner_user_id=None):
     """Keep a copy in SQLite so deploys that wipe uploads/ can still serve the ID."""
     name = stored_id_document_basename(stored_name) or _raw_id_document_basename(
         stored_name
@@ -89,12 +90,31 @@ def persist_id_document_bytes(stored_name, data, mime="application/pdf"):
     conn = db_mod.get_db()
     try:
         db_mod.ensure_hotel_id_documents_schema(conn)
+        owner = 0
+        if owner_user_id is not None:
+            try:
+                owner = int(owner_user_id or 0)
+            except (TypeError, ValueError):
+                owner = 0
+        else:
+            prev = conn.execute(
+                """
+                SELECT owner_user_id FROM hotel_id_documents WHERE stored_name = ?
+                """,
+                (name,),
+            ).fetchone()
+            if prev:
+                try:
+                    owner = int(prev["owner_user_id"] or 0)
+                except (TypeError, ValueError, KeyError):
+                    owner = 0
         conn.execute(
             """
-            INSERT OR REPLACE INTO hotel_id_documents (stored_name, mime, payload)
-            VALUES (?, ?, ?)
+            INSERT OR REPLACE INTO hotel_id_documents
+                (stored_name, mime, payload, owner_user_id)
+            VALUES (?, ?, ?, ?)
             """,
-            (name, mime or "application/pdf", sqlite3.Binary(bytes(data))),
+            (name, mime or "application/pdf", sqlite3.Binary(bytes(data)), owner),
         )
         conn.commit()
     except Exception:
@@ -709,3 +729,94 @@ def resolve_stored_id_document(stored_name):
         if resolved.is_file():
             return resolved
     return None
+
+
+_ID_DOC_REF_KEYS = (
+    "idDocumentStoredName",
+    "id_document_stored_name",
+    "idDocumentPath",
+    "id_document_path",
+    "idDocumentName",
+    "id_document_name",
+)
+
+
+def _collect_id_document_names(blob, acc):
+    """Add stored-name / path / display-name variants from a guest or extra-guest dict."""
+    if not isinstance(blob, dict):
+        return
+    for key in _ID_DOC_REF_KEYS:
+        raw = blob.get(key)
+        if not raw:
+            continue
+        for name in id_document_lookup_names(raw):
+            acc.add(name)
+    extras = blob.get("additionalGuests") or blob.get("additional_guests") or []
+    if isinstance(extras, list):
+        for item in extras:
+            _collect_id_document_names(item, acc)
+
+
+def id_document_owner_user_id(conn, stored_name):
+    """Uploader user id recorded on the BLOB row, or 0."""
+    try:
+        import db as db_mod
+    except Exception:
+        db_mod = None
+    if db_mod is not None:
+        try:
+            db_mod.ensure_hotel_id_documents_schema(conn)
+        except Exception:
+            pass
+    for name in id_document_lookup_names(stored_name):
+        try:
+            row = conn.execute(
+                """
+                SELECT owner_user_id FROM hotel_id_documents WHERE stored_name = ?
+                """,
+                (name,),
+            ).fetchone()
+        except Exception:
+            return 0
+        if row:
+            try:
+                return int(row["owner_user_id"] or 0)
+            except (TypeError, ValueError, KeyError):
+                return 0
+    return 0
+
+
+def id_document_is_linked_to_guest(conn, stored_name):
+    """True when a stay, upcoming stay, or guest profile references this file."""
+    wanted = set(id_document_lookup_names(stored_name))
+    if not wanted:
+        return False
+    try:
+        import db as db_mod
+
+        layout = db_mod.get_hotel_rooms_layout(conn)
+    except Exception:
+        layout = {}
+    for room in layout.get("rooms") or []:
+        if not isinstance(room, dict):
+            continue
+        names = set()
+        for key in ("stay", "upcomingStay", "upcoming_stay"):
+            _collect_id_document_names(room.get(key), names)
+        if wanted & names:
+            return True
+    try:
+        rows = conn.execute("SELECT profile FROM hotel_guest_profiles").fetchall()
+    except Exception:
+        rows = []
+    for row in rows:
+        raw = row["profile"] if row else ""
+        try:
+            data = json.loads(raw or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        names = set()
+        _collect_id_document_names(data, names)
+        if wanted & names:
+            return True
+    return False

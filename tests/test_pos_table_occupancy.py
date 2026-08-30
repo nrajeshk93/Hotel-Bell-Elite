@@ -1493,27 +1493,112 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(int(body.get("cancelled_count") or 0), 1)
         self.assertTrue(any(inv.get("cancelled") for inv in (body.get("invoices") or [])))
 
-        conn = db_mod.get_db()
-        try:
-            row = conn.execute(
-                "SELECT cancel_reason, is_active FROM pos_invoices WHERE id = ?",
-                (invoice_id,),
-            ).fetchone()
-        finally:
-            conn.close()
-        self.assertEqual(row["cancel_reason"], "Table walked out")
-        self.assertEqual(int(row["is_active"]), 0)
-
         detail = self.client.get(f"/point-of-sale/api/invoices/{invoice_id}")
-        self.assertIn(detail.status_code, (404, 400))
-        if detail.is_json:
-            detail_body = detail.get_json() or {}
-            self.assertFalse(detail_body.get("ok", True) and detail_body.get("invoice"))
+        self.assertEqual(detail.status_code, 200)
+        inv = detail.get_json()["invoice"]
+        self.assertEqual(inv["status"], "cancelled")
+        self.assertEqual(inv["cancel_reason"], "Table walked out")
 
         tokens = self.client.get("/point-of-sale/api/kot-tokens").get_json()
         names = [t.get("name") for t in (tokens.get("tables") or [])]
         self.assertNotIn("T1", names)
         self.assertEqual(self._floor_status("T1"), "available")
+
+    def test_kot_tokens_reduce_all_to_zero_cancels_generated_invoice(self):
+        """Full kitchen cancel after Generate Invoice must void for the KOT report."""
+        create = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-GenCancel-01", "T1", kot_send=True),
+        )
+        self.assertEqual(create.status_code, 200, create.get_data(as_text=True))
+        invoice_id = create.get_json()["invoice"]["id"]
+        line_id = create.get_json()["invoice"]["lines"][0]["id"]
+
+        bill = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                "ORD-2607-GenCancel-01",
+                "T1",
+                customerBill=True,
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "rate": 100,
+                        "qty": 2,
+                        "kotSentQty": 2,
+                    }
+                ],
+            ),
+        )
+        self.assertEqual(bill.status_code, 200, bill.get_data(as_text=True))
+        billed = bill.get_json()["invoice"]
+        self.assertTrue(billed.get("customer_bill_sent"))
+        order_no = billed.get("order_no") or ""
+        invoice_id = billed["id"]
+        line_id = billed["lines"][0]["id"]
+
+        partial = self.client.post(
+            "/point-of-sale/api/kot-tokens/reduce",
+            json={
+                "changes": [
+                    {
+                        "invoice_id": invoice_id,
+                        "line_id": line_id,
+                        "sent_qty": 1,
+                    }
+                ],
+                "reason": "Partial not allowed on generated bill",
+            },
+        )
+        self.assertEqual(partial.status_code, 400)
+        self.assertIn("already generated", (partial.get_json().get("error") or "").lower())
+
+        reduce = self.client.post(
+            "/point-of-sale/api/kot-tokens/reduce",
+            json={
+                "changes": [
+                    {
+                        "invoice_id": invoice_id,
+                        "line_id": line_id,
+                        "sent_qty": 0,
+                    }
+                ],
+                "reason": "Guest walked out after bill",
+            },
+        )
+        self.assertEqual(reduce.status_code, 200, reduce.get_data(as_text=True))
+        body = reduce.get_json()
+        self.assertTrue(body.get("ok"))
+        self.assertEqual(int(body.get("cancelled_count") or 0), 1)
+
+        detail = self.client.get(f"/point-of-sale/api/invoices/{invoice_id}")
+        self.assertEqual(detail.status_code, 200)
+        inv = detail.get_json()["invoice"]
+        self.assertEqual(inv["status"], "cancelled")
+        self.assertEqual(inv["cancel_reason"], "Guest walked out after bill")
+        self.assertTrue(inv.get("customer_bill_sent"))
+
+        conn = db_mod.get_db()
+        try:
+            from kot_report import STATUS_CANCELLED, build_kot_report
+
+            report = build_kot_report(
+                conn,
+                date_from=date.today() - timedelta(days=1),
+                date_to=date.today() + timedelta(days=1),
+                outlet="all",
+            )
+        finally:
+            conn.close()
+        row = next((r for r in report["rows"] if r.get("id") == invoice_id), None)
+        self.assertIsNotNone(row)
+        self.assertEqual(row["status"], STATUS_CANCELLED)
+        self.assertEqual(row["invoice_no"], "")
+        self.assertEqual(row["cancel_reason"], "Guest walked out after bill")
+        self.assertTrue(order_no)
 
     def test_kot_cancellation_can_edit_kitchen_sent_and_updates_kot_token(self):
         save = self.client.post(

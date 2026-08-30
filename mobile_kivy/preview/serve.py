@@ -20,7 +20,7 @@ import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Optional
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 PREVIEW_DIR = Path(__file__).resolve().parent
 REPO_ROOT = PREVIEW_DIR.parents[1]
@@ -29,6 +29,54 @@ OUTLET_HOTEL = "Hotel"
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("HBE_PREVIEW_PORT", "8765"))
 FLASK_BASE = os.environ.get("HBE_API_BASE_URL", "http://127.0.0.1:8002").rstrip("/")
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1"})
+_PRODUCTION_API_HOSTS = frozenset({"belleliteaccounts.com", "www.belleliteaccounts.com"})
+
+
+
+class PreviewSafetyError(RuntimeError):
+    pass
+
+
+def _is_loopback_host(host: str) -> bool:
+    return (host or "").strip().lower().strip("[]") in _LOOPBACK_HOSTS
+
+
+def _is_production_api_url(url: str) -> bool:
+    hostname = (urlparse((url or "").strip()).hostname or "").lower()
+    if not hostname:
+        return False
+    return hostname in _PRODUCTION_API_HOSTS or hostname.endswith(".belleliteaccounts.com")
+
+
+def _is_local_preview_db(path: Path) -> bool:
+    try:
+        resolved = path.resolve()
+        repo = REPO_ROOT.resolve()
+        return resolved == (repo / "bell_elite.db").resolve() or str(resolved).startswith(
+            str(repo) + os.sep
+        )
+    except Exception:
+        return False
+
+
+def assert_preview_safe(
+    *,
+    bind_host: str | None = None,
+    flask_base: str | None = None,
+    db_path: Path | None = None,
+) -> None:
+    host = HOST if bind_host is None else bind_host
+    if not _is_loopback_host(host):
+        raise PreviewSafetyError(
+            f"Preview refuses to bind to {host!r}; use 127.0.0.1, localhost, or ::1."
+        )
+    base = FLASK_BASE if flask_base is None else flask_base
+    if _is_production_api_url(base):
+        raise PreviewSafetyError("Preview refuses to run against the production API.")
+    db = DB_PATH if db_path is None else db_path
+    if not _is_local_preview_db(db):
+        raise PreviewSafetyError("Preview refuses a non-local or production database path.")
 
 
 def friendly_flask_error(exc: BaseException | str) -> str:
@@ -887,6 +935,7 @@ class FlaskLocalClient:
         self._ensure()
 
     def _ensure(self) -> None:
+        assert_preview_safe(flask_base=self.base_url)
         desired = int(self._user_id or _effective_preview_user_id())
         if self._ready and self._user_id == desired:
             return
@@ -1016,7 +1065,17 @@ def _parse_md_dashboard_data(page: str) -> Optional[dict[str, Any]]:
     return data if isinstance(data, dict) else None
 
 
-def _fetch_main_dashboard_inprocess(period: str, location: str) -> Optional[dict[str, Any]]:
+def _dashboard_query(period: str, location: str, date_from: str = "", date_to: str = "") -> str:
+    params = {"period": period, "location": location}
+    if (date_from or "").strip() and (date_to or "").strip():
+        params["date_from"] = date_from.strip()
+        params["date_to"] = date_to.strip()
+    return "/main-dashboard?" + urlencode(params)
+
+
+def _fetch_main_dashboard_inprocess(
+    period: str, location: str, date_from: str = "", date_to: str = ""
+) -> Optional[dict[str, Any]]:
     """Build dashboard JSON inside the running Flask app (no HTTP self-proxy)."""
     try:
         from werkzeug.datastructures import MultiDict
@@ -1031,48 +1090,69 @@ def _fetch_main_dashboard_inprocess(period: str, location: str) -> Optional[dict
     except Exception:
         return None
 
-    args = MultiDict([("period", period), ("location", location)])
+    pairs = [("period", period), ("location", location)]
+    if (date_from or "").strip():
+        pairs.append(("date_from", date_from.strip()))
+    if (date_to or "").strip():
+        pairs.append(("date_to", date_to.strip()))
+    args = MultiDict(pairs)
     filters = _resolve_main_dashboard_filters(args)
-    date_from = filters.pop("_date_from")
-    date_to = filters.pop("_date_to")
+    resolved_from = filters.pop("_date_from")
+    resolved_to = filters.pop("_date_to")
     selected_location = filters["selected_location"]
     location_filter = (
         None if selected_location == DASHBOARD_FILTER_LOCATION_ALL else selected_location
     )
+    resolved_period = filters.get("selected_period") or period
 
     conn = get_db()
     try:
         payload = _build_main_dashboard_payload(
-            conn, date_from, date_to, location=location_filter
+            conn, resolved_from, resolved_to, location=location_filter
         )
     finally:
         conn.close()
 
     base = app_base_url().rstrip("/")
+    path = _dashboard_query(
+        resolved_period,
+        location,
+        filters.get("date_from") or "",
+        filters.get("date_to") or "",
+    )
     return {
         "ok": True,
-        "period": period,
+        "period": resolved_period,
         "location": location,
+        "date_from": filters.get("date_from") or "",
+        "date_to": filters.get("date_to") or "",
         "flask_base": base,
-        "webview_url": f"{base}/main-dashboard?period={period}&location={location}",
+        "webview_url": f"{base}{path}",
         "dashboard": payload.get("dashboard") or {},
     }
 
 
-def fetch_main_dashboard(period: str = "today", location: str = "All") -> dict[str, Any]:
+def fetch_main_dashboard(
+    period: str = "today",
+    location: str = "All",
+    date_from: str = "",
+    date_to: str = "",
+) -> dict[str, Any]:
     """Load dashboard KPIs for mobile preview (in-process on production, HTTP locally)."""
     period_key = (period or "today").strip().lower()
-    if period_key not in DASHBOARD_PERIODS:
+    if period_key not in DASHBOARD_PERIODS and period_key != "custom":
         period_key = "today"
     loc = (location or "All").strip() or "All"
     if loc not in DASHBOARD_LOCATIONS:
         loc = "All"
+    date_from = (date_from or "").strip()
+    date_to = (date_to or "").strip()
 
-    inprocess = _fetch_main_dashboard_inprocess(period_key, loc)
+    inprocess = _fetch_main_dashboard_inprocess(period_key, loc, date_from, date_to)
     if inprocess is not None:
         return inprocess
 
-    path = f"/main-dashboard?period={period_key}&location={loc}"
+    path = _dashboard_query(period_key, loc, date_from, date_to)
     try:
         status, raw, _ctype = _flask.get(path)
     except Exception as exc:  # noqa: BLE001
@@ -1867,6 +1947,245 @@ def fetch_cash_ledger(
     }
 
 
+
+def fetch_store_stock(outlet: str = "both", place: str = "warehouse") -> dict[str, Any]:
+    """Current on-hand stock (same logic as web /stores/stock report)."""
+    from db import ensure_stores_schema
+    from stores import (
+        STOCK_REPORT_LOW_THRESHOLD,
+        _load_stock_report_items,
+        _outlet_label,
+        _parse_outlet_filter,
+        _parse_stock_place,
+        _stock_item_status,
+        _stock_place_label,
+    )
+
+    outlet_key = _parse_outlet_filter(outlet)
+    place_key = _parse_stock_place(place)
+    with _connect() as conn:
+        ensure_stores_schema(conn)
+        raw_items = _load_stock_report_items(conn, outlet_key, place=place_key)
+
+    items: list[dict[str, Any]] = []
+    available_qty = 0.0
+    low = 0
+    out = 0
+    value_sum = 0.0
+    has_value = False
+    for item in raw_items:
+        try:
+            qty = float(item.get("qty_on_hand") or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+        status_key, status_label = _stock_item_status(qty)
+        available_qty += qty
+        if status_key == "low":
+            low += 1
+        elif status_key == "out":
+            out += 1
+        line_value = item.get("value")
+        if line_value is not None:
+            try:
+                value_sum += float(line_value)
+                has_value = True
+            except (TypeError, ValueError):
+                pass
+        items.append(
+            {
+                "item_name": item.get("item_name") or "",
+                "category_name": item.get("category_name") or "",
+                "qty_on_hand": item.get("qty_on_hand") if item.get("qty_on_hand") is not None else qty,
+                "unit": item.get("unit") or "",
+                "status": status_label,
+                "status_key": status_key,
+                "unit_price": item.get("unit_price"),
+                "value": item.get("value"),
+                "outlet": item.get("outlet") or "",
+                "outlet_label": item.get("outlet_label") or _outlet_label(item.get("outlet") or outlet_key),
+                "place": item.get("place") or place_key,
+                "place_label": item.get("place_label") or _stock_place_label(item.get("place") or place_key),
+            }
+        )
+
+    low_threshold: float | int = STOCK_REPORT_LOW_THRESHOLD
+    if float(low_threshold) == int(low_threshold):
+        low_threshold = int(low_threshold)
+    return {
+        "ok": True,
+        "source": "local-db",
+        "flask_base": FLASK_BASE,
+        "outlet": outlet_key,
+        "place": place_key,
+        "outlet_label": _outlet_label(outlet_key),
+        "place_label": _stock_place_label(place_key),
+        "low_threshold": low_threshold,
+        "kpis": {
+            "items": len(items),
+            "available_qty": round(available_qty, 3),
+            "low": low,
+            "out": out,
+            "value": round(value_sum, 2) if has_value else None,
+        },
+        "items": items,
+    }
+
+
+
+def _preview_audit_user() -> dict[str, Any]:
+    """Signed-in preview user for stock-audit writes (started_by / verified_by)."""
+    user_id = _effective_preview_user_id()
+    user = _load_user_by_id(user_id)
+    if user:
+        return user
+    return {"id": user_id}
+
+
+def fetch_stock_audit(outlet: str = "both", place: str = "warehouse") -> dict[str, Any]:
+    """Open (or create) stock audit for outlet+place — same as web /stores/stock-audit."""
+    from db import ensure_stores_schema
+    from stores import (
+        STOCK_AUDIT_REASONS_NEGATIVE,
+        STOCK_AUDIT_REASONS_POSITIVE,
+        _audit_concrete_outlet,
+        _audit_kpis,
+        _audit_refresh_line_statuses,
+        _get_or_create_open_audit,
+        _last_purchase_dates,
+        _load_audit_lines,
+        _outlet_label,
+        _parse_outlet_filter,
+        _parse_stock_place,
+        _seed_audit_lines,
+        _serialize_audit_line,
+        _stock_place_label,
+        _sync_audit_lines_from_stock,
+        stock_audit_history_payload,
+    )
+
+    filter_outlet = _parse_outlet_filter(outlet)
+    outlet_key = _audit_concrete_outlet(filter_outlet)
+    place_key = _parse_stock_place(place)
+    user = _preview_audit_user()
+    user_id = user.get("id")
+
+    with _connect() as conn:
+        ensure_stores_schema(conn)
+        audit = _get_or_create_open_audit(conn, outlet_key, user_id, place_key)
+        changed = False
+        if _audit_refresh_line_statuses(conn, int(audit["id"]), outlet_key, place_key):
+            changed = True
+        if _sync_audit_lines_from_stock(conn, int(audit["id"]), outlet_key, place_key):
+            changed = True
+        if changed:
+            conn.commit()
+        lines = _load_audit_lines(conn, audit["id"])
+        if not lines:
+            _seed_audit_lines(conn, audit["id"], outlet_key, place_key)
+            conn.commit()
+            lines = _load_audit_lines(conn, audit["id"])
+        purchases = _last_purchase_dates(conn, outlet_key, lines)
+        stock_meta = {
+            int(row["id"]): row["updated_at"]
+            for row in conn.execute(
+                "SELECT id, updated_at FROM store_stock_items WHERE outlet = ? AND place = ?",
+                (outlet_key, place_key),
+            ).fetchall()
+            if row["id"] is not None
+        }
+        for line in lines:
+            name_key = (line.get("item_name") or "").strip().lower()
+            unit_key = (line.get("unit") or "").strip().lower()
+            line["last_purchase_at"] = purchases.get((name_key, unit_key), "") or ""
+            sid = line.get("stock_item_id")
+            try:
+                sid_i = int(sid) if sid is not None else None
+            except (TypeError, ValueError):
+                sid_i = None
+            line["stock_updated_at"] = stock_meta.get(sid_i, "") if sid_i else ""
+        kpis = _audit_kpis(lines)
+        history_payload = stock_audit_history_payload(conn, outlet_key, place_key, limit=20)
+
+    categories = sorted(
+        {
+            ((line.get("category_name") or "").strip() or "Uncategorised")
+            for line in lines
+        },
+        key=lambda name: name.lower(),
+    )
+    return {
+        "ok": True,
+        "source": "local-db",
+        "flask_base": FLASK_BASE,
+        "outlet": outlet_key,
+        "place": place_key,
+        "outlet_label": _outlet_label(outlet_key),
+        "place_label": _stock_place_label(place_key),
+        "audit": {
+            "id": audit.get("id"),
+            "status": audit.get("status") or "open",
+            "label": audit.get("label") or "",
+            "started_at": audit.get("started_at") or "",
+        },
+        "kpis": kpis,
+        "lines": [_serialize_audit_line(line) for line in lines],
+        "reasons_negative": [
+            {"key": key, "label": label} for key, label in STOCK_AUDIT_REASONS_NEGATIVE
+        ],
+        "reasons_positive": [
+            {"key": key, "label": label} for key, label in STOCK_AUDIT_REASONS_POSITIVE
+        ],
+        "categories": categories,
+        "history": history_payload.get("history") or [],
+    }
+
+
+def verify_stock_audit(payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    from db import ensure_stores_schema
+    from stores import stock_audit_verify_action
+
+    user = _preview_audit_user()
+    with _connect() as conn:
+        ensure_stores_schema(conn)
+        return stock_audit_verify_action(conn, user, payload or {})
+
+
+def skip_stock_audit(payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    from db import ensure_stores_schema
+    from stores import stock_audit_skip_action
+
+    user = _preview_audit_user()
+    with _connect() as conn:
+        ensure_stores_schema(conn)
+        return stock_audit_skip_action(conn, user, payload or {})
+
+
+def new_stock_audit(payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    from db import ensure_stores_schema
+    from stores import stock_audit_new_action
+
+    user = _preview_audit_user()
+    with _connect() as conn:
+        ensure_stores_schema(conn)
+        return stock_audit_new_action(conn, user, payload or {})
+
+
+def fetch_stock_audit_history(outlet: str = "both", place: str = "warehouse") -> dict[str, Any]:
+    from db import ensure_stores_schema
+    from stores import (
+        _audit_concrete_outlet,
+        _parse_outlet_filter,
+        _parse_stock_place,
+        stock_audit_history_payload,
+    )
+
+    outlet_key = _audit_concrete_outlet(_parse_outlet_filter(outlet))
+    place_key = _parse_stock_place(place)
+    with _connect() as conn:
+        ensure_stores_schema(conn)
+        return stock_audit_history_payload(conn, outlet_key, place_key, limit=50)
+
+
 class PreviewHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(PREVIEW_DIR), **kwargs)
@@ -1967,6 +2286,48 @@ class PreviewHandler(SimpleHTTPRequestHandler):
             except Exception as exc:  # noqa: BLE001
                 self._send_json(500, {"ok": False, "error": str(exc), "flask_base": FLASK_BASE})
             return
+        if parsed.path in ("/preview-api/store", "/api/store"):
+            denied = _require_preview_access("store")
+            if denied:
+                self._send_json(403, denied)
+                return
+            qs = parse_qs(parsed.query or "")
+            outlet = (qs.get("outlet") or ["both"])[0]
+            place = (qs.get("place") or ["warehouse"])[0]
+            try:
+                payload = fetch_store_stock(outlet=outlet, place=place)
+                self._send_json(200, payload)
+            except Exception as exc:  # noqa: BLE001
+                self._send_json(500, {"ok": False, "error": str(exc), "flask_base": FLASK_BASE})
+            return
+        if parsed.path in ("/preview-api/stock-audit/history", "/api/stock-audit/history"):
+            denied = _require_preview_access("stock_audit")
+            if denied:
+                self._send_json(403, denied)
+                return
+            qs = parse_qs(parsed.query or "")
+            outlet = (qs.get("outlet") or ["both"])[0]
+            place = (qs.get("place") or ["warehouse"])[0]
+            try:
+                payload = fetch_stock_audit_history(outlet=outlet, place=place)
+                self._send_json(200, payload)
+            except Exception as exc:  # noqa: BLE001
+                self._send_json(500, {"ok": False, "error": str(exc), "flask_base": FLASK_BASE})
+            return
+        if parsed.path in ("/preview-api/stock-audit", "/api/stock-audit"):
+            denied = _require_preview_access("stock_audit")
+            if denied:
+                self._send_json(403, denied)
+                return
+            qs = parse_qs(parsed.query or "")
+            outlet = (qs.get("outlet") or ["both"])[0]
+            place = (qs.get("place") or ["warehouse"])[0]
+            try:
+                payload = fetch_stock_audit(outlet=outlet, place=place)
+                self._send_json(200, payload)
+            except Exception as exc:  # noqa: BLE001
+                self._send_json(500, {"ok": False, "error": str(exc), "flask_base": FLASK_BASE})
+            return
         expense_prefix = "/preview-api/approvals/expense/"
         api_expense_prefix = "/api/approvals/expense/"
         if parsed.path.startswith(expense_prefix) or parsed.path.startswith(api_expense_prefix):
@@ -2016,8 +2377,10 @@ class PreviewHandler(SimpleHTTPRequestHandler):
             qs = parse_qs(parsed.query or "")
             period = (qs.get("period") or ["today"])[0]
             location = (qs.get("location") or ["All"])[0]
+            date_from = (qs.get("date_from") or [""])[0]
+            date_to = (qs.get("date_to") or [""])[0]
             try:
-                payload = fetch_main_dashboard(period, location)
+                payload = fetch_main_dashboard(period, location, date_from, date_to)
                 self._send_json(200 if payload.get("ok") else 502, payload)
             except Exception as exc:  # noqa: BLE001
                 self._send_json(
@@ -2136,6 +2499,27 @@ class PreviewHandler(SimpleHTTPRequestHandler):
             status, data = proxy_payroll_mobile("GET", parsed.path, parsed.query or "")
             self._send_json(status, data)
             return
+        if parsed.path == "/preview-api/shell/version":
+            try:
+                import mobile_ota
+                payload = mobile_ota.load_shell_manifest()
+                if isinstance(payload, dict):
+                    self._send_json(200, payload)
+                    return
+            except Exception:
+                pass
+            result = _flask_request_inprocess("GET", "/api/mobile/shell/version")
+            if result is None:
+                self._send_json(502, {"ok": False, "error": "Cannot reach update server"})
+                return
+            status, data = result
+            if not isinstance(data, dict):
+                data = {"ok": False, "error": "Invalid response"}
+            self._send_json(status, data)
+            return
+        if parsed.path.startswith("/preview-api/") or parsed.path.startswith("/api/"):
+            self._send_json(404, {"ok": False, "error": "Not found"})
+            return
         if parsed.path in ("/", ""):
             self.path = "/mobile_ui_preview.html"
         return super().do_GET()
@@ -2198,6 +2582,30 @@ class PreviewHandler(SimpleHTTPRequestHandler):
                     self._send_json(403, denied)
                     return
                 status, data = create_indent_request(payload)
+                self._send_json(status if status else 200, data)
+                return
+            if parsed.path in ("/preview-api/stock-audit/verify", "/api/stock-audit/verify"):
+                denied = _require_preview_access("stock_audit")
+                if denied:
+                    self._send_json(403, denied)
+                    return
+                status, data = verify_stock_audit(payload)
+                self._send_json(status if status else 200, data)
+                return
+            if parsed.path in ("/preview-api/stock-audit/skip", "/api/stock-audit/skip"):
+                denied = _require_preview_access("stock_audit")
+                if denied:
+                    self._send_json(403, denied)
+                    return
+                status, data = skip_stock_audit(payload)
+                self._send_json(status if status else 200, data)
+                return
+            if parsed.path in ("/preview-api/stock-audit/new", "/api/stock-audit/new"):
+                denied = _require_preview_access("stock_audit")
+                if denied:
+                    self._send_json(403, denied)
+                    return
+                status, data = new_stock_audit(payload)
                 self._send_json(status if status else 200, data)
                 return
             if parsed.path == "/stores/api/indent":
@@ -2326,6 +2734,10 @@ class PreviewHandler(SimpleHTTPRequestHandler):
 
 
 def main() -> None:
+    try:
+        assert_preview_safe()
+    except PreviewSafetyError as exc:
+        raise SystemExit(str(exc)) from exc
     if not DB_PATH.is_file():
         raise SystemExit(f"Database not found: {DB_PATH}")
     server = ThreadingHTTPServer((HOST, PORT), PreviewHandler)

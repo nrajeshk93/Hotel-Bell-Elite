@@ -9,6 +9,7 @@
 {% set master_view = de_nav_master_view|default('') %}
 {% set report_view = de_nav_report_view|default('') %}
 {% set settings_view = de_nav_settings_view|default('') %}
+{% set license_view = de_nav_license_view|default('') %}
 {% set communication_hub_view = de_nav_communication_hub_view|default('') %}
 {% set analytics_open = nav_section == 'analytics' %}
 {% set accounts_open = nav_section == 'accounts' %}
@@ -21,6 +22,8 @@
 {% set master_open = nav_section == 'master' %}
 {% set report_open = nav_section == 'report' %}
 {% set settings_open = nav_section == 'settings' %}
+{% set license_open = nav_section == 'license' %}
+{% set show_license_nav = show_license_nav|default(false) %}
 {% set nav_year = sel_year|default(today_year|default('')) %}
 {% set nav_month = sel_month|default(today_month|default('')) %}
 {% set payroll_period = {'year': nav_year, 'month': nav_month} if nav_year and nav_month else {} %}
@@ -310,6 +313,19 @@
       </button>
       <div class="de-nav-sub" id="de-nav-settings-sub">
         <a class="de-nav-subitem{% if settings_view == 'home' %} is-active{% endif %}" id="de-nav-settings-home" href="{{ url_for('settings') }}"{% if settings_view == 'home' %} aria-current="page"{% endif %}>Overview</a>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if show_license_nav %}
+    <div class="de-nav-group{% if license_open %} is-open is-child-active{% endif %}" id="de-nav-license-group">
+      <button type="button" class="de-nav-group-toggle" id="de-nav-license-toggle" aria-expanded="{{ 'true' if license_open else 'false' }}" aria-controls="de-nav-license-sub" onclick="toggleDeNavGroup(event, 'de-nav-license-group')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+        <span>License</span>
+        <svg class="de-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
+      <div class="de-nav-sub" id="de-nav-license-sub">
+        <a class="de-nav-subitem{% if license_view == 'home' %} is-active{% endif %}" id="de-nav-license-home" href="{{ url_for('license_page') }}"{% if license_view == 'home' %} aria-current="page"{% endif %}>Overview</a>
       </div>
     </div>
     {% endif %}

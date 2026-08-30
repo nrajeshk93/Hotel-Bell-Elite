@@ -13,10 +13,28 @@ from kivymd.uix.scrollview import MDScrollView
 from kivymd.uix.textfield import MDTextField
 
 from hbe_mobile import theme
+
+def _style_md_date_picker(picker):
+    """Force MDDatePicker chrome to theme.ACCENT (#1877F2)."""
+    for attr, val in (
+        ("primary_color", theme.ACCENT),
+        ("accent_color", theme.ACCENT),
+        ("selector_color", theme.ACCENT),
+        ("text_button_color", theme.ACCENT),
+    ):
+        try:
+            setattr(picker, attr, val)
+        except Exception:
+            pass
+    try:
+        picker.firstweekday = 0  # Sunday
+    except Exception:
+        pass
+    return picker
 from hbe_mobile.api import payroll as payroll_api
 from hbe_mobile.utils.async_jobs import run_async
 
-_BLUE = (0.145, 0.388, 0.922, 1)  # #2563EB
+_BLUE = (0.094, 0.467, 0.949, 1)  # #1877F2
 _CHIP_BG = {
     "present": (0.859, 0.918, 0.996, 1),
     "absent": (0.996, 0.886, 0.886, 1),
@@ -129,7 +147,7 @@ class PayrollAttendanceScreen(MDScreen):
             from datetime import date as _date
             today = _date.today()
             y, m, d = today.year, today.month, today.day
-        picker = MDDatePicker(year=y, month=m, day=d)
+        picker = _style_md_date_picker(MDDatePicker(year=y, month=m, day=d))
         picker.bind(on_save=self._on_date_save)
         picker.open()
 

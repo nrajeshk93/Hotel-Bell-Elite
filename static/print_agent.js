@@ -256,7 +256,7 @@
       });
   }
 
-  function print(job) {
+  function printLocal(job) {
     if (!job || !job.content) {
       return Promise.reject(new Error('Print content is required.'));
     }
@@ -273,7 +273,6 @@
 
     return ensurePaired(false)
       .catch(function () {
-        /* /status is public; still try print with any cached key. */
         return loadStore();
       })
       .then(function () {
@@ -304,6 +303,143 @@
       });
   }
 
+  var queueConfig = { loaded: false, serverPrintQueue: true, printQueuePrimary: true };
+  var queueConfigPromise = null;
+
+  function loadQueueConfig(force) {
+    if (queueConfig.loaded && !force) {
+      return Promise.resolve(queueConfig);
+    }
+    if (queueConfigPromise && !force) {
+      return queueConfigPromise;
+    }
+    queueConfigPromise = fetchSaas('/api/print-agent/config')
+      .then(function (result) {
+        if (result.ok && result.data && result.data.ok) {
+          queueConfig.serverPrintQueue = result.data.serverPrintQueue !== false;
+          queueConfig.printQueuePrimary = result.data.printQueuePrimary !== false;
+        }
+        queueConfig.loaded = true;
+        return queueConfig;
+      })
+      .catch(function () {
+        queueConfig.loaded = true;
+        return queueConfig;
+      })
+      .finally(function () {
+        queueConfigPromise = null;
+      });
+    return queueConfigPromise;
+  }
+
+  function serverQueueEnabled() {
+    return queueConfig.serverPrintQueue !== false;
+  }
+
+  function queuePrimaryEnabled() {
+    return queueConfig.printQueuePrimary !== false;
+  }
+
+  function pollJobStatus(jobId, attempts) {
+    var left = typeof attempts === 'number' ? attempts : 12;
+    function step() {
+      return fetch('/api/print-jobs/' + encodeURIComponent(jobId), {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        cache: 'no-store'
+      })
+        .then(function (resp) {
+          return resp.json().then(function (data) {
+            return { ok: resp.ok, data: data || {} };
+          });
+        })
+        .then(function (result) {
+          var job = (result.data && result.data.job) || {};
+          var status = String(job.status || '').toUpperCase();
+          if (status === 'PRINTED') {
+            return { ok: true, via: 'queue', job: job };
+          }
+          if (status === 'FAILED') {
+            throw new Error(job.error || job.error_message || 'Print job failed.');
+          }
+          if (left <= 1) {
+            return { ok: true, via: 'queue', pending: true, job: job };
+          }
+          left -= 1;
+          return sleep(500).then(step);
+        });
+    }
+    return step();
+  }
+
+  function submitJob(job) {
+    if (!job) {
+      return Promise.reject(new Error('Print job is required.'));
+    }
+    var body = {
+      jobId: job.jobId || undefined,
+      idempotencyKey: job.idempotencyKey || job.jobId || undefined,
+      printerRole: job.printerRole || 'billing',
+      documentType: job.documentType || 'receipt',
+      documentId: job.documentId || job.document_id || 0,
+      locationId: job.locationId || job.location_id || job.outlet || '',
+      copies: job.copies || 1,
+      contentType: job.contentType || undefined,
+      contentEncoding: job.contentEncoding || undefined,
+      content: job.content || undefined,
+      resend: !!job.resend,
+      items: job.items || undefined
+    };
+    return fetch('/api/print-jobs', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: JSON.stringify(body),
+      cache: 'no-store'
+    })
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          return { ok: resp.ok, status: resp.status, data: data || {} };
+        });
+      })
+      .then(function (result) {
+        if (!result.ok || !result.data || result.data.ok === false) {
+          throw new Error((result.data && result.data.error) || 'Could not queue print job.');
+        }
+        var queued = (result.data && result.data.job) || {};
+        var jobId = queued.jobId || queued.job_id || body.jobId;
+        if (!jobId) {
+          return { ok: true, via: 'queue', job: queued };
+        }
+        return pollJobStatus(jobId, 12);
+      });
+  }
+
+  function print(job) {
+    return loadQueueConfig(false).then(function (cfg) {
+      if (cfg.printQueuePrimary !== false) {
+        return submitJob(job).catch(function (queueErr) {
+          if (!job || !job.content) {
+            throw queueErr;
+          }
+          return printLocal(job).then(function (data) {
+            data.via = 'local';
+            return data;
+          });
+        });
+      }
+      return printLocal(job).then(function (data) {
+        data.via = 'local';
+        return data;
+      });
+    });
+  }
+
   function testPrint(printerRole) {
     return ensurePaired(false)
       .then(function () {
@@ -327,6 +463,7 @@
   // Warm pair shortly after cloud pages load (non-blocking).
   if (typeof document !== 'undefined') {
     var warm = function () {
+      loadQueueConfig(false).catch(function () {});
       ensurePaired(false).catch(function () {});
     };
     if (document.readyState === 'loading') {
@@ -339,6 +476,11 @@
   global.HotelPrintAgent = {
     getStatus: getStatus,
     print: print,
+    printLocal: printLocal,
+    submitJob: submitJob,
+    serverQueueEnabled: serverQueueEnabled,
+    queuePrimaryEnabled: queuePrimaryEnabled,
+    loadQueueConfig: loadQueueConfig,
     testPrint: testPrint,
     configure: configure,
     ensurePaired: ensurePaired,

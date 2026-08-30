@@ -548,22 +548,62 @@ body.sales-report-module #mi-filter-form #mi-date-range-host{
   max-width:100%;
 }
 
-/* KOT report — keep every cell on one line; scroll horizontally if needed. */
+/* KOT report — Purchase / Expense ledger table chrome */
 body.kot-report-module #kot-report-page #sr-table{
-  width:max-content;
-  min-width:100%;
+  min-width:1080px;
+  width:100%;
   table-layout:auto;
 }
-body.kot-report-module #kot-report-page #sr-table th,
-body.kot-report-module #kot-report-page #sr-table td{
+body.kot-report-module #kot-report-page #sr-table .pl-col-status{
+  min-width:132px;
+  white-space:nowrap;
+}
+body.kot-report-module #kot-report-page #sr-table .pl-col-amount{
   white-space:nowrap;
 }
 body.kot-report-module #kot-report-page #sr-table .pl-expense-code,
-body.kot-report-module #kot-report-page #sr-table .kot-status{
+body.kot-report-module #kot-report-page #sr-table .cp-status-pill,
+body.kot-report-module #kot-report-page #sr-table .pl-kind-pill{
   white-space:nowrap;
+}
+body.kot-report-module #kot-report-page #sr-table .cp-status-pill{
+  pointer-events:none;
+  flex-shrink:0;
+  text-transform:none;
+  letter-spacing:.2px;
+  font-size:11px;
+  height:auto;
+  min-height:22px;
+  padding:3px 9px;
+}
+body.kot-report-module #kot-report-page #sr-table .cp-status-pill--open{
+  background:#FFF7ED;
+  color:#C2410C;
+  border:1px solid rgba(194,65,12,.18);
+}
+body.kot-report-module #kot-report-page #sr-table .cp-status-pill--invoice_generated{
+  background:#ECFDF5;
+  color:#047857;
+  border:1px solid rgba(4,120,87,.18);
+}
+body.kot-report-module #kot-report-page #sr-table .cp-status-pill--cancelled{
+  background:#FEF2F2;
+  color:#B91C1C;
+  border:1px solid rgba(185,28,28,.18);
+}
+body.kot-report-module #kot-report-page #sr-table .pl-kind-pill--restaurant{
+  color:#1D4ED8;
+  background:#EFF6FF;
+  border:1px solid rgba(37,99,235,.2);
+}
+body.kot-report-module #kot-report-page #sr-table .pl-kind-pill--bar{
+  color:#6D28D9;
+  background:#F5F3FF;
+  border:1px solid rgba(109,40,217,.18);
 }
 body.kot-report-module #kot-report-page #sr-table td.kot-invoice-cell{
   white-space:normal;
+  min-width:140px;
 }
 body.kot-report-module #kot-report-page #sr-table td.kot-invoice-cell .pl-expense-code{
   white-space:nowrap;

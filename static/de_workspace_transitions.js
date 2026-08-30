@@ -25,7 +25,8 @@
     '/communication-hub/promotion',
     '/access-management',
     '/employees',
-    '/settings'
+    '/settings',
+    '/license'
   ];
   var SKIP_SCRIPT_PARTS = [
     'de_fullscreen.js',
@@ -354,6 +355,55 @@
     }
   }
 
+  function ensureFormCsrfToken(form){
+    try{
+      if(window.HbeCsrf && typeof window.HbeCsrf.injectFormToken === 'function'){
+        window.HbeCsrf.injectFormToken(form);
+        return;
+      }
+    } catch(eHbe){}
+    if(!form || form.nodeName !== 'FORM') return;
+    var method = String(form.getAttribute('method') || form.method || 'get').toLowerCase();
+    if(method !== 'post') return;
+    var token = '';
+    try{
+      var meta = document.querySelector('meta[name="csrf-token"]');
+      if(meta && meta.content) token = meta.content;
+      if(!token){
+        var parts = ('; ' + document.cookie).split('; hbe_csrf=');
+        if(parts.length > 1) token = decodeURIComponent(parts.pop().split(';').shift() || '');
+      }
+    } catch(eTok){}
+    if(!token) return;
+    var existing = form.querySelector('input[name="csrf_token"]');
+    if(existing){
+      existing.value = token;
+      return;
+    }
+    var input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'csrf_token';
+    input.value = token;
+    form.appendChild(input);
+  }
+
+  function syncCsrfFromDoc(sourceDoc){
+    try{
+      var next = sourceDoc && (
+        sourceDoc.querySelector('meta[name="csrf-token"]') ||
+        (sourceDoc.body && sourceDoc.body.querySelector('meta[name="csrf-token"]'))
+      );
+      var token = next && next.getAttribute('content');
+      if(!token) return;
+      if(window.HbeCsrf && typeof window.HbeCsrf.syncMetaToken === 'function'){
+        window.HbeCsrf.syncMetaToken(token);
+      } else {
+        var cur = document.querySelector('meta[name="csrf-token"]');
+        if(cur) cur.setAttribute('content', token);
+      }
+    } catch(eSync){}
+  }
+
   function hardSubmitFallback(form, submitter){
     try{
       form.setAttribute('data-de-hard-nav', '1');
@@ -365,9 +415,17 @@
         ghost.setAttribute('data-de-soft-submitter', '1');
         form.appendChild(ghost);
       }
-      HTMLFormElement.prototype.submit.call(form);
+      ensureFormCsrfToken(form);
+      /* Native submit skips the 'submit' event — token must already be in the form. */
+      var nativeSubmit = window.__deNativeFormSubmit || HTMLFormElement.prototype.submit;
+      nativeSubmit.call(form);
     } catch(e){
-      form.submit();
+      ensureFormCsrfToken(form);
+      try{
+        (window.__deNativeFormSubmit || HTMLFormElement.prototype.submit).call(form);
+      } catch(e2){
+        form.submit();
+      }
     }
   }
 
@@ -569,6 +627,7 @@
 
     try{
       var originalSubmit = HTMLFormElement.prototype.submit;
+      window.__deNativeFormSubmit = originalSubmit;
       HTMLFormElement.prototype.submit = function(){
         var isPost = formMethod(this) === 'post';
         if(isPost){
@@ -577,6 +636,8 @@
         }
         if(softSubmitForm(this, null)) return;
         if(isPost) unlockFormSubmit(this);
+        /* Native .submit() does not fire 'submit', so csrf.js never injects. */
+        ensureFormCsrfToken(this);
         return originalSubmit.call(this);
       };
     } catch(e){}
@@ -645,6 +706,9 @@
       path === '/hotel/credit' ||
       path === '/credits' ||
       path.indexOf('/credits/') === 0 ||
+      path === '/point-of-sale/settings' ||
+      path === '/bar-point-of-sale/settings' ||
+      path === '/hotel/settings' ||
       /* Sales reports (agency billing, invoice sales, etc.) change as invoices settle. */
       path.indexOf('/reports/sales/') === 0
     );
@@ -930,7 +994,9 @@
 
       /* POS — restaurant + bar */
       if(path === '/point-of-sale/settings' || path === '/bar-point-of-sale/settings'){
-        return !!main.querySelector('#pos-settings-page, [data-pos-settings]');
+        return !!main.querySelector(
+          '#pos-settings-page[data-settings-rev="invoice-v3"], [data-pos-settings][data-settings-rev="invoice-v3"]'
+        );
       }
       if(path === '/point-of-sale/menu' || path === '/bar-point-of-sale/menu'){
         return !!main.querySelector('#pos-menu-page, [data-pos-menu]');
@@ -956,7 +1022,9 @@
         return !!main.querySelector('#hotel-reservations-page, [data-hotel-reservations]');
       }
       if(path === '/hotel/settings'){
-        return !!main.querySelector('#hotel-settings-page, [data-hotel-settings]');
+        return !!main.querySelector(
+          '#hotel-settings-page[data-settings-rev="taxes-v4"], [data-hotel-settings][data-settings-rev="taxes-v4"]'
+        );
       }
       if(path === '/hotel/invoice-ledger'){
         return !!main.querySelector('#hotel-invoice-ledger-page, [data-hotel-invoice-ledger]');
@@ -990,10 +1058,12 @@
           '#sales-report-page, [data-sales-report], '
           + '#menu-sales-report-page, [data-menu-sales-report], '
           + '#customer-insights-report-page, [data-customer-insights-report], '
-          + '#manager-insight-report-page, [data-manager-insight-report]'
+          + '#manager-insight-report-page, [data-manager-insight-report], '
+          + '#kot-report-page, [data-kot-report]'
         );
       }
       if(path === '/settings') return !!main.querySelector('#settings-page, [data-settings], #sd-settings-sections');
+      if(path === '/license') return !!main.querySelector('#license-page, [data-license]');
       if(path === '/access-management') return !!main.querySelector('#am-users-filter-form, #am-users-search');
 
       /* Accounts */
@@ -2090,6 +2160,7 @@
     var mergedAssets = mergeHeadAssets(doc, doc.body);
     var addedLinks = mergedAssets.addedLinks || [];
     var staleLinks = mergedAssets.staleLinks || [];
+    syncCsrfFromDoc(doc);
     var content = collectBodyContent(doc.body);
     var frag = document.createDocumentFragment();
     content.nodes.forEach(function(node){
@@ -2248,6 +2319,11 @@
       if(typeof window.initHbeTableScroll === 'function'){
         window.initHbeTableScroll();
       }
+      try{
+        if(window.HbeCsrf && typeof window.HbeCsrf.injectAllForms === 'function'){
+          window.HbeCsrf.injectAllForms();
+        }
+      } catch(eCsrf){}
       clearNavigatingLinks();
     } catch(err){
       try{ console.error('de soft-nav page reinit failed', err); } catch(eLog){}
@@ -2294,6 +2370,7 @@
     var mergedAssets = mergeHeadAssets(doc, nextMain);
     var addedLinks = mergedAssets.addedLinks || [];
     var staleLinks = mergedAssets.staleLinks || [];
+    syncCsrfFromDoc(doc);
     syncSidebarFromDoc(doc, url);
 
     if(curMain && nextMain){
@@ -3115,7 +3192,7 @@
   function syncMissingSidebarModules(){
     var curSidebar = document.querySelector('#de-sidebar, .de-sidebar');
     if(!curSidebar) return;
-    if(sidebarElById(curSidebar, 'de-nav-settings-group')) return;
+    if(sidebarElById(curSidebar, 'de-nav-settings-group') && sidebarElById(curSidebar, 'de-nav-license-group')) return;
     if(!shouldSoftNavigate()) return;
     var url = withPartialMain(window.location.href);
     fetch(url, {
@@ -3156,6 +3233,12 @@
     /* Soft-nav session paint rules from first interaction-capable paint. */
     document.documentElement.classList.add('de-soft-nav-session');
     pruneRemovedSidebarLinks();
+    /* Drop cached settings HTML so Invoice Numbering edits are not sticky. */
+    try{
+      invalidatePrefetchByPath('/point-of-sale/settings');
+      invalidatePrefetchByPath('/bar-point-of-sale/settings');
+      invalidatePrefetchByPath('/hotel/settings');
+    }catch(e){}
     syncMissingSidebarModules();
     idlePrefetchSidebarDestinations();
   }

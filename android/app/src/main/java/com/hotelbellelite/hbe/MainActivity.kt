@@ -5,13 +5,17 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.DownloadManager
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.util.Log
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.URLUtil
@@ -34,8 +38,9 @@ import com.hotelbellelite.hbe.databinding.ActivityMainBinding
 import org.json.JSONArray
 
 /**
- * Native Android shell loads the designed mobile UI from APK assets.
- * API calls use production Flask session cookies (see /api/mobile/login).
+ * Native Android shell paints bundled assets first, then refreshes from production
+ * (/mobile-app/?v=VERSION) so HTML/CSS/JS updates reach phones after AWS sync.
+ * Assets remain the fallback if remote fails. Native shell bumps still use silent OTA.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -43,7 +48,19 @@ class MainActivity : AppCompatActivity() {
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private var lastErrorUrl: String? = null
     private var pendingOpenScreen: String? = null
-    private val mobileEntryUrl = "file:///android_asset/mobile/mobile_ui_preview.html"
+    private var loadedAsset = false
+    private var attemptedRemote = false
+    private var lastBackExitAt = 0L
+    private val assetEntryUrl = "file:///android_asset/mobile/mobile_ui_preview.html"
+    private val remoteEntryUrl: String
+        get() {
+            val raw = BuildConfig.SERVER_URL.trim().ifEmpty {
+                "https://belleliteaccounts.com/mobile-app/"
+            }
+            val base = if (raw.endsWith("/")) raw else "$raw/"
+            // Cache-bust only when the APK version changes, not on every launch.
+            return "$base?v=${BuildConfig.VERSION_NAME}"
+        }
     private val apiHost = "belleliteaccounts.com"
 
     private val fileChooserLauncher =
@@ -69,6 +86,8 @@ class MainActivity : AppCompatActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // Native pads only gesture-nav bottom. HTML already applies safe-area-inset-top;
+        // do not add Kotlin top padding or both layers would double-inset the header.
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.setPadding(0, 0, 0, bars.bottom)
@@ -82,7 +101,9 @@ class MainActivity : AppCompatActivity() {
         setupWebView()
         binding.retryButton.setOnClickListener {
             hideOffline()
-            binding.webView.loadUrl(lastErrorUrl ?: mobileEntryUrl)
+            loadedAsset = false
+            attemptedRemote = false
+            loadAssetUi()
         }
 
         onBackPressedDispatcher.addCallback(
@@ -98,8 +119,7 @@ class MainActivity : AppCompatActivity() {
                               return window.hbeHandleBack() ? '1' : '0';
                             }
                             if (typeof window.goBack === 'function') {
-                              window.goBack();
-                              return '1';
+                              return window.goBack() ? '1' : '0';
                             }
                           } catch (e) {}
                           return '0';
@@ -109,11 +129,16 @@ class MainActivity : AppCompatActivity() {
                         val handled = raw == "1" || raw == "\"1\"" || raw == "true" || raw == "\"true\""
                         if (!handled) {
                             runOnUiThread {
-                                isEnabled = false
-                                try {
-                                    onBackPressedDispatcher.onBackPressed()
-                                } finally {
-                                    isEnabled = true
+                                val now = System.currentTimeMillis()
+                                if (now - lastBackExitAt <= 2_000L) {
+                                    finish()
+                                } else {
+                                    lastBackExitAt = now
+                                    Toast.makeText(
+                                        this@MainActivity,
+                                        R.string.press_back_again,
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
                                 }
                             }
                         }
@@ -125,8 +150,18 @@ class MainActivity : AppCompatActivity() {
         if (savedInstanceState != null) {
             binding.webView.restoreState(savedInstanceState)
         } else {
-            binding.webView.loadUrl(mobileEntryUrl)
+            loadAssetUi()
         }
+        AppUpdater.onStatus = { json ->
+            runOnUiThread {
+                binding.webView.evaluateJavascript(
+                    "window.__hbeOnUpdateStatus && window.__hbeOnUpdateStatus($json);",
+                    null,
+                )
+            }
+        }
+        AppUpdater.attach(this)
+        AppUpdater.checkSoon(this)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -145,6 +180,37 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         CookieManager.getInstance().flush()
+        AppUpdater.checkSoon(this, delayMs = 1_500L)
+    }
+
+    private fun loadAssetUi() {
+        hideOffline()
+        setFileOriginAccess(true)
+        binding.webView.loadUrl(assetEntryUrl)
+    }
+
+    /** file:// UI must XHR https://belleliteaccounts.com; remote https UI must not. */
+    @Suppress("DEPRECATION")
+    private fun setFileOriginAccess(enabled: Boolean) {
+        val settings = binding.webView.settings
+        settings.allowUniversalAccessFromFileURLs = enabled
+        settings.allowFileAccessFromFileURLs = enabled
+    }
+
+    private fun maybeLoadRemote() {
+        if (attemptedRemote) return
+        if (!isNetworkAvailable()) return
+        attemptedRemote = true
+        Log.i("HbeMain", "refreshing UI from remote")
+        binding.webView.loadUrl(remoteEntryUrl)
+    }
+
+    private fun isNetworkAvailable(): Boolean {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return false
+        val network = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
     private fun requestNotificationPermissionIfNeeded() {
@@ -166,7 +232,7 @@ class MainActivity : AppCompatActivity() {
         cookieManager.setAcceptThirdPartyCookies(webView, true)
 
         webView.addJavascriptInterface(
-            HbeJsBridge { items: JSONArray ->
+            HbeJsBridge(applicationContext) { items: JSONArray ->
                 runOnUiThread {
                     HbeNotifications.showFromJson(this, items)
                 }
@@ -184,10 +250,11 @@ class MainActivity : AppCompatActivity() {
             displayZoomControls = false
             allowFileAccess = true
             allowContentAccess = true
+            // Bundled UI must call https://belleliteaccounts.com APIs, not file-origin XHR.
             @Suppress("DEPRECATION")
-            allowUniversalAccessFromFileURLs = true
+            allowUniversalAccessFromFileURLs = false
             @Suppress("DEPRECATION")
-            allowFileAccessFromFileURLs = true
+            allowFileAccessFromFileURLs = false
             mediaPlaybackRequiresUserGesture = true
             mixedContentMode = if (BuildConfig.ALLOW_CLEARTEXT) {
                 WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
@@ -195,8 +262,10 @@ class MainActivity : AppCompatActivity() {
                 WebSettings.MIXED_CONTENT_NEVER_ALLOW
             }
             cacheMode = WebSettings.LOAD_DEFAULT
-            userAgentString = "$userAgentString HBEAndroidApp/1.0"
+            userAgentString = "$userAgentString HBEAndroidApp/${BuildConfig.VERSION_NAME}"
         }
+        webView.overScrollMode = View.OVER_SCROLL_NEVER
+        webView.setBackgroundColor(ContextCompat.getColor(this, R.color.hbe_bg))
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(
@@ -230,11 +299,9 @@ class MainActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 binding.progressBar.visibility = View.GONE
                 CookieManager.getInstance().flush()
-                if (url != null && (
-                        url.startsWith("file:///android_asset/mobile/") ||
-                            url.contains("/mobile-app/")
-                        )
-                ) {
+                val isAsset = url != null && url.startsWith("file:///android_asset/mobile/")
+                val isRemoteApp = url != null && url.contains("/mobile-app/")
+                if (isAsset || isRemoteApp) {
                     view?.evaluateJavascript(
                         """
                         (function(){
@@ -247,6 +314,13 @@ class MainActivity : AppCompatActivity() {
                     )
                     deliverPendingOpenScreen()
                 }
+                if (isRemoteApp) {
+                    setFileOriginAccess(false)
+                }
+                if (isAsset) {
+                    loadedAsset = true
+                    maybeLoadRemote()
+                }
             }
 
             override fun onReceivedError(
@@ -254,10 +328,26 @@ class MainActivity : AppCompatActivity() {
                 request: WebResourceRequest?,
                 error: WebResourceError?,
             ) {
-                if (request?.isForMainFrame == true) {
-                    lastErrorUrl = mobileEntryUrl
+                if (request?.isForMainFrame != true) return
+                val failed = request.url?.toString().orEmpty()
+                if (failed.startsWith("file:///android_asset/")) {
+                    // Asset failed: try remote once, otherwise show offline. Do not loop.
+                    if (!attemptedRemote && isNetworkAvailable()) {
+                        maybeLoadRemote()
+                        return
+                    }
+                    lastErrorUrl = assetEntryUrl
                     showOffline()
+                    return
                 }
+                // Remote main-frame failed — stay on bundled assets if they already painted.
+                Log.w("HbeMain", "remote UI failed; staying on assets")
+                if (loadedAsset) {
+                    loadAssetUi()
+                    return
+                }
+                lastErrorUrl = remoteEntryUrl
+                showOffline()
             }
         }
 

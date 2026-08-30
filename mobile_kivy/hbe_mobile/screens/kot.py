@@ -5,8 +5,10 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from kivy.core.clipboard import Clipboard
+from kivy.graphics import Color, Rectangle
 from kivy.metrics import dp
 from kivy.uix.behaviors import ButtonBehavior
+from kivy.uix.widget import Widget
 from kivymd.toast import toast
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.button import MDFlatButton, MDRaisedButton
@@ -22,9 +24,142 @@ from hbe_mobile.api.client import ApiError
 from hbe_mobile.api.pos import PosApi, format_kot_slip_text
 from hbe_mobile.utils.async_jobs import run_async
 
+_REST = "#1877F2"
+_REST_PRESS = "#1565C0"
+_BAR = "#1877F2"
+_BAR_PRESS = "#1565C0"
+_CHIP_BORDER = "#E2E8F0"
+_CARD_LINE = "#EEF1F4"
+_WHITE = "#FFFFFF"
+
 
 class _TapRow(ButtonBehavior, MDBoxLayout):
     pass
+
+
+class _GoldRule(Widget):
+    """Short 32×2 gold rule under the KOT title (left-aligned)."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.size_hint_y = None
+        self.height = dp(16)
+        with self.canvas:
+            Color(0.769, 0.643, 0.416, 1)  # #C4A46A
+            self._bar = Rectangle(size=(dp(32), dp(2)))
+        self.bind(pos=self._layout, size=self._layout)
+
+    def _layout(self, *_args):
+        self._bar.size = (dp(32), dp(2))
+        self._bar.pos = (self.x, self.y + (self.height - dp(2)) / 2)
+
+
+class _KotChip(ButtonBehavior, MDCard):
+    """32px pill chip — refresh / Resend / Edit."""
+
+    def __init__(self, caption: str, on_press, *, accent: str, **kwargs):
+        super().__init__(**kwargs)
+        self._on_press = on_press
+        self._accent = accent
+        self.orientation = "horizontal"
+        self.size_hint = (None, None)
+        self.height = dp(32)
+        self.width = max(dp(72), dp(28) + len(caption) * dp(7.4))
+        self.padding = [dp(14), 0, dp(14), 0]
+        self.radius = [dp(20)]
+        self.elevation = 0
+        self.line_width = 1
+        self._caption = MDLabel(
+            text=caption,
+            halign="center",
+            valign="middle",
+            theme_text_color="Custom",
+            text_color=theme.TEXT,
+            font_style="Caption",
+            bold=True,
+        )
+        self.add_widget(self._caption)
+        self.set_selected(False)
+
+    def set_selected(self, selected: bool) -> None:
+        if selected:
+            self.md_bg_color = self._accent
+            self.line_color = self._accent
+            self._caption.text_color = _WHITE
+        else:
+            self.md_bg_color = theme.SURFACE
+            self.line_color = _CHIP_BORDER
+            self._caption.text_color = theme.TEXT
+
+    def on_release(self):
+        if self._on_press:
+            self._on_press()
+
+
+class _KotAction(ButtonBehavior, MDCard):
+    """40px pill primary / ghost action for token cards."""
+
+    def __init__(self, caption: str, on_press, *, accent: str, primary: bool = True, **kwargs):
+        super().__init__(**kwargs)
+        self._on_press = on_press
+        self.orientation = "horizontal"
+        self.size_hint_y = None
+        self.height = dp(40)
+        self.padding = [dp(12), 0, dp(12), 0]
+        self.radius = [dp(20)]
+        self.elevation = 0
+        self.line_width = 1
+        if primary:
+            self.md_bg_color = accent
+            self.line_color = accent
+            fg = _WHITE
+        else:
+            self.md_bg_color = theme.SURFACE
+            self.line_color = accent
+            fg = accent
+        self.add_widget(
+            MDLabel(
+                text=caption,
+                halign="center",
+                valign="middle",
+                theme_text_color="Custom",
+                text_color=fg,
+                bold=True,
+                font_style="Body2",
+            )
+        )
+
+    def on_release(self):
+        if self._on_press:
+            self._on_press()
+
+
+class _QtyBtn(ButtonBehavior, MDCard):
+    def __init__(self, caption: str, on_press, *, accent: str, disabled: bool = False, **kwargs):
+        super().__init__(**kwargs)
+        self._on_press = None if disabled else on_press
+        self.size_hint = (None, None)
+        self.size = (dp(28), dp(28))
+        self.radius = [dp(10)]
+        self.elevation = 0
+        self.line_width = 1
+        self.md_bg_color = theme.SURFACE
+        self.line_color = accent
+        self.opacity = 0.4 if disabled else 1
+        self.add_widget(
+            MDLabel(
+                text=caption,
+                halign="center",
+                valign="middle",
+                theme_text_color="Custom",
+                text_color=accent,
+                bold=True,
+            )
+        )
+
+    def on_release(self):
+        if self._on_press:
+            self._on_press()
 
 
 class KotScreen(MDScreen):
@@ -34,6 +169,9 @@ class KotScreen(MDScreen):
         self.name = "kot"
         self.md_bg_color = theme.BG
         self.pos_api = PosApi(app.api, base=api_base)
+        self._is_bar = "bar" in (api_base or "").lower()
+        self._accent = _BAR if self._is_bar else _REST
+        self._accent_press = _BAR_PRESS if self._is_bar else _REST_PRESS
         self._mode = "resend"
         self._tables: list[dict[str, Any]] = []
         self._expanded: set[int] = set()
@@ -43,20 +181,29 @@ class KotScreen(MDScreen):
         self._reason_field: Optional[MDTextField] = None
         self._pending_changes: list[dict[str, Any]] = []
 
-        root = MDBoxLayout(orientation="vertical", padding=dp(12), spacing=dp(8))
+        root = MDBoxLayout(
+            orientation="vertical",
+            padding=[dp(20), dp(12), dp(20), dp(16)],
+            spacing=dp(8),
+        )
 
-        head = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(48), spacing=dp(8))
-        titles = MDBoxLayout(orientation="vertical", size_hint_x=0.72)
-        titles.add_widget(
+        head = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(36), spacing=dp(8))
+        head.add_widget(
             MDLabel(
-                text="Kitchen Order Tokens",
+                text="Bar KOT" if self._is_bar else "Restaurant KOT",
                 bold=True,
+                font_style="H5",
                 theme_text_color="Custom",
-                text_color=theme.LOGIN_NAVY,
+                text_color=theme.TEXT,
                 size_hint_y=None,
-                height=dp(26),
+                height=dp(36),
             )
         )
+        self.btn_refresh = _KotChip("Refresh", lambda: self._load(), accent=self._accent)
+        head.add_widget(self.btn_refresh)
+        root.add_widget(head)
+        root.add_widget(_GoldRule())
+
         self.status = MDLabel(
             text="Active KOTs until invoice generation.",
             theme_text_color="Custom",
@@ -65,32 +212,12 @@ class KotScreen(MDScreen):
             size_hint_y=None,
             height=dp(18),
         )
-        titles.add_widget(self.status)
-        head.add_widget(titles)
-        head.add_widget(
-            MDRaisedButton(
-                text="Refresh",
-                md_bg_color=theme.THEME,
-                size_hint_x=0.28,
-                on_release=lambda *_: self._load(),
-            )
-        )
-        root.add_widget(head)
+        root.add_widget(self.status)
 
-        tabs = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44), spacing=dp(8))
-        self.btn_resend = MDRaisedButton(
-            text="Resend",
-            md_bg_color=theme.THEME,
-            size_hint_x=0.5,
-            on_release=lambda *_: self._set_mode("resend"),
-        )
-        self.btn_edit = MDFlatButton(
-            text="Edit",
-            theme_text_color="Custom",
-            text_color=theme.THEME,
-            size_hint_x=0.5,
-            on_release=lambda *_: self._set_mode("edit"),
-        )
+        tabs = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(36), spacing=dp(8))
+        self.btn_resend = _KotChip("Resend", lambda: self._set_mode("resend"), accent=self._accent)
+        self.btn_edit = _KotChip("Edit", lambda: self._set_mode("edit"), accent=self._accent)
+        self.btn_resend.set_selected(True)
         tabs.add_widget(self.btn_resend)
         tabs.add_widget(self.btn_edit)
         root.add_widget(tabs)
@@ -112,20 +239,8 @@ class KotScreen(MDScreen):
 
     def _set_mode(self, mode: str) -> None:
         self._mode = "edit" if mode == "edit" else "resend"
-        if self._mode == "resend":
-            self.btn_resend.md_bg_color = theme.THEME
-            self.btn_resend.theme_text_color = "Custom"
-            self.btn_resend.text_color = (1, 1, 1, 1)
-            self.btn_edit.md_bg_color = (0, 0, 0, 0)
-            self.btn_edit.theme_text_color = "Custom"
-            self.btn_edit.text_color = theme.THEME
-        else:
-            self.btn_edit.md_bg_color = theme.THEME
-            self.btn_edit.theme_text_color = "Custom"
-            self.btn_edit.text_color = (1, 1, 1, 1)
-            self.btn_resend.md_bg_color = (0, 0, 0, 0)
-            self.btn_resend.theme_text_color = "Custom"
-            self.btn_resend.text_color = theme.THEME
+        self.btn_resend.set_selected(self._mode == "resend")
+        self.btn_edit.set_selected(self._mode == "edit")
         self._render()
 
     def _line_key(self, table_idx: int, line_id: Any) -> str:
@@ -192,7 +307,18 @@ class KotScreen(MDScreen):
     def _render(self) -> None:
         self.list_box.clear_widgets()
         if not self._tables:
-            self.list_box.add_widget(
+            empty = MDCard(
+                orientation="vertical",
+                padding=dp(20),
+                size_hint_y=None,
+                height=dp(96),
+                radius=[dp(20)],
+                md_bg_color=theme.SURFACE,
+                elevation=0,
+                line_color=_CARD_LINE,
+                line_width=1,
+            )
+            empty.add_widget(
                 MDLabel(
                     text=(
                         "No active KOTs. Tokens appear after Send KOT "
@@ -202,20 +328,23 @@ class KotScreen(MDScreen):
                     text_color=theme.TEXT_MUTED,
                     halign="center",
                     size_hint_y=None,
-                    height=dp(72),
+                    height=dp(56),
                 )
             )
+            self.list_box.add_widget(empty)
             return
 
         for idx, token in enumerate(self._tables):
             card = MDCard(
                 orientation="vertical",
-                padding=dp(12),
+                padding=dp(16),
                 spacing=dp(8),
                 size_hint_y=None,
-                radius=[dp(14)],
+                radius=[dp(20)],
                 md_bg_color=theme.SURFACE,
-                elevation=1,
+                elevation=0,
+                line_color=_CARD_LINE,
+                line_width=1,
             )
             card.bind(minimum_height=card.setter("height"))
 
@@ -231,7 +360,7 @@ class KotScreen(MDScreen):
             head = _TapRow(
                 orientation="vertical",
                 size_hint_y=None,
-                height=dp(48),
+                height=dp(42),
                 spacing=dp(2),
             )
             head.add_widget(
@@ -239,9 +368,10 @@ class KotScreen(MDScreen):
                     text=str(token.get("name") or "Table"),
                     bold=True,
                     theme_text_color="Custom",
-                    text_color=theme.LOGIN_NAVY,
+                    text_color=theme.TEXT,
+                    font_style="Body1",
                     size_hint_y=None,
-                    height=dp(24),
+                    height=dp(22),
                 )
             )
             head.add_widget(
@@ -251,7 +381,7 @@ class KotScreen(MDScreen):
                     text_color=theme.TEXT_MUTED,
                     font_style="Caption",
                     size_hint_y=None,
-                    height=dp(18),
+                    height=dp(16),
                 )
             )
             head.bind(on_release=lambda *_a, i=idx: self._toggle(i))
@@ -263,42 +393,43 @@ class KotScreen(MDScreen):
                 actions = MDBoxLayout(
                     orientation="vertical",
                     size_hint_y=None,
-                    height=dp(96) if self._mode == "resend" else dp(48),
-                    spacing=dp(6),
+                    height=dp(88) if self._mode == "resend" else dp(40),
+                    spacing=dp(8),
                 )
                 if self._mode == "resend":
                     actions.add_widget(
-                        MDRaisedButton(
-                            text="Resend selected",
-                            md_bg_color=theme.THEME,
-                            size_hint_x=1,
-                            on_release=lambda *_a, i=idx: self._resend(i, selected_only=True),
+                        _KotAction(
+                            "Resend selected",
+                            lambda i=idx: self._resend(i, selected_only=True),
+                            accent=self._accent,
+                            primary=True,
                         )
                     )
                     actions.add_widget(
-                        MDFlatButton(
-                            text="Resend all",
-                            theme_text_color="Custom",
-                            text_color=theme.THEME,
-                            size_hint_x=1,
-                            on_release=lambda *_a, i=idx: self._resend(i, selected_only=False),
+                        _KotAction(
+                            "Resend all",
+                            lambda i=idx: self._resend(i, selected_only=False),
+                            accent=self._accent,
+                            primary=False,
                         )
                     )
                 else:
                     actions.add_widget(
-                        MDRaisedButton(
-                            text="Save changes",
-                            md_bg_color=theme.THEME,
-                            size_hint_x=1,
-                            on_release=lambda *_a, i=idx: self._save_edits(i),
+                        _KotAction(
+                            "Save changes",
+                            lambda i=idx: self._save_edits(i),
+                            accent=self._accent,
+                            primary=True,
                         )
                     )
                 card.add_widget(actions)
 
             # Approximate height so scroll layout works before bind settles.
-            base = dp(64)
+            base = dp(74)
             if open_:
-                base += dp(52) * max(1, len(lines)) + (dp(100) if self._mode == "resend" else dp(56))
+                base += dp(44) * max(1, len(lines)) + (
+                    dp(96) if self._mode == "resend" else dp(48)
+                )
             card.height = base
             self.list_box.add_widget(card)
 
@@ -312,13 +443,13 @@ class KotScreen(MDScreen):
         label = f"{name} ({variant})" if variant else name
         notes = str(line.get("notes") or "").strip()
 
-        row = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(48), spacing=dp(6))
+        row = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(40), spacing=dp(6))
         if self._mode == "resend":
             selected = key in self._selected
             toggle = MDFlatButton(
                 text="✓" if selected else "○",
                 theme_text_color="Custom",
-                text_color=theme.THEME if selected else theme.TEXT_MUTED,
+                text_color=self._accent if selected else theme.TEXT_MUTED,
                 size_hint_x=None,
                 width=dp(40),
                 on_release=lambda *_a, k=key: self._toggle_select(k),
@@ -343,14 +474,11 @@ class KotScreen(MDScreen):
             )
             steppers = MDBoxLayout(orientation="horizontal", size_hint_x=0.45, spacing=dp(4))
             steppers.add_widget(
-                MDFlatButton(
-                    text="−",
-                    theme_text_color="Custom",
-                    text_color=theme.THEME,
-                    size_hint_x=None,
-                    width=dp(36),
+                _QtyBtn(
+                    "−",
+                    lambda i=table_idx, ln=line: self._bump_qty(i, ln, -1),
+                    accent=self._accent,
                     disabled=qty <= 0,
-                    on_release=lambda *_a, i=table_idx, ln=line: self._bump_qty(i, ln, -1),
                 )
             )
             steppers.add_widget(
@@ -363,14 +491,11 @@ class KotScreen(MDScreen):
                 )
             )
             steppers.add_widget(
-                MDFlatButton(
-                    text="+",
-                    theme_text_color="Custom",
-                    text_color=theme.THEME,
-                    size_hint_x=None,
-                    width=dp(36),
+                _QtyBtn(
+                    "+",
+                    lambda i=table_idx, ln=line: self._bump_qty(i, ln, 1),
+                    accent=self._accent,
                     disabled=qty >= 999,
-                    on_release=lambda *_a, i=table_idx, ln=line: self._bump_qty(i, ln, 1),
                 )
             )
             row.add_widget(steppers)
@@ -401,6 +526,41 @@ class KotScreen(MDScreen):
         self._draft_qty[key] = max(0.0, min(999.0, qty))
         self._render()
 
+    def _queue_kot_reprint(self, token: dict[str, Any], lines: list[dict[str, Any]]) -> None:
+        invoice_id = int(token.get("invoice_id") or 0)
+        if invoice_id <= 0:
+            toast("Missing invoice for print")
+            return
+        default_outlet = str(self._outlet or "restaurant").lower()
+        groups: dict[str, list[dict[str, Any]]] = {}
+        for line in lines:
+            outlet = str(line.get("outlet") or default_outlet).lower()
+            groups.setdefault(outlet, []).append(
+                {
+                    "name": line.get("name") or "Item",
+                    "qty": float(line.get("sent_qty") if line.get("sent_qty") is not None else line.get("qty") or 0),
+                    "variant": line.get("variant") or "",
+                    "notes": line.get("notes") or "",
+                    "outlet": outlet,
+                }
+            )
+        import time
+
+        for idx, (outlet, items) in enumerate(sorted(groups.items())):
+            job_id = f"kot-kivy-resend-{outlet}-{invoice_id}-{int(time.time() * 1000)}-{idx}"
+            self.pos_api.queue_print_job(
+                {
+                    "jobId": job_id,
+                    "idempotencyKey": job_id,
+                    "documentType": "kot",
+                    "documentId": invoice_id,
+                    "locationId": outlet,
+                    "resend": True,
+                    "items": items,
+                }
+            )
+        toast("Sent to kitchen printer")
+
     def _resend(self, table_idx: int, *, selected_only: bool) -> None:
         if table_idx < 0 or table_idx >= len(self._tables):
             return
@@ -415,30 +575,11 @@ class KotScreen(MDScreen):
         if not lines:
             toast("Select at least one item to resend")
             return
-        text = format_kot_slip_text(token, lines, resend=True)
-        self._dismiss_dialog()
-
-        def copy_slip(*_a):
-            try:
-                Clipboard.copy(text)
-                toast("KOT slip copied")
-            except Exception:
-                toast("Could not copy slip")
-            self._dismiss_dialog()
-
-        self._dialog = MDDialog(
-            title="KOT slip preview",
-            text=text[:1800] + ("…" if len(text) > 1800 else ""),
-            buttons=[
-                MDFlatButton(text="Close", on_release=lambda *_: self._dismiss_dialog()),
-                MDRaisedButton(
-                    text="Copy",
-                    md_bg_color=theme.THEME,
-                    on_release=copy_slip,
-                ),
-            ],
-        )
-        self._dialog.open()
+        try:
+            self._queue_kot_reprint(token, lines)
+        except Exception as exc:
+            toast(str(exc) or "Could not queue kitchen print")
+        return
 
     def _save_edits(self, table_idx: int) -> None:
         if table_idx < 0 or table_idx >= len(self._tables):
@@ -499,7 +640,7 @@ class KotScreen(MDScreen):
                 MDFlatButton(text="Cancel", on_release=lambda *_: self._dismiss_dialog()),
                 MDRaisedButton(
                     text="Save",
-                    md_bg_color=theme.THEME,
+                    md_bg_color=self._accent,
                     on_release=lambda *_: self._confirm_reason(),
                 ),
             ],

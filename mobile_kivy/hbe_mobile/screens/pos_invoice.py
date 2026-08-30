@@ -73,7 +73,7 @@ class PosInvoiceScreen(MDScreen):
         )
         self.settle_btn = MDRaisedButton(
             text="Settle",
-            md_bg_color=theme.THEME,
+            md_bg_color=theme.ACCENT,
             size_hint_x=1,
             on_release=lambda *_: self._settle(),
         )
@@ -133,7 +133,7 @@ class PosInvoiceScreen(MDScreen):
         body.add_widget(
             MDRaisedButton(
                 text="+ Add Items",
-                md_bg_color=theme.THEME,
+                md_bg_color=theme.ACCENT,
                 size_hint_y=None,
                 height=dp(40),
                 on_release=lambda *_: self._search_add_first(),
@@ -176,7 +176,7 @@ class PosInvoiceScreen(MDScreen):
             text="Total  ₹0.00",
             bold=True,
             theme_text_color="Custom",
-            text_color=theme.THEME,
+            text_color=theme.ACCENT,
             size_hint_y=None,
             height=dp(28),
         )
@@ -200,7 +200,7 @@ class PosInvoiceScreen(MDScreen):
         footer = MDBoxLayout(orientation="vertical", size_hint_y=None, height=dp(96), spacing=dp(8))
         self.kot_footer_btn = MDRaisedButton(
             text="SEND KOT",
-            md_bg_color=theme.THEME,
+            md_bg_color=theme.ACCENT,
             size_hint_x=1,
             opacity=0,
             disabled=True,
@@ -210,7 +210,7 @@ class PosInvoiceScreen(MDScreen):
         self.generate_footer_btn = MDFlatButton(
             text="Generate Invoice",
             theme_text_color="Custom",
-            text_color=theme.THEME,
+            text_color=theme.ACCENT,
             size_hint_x=1,
             opacity=0.45,
             disabled=True,

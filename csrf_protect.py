@@ -29,11 +29,10 @@ EXEMPT_ENDPOINTS = frozenset(
         "login_resend_unlock",
         "unlock_account",
         "whatsapp_webhook",
-        "print_agent_register",
         "print_agent_heartbeat",
         "print_agent_updates_latest",
-        "print_agent_browser_config",
-        "print_agent_browser_pair",
+        "print_jobs_pending",
+        "print_jobs_ack",
         "static",
         "favicon",
         "service_worker",
@@ -83,7 +82,14 @@ def _path_is_exempt() -> bool:
     path = request.path or ""
     if path.startswith("/webhook/"):
         return True
-    if path.startswith("/api/print-agent/"):
+    # Existing enrolled agents POST heartbeat with a bearer token, not a CSRF cookie.
+    if path.startswith("/api/print-agent/heartbeat"):
+        return True
+    if path.startswith("/api/print-agent/updates/"):
+        return True
+    if path.startswith("/api/print-jobs/") and path.endswith("/ack"):
+        return True
+    if path == "/api/print-jobs/pending":
         return True
     if path.startswith("/static/"):
         return True
@@ -121,7 +127,12 @@ def csrf_protect_request(app) -> None:
 
 
 def set_csrf_cookie(response, *, secure: bool) -> None:
-    """Expose the token to JS (not HttpOnly) for fetch/XHR auto-send."""
+    """Expose the token to JS (not HttpOnly) for fetch/XHR auto-send.
+
+    HttpOnly stays off on purpose: static/csrf.js reads the hbe_csrf cookie as a
+    fallback when meta[name=csrf-token] is missing (double-submit). Setting
+    HttpOnly would break CSRF on pages that rely on the cookie.
+    """
     try:
         token = session.get(CSRF_SESSION_KEY) or ""
     except RuntimeError:

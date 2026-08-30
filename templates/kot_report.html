@@ -13,11 +13,11 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=14">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=55">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=55">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=57">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=4">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=25">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='reports_page_scroll.css') }}?v=5">
 <script>
 (function(){
@@ -35,17 +35,19 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=14">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=29">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=55">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=57">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=4">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=25">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='reports_page_scroll.css') }}?v=5">
 {% endif %}
 
 <div class="main-wrapper" id="kot-report-page"
+     data-kot-report
      data-sales-report
-     data-report-kind="kot">
+     data-report-kind="kot"
+     data-kpi-filter="{{ 'total' if selected_status == 'all' else selected_status }}">
   <header class="se-sales-header su-header" id="se-sales-header">
     <div class="su-header-top">
       <div class="su-header-left">
@@ -79,6 +81,25 @@
             <label class="se-filter-chip-label" for="sr-search">Search</label>
             <div class="se-filter-chip-control">
               <input type="search" id="sr-search" class="pl-search-input pl-header-search" value="" placeholder="KOT, table, captain, invoice…" autocomplete="off" aria-label="Search KOT rows">
+            </div>
+          </div>
+
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field{% if selected_status != 'all' %} is-filtered{% endif %}" data-se-listbox data-se-listbox-change="srStatusChanged" id="sr-status-listbox">
+            <span class="se-filter-chip-label" id="sr-status-label">Status</span>
+            <div class="se-filter-chip-control">
+              <input type="hidden" id="sr-status" name="status" value="{{ selected_status }}">
+              <button type="button" class="se-filter-chip-trigger" id="sr-status-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="sr-status-list" aria-labelledby="sr-status-label sr-status-value">
+                <span class="se-filter-chip-value" id="sr-status-value">{{ selected_status_label }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="sr-status-list" role="listbox" aria-labelledby="sr-status-label" hidden>
+              <button type="button" class="se-filter-listbox-option{% if selected_status == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-label="All" aria-selected="{{ 'true' if selected_status == 'all' else 'false' }}">All</button>
+              <button type="button" class="se-filter-listbox-option{% if selected_status == 'open' %} is-selected{% endif %}" role="option" data-value="open" data-label="Open" aria-selected="{{ 'true' if selected_status == 'open' else 'false' }}">Open</button>
+              <button type="button" class="se-filter-listbox-option{% if selected_status == 'invoice_generated' %} is-selected{% endif %}" role="option" data-value="invoice_generated" data-label="Invoice generated" aria-selected="{{ 'true' if selected_status == 'invoice_generated' else 'false' }}">Invoice generated</button>
+              <button type="button" class="se-filter-listbox-option{% if selected_status == 'cancelled' %} is-selected{% endif %}" role="option" data-value="cancelled" data-label="Cancelled" aria-selected="{{ 'true' if selected_status == 'cancelled' else 'false' }}">Cancelled</button>
             </div>
           </div>
 
@@ -161,7 +182,7 @@
 
   <section class="content se-content">
     <div class="pl-summary-row kot-kpi-row" aria-label="KOT summary">
-      <article class="card pl-summary-card hbe-kpi-card kot-kpi is-active" data-kpi="total" role="button" tabindex="0" aria-pressed="true" aria-label="Show all KOTs" title="Show all KOTs">
+      <article class="card pl-summary-card hbe-kpi-card kot-kpi{% if selected_status == 'all' %} is-active{% endif %}" data-kpi="total" role="button" tabindex="0" aria-pressed="{{ 'true' if selected_status == 'all' else 'false' }}" aria-label="Show all KOTs" title="Show all KOTs">
         <div class="card-body pl-summary-body">
           <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
@@ -173,7 +194,7 @@
           </div>
         </div>
       </article>
-      <article class="card pl-summary-card hbe-kpi-card kot-kpi" data-kpi="open" role="button" tabindex="0" aria-pressed="false" aria-label="Filter open KOTs" title="Filter open KOTs">
+      <article class="card pl-summary-card hbe-kpi-card kot-kpi{% if selected_status == 'open' %} is-active{% endif %}" data-kpi="open" role="button" tabindex="0" aria-pressed="{{ 'true' if selected_status == 'open' else 'false' }}" aria-label="Filter open KOTs" title="Filter open KOTs">
         <div class="card-body pl-summary-body">
           <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
@@ -185,7 +206,7 @@
           </div>
         </div>
       </article>
-      <article class="card pl-summary-card hbe-kpi-card kot-kpi" data-kpi="invoice_generated" role="button" tabindex="0" aria-pressed="false" aria-label="Filter invoice generated KOTs" title="Filter invoice generated KOTs">
+      <article class="card pl-summary-card hbe-kpi-card kot-kpi{% if selected_status == 'invoice_generated' %} is-active{% endif %}" data-kpi="invoice_generated" role="button" tabindex="0" aria-pressed="{{ 'true' if selected_status == 'invoice_generated' else 'false' }}" aria-label="Filter invoice generated KOTs" title="Filter invoice generated KOTs">
         <div class="card-body pl-summary-body">
           <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg>
@@ -197,7 +218,7 @@
           </div>
         </div>
       </article>
-      <article class="card pl-summary-card hbe-kpi-card kot-kpi" data-kpi="cancelled" role="button" tabindex="0" aria-pressed="false" aria-label="Filter cancelled KOTs" title="Filter cancelled KOTs">
+      <article class="card pl-summary-card hbe-kpi-card kot-kpi{% if selected_status == 'cancelled' %} is-active{% endif %}" data-kpi="cancelled" role="button" tabindex="0" aria-pressed="{{ 'true' if selected_status == 'cancelled' else 'false' }}" aria-label="Filter cancelled KOTs" title="Filter cancelled KOTs">
         <div class="card-body pl-summary-body">
           <div class="hbe-kpi-icon hbe-kpi-icon--purple" aria-hidden="true">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
@@ -225,41 +246,59 @@
           <table class="pl-table" id="sr-table" aria-label="KOT entries">
             <thead>
               <tr>
-                <th class="pl-sortable" data-sort="time" scope="col" tabindex="0" aria-sort="none" title="Click to sort">KOT time</th>
-                <th class="pl-sortable" data-sort="outlet" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Outlet</th>
-                <th class="pl-sortable" data-sort="kot" scope="col" tabindex="0" aria-sort="none" title="Click to sort">KOT no</th>
-                <th class="pl-sortable" data-sort="table" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Table</th>
-                <th class="pl-sortable" data-sort="captain" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Captain</th>
-                <th class="pl-sortable pl-col-amount" data-sort="items" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Items</th>
-                <th class="pl-sortable pl-col-amount" data-sort="qty" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Qty</th>
-                <th class="pl-sortable" data-sort="status" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Status</th>
-                <th class="pl-sortable" data-sort="invoice" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Invoice no</th>
+                <th class="pl-sortable" data-sort="kot" data-sort-type="natural" scope="col" tabindex="0" aria-sort="none">KOT no</th>
+                <th class="pl-sortable" data-sort="time" scope="col" tabindex="0" aria-sort="none">Date</th>
+                <th class="pl-sortable" data-sort="outlet" scope="col" tabindex="0" aria-sort="none">Outlet</th>
+                <th class="pl-sortable" data-sort="table" scope="col" tabindex="0" aria-sort="none">Table</th>
+                <th class="pl-sortable" data-sort="captain" scope="col" tabindex="0" aria-sort="none">Captain</th>
+                <th class="pl-sortable" data-sort="status" scope="col" tabindex="0" aria-sort="none">Status</th>
+                <th class="pl-sortable" data-sort="invoice" scope="col" tabindex="0" aria-sort="none">Invoice</th>
+                <th class="pl-sortable pl-col-amount" data-sort="items" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Items</th>
+                <th class="pl-sortable pl-col-amount" data-sort="qty" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Qty</th>
+                <th class="pl-sortable" data-sort="created_by" scope="col" tabindex="0" aria-sort="none">Created by</th>
               </tr>
             </thead>
             <tbody>
               {% for row in rows %}
+              {% set kot_ts = row.first_kot_at or row.activity_date or '' %}
+              {% set kot_time = kot_ts|report_time %}
               <tr class="sr-row pl-expense-row"
                   data-sort-row
                   data-status="{{ row.status }}"
-                  data-search="{{ [row.kot_no or '', row.order_no or '', row.table_label or '', row.captain or '', row.outlet_label or '', row.status_label or '', row.invoice_no or '', row.cancel_reason or '']|join(' ')|lower }}">
-                <td class="pl-col-date" data-sort-value="{{ row.first_kot_at or row.activity_date or '' }}">{{ row.first_kot_at_display or '—' }}</td>
-                <td data-sort-value="{{ row.outlet_label or '' }}">{{ row.outlet_label or '—' }}</td>
+                  data-search="{{ [row.kot_no or '', row.order_no or '', row.table_label or '', row.captain or '', row.outlet_label or '', row.status_label or '', row.invoice_no or '', row.cancel_reason or '', row.created_by or '', row.cancelled_by or '']|join(' ')|lower }}">
                 <td class="pl-col-code" data-sort-value="{{ row.kot_no or '' }}"><span class="pl-expense-code">{{ row.kot_no or '—' }}</span></td>
-                <td data-sort-value="{{ row.table_label or '' }}">{{ row.table_label or '—' }}</td>
-                <td data-sort-value="{{ row.captain or '' }}">{{ row.captain or '—' }}</td>
-                <td class="pl-col-amount" data-sort-value="{{ row.sent_item_count }}">{{ row.sent_item_count }}</td>
-                <td class="pl-col-amount" data-sort-value="{{ row.sent_qty }}">{{ row.sent_qty_display }}</td>
-                <td data-sort-value="{{ row.status_label or '' }}">
-                  <span class="kot-status kot-status--{{ row.status }}">{{ row.status_label }}</span>
+                <td class="pl-col-date" data-sort-value="{{ kot_ts }}">
+                  <div class="pl-name">{{ kot_ts|report_date }}</div>
+                  {% if kot_time %}<div class="pl-meta">{{ kot_time }}</div>{% endif %}
+                </td>
+                <td data-sort-value="{{ row.outlet_label or '' }}">
+                  <span class="pl-kind-pill pl-kind-pill--{{ row.outlet or 'restaurant' }}">{{ row.outlet_label or '—' }}</span>
+                </td>
+                <td data-sort-value="{{ row.table_label or '' }}">
+                  <div class="pl-name">{{ row.table_label or '—' }}</div>
+                </td>
+                <td data-sort-value="{{ row.captain or '' }}">
+                  <div class="pl-name">{{ row.captain or '—' }}</div>
+                </td>
+                <td class="pl-col-status" data-sort-value="{{ row.status_label or '' }}">
+                  <span class="cp-status-pill cp-status-pill--{{ row.status }}">{{ row.status_label }}</span>
                 </td>
                 <td class="pl-col-code kot-invoice-cell" data-sort-value="{{ row.invoice_no or row.cancel_reason or '' }}">
                   {% if row.invoice_no %}
                   <span class="pl-expense-code">{{ row.invoice_no }}</span>
                   {% if row.cancel_reason %}<div class="pl-meta kot-cancel-reason">{{ row.cancel_reason }}</div>{% endif %}
                   {% elif row.cancel_reason %}
-                  <div class="kot-cancel-reason kot-cancel-reason--solo">{{ row.cancel_reason }}</div>
+                  <div class="pl-name kot-cancel-reason kot-cancel-reason--solo">{{ row.cancel_reason }}</div>
                   {% else %}
-                  <span class="pl-expense-code">—</span>
+                  —
+                  {% endif %}
+                </td>
+                <td class="pl-col-amount" data-sort-value="{{ row.sent_item_count }}">{{ row.sent_item_count }}</td>
+                <td class="pl-col-amount" data-sort-value="{{ row.sent_qty }}">{{ row.sent_qty_display }}</td>
+                <td data-sort-value="{{ row.created_by or row.cancelled_by or '' }}">
+                  <div class="pl-name">{{ row.created_by or '—' }}</div>
+                  {% if row.cancelled_by %}
+                  <div class="pl-meta kot-cancelled-by">Cancelled by {{ row.cancelled_by }}</div>
                   {% endif %}
                 </td>
               </tr>
@@ -278,7 +317,7 @@
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=17"></script>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=57"></script>
-<script src="{{ url_for('static', filename='sales_report.js') }}?v=9"></script>
+<script src="{{ url_for('static', filename='sales_report.js') }}?v=10"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from kivy.clock import Clock
+from kivy.graphics import Color, Rectangle
 from kivy.metrics import dp
 from kivy.uix.behaviors import ButtonBehavior
 from kivy.uix.widget import Widget
 from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.button import MDRaisedButton, MDTextButton
+from kivymd.uix.button import MDRaisedButton
 from kivymd.uix.card import MDCard
 from kivymd.uix.label import MDLabel
 from kivymd.uix.screen import MDScreen
@@ -27,8 +28,79 @@ def _inr(amount: float) -> str:
         return f"₹{amount}"
 
 
+# Universal blue — local to this screen (do not change global theme.ACCENT).
+_AP_ACCENT = "#1877F2"
+_AP_ACCENT_PRESS = "#1565C0"
+_AP_ACCENT_SOFT = "#E8F1FE"
+_CHIP_BORDER = "#E2E8F0"
+_CARD_LINE = "#EEF1F4"
+_WHITE = "#FFFFFF"
+
+
 class _TapCard(ButtonBehavior, MDCard):
     """Card that opens detail when tapped (Approve/Revert stay on their own buttons)."""
+
+
+class _GoldRule(Widget):
+    """Short 32×2 gold rule under the Approvals title (left-aligned)."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.size_hint_y = None
+        self.height = dp(16)
+        with self.canvas:
+            Color(0.769, 0.643, 0.416, 1)  # #C4A46A
+            self._bar = Rectangle(size=(dp(32), dp(2)))
+        self.bind(pos=self._layout, size=self._layout)
+
+    def _layout(self, *_args):
+        self._bar.size = (dp(32), dp(2))
+        self._bar.pos = (self.x, self.y + (self.height - dp(2)) / 2)
+
+
+class _ApChip(ButtonBehavior, MDCard):
+    """32dp KOT-style pill — Pending / Approved / Back / Filter."""
+
+    def __init__(self, caption: str, on_press, **kwargs):
+        super().__init__(**kwargs)
+        self._on_press = on_press
+        self.orientation = "horizontal"
+        self.size_hint = (None, None)
+        self.height = dp(32)
+        self.padding = [dp(14), 0, dp(14), 0]
+        self.radius = [dp(20)]
+        self.elevation = 0
+        self.line_width = 1
+        self._caption = MDLabel(
+            text=caption,
+            halign="center",
+            valign="middle",
+            theme_text_color="Custom",
+            text_color=theme.TEXT,
+            font_style="Caption",
+            bold=True,
+        )
+        self.add_widget(self._caption)
+        self.set_caption(caption)
+        self.set_selected(False)
+
+    def set_caption(self, caption: str) -> None:
+        self._caption.text = caption
+        self.width = max(dp(88), dp(28) + len(caption) * dp(7.4))
+
+    def set_selected(self, selected: bool) -> None:
+        if selected:
+            self.md_bg_color = _AP_ACCENT
+            self.line_color = _AP_ACCENT
+            self._caption.text_color = _WHITE
+        else:
+            self.md_bg_color = theme.SURFACE
+            self.line_color = _CHIP_BORDER
+            self._caption.text_color = theme.TEXT
+
+    def on_release(self):
+        if self._on_press:
+            self._on_press()
 
 
 class ApprovalsScreen(MDScreen):
@@ -47,74 +119,62 @@ class ApprovalsScreen(MDScreen):
         self._detail_open = False
         self._detail_expense: OutstandingExpense | None = None
 
-        root = MDBoxLayout(orientation="vertical", padding=[dp(14), dp(12), dp(14), dp(8)], spacing=dp(12))
-
-        self.head = MDBoxLayout(orientation="vertical", size_hint_y=None, height=dp(36), spacing=dp(0))
-        self.title_label = MDLabel(
-            text="Approvals",
-            font_style="H4",
-            bold=True,
-            theme_text_color="Custom",
-            text_color=theme.TEXT,
-            size_hint_y=None,
-            height=dp(32),
+        root = MDBoxLayout(
+            orientation="vertical",
+            padding=[dp(20), dp(12), dp(20), dp(16)],
+            spacing=dp(8),
         )
-        self.head.add_widget(self.title_label)
-        root.add_widget(self.head)
 
-        self.back_btn = MDTextButton(
-            text="< Back",
-            theme_text_color="Custom",
-            text_color=theme.ACCENT,
-            size_hint_y=None,
-            height=dp(28),
-            on_release=lambda *_: self._close_detail(),
-        )
+        self.back_btn = _ApChip("Back", lambda: self._close_detail())
         self.back_btn.opacity = 0
         self.back_btn.disabled = True
         self.back_btn.height = 0
         root.add_widget(self.back_btn)
 
-        self.tabs = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(72), spacing=dp(8))
-        self.btn_pending = MDRaisedButton(
-            text="Pending",
-            md_bg_color=theme.ACCENT_SOFT,
-            theme_text_color="Custom",
-            text_color=theme.ACCENT,
-            size_hint_x=1,
-            on_release=lambda *_: self._show_outstanding(),
-        )
-        self.btn_approved = MDRaisedButton(
-            text="Approved",
-            md_bg_color=theme.SURFACE,
-            theme_text_color="Custom",
-            text_color=theme.TEXT,
-            size_hint_x=1,
-            on_release=lambda *_: self._show_history(),
-        )
-        self.tabs.add_widget(self.btn_pending)
-        self.tabs.add_widget(self.btn_approved)
-        root.add_widget(self.tabs)
-
-        self.summary = MDCard(
-            orientation="vertical",
-            size_hint_y=None,
-            height=dp(48),
-            padding=dp(12),
-            radius=[dp(14)],
-            md_bg_color=theme.SURFACE,
-            elevation=0,
-        )
-        self.status = MDLabel(
-            text="",
+        self.head = MDBoxLayout(orientation="vertical", size_hint_y=None, height=dp(36), spacing=dp(0))
+        self.title_label = MDLabel(
+            text="Approvals",
+            font_style="H5",
             bold=True,
             theme_text_color="Custom",
             text_color=theme.TEXT,
             size_hint_y=None,
-            height=dp(22),
+            height=dp(36),
         )
-        self.summary.add_widget(self.status)
-        root.add_widget(self.summary)
+        self.head.add_widget(self.title_label)
+        root.add_widget(self.head)
+        self.gold_rule = _GoldRule()
+        root.add_widget(self.gold_rule)
+
+        self.status = MDLabel(
+            text="",
+            theme_text_color="Custom",
+            text_color=theme.TEXT_MUTED,
+            font_style="Caption",
+            size_hint_y=None,
+            height=dp(18),
+        )
+        root.add_widget(self.status)
+
+        self.tabs = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(36), spacing=dp(8))
+        self.btn_pending = _ApChip("Pending", lambda: self._show_outstanding())
+        self.btn_approved = _ApChip("Approved", lambda: self._show_history())
+        self.btn_pending.set_selected(True)
+        self.tabs.add_widget(self.btn_pending)
+        self.tabs.add_widget(self.btn_approved)
+        root.add_widget(self.tabs)
+
+        # Quiet placeholder matching HTML #approvals-summary (status lives under gold rule).
+        self.summary = MDCard(
+            orientation="vertical",
+            size_hint_y=None,
+            height=0,
+            padding=0,
+            radius=[dp(20)],
+            md_bg_color=theme.SURFACE,
+            elevation=0,
+            opacity=0,
+        )
 
         scroll = MDScrollView()
         self.list = MDBoxLayout(
@@ -160,12 +220,14 @@ class ApprovalsScreen(MDScreen):
         self._start_auto_refresh()
 
     def _set_list_chrome_visible(self, visible: bool) -> None:
-        self.tabs.height = dp(72) if visible else 0
+        self.tabs.height = dp(36) if visible else 0
         self.tabs.opacity = 1 if visible else 0
         self.tabs.disabled = not visible
-        self.summary.height = dp(48) if visible else 0
-        self.summary.opacity = 1 if visible else 0
-        self.back_btn.height = 0 if visible else dp(28)
+        self.status.height = dp(18) if visible else 0
+        self.status.opacity = 1 if visible else 0
+        self.summary.height = 0
+        self.summary.opacity = 0
+        self.back_btn.height = 0 if visible else dp(32)
         self.back_btn.opacity = 0 if visible else 1
         self.back_btn.disabled = visible
         self.title_label.text = "Approvals" if visible else "Purchase detail"
@@ -183,18 +245,16 @@ class ApprovalsScreen(MDScreen):
 
     def _set_mode_buttons(self, mode: str) -> None:
         pending = mode == "outstanding"
-        self.btn_pending.md_bg_color = theme.ACCENT_SOFT if pending else theme.SURFACE
-        self.btn_pending.text_color = theme.ACCENT if pending else theme.TEXT
-        self.btn_approved.md_bg_color = theme.SURFACE if pending else theme.ACCENT_SOFT
-        self.btn_approved.text_color = theme.TEXT if pending else theme.ACCENT
         p = "—" if self._pending_count is None else str(self._pending_count)
         a = "—" if self._approved_count is None else str(self._approved_count)
-        self.btn_pending.text = f"Pending ({p})"
-        self.btn_approved.text = f"Approved ({a})"
+        self.btn_pending.set_caption(f"Pending {p}")
+        self.btn_approved.set_caption(f"Approved {a}")
+        self.btn_pending.set_selected(pending)
+        self.btn_approved.set_selected(not pending)
 
     def _make_accent_bar(self, color: str | None = None) -> Widget:
-        bar = Widget(size_hint_x=None, width=dp(4))
-        accent = color or theme.ACCENT
+        bar = Widget(size_hint_x=None, width=dp(3))
+        accent = color or _AP_ACCENT
         with bar.canvas.before:
             from kivy.graphics import Color, RoundedRectangle
 
@@ -224,9 +284,11 @@ class ApprovalsScreen(MDScreen):
             size_hint_y=None,
             height=dp(128),
             padding=0,
-            radius=[dp(16)],
+            radius=[dp(20)],
             md_bg_color=theme.SURFACE,
             elevation=0,
+            line_color=_CARD_LINE,
+            line_width=1,
             on_release=lambda *_a, r=row: self._open_expense_detail(r),
         )
         card.add_widget(self._make_accent_bar())
@@ -246,7 +308,7 @@ class ApprovalsScreen(MDScreen):
                 bold=True,
                 halign="right",
                 theme_text_color="Custom",
-                text_color=theme.ACCENT,
+                text_color=_AP_ACCENT,
             )
         )
         body.add_widget(top)
@@ -290,9 +352,11 @@ class ApprovalsScreen(MDScreen):
             size_hint_y=None,
             height=dp(118),
             padding=0,
-            radius=[dp(16)],
+            radius=[dp(20)],
             md_bg_color=theme.SURFACE,
             elevation=0,
+            line_color=_CARD_LINE,
+            line_width=1,
         )
         card.add_widget(self._make_accent_bar())
         body = MDBoxLayout(orientation="vertical", padding=[dp(12), dp(10), dp(12), dp(10)], spacing=dp(4))
@@ -311,7 +375,7 @@ class ApprovalsScreen(MDScreen):
                 bold=True,
                 halign="right",
                 theme_text_color="Custom",
-                text_color=theme.ACCENT,
+                text_color=_AP_ACCENT,
             )
         )
         body.add_widget(top)
@@ -424,9 +488,11 @@ class ApprovalsScreen(MDScreen):
             size_hint_y=None,
             height=dp(168),
             padding=0,
-            radius=[dp(16)],
+            radius=[dp(20)],
             md_bg_color=theme.SURFACE,
             elevation=0,
+            line_color=_CARD_LINE,
+            line_width=1,
         )
         header.add_widget(self._make_accent_bar())
         hbody = MDBoxLayout(orientation="vertical", padding=[dp(12), dp(10), dp(12), dp(10)], spacing=dp(4))
@@ -438,7 +504,7 @@ class ApprovalsScreen(MDScreen):
                 bold=True,
                 halign="right",
                 theme_text_color="Custom",
-                text_color=theme.ACCENT,
+                text_color=_AP_ACCENT,
             )
         )
         hbody.add_widget(top)
@@ -467,7 +533,7 @@ class ApprovalsScreen(MDScreen):
                 text=stock_mode,
                 bold=True,
                 theme_text_color="Custom",
-                text_color=theme.ACCENT,
+                text_color=_AP_ACCENT,
                 font_style="Caption",
                 size_hint_y=None,
                 height=dp(20),
@@ -548,9 +614,11 @@ class ApprovalsScreen(MDScreen):
             size_hint_y=None,
             height=dp(72),
             padding=0,
-            radius=[dp(16)],
+            radius=[dp(20)],
             md_bg_color=theme.SURFACE,
             elevation=0,
+            line_color=_CARD_LINE,
+            line_width=1,
         )
         card.add_widget(self._make_accent_bar(theme.SUCCESS))
         body = MDBoxLayout(orientation="vertical", padding=[dp(12), dp(10), dp(12), dp(10)], spacing=dp(2))
@@ -569,7 +637,7 @@ class ApprovalsScreen(MDScreen):
                 bold=True,
                 halign="right",
                 theme_text_color="Custom",
-                text_color=theme.ACCENT,
+                text_color=_AP_ACCENT,
             )
         )
         body.add_widget(top)

@@ -115,6 +115,8 @@ def load_kot_rows(conn, *, date_from=None, date_to=None, outlet="all"):
             i.is_active,
             i.cancel_reason,
             i.cancelled_at,
+            COALESCE(i.created_by, '') AS created_by,
+            COALESCE(i.cancelled_by, '') AS cancelled_by,
             COALESCE(SUM(COALESCE(l.sent_qty, 0)), 0) AS sent_qty,
             COUNT(CASE WHEN COALESCE(l.sent_qty, 0) > 0 THEN 1 END) AS sent_item_count
         FROM pos_invoices i
@@ -157,6 +159,8 @@ def load_kot_rows(conn, *, date_from=None, date_to=None, outlet="all"):
         sent_qty = float(raw.get("sent_qty") or 0)
         sent_items = int(raw.get("sent_item_count") or 0)
         cancel_reason = " ".join(str(raw.get("cancel_reason") or "").split()).strip()
+        created_by = " ".join(str(raw.get("created_by") or "").split()).strip()
+        cancelled_by = " ".join(str(raw.get("cancelled_by") or "").split()).strip()
         result.append(
             {
                 "id": int(raw["id"]),
@@ -179,6 +183,8 @@ def load_kot_rows(conn, *, date_from=None, date_to=None, outlet="all"):
                 "status_label": status_label,
                 "invoice_no": invoice_no,
                 "cancel_reason": cancel_reason,
+                "created_by": created_by,
+                "cancelled_by": cancelled_by if status_key == STATUS_CANCELLED else "",
                 "customer_bill_sent": bill_sent,
                 "is_active": int(raw.get("is_active") or 0),
             }
@@ -214,17 +220,27 @@ def summarize_kot_rows(rows):
     return kpis
 
 
-def build_kot_report(conn, *, date_from=None, date_to=None, outlet="all"):
+def build_kot_report(conn, *, date_from=None, date_to=None, outlet="all", status="all"):
     rows = load_kot_rows(
         conn,
         date_from=date_from,
         date_to=date_to,
         outlet=outlet,
     )
+    kpis = summarize_kot_rows(rows)
+    status_key = str(status or "all").strip().lower() or "all"
+    if status_key in (STATUS_OPEN, STATUS_INVOICE_GENERATED, STATUS_CANCELLED):
+        rows = [row for row in rows if row.get("status") == status_key]
     return {
         "rows": rows,
-        "kpis": summarize_kot_rows(rows),
+        "kpis": kpis,
         "outlet": _normalize_outlet_filter(outlet),
+        "status": status_key if status_key in (
+            STATUS_OPEN,
+            STATUS_INVOICE_GENERATED,
+            STATUS_CANCELLED,
+            "all",
+        ) else "all",
         "date_from": date_from,
         "date_to": date_to,
     }
@@ -305,6 +321,8 @@ def build_kot_workbook(payload, *, title_date=""):
         "Qty sent",
         "Status",
         "Invoice no",
+        "Created by",
+        "Cancelled by",
         "Cancel reason",
     )
     for col, title in enumerate(headers, start=1):
@@ -325,6 +343,8 @@ def build_kot_workbook(payload, *, title_date=""):
             entry.get("sent_qty_display") if entry.get("sent_qty_display") is not None else entry.get("sent_qty") or 0,
             entry.get("status_label") or "",
             entry.get("invoice_no") or "",
+            entry.get("created_by") or "",
+            entry.get("cancelled_by") or "",
             entry.get("cancel_reason") or "",
         )
         for col, value in enumerate(values, start=1):
@@ -334,7 +354,7 @@ def build_kot_workbook(payload, *, title_date=""):
             cell.alignment = right if col in (6, 7) else left
 
     details.row_dimensions[1].height = 20
-    widths = (18, 12, 18, 12, 16, 12, 12, 18, 18, 28)
+    widths = (18, 12, 18, 12, 16, 12, 12, 18, 18, 16, 16, 28)
     for col, width in enumerate(widths, start=1):
         details.column_dimensions[get_column_letter(col)].width = width
 

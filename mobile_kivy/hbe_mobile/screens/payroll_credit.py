@@ -13,6 +13,24 @@ from kivymd.uix.scrollview import MDScrollView
 from kivymd.uix.textfield import MDTextField
 
 from hbe_mobile import theme
+
+def _style_md_date_picker(picker):
+    """Force MDDatePicker chrome to theme.ACCENT (#1877F2)."""
+    for attr, val in (
+        ("primary_color", theme.ACCENT),
+        ("accent_color", theme.ACCENT),
+        ("selector_color", theme.ACCENT),
+        ("text_button_color", theme.ACCENT),
+    ):
+        try:
+            setattr(picker, attr, val)
+        except Exception:
+            pass
+    try:
+        picker.firstweekday = 0  # Sunday
+    except Exception:
+        pass
+    return picker
 from hbe_mobile.api import payroll as payroll_api
 from hbe_mobile.utils.async_jobs import run_async
 
@@ -111,16 +129,16 @@ class PayrollCreditScreen(MDScreen):
         self.desc_field = MDTextField(hint_text="Description", size_hint_y=None, height=dp(44))
         self.txn_field = MDTextField(hint_text="Transaction ID (bank)", size_hint_y=None, height=dp(44))
         chips = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(40), spacing=dp(6))
-        self.btn_credit = MDRaisedButton(text="Advance/Credit", md_bg_color=theme.THEME, on_release=lambda *_: self._set_txn("credit"))
-        self.btn_repay = MDFlatButton(text="Repayment", theme_text_color="Custom", text_color=theme.THEME, on_release=lambda *_: self._set_txn("repayment"))
+        self.btn_credit = MDRaisedButton(text="Advance/Credit", md_bg_color=theme.ACCENT, on_release=lambda *_: self._set_txn("credit"))
+        self.btn_repay = MDFlatButton(text="Repayment", theme_text_color="Custom", text_color=theme.ACCENT, on_release=lambda *_: self._set_txn("repayment"))
         chips.add_widget(self.btn_credit)
         chips.add_widget(self.btn_repay)
         pay = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(40), spacing=dp(6))
-        self.btn_cash = MDRaisedButton(text="Cash", md_bg_color=theme.THEME, on_release=lambda *_: self._set_pay("cash"))
-        self.btn_bank = MDFlatButton(text="Bank", theme_text_color="Custom", text_color=theme.THEME, on_release=lambda *_: self._set_pay("bank_transfer"))
+        self.btn_cash = MDRaisedButton(text="Cash", md_bg_color=theme.ACCENT, on_release=lambda *_: self._set_pay("cash"))
+        self.btn_bank = MDFlatButton(text="Bank", theme_text_color="Custom", text_color=theme.ACCENT, on_release=lambda *_: self._set_pay("bank_transfer"))
         pay.add_widget(self.btn_cash)
         pay.add_widget(self.btn_bank)
-        send = MDRaisedButton(text="Send", md_bg_color=theme.THEME, size_hint_y=None, height=dp(44), on_release=lambda *_: self._save())
+        send = MDRaisedButton(text="Send", md_bg_color=theme.ACCENT, size_hint_y=None, height=dp(44), on_release=lambda *_: self._save())
         for w in (self.emp_field, self.date_btn, self.desc_field, self.amount_field, chips, pay, self.txn_field, send):
             form.add_widget(w)
         root.add_widget(form)
@@ -149,7 +167,7 @@ class PayrollCreditScreen(MDScreen):
             from datetime import date as _date
             today = _date.today()
             y, m, d = today.year, today.month, today.day
-        picker = MDDatePicker(year=y, month=m, day=d)
+        picker = _style_md_date_picker(MDDatePicker(year=y, month=m, day=d))
         picker.bind(on_save=lambda p, v, r, k=kind: self._on_date_save(k, v))
         picker.open()
 
@@ -196,7 +214,7 @@ class PayrollCreditScreen(MDScreen):
                 ))
                 card.add_widget(MDLabel(
                     text=str(_money(row.get("credit_balance"))),
-                    bold=True, theme_text_color="Custom", text_color=theme.THEME,
+                    bold=True, theme_text_color="Custom", text_color=theme.ACCENT,
                     size_hint_y=None, height=dp(20),
                 ))
                 self.list_box.add_widget(card)

@@ -13,6 +13,24 @@ from kivymd.uix.scrollview import MDScrollView
 from kivymd.uix.textfield import MDTextField
 
 from hbe_mobile import theme
+
+def _style_md_date_picker(picker):
+    """Force MDDatePicker chrome to theme.ACCENT (#1877F2)."""
+    for attr, val in (
+        ("primary_color", theme.ACCENT),
+        ("accent_color", theme.ACCENT),
+        ("selector_color", theme.ACCENT),
+        ("text_button_color", theme.ACCENT),
+    ):
+        try:
+            setattr(picker, attr, val)
+        except Exception:
+            pass
+    try:
+        picker.firstweekday = 0  # Sunday
+    except Exception:
+        pass
+    return picker
 from hbe_mobile.api import payroll as payroll_api
 from hbe_mobile.utils.async_jobs import run_async
 
@@ -102,7 +120,7 @@ class PayrollEmployeesScreen(MDScreen):
         for w in (self.name_field, self.mobile_field, self.location_field, self.salary_field):
             add.add_widget(w)
         add.add_widget(MDRaisedButton(
-            text="Add", md_bg_color=theme.THEME, size_hint_y=None, height=dp(44),
+            text="Add", md_bg_color=theme.ACCENT, size_hint_y=None, height=dp(44),
             on_release=lambda *_: self._add(),
         ))
         root.add_widget(add)
@@ -124,7 +142,7 @@ class PayrollEmployeesScreen(MDScreen):
             from datetime import date as _date
             today = _date.today()
             y, m, d = today.year, today.month, today.day
-        picker = MDDatePicker(year=y, month=m, day=d)
+        picker = _style_md_date_picker(MDDatePicker(year=y, month=m, day=d))
         picker.bind(on_save=self._on_period_save)
         picker.open()
 
@@ -174,7 +192,7 @@ class PayrollEmployeesScreen(MDScreen):
                 ))
                 top.add_widget(MDLabel(
                     text=_money(row.get("gross_salary")), bold=True,
-                    theme_text_color="Custom", text_color=theme.THEME,
+                    theme_text_color="Custom", text_color=theme.ACCENT,
                     halign="right", size_hint_y=None, height=dp(22),
                 ))
                 card.add_widget(top)

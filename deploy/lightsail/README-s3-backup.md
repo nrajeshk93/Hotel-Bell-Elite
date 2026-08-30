@@ -37,3 +37,7 @@ chmod +x /home/ubuntu/belleliteaccounts-backup/*.sh
 ```
 
 Schedule: `0 */6 * * *` (every 6 hours).
+
+## Web app process (not started here)
+
+This folder only installs the S3 backup cron. The Lightsail app itself should run with `FLASK_DEBUG=0`.

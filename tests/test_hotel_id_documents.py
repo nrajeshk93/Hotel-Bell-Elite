@@ -266,6 +266,9 @@ class HotelIdDocumentRouteTests(unittest.TestCase):
     def test_get_api_serves_pdf_when_stay_still_has_webp_name(self):
         pdf = Path(self.doc_tmp.name) / "8883c8fa0c18439bbd38fefcf5e83905.pdf"
         pdf.write_bytes(b"%PDF-1.4 guest-id\n%%EOF\n")
+        docs.persist_id_document_bytes(
+            pdf.name, pdf.read_bytes(), owner_user_id=self.admin_id
+        )
         resp = self.client.get(
             "/hotel/api/id-documents/8883c8fa0c18439bbd38fefcf5e83905.webp"
         )

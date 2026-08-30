@@ -14,6 +14,7 @@ from db import (
     _HOTEL_INVOICE_STAY_SOURCE_SQL,
     _hotel_normalize_invoice_row_status,
     _hotel_split_inclusive_tax,
+    _hotel_stay_tariff_for_tax_slab,
     _normalize_agency_gst,
     _normalize_agency_name,
     backfill_hotel_room_invoices_from_layout,
@@ -21,6 +22,7 @@ from db import (
     get_db,
     get_hotel_guest_profile,
     get_hotel_tax_rates,
+    hotel_tax_rates_for_tariff,
     list_agencies,
 )
 from reports import report_export_month_filename
@@ -215,8 +217,11 @@ def _tax_breakdown(stay, payload, inclusive, tax_rates):
 
     has_stored_split = taxable is not None and cgst is not None and ugst is not None
     if not has_stored_split:
+        slab_rates = hotel_tax_rates_for_tariff(
+            tax_rates, _hotel_stay_tariff_for_tax_slab(stay)
+        )
         split_taxable, split_cgst, split_ugst, split_inclusive = _hotel_split_inclusive_tax(
-            inclusive, tax_rates
+            inclusive, slab_rates
         )
         if taxable is None:
             taxable = split_taxable

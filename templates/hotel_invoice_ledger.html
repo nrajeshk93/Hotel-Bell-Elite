@@ -373,6 +373,7 @@
                 <th class="pl-sortable pl-col-amount hil-tender-col" data-sort="pay_{{ key }}" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">{{ label }}</th>
                 {% endfor %}
                 {% endif %}
+                <th class="pl-sortable" data-sort="created_by" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Created by</th>
                 <th class="pl-col-actions" scope="col">Actions</th>
               </tr>
             </thead>
@@ -396,7 +397,7 @@
                   data-agency-name="{{ inv.agency_name or '' }}"
                   data-invoice-status="{{ inv.status }}"
                   data-invoice-source="{{ inv.source or 'hotel' }}"
-                  data-search="{{ [inv.invoice_number or '', inv.guest_name or '', inv.agency_name or '', inv.room_number or '', inv.booking_number or '', inv.room_type_label or '', payment_mode_label]|join(' ')|lower }}">
+                  data-search="{{ [inv.invoice_number or '', inv.pos_order_no or '', inv.guest_name or '', inv.agency_name or '', inv.room_number or '', inv.booking_number or '', inv.room_type_label or '', inv.created_by or '', payment_mode_label]|join(' ')|lower }}">
                 {% if not room_transfer_ledger %}
                 <td class="cp-col-check">
                   {% if is_open %}
@@ -404,7 +405,7 @@
                   {% endif %}
                 </td>
                 {% endif %}
-                <td class="pl-col-code hil-col-invoice" data-sort-value="{{ inv.invoice_number or '' }}"><span class="pl-expense-code" title="{{ inv.invoice_number }}">{{ inv.invoice_number }}</span></td>
+                <td class="pl-col-code hil-col-invoice" data-sort-value="{{ inv.invoice_number or '' }}"><span class="pl-expense-code" title="{{ inv.invoice_number }}{% if inv.pos_order_no and inv.pos_order_no != inv.invoice_number %} · {{ inv.pos_order_no }}{% endif %}">{{ inv.invoice_number }}</span>{% if room_transfer_ledger and inv.pos_order_no and inv.pos_order_no != inv.invoice_number %}<div class="pl-meta" title="{{ inv.pos_order_no }}">{{ inv.pos_order_no }}</div>{% endif %}</td>
                 <td class="pl-col-date hil-col-date" data-sort-value="{{ inv.invoice_generated_at or '' }}">{{ inv.invoice_generated_at[:10] if inv.invoice_generated_at else '—' }}</td>
                 <td class="hil-col-room" data-sort-value="{{ inv.room_number or '' }}">
                   <div class="pl-name" title="{{ inv.room_number or '' }}">{{ inv.room_number or '—' }}</div>
@@ -454,6 +455,7 @@
                 <td class="pl-col-amount hil-tender-col{% if amt > 0 %} pl-amount{% endif %}" data-amount="{{ amt if amt > 0 else '' }}" data-sort-value="{{ amt }}">{% if amt > 0 %}{{ amt }}{% else %}—{% endif %}</td>
                 {% endfor %}
                 {% endif %}
+                <td data-sort-value="{{ inv.created_by or '' }}">{{ inv.created_by or '—' }}</td>
                 <td class="pl-col-actions">
                   <div class="act-grp pl-action-btns">
                     <button type="button" class="act-btn edit hil-view-btn" data-tip="View" aria-label="View invoice {{ inv.invoice_number }}" data-invoice-number="{{ inv.invoice_number }}">

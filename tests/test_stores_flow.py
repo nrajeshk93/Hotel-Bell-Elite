@@ -593,7 +593,7 @@ class StoresFlowTests(unittest.TestCase):
             conn.close()
 
     def test_product_master_heals_approx_price_from_last_inward(self):
-        """Blank Approx Price is filled from the newest stock inward unit cost."""
+        """Blank Approx Price is filled from the newest stock inward on edit, not list GET."""
         conn = db_mod.get_db()
         try:
             category = conn.execute(
@@ -634,6 +634,21 @@ class StoresFlowTests(unittest.TestCase):
         page = self.client.get("/stores/product-master?outlet=restaurant")
         self.assertEqual(page.status_code, 200)
         self.assertIn(b"Heal Price Item", page.data)
+
+        conn = db_mod.get_db()
+        try:
+            listed = conn.execute(
+                "SELECT approximate_price FROM store_products WHERE id = ?",
+                (product_id,),
+            ).fetchone()
+            self.assertIsNone(listed["approximate_price"])
+        finally:
+            conn.close()
+
+        edit = self.client.get(
+            f"/stores/product-master?edit={product_id}&outlet=restaurant"
+        )
+        self.assertEqual(edit.status_code, 200)
 
         conn = db_mod.get_db()
         try:
@@ -1975,6 +1990,41 @@ class StoresFlowTests(unittest.TestCase):
             self.assertIsNotNone(expense)
             self.assertIn("without indent", (expense["description"] or "").lower())
             self.assertEqual(expense["invoice_number"] or "", "INV-DIRECT-1")
+        finally:
+            conn.close()
+
+        # Deleting the outstanding purchase must also remove the stock receive.
+        conn = db_mod.get_db()
+        try:
+            result, error = self.app_mod._delete_purchase_ledger_expense(
+                conn,
+                {"is_admin": True, "id": 1},
+                {"expense_id": expense_id},
+            )
+            self.assertIsNone(error, error)
+            self.assertEqual(result["expense_id"], int(expense_id))
+            conn.commit()
+            gone = conn.execute(
+                "SELECT id FROM sales_update_expenses WHERE id = ?",
+                (int(expense_id),),
+            ).fetchone()
+            self.assertIsNone(gone)
+            stock_after = conn.execute(
+                """
+                SELECT qty_on_hand FROM store_stock_items
+                WHERE outlet = 'restaurant' AND item_name = 'Onion' AND unit = 'kg'
+                """
+            ).fetchone()
+            self.assertIsNotNone(stock_after)
+            self.assertAlmostEqual(float(stock_after["qty_on_hand"]), before_qty)
+            receive_left = conn.execute(
+                """
+                SELECT COUNT(*) AS c FROM store_stock_movements
+                WHERE ref_type = 'stock_inward_direct' AND ref_id = ?
+                """,
+                (int(expense_id),),
+            ).fetchone()["c"]
+            self.assertEqual(int(receive_left), 0)
         finally:
             conn.close()
 

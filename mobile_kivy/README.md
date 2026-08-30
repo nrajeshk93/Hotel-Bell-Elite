@@ -42,7 +42,9 @@ export HBE_API_BASE_URL=https://your-hotel-bell-elite.example
 
 Preview `serve.py` uses the same variable (`FLASK_BASE`) when proxying `/preview-api/pos/*`. Point it at production only when intentionally testing against live data.
 
-**Note:** Paper KOT printing still runs on the PC via Hotel Print Agent when someone uses web POS print. Mobile Send KOT updates the shared server so the logged-in PC sees the order as sent on refresh; auto-printing from the phone alone needs a future print-job queue.
+**Note:** Send KOT from mobile or web enqueues a server print job that the Windows
+Print Agent receives over WebSocket (or heartbeat catch-up). See
+`docs/print_agent_websocket_spec.md`.
 
 ## Architecture
 
