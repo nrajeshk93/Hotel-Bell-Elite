@@ -341,13 +341,14 @@
 
     /* Workspace shell — light chrome (matches Home mock) */
     .topbar {
-      height: 58px;
+      min-height: 58px;
+      height: auto;
       background: #fff;
       color: var(--navy);
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 0 8px 0 4px;
+      gap: 6px;
+      padding: 4px 6px 4px 2px;
       flex-shrink: 0;
       position: relative;
       z-index: 2;
@@ -624,7 +625,7 @@
       flex: 1;
       display: flex;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-start;
       gap: 8px;
       min-width: 0;
     }
@@ -638,14 +639,15 @@
     .topbar h1 {
       margin: 0;
       font-family: "Cormorant Garamond", Georgia, "Times New Roman", serif;
-      font-size: 20px;
+      font-size: clamp(15px, 4.7vw, 19px);
       font-weight: 700;
       color: #1A2B4A;
       letter-spacing: 0.01em;
-      text-align: center;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      text-align: left;
+      line-height: 1.12;
+      white-space: normal;
+      overflow: visible;
+      word-break: break-word;
     }
     .body-row {
       flex: 1;
@@ -3140,12 +3142,146 @@
       border: 1px solid #E2E8F0;
       background: #fff;
       border-radius: 12px;
-      padding: 10px 4px;
+      padding: 8px 4px;
       font: inherit;
       font-size: 10px;
       font-weight: 700;
       color: #475569;
       cursor: pointer;
+      min-height: 48px;
+      line-height: 1.2;
+      white-space: normal;
+    }
+    .pos-quick button.is-editing {
+      border-color: #93C5FD;
+      background: #EFF6FF;
+      color: #1D4ED8;
+    }
+    .pos-adj-sheet {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      background: rgba(15, 23, 42, 0.45);
+      padding: 16px;
+    }
+    .pos-adj-sheet[hidden] { display: none !important; }
+    .pos-adj-card {
+      width: 100%;
+      max-width: 360px;
+      border-radius: 20px;
+      background: #fff;
+      padding: 16px;
+      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.2);
+      box-sizing: border-box;
+    }
+    .pos-adj-card h3 {
+      margin: 0 0 6px;
+      font-size: 16px;
+      font-weight: 700;
+      color: #1A202C;
+    }
+    .pos-adj-lead {
+      margin: 0 0 12px;
+      font-size: 12px;
+      color: #64748B;
+      font-weight: 500;
+    }
+    .pos-adj-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .pos-adj-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+    }
+    .pos-adj-field > span {
+      font-size: 11px;
+      font-weight: 700;
+      color: #64748B;
+    }
+    .pos-adj-field--type { flex: 0 0 auto; }
+    .pos-adj-field--amount { flex: 1 1 auto; }
+    .pos-adj-seg {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 42px;
+      padding: 4px;
+      border-radius: 12px;
+      background: #F1F5F9;
+      box-sizing: border-box;
+    }
+    .pos-adj-seg-btn {
+      min-width: 40px;
+      height: 34px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: #64748B;
+      font: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .pos-adj-seg-btn.is-active {
+      background: #fff;
+      color: #1877F2;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+    }
+    .pos-adj-field input {
+      width: 100%;
+      height: 42px;
+      border: 1px solid #E2E8F0;
+      border-radius: 12px;
+      padding: 0 12px;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      color: #0F172A;
+      background: #fff;
+      box-sizing: border-box;
+    }
+    .pos-adj-preview {
+      margin: 0 0 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #334155;
+    }
+    .pos-adj-error {
+      margin: 0 0 10px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #DC2626;
+    }
+    .pos-adj-error[hidden] { display: none !important; }
+    .pos-adj-actions {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 8px;
+    }
+    .pos-adj-actions .pos-btn {
+      width: auto;
+      flex: 1;
+      min-height: 44px;
+      margin-top: 0;
+      font-size: 13px;
+      border-radius: 12px;
+    }
+    .pos-adj-actions .pos-adj-remove {
+      flex: 0 0 auto;
+      min-width: 88px;
+      background: #fff;
+      border: 1.5px solid #DC2626;
+      color: #DC2626;
     }
     .pos-footer-kot {
       position: sticky;
@@ -6526,15 +6662,6 @@
                   <span class="home-module-copy"><strong>Tips</strong></span>
                 </button>
               </div>
-              <div class="home-module-group">About</div>
-              <div class="home-module-grid cols-2">
-                <button type="button" class="home-module" data-go="about" data-screen="about" data-accent="blue">
-                  <span class="home-module-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.2" stroke="#1877F2" stroke-width="1.8"/><path d="M12 10.4v5.2M12 7.85h.01" stroke="#1877F2" stroke-width="1.8" stroke-linecap="round"/></svg>
-                  </span>
-                  <span class="home-module-copy"><strong>About</strong></span>
-                </button>
-              </div>
               <div class="home-module-group" data-access-group="approvals,purchase_ledger,cash_ledger">Accounts</div>
               <div class="home-module-grid cols-2" data-access-group="approvals,purchase_ledger,cash_ledger">
                 <button type="button" class="home-module" data-go="approvals" data-screen="approvals" data-access="approvals" data-accent="green">
@@ -7020,6 +7147,10 @@
             <section class="pos-card" aria-label="Bill summary">
               <h3>Bill Summary</h3>
               <div class="pos-bill-row"><span>Subtotal</span><strong id="pos-subtotal">₹0.00</strong></div>
+              <div class="pos-bill-row" id="pos-row-discount" hidden><span>Discount</span><strong id="pos-discount">₹0.00</strong></div>
+              <div class="pos-bill-row" id="pos-row-service" hidden><span>Service Charge</span><strong id="pos-service">₹0.00</strong></div>
+              <div class="pos-bill-row" id="pos-row-tip" hidden><span>Tip</span><strong id="pos-tip">₹0.00</strong></div>
+              <div class="pos-bill-row" id="pos-row-coupon" hidden><span>Coupon</span><strong id="pos-coupon-label">—</strong></div>
               <div class="pos-bill-row"><span>CGST (2.5%)</span><strong id="pos-cgst">₹0.00</strong></div>
               <div class="pos-bill-row"><span>SGST (2.5%)</span><strong id="pos-sgst">₹0.00</strong></div>
               <div class="pos-bill-row"><span>Round Off</span><strong id="pos-round">₹0.00</strong></div>
@@ -7031,10 +7162,10 @@
               <div class="pos-notes-meta"><span id="pos-notes-count">0 / 200</span><span>✎</span></div>
             </section>
             <div class="pos-quick" aria-label="Quick adjustments">
-              <button type="button" data-pos-quick="discount">% Discount</button>
-              <button type="button" data-pos-quick="service">Service Charge</button>
-              <button type="button" data-pos-quick="tip">Tip</button>
-              <button type="button" data-pos-quick="coupon">Coupon</button>
+              <button type="button" data-pos-quick="discount" aria-label="Add Discount"><span id="pos-quick-discount-label">Add Discount</span></button>
+              <button type="button" data-pos-quick="service" aria-label="Add Service Charge"><span id="pos-quick-service-label">Add Service Charge</span></button>
+              <button type="button" data-pos-quick="tip" aria-label="Add Tip"><span id="pos-quick-tip-label">Add Tip</span></button>
+              <button type="button" data-pos-quick="coupon" aria-label="Apply Coupon"><span id="pos-quick-coupon-label">Apply Coupon</span></button>
             </div>
             <div class="pos-footer-kot">
               <button type="button" class="pos-btn pos-btn--primary" id="pos-btn-footer-kot" hidden>
@@ -7042,6 +7173,92 @@
                 Send KOT
               </button>
               <button type="button" class="pos-btn pos-btn--ghost" id="pos-btn-generate" style="width:100%;margin-top:8px" hidden>Generate Invoice</button>
+            </div>
+            <div class="pos-adj-sheet" id="pos-adj-sheet-discount" data-pos-adj-kind="discount" hidden>
+              <div class="pos-adj-card" role="dialog" aria-modal="true" aria-labelledby="pos-adj-discount-title">
+                <h3 id="pos-adj-discount-title">Add Discount</h3>
+                <p class="pos-adj-lead">Set discount as a percent or fixed amount.</p>
+                <div class="pos-adj-row">
+                  <div class="pos-adj-field pos-adj-field--type">
+                    <span>Type</span>
+                    <div class="pos-adj-seg" role="group" aria-label="Discount type">
+                      <button type="button" class="pos-adj-seg-btn is-active" data-pos-adj-type="pct" data-pos-adj-for="discount">%</button>
+                      <button type="button" class="pos-adj-seg-btn" data-pos-adj-type="inr" data-pos-adj-for="discount">₹</button>
+                    </div>
+                  </div>
+                  <label class="pos-adj-field pos-adj-field--amount">
+                    <span id="pos-adj-discount-amount-label">Amount (%)</span>
+                    <input type="number" id="pos-adj-discount-amount" min="0" step="0.01" value="" placeholder="Enter discount" inputmode="decimal">
+                  </label>
+                </div>
+                <p class="pos-adj-preview" id="pos-adj-discount-preview">Discount: ₹0.00</p>
+                <p class="pos-adj-error" id="pos-adj-discount-error" hidden></p>
+                <div class="pos-adj-actions">
+                  <button type="button" class="pos-btn pos-btn--ghost pos-adj-remove" id="pos-adj-discount-remove" hidden>Remove</button>
+                  <button type="button" class="pos-btn pos-btn--ghost" data-pos-adj-close="discount">Cancel</button>
+                  <button type="button" class="pos-btn pos-btn--primary" id="pos-adj-discount-apply">Apply</button>
+                </div>
+              </div>
+            </div>
+            <div class="pos-adj-sheet" id="pos-adj-sheet-service" data-pos-adj-kind="service" hidden>
+              <div class="pos-adj-card" role="dialog" aria-modal="true" aria-labelledby="pos-adj-service-title">
+                <h3 id="pos-adj-service-title">Add Service Charge</h3>
+                <p class="pos-adj-lead">Set service charge as a percent or fixed amount.</p>
+                <div class="pos-adj-row">
+                  <div class="pos-adj-field pos-adj-field--type">
+                    <span>Charge type</span>
+                    <div class="pos-adj-seg" role="group" aria-label="Service charge type">
+                      <button type="button" class="pos-adj-seg-btn is-active" data-pos-adj-type="pct" data-pos-adj-for="service">%</button>
+                      <button type="button" class="pos-adj-seg-btn" data-pos-adj-type="inr" data-pos-adj-for="service">₹</button>
+                    </div>
+                  </div>
+                  <label class="pos-adj-field pos-adj-field--amount">
+                    <span id="pos-adj-service-amount-label">Amount (%)</span>
+                    <input type="number" id="pos-adj-service-amount" min="0" step="0.01" value="" placeholder="Enter service charge" inputmode="decimal">
+                  </label>
+                </div>
+                <p class="pos-adj-preview" id="pos-adj-service-preview">Service charge: ₹0.00</p>
+                <p class="pos-adj-error" id="pos-adj-service-error" hidden></p>
+                <div class="pos-adj-actions">
+                  <button type="button" class="pos-btn pos-btn--ghost pos-adj-remove" id="pos-adj-service-remove" hidden>Remove</button>
+                  <button type="button" class="pos-btn pos-btn--ghost" data-pos-adj-close="service">Cancel</button>
+                  <button type="button" class="pos-btn pos-btn--primary" id="pos-adj-service-apply">Apply</button>
+                </div>
+              </div>
+            </div>
+            <div class="pos-adj-sheet" id="pos-adj-sheet-tip" data-pos-adj-kind="tip" hidden>
+              <div class="pos-adj-card" role="dialog" aria-modal="true" aria-labelledby="pos-adj-tip-title">
+                <h3 id="pos-adj-tip-title">Add Tip</h3>
+                <p class="pos-adj-lead">Add a tip amount for this bill.</p>
+                <label class="pos-adj-field">
+                  <span>Tip amount (₹)</span>
+                  <input type="number" id="pos-adj-tip-amount" min="0" step="0.01" value="" placeholder="e.g. 200" inputmode="decimal">
+                </label>
+                <p class="pos-adj-preview" id="pos-adj-tip-preview">Tip: ₹0.00</p>
+                <p class="pos-adj-error" id="pos-adj-tip-error" hidden></p>
+                <div class="pos-adj-actions">
+                  <button type="button" class="pos-btn pos-btn--ghost pos-adj-remove" id="pos-adj-tip-remove" hidden>Remove</button>
+                  <button type="button" class="pos-btn pos-btn--ghost" data-pos-adj-close="tip">Cancel</button>
+                  <button type="button" class="pos-btn pos-btn--primary" id="pos-adj-tip-apply">Apply</button>
+                </div>
+              </div>
+            </div>
+            <div class="pos-adj-sheet" id="pos-adj-sheet-coupon" data-pos-adj-kind="coupon" hidden>
+              <div class="pos-adj-card" role="dialog" aria-modal="true" aria-labelledby="pos-adj-coupon-title">
+                <h3 id="pos-adj-coupon-title">Apply Coupon</h3>
+                <p class="pos-adj-lead">Enter a coupon code to update this bill.</p>
+                <label class="pos-adj-field">
+                  <span>Coupon code</span>
+                  <input type="text" id="pos-adj-coupon-code" autocomplete="off" placeholder="e.g. SAVE10">
+                </label>
+                <p class="pos-adj-preview" id="pos-adj-coupon-preview">No coupon applied.</p>
+                <p class="pos-adj-error" id="pos-adj-coupon-error" hidden></p>
+                <div class="pos-adj-actions">
+                  <button type="button" class="pos-btn pos-btn--ghost pos-adj-remove" id="pos-adj-coupon-remove" hidden>Remove</button>
+                  <button type="button" class="pos-btn pos-btn--ghost" data-pos-adj-close="coupon">Cancel</button>
+                  <button type="button" class="pos-btn pos-btn--primary" id="pos-adj-coupon-apply">Apply</button>
+                </div>
+              </div>
             </div>
           </div>
           <div data-panel="kot" class="panel panel-kot is-restaurant" hidden>
@@ -10456,8 +10673,10 @@
       invoiceId: null,
       orderNo: null,
       invoiceGenerated: false,
-      discountPct: 0,
-      servicePct: 0,
+      discountType: 'pct',
+      discountValue: 0,
+      serviceType: 'pct',
+      serviceValue: 0,
       tip: 0,
       coupon: '',
     };
@@ -10473,10 +10692,13 @@
       posState.invoiceId = null;
       posState.orderNo = null;
       posState.invoiceGenerated = false;
-      posState.discountPct = 0;
-      posState.servicePct = 0;
+      posState.discountType = 'pct';
+      posState.discountValue = 0;
+      posState.serviceType = 'pct';
+      posState.serviceValue = 0;
       posState.tip = 0;
       posState.coupon = '';
+      closePosAdjSheets();
       const select = document.getElementById('pos-table-select');
       if (select) {
         select.innerHTML = '<option value="">Select table…</option>';
@@ -10557,11 +10779,23 @@
       }
     }
 
+    function posLineGross() {
+      return (posState.lines || []).reduce((sum, line) => sum + (Number(line.rate) || 0) * (Number(line.qty) || 0), 0);
+    }
+
+    function posAdjAmount(base, type, value) {
+      const v = Math.max(0, Number(value) || 0);
+      if (v <= 0) return 0;
+      const cap = Math.max(0, Number(base) || 0);
+      if (type === 'inr') return Math.round(Math.min(v, cap) * 100) / 100;
+      return Math.round(cap * v / 100 * 100) / 100;
+    }
+
     function calcPosTotals() {
-      const gross = posState.lines.reduce((sum, line) => sum + (Number(line.rate) || 0) * (Number(line.qty) || 0), 0);
-      const discount = Math.round(gross * (Number(posState.discountPct) || 0) / 100 * 100) / 100;
+      const gross = posLineGross();
+      const discount = posAdjAmount(gross, posState.discountType || 'pct', posState.discountValue);
       const afterDisc = Math.max(0, gross - discount);
-      const service = Math.round(afterDisc * (Number(posState.servicePct) || 0) / 100 * 100) / 100;
+      const service = posAdjAmount(afterDisc, posState.serviceType || 'pct', posState.serviceValue);
       const tip = Math.round((Number(posState.tip) || 0) * 100) / 100;
       const inclusive = afterDisc + service + tip;
       const taxable = inclusive > 0 ? inclusive / 1.05 : 0;
@@ -10614,6 +10848,21 @@
       setTxt('pos-sgst', t.sgst);
       setTxt('pos-round', t.roundOff);
       setTxt('pos-total', t.total);
+      setTxt('pos-discount', t.discount);
+      setTxt('pos-service', t.service);
+      setTxt('pos-tip', t.tip);
+      const rowDisc = document.getElementById('pos-row-discount');
+      const rowSvc = document.getElementById('pos-row-service');
+      const rowTip = document.getElementById('pos-row-tip');
+      const rowCoupon = document.getElementById('pos-row-coupon');
+      if (rowDisc) rowDisc.hidden = !(t.discount > 0);
+      if (rowSvc) rowSvc.hidden = !(t.service > 0);
+      if (rowTip) rowTip.hidden = !(t.tip > 0);
+      const couponLabel = document.getElementById('pos-coupon-label');
+      const couponCode = String(posState.coupon || '').trim();
+      if (couponLabel) couponLabel.textContent = couponCode || '—';
+      if (rowCoupon) rowCoupon.hidden = !couponCode;
+      syncPosAdjButtons();
       syncPosSettleVisibility();
     }
 
@@ -10650,6 +10899,12 @@
         posState.orderNo = null;
         posState.invoiceGenerated = false;
         posState.lines = [];
+        posState.discountType = 'pct';
+        posState.discountValue = 0;
+        posState.serviceType = 'pct';
+        posState.serviceValue = 0;
+        posState.tip = 0;
+        posState.coupon = '';
         renderPosLines();
         return;
       }
@@ -10683,6 +10938,21 @@
           labels[ot] || ot
         );
       }
+      const pick = (obj, keys) => {
+        for (const key of keys) {
+          if (obj && obj[key] != null && obj[key] !== '') return obj[key];
+        }
+        return undefined;
+      };
+      const totals = invoice.totals || {};
+      const discType = String(pick(invoice, ['discount_type', 'discountType']) || pick(totals, ['discountType', 'discount_type']) || 'pct').toLowerCase();
+      posState.discountType = discType === 'inr' ? 'inr' : 'pct';
+      posState.discountValue = Number(pick(invoice, ['discount_value', 'discountValue']) || pick(totals, ['discountValue', 'discount_value']) || 0) || 0;
+      const svcType = String(pick(invoice, ['service_type', 'serviceType']) || pick(totals, ['serviceType', 'service_type']) || 'pct').toLowerCase();
+      posState.serviceType = svcType === 'inr' ? 'inr' : 'pct';
+      posState.serviceValue = Number(pick(invoice, ['service_value', 'serviceValue']) || pick(totals, ['serviceValue', 'service_value']) || 0) || 0;
+      posState.tip = Number(pick(invoice, ['tip_amount', 'tipAmount', 'tip']) || pick(totals, ['tip', 'tipAmount']) || 0) || 0;
+      posState.coupon = String(pick(invoice, ['coupon_code', 'couponCode', 'coupon']) || '').trim();
       posState.lines = [];
       for (const line of invoice.lines || []) {
         if (!line || typeof line !== 'object') continue;
@@ -10906,10 +11176,10 @@
         notes: (notesEl && notesEl.value.trim()) || '',
         kotSend,
         customerBill,
-        discountType: 'pct',
-        discountValue: Number(posState.discountPct) || 0,
-        serviceType: 'pct',
-        serviceValue: Number(posState.servicePct) || 0,
+        discountType: posState.discountType === 'inr' ? 'inr' : 'pct',
+        discountValue: Number(posState.discountValue) || 0,
+        serviceType: posState.serviceType === 'inr' ? 'inr' : 'pct',
+        serviceValue: Number(posState.serviceValue) || 0,
         tipAmount: Number(posState.tip) || 0,
         couponCode: posState.coupon || '',
         taxCgstPct: 2.5,
@@ -10936,14 +11206,14 @@
         totals: {
           subtotal: totals.subtotal,
           discount: totals.discount,
-          discountType: 'pct',
-          discountValue: Number(posState.discountPct) || 0,
+          discountType: posState.discountType === 'inr' ? 'inr' : 'pct',
+          discountValue: Number(posState.discountValue) || 0,
           gst: totals.gst,
           cgst: totals.cgst,
           ugst: totals.sgst,
           service: totals.service,
-          serviceType: 'pct',
-          serviceValue: Number(posState.servicePct) || 0,
+          serviceType: posState.serviceType === 'inr' ? 'inr' : 'pct',
+          serviceValue: Number(posState.serviceValue) || 0,
           tip: totals.tip,
           roundOff: totals.roundOff,
           total: totals.total,
@@ -11060,32 +11330,253 @@
       const count = document.getElementById('pos-notes-count');
       if (count) count.textContent = String((event.target.value || '').length) + ' / 200';
     });
+    function hasActiveDiscount() {
+      return (Number(posState.discountValue) || 0) > 0;
+    }
+    function hasActiveService() {
+      return (Number(posState.serviceValue) || 0) > 0;
+    }
+    function hasActiveTip() {
+      return (Number(posState.tip) || 0) > 0;
+    }
+    function hasActiveCoupon() {
+      return String(posState.coupon || '').trim() !== '';
+    }
+
+    function syncPosAdjButtons() {
+      [
+        { kind: 'discount', editing: hasActiveDiscount(), addText: 'Add Discount', editText: 'Edit Discount' },
+        { kind: 'service', editing: hasActiveService(), addText: 'Add Service Charge', editText: 'Edit Service Charge' },
+        { kind: 'tip', editing: hasActiveTip(), addText: 'Add Tip', editText: 'Edit Tip' },
+        { kind: 'coupon', editing: hasActiveCoupon(), addText: 'Apply Coupon', editText: 'Edit Coupon' }
+      ].forEach((spec) => {
+        const btn = document.querySelector('[data-pos-quick="' + spec.kind + '"]');
+        if (!btn) return;
+        const label = document.getElementById('pos-quick-' + spec.kind + '-label') || btn;
+        const text = spec.editing ? spec.editText : spec.addText;
+        label.textContent = text;
+        btn.setAttribute('aria-label', text);
+        btn.classList.toggle('is-editing', spec.editing);
+      });
+    }
+
+    function closePosAdjSheets() {
+      document.querySelectorAll('.pos-adj-sheet').forEach((el) => { el.hidden = true; });
+    }
+
+    function posAdjSheet(kind) {
+      return document.getElementById('pos-adj-sheet-' + kind);
+    }
+
+    function setPosAdjError(kind, msg) {
+      const err = document.getElementById('pos-adj-' + kind + '-error');
+      if (!err) return;
+      err.textContent = msg || '';
+      err.hidden = !msg;
+    }
+
+    function posAdjDraftType(kind) {
+      const sheet = posAdjSheet(kind);
+      return sheet && sheet.getAttribute('data-adj-type') === 'inr' ? 'inr' : 'pct';
+    }
+
+    function updatePosAdjPreview(kind) {
+      const preview = document.getElementById('pos-adj-' + kind + '-preview');
+      if (!preview) return;
+      if (kind === 'discount' || kind === 'service') {
+        const input = document.getElementById('pos-adj-' + kind + '-amount');
+        const type = posAdjDraftType(kind);
+        const gross = posLineGross();
+        if (kind === 'discount') {
+          preview.textContent = 'Discount: ' + moneyInr(posAdjAmount(gross, type, input && input.value));
+        } else {
+          const discount = posAdjAmount(gross, posState.discountType || 'pct', posState.discountValue);
+          preview.textContent = 'Service charge: ' + moneyInr(posAdjAmount(Math.max(0, gross - discount), type, input && input.value));
+        }
+      } else if (kind === 'tip') {
+        const tipInput = document.getElementById('pos-adj-tip-amount');
+        preview.textContent = 'Tip: ' + moneyInr(Math.max(0, Number(tipInput && tipInput.value) || 0));
+      } else if (kind === 'coupon') {
+        const codeInput = document.getElementById('pos-adj-coupon-code');
+        const code = String((codeInput && codeInput.value) || '').trim();
+        preview.textContent = code ? ('Coupon: ' + code) : 'No coupon applied.';
+      }
+    }
+
+    function setPosAdjTypeUi(kind, type) {
+      type = type === 'inr' ? 'inr' : 'pct';
+      const sheet = posAdjSheet(kind);
+      if (sheet) sheet.setAttribute('data-adj-type', type);
+      const root = sheet || document;
+      root.querySelectorAll('[data-pos-adj-type][data-pos-adj-for="' + kind + '"]').forEach((btn) => {
+        btn.classList.toggle('is-active', btn.getAttribute('data-pos-adj-type') === type);
+      });
+      const label = document.getElementById('pos-adj-' + kind + '-amount-label');
+      if (label) label.textContent = type === 'inr' ? 'Amount (₹)' : 'Amount (%)';
+      updatePosAdjPreview(kind);
+    }
+
+    function openPosAdjSheet(kind) {
+      closePosAdjSheets();
+      const sheet = posAdjSheet(kind);
+      if (!sheet) return;
+      const editing = (
+        (kind === 'discount' && hasActiveDiscount()) ||
+        (kind === 'service' && hasActiveService()) ||
+        (kind === 'tip' && hasActiveTip()) ||
+        (kind === 'coupon' && hasActiveCoupon())
+      );
+      const titles = {
+        discount: ['Add Discount', 'Edit Discount'],
+        service: ['Add Service Charge', 'Edit Service Charge'],
+        tip: ['Add Tip', 'Edit Tip'],
+        coupon: ['Apply Coupon', 'Edit Coupon']
+      };
+      const title = document.getElementById('pos-adj-' + kind + '-title');
+      const applyBtn = document.getElementById('pos-adj-' + kind + '-apply');
+      const removeBtn = document.getElementById('pos-adj-' + kind + '-remove');
+      if (title && titles[kind]) title.textContent = editing ? titles[kind][1] : titles[kind][0];
+      if (applyBtn) applyBtn.textContent = editing ? 'Update' : 'Apply';
+      if (removeBtn) removeBtn.hidden = !editing;
+      setPosAdjError(kind, '');
+      if (kind === 'discount' || kind === 'service') {
+        const typeKey = kind === 'discount' ? 'discountType' : 'serviceType';
+        const valueKey = kind === 'discount' ? 'discountValue' : 'serviceValue';
+        setPosAdjTypeUi(kind, editing ? (posState[typeKey] || 'pct') : 'pct');
+        const amount = document.getElementById('pos-adj-' + kind + '-amount');
+        if (amount) {
+          const current = Number(posState[valueKey]) || 0;
+          amount.value = editing && current > 0 ? String(current) : '';
+          amount.focus();
+          if (editing && current > 0) amount.select();
+        }
+      } else if (kind === 'tip') {
+        const tipAmount = document.getElementById('pos-adj-tip-amount');
+        if (tipAmount) {
+          const current = Number(posState.tip) || 0;
+          tipAmount.value = editing && current > 0 ? String(current) : '';
+          tipAmount.focus();
+          if (editing && current > 0) tipAmount.select();
+        }
+      } else if (kind === 'coupon') {
+        const coupon = document.getElementById('pos-adj-coupon-code');
+        if (coupon) {
+          coupon.value = editing ? String(posState.coupon || '') : '';
+          coupon.focus();
+          if (editing) coupon.select();
+        }
+      }
+      updatePosAdjPreview(kind);
+      sheet.hidden = false;
+    }
+
+    function applyPosAdj(kind) {
+      setPosAdjError(kind, '');
+      if (kind === 'discount' || kind === 'service') {
+        const input = document.getElementById('pos-adj-' + kind + '-amount');
+        const raw = String((input && input.value) || '').trim();
+        const value = Number(raw);
+        if (raw === '' || !isFinite(value) || value <= 0) {
+          setPosAdjError(kind, 'Enter an amount greater than 0.');
+          return;
+        }
+        const type = posAdjDraftType(kind);
+        if (type === 'pct' && value > 100) {
+          setPosAdjError(kind, 'Percent cannot be more than 100.');
+          return;
+        }
+        if (kind === 'discount') {
+          posState.discountType = type;
+          posState.discountValue = value;
+        } else {
+          posState.serviceType = type;
+          posState.serviceValue = value;
+        }
+      } else if (kind === 'tip') {
+        const tipInput = document.getElementById('pos-adj-tip-amount');
+        const tipRaw = String((tipInput && tipInput.value) || '').trim();
+        const tip = Number(tipRaw);
+        if (tipRaw === '' || !isFinite(tip) || tip <= 0) {
+          setPosAdjError(kind, 'Enter a tip amount greater than 0.');
+          return;
+        }
+        posState.tip = Math.round(tip * 100) / 100;
+      } else if (kind === 'coupon') {
+        const codeInput = document.getElementById('pos-adj-coupon-code');
+        const code = String((codeInput && codeInput.value) || '').trim();
+        if (!code) {
+          setPosAdjError(kind, 'Enter a coupon code.');
+          return;
+        }
+        posState.coupon = code;
+      } else {
+        return;
+      }
+      closePosAdjSheets();
+      renderPosLines();
+      setPosStatus('Bill updated.');
+    }
+
+    function clearPosAdj(kind) {
+      if (kind === 'discount') {
+        posState.discountType = 'pct';
+        posState.discountValue = 0;
+      } else if (kind === 'service') {
+        posState.serviceType = 'pct';
+        posState.serviceValue = 0;
+      } else if (kind === 'tip') {
+        posState.tip = 0;
+      } else if (kind === 'coupon') {
+        posState.coupon = '';
+      }
+      closePosAdjSheets();
+      renderPosLines();
+      const messages = {
+        discount: 'Discount removed.',
+        service: 'Service charge removed.',
+        tip: 'Tip removed.',
+        coupon: 'Coupon removed.'
+      };
+      setPosStatus(messages[kind] || 'Bill updated.');
+    }
+
     document.querySelectorAll('[data-pos-quick]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const kind = btn.getAttribute('data-pos-quick');
-        if (kind === 'discount') {
-          const raw = window.prompt('Discount %', String(posState.discountPct || 0));
-          if (raw == null) return;
-          posState.discountPct = Math.max(0, Number(raw) || 0);
-        } else if (kind === 'service') {
-          const raw = window.prompt('Service charge %', String(posState.servicePct || 0));
-          if (raw == null) return;
-          posState.servicePct = Math.max(0, Number(raw) || 0);
-        } else if (kind === 'tip') {
-          const raw = window.prompt('Tip amount (₹)', String(posState.tip || 0));
-          if (raw == null) return;
-          posState.tip = Math.max(0, Number(raw) || 0);
-        } else if (kind === 'coupon') {
-          const raw = window.prompt('Coupon code', posState.coupon || '');
-          if (raw == null) return;
-          posState.coupon = String(raw || '').trim();
-        } else {
-          return;
-        }
-        renderPosLines();
-        setPosStatus('Bill updated.');
+        if (kind !== 'discount' && kind !== 'service' && kind !== 'tip' && kind !== 'coupon') return;
+        openPosAdjSheet(kind);
       });
     });
+    document.querySelectorAll('.pos-adj-sheet').forEach((sheet) => {
+      sheet.addEventListener('click', (ev) => {
+        const target = ev.target;
+        if (!(target instanceof Element)) return;
+        const kind = sheet.getAttribute('data-pos-adj-kind');
+        if (target === sheet || target.closest('[data-pos-adj-close]')) {
+          closePosAdjSheets();
+          return;
+        }
+        const typeBtn = target.closest('[data-pos-adj-type]');
+        if (typeBtn && typeBtn.getAttribute('data-pos-adj-for') === kind) {
+          setPosAdjTypeUi(kind, typeBtn.getAttribute('data-pos-adj-type'));
+          return;
+        }
+        if (target.id === 'pos-adj-' + kind + '-apply' || target.closest('#pos-adj-' + kind + '-apply')) {
+          applyPosAdj(kind);
+          return;
+        }
+        if (target.id === 'pos-adj-' + kind + '-remove' || target.closest('#pos-adj-' + kind + '-remove')) {
+          clearPosAdj(kind);
+        }
+      });
+      const field = sheet.querySelector('input');
+      if (field) {
+        field.addEventListener('input', () => {
+          updatePosAdjPreview(sheet.getAttribute('data-pos-adj-kind'));
+        });
+      }
+    });
+
     async function handlePosSendKot() {
       try {
         if (!posHasPendingKot()) {
@@ -11181,6 +11672,12 @@
         posState.orderNo = null;
         posState.invoiceGenerated = false;
         posState.lines = [];
+        posState.discountType = 'pct';
+        posState.discountValue = 0;
+        posState.serviceType = 'pct';
+        posState.serviceValue = 0;
+        posState.tip = 0;
+        posState.coupon = '';
         renderPosLines();
         setPosStatus('Settled · pick another table or start a new order.');
         await loadPosTables({ force: true });

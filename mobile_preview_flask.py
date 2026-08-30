@@ -294,8 +294,17 @@ def preview_dashboard_route():
     qs = parse_qs(request.query_string.decode("utf-8"))
     period = (qs.get("period") or ["today"])[0]
     location = (qs.get("location") or ["All"])[0]
+    date_from = (qs.get("date_from") or [""])[0].strip()
+    date_to = (qs.get("date_to") or [""])[0].strip()
     try:
-        return _json(ps.fetch_main_dashboard(period=period, location=location))
+        return _json(
+            ps.fetch_main_dashboard(
+                period=period,
+                location=location,
+                date_from=date_from,
+                date_to=date_to,
+            )
+        )
     except Exception as exc:  # noqa: BLE001
         return _json({"ok": False, "error": str(exc)}, 500)
 
