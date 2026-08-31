@@ -187,14 +187,22 @@
     input.setAttribute('data-bound', '1');
     var searchChip = input.closest('.pl-search-chip');
     function applySearch() {
-      var q = String(input.value || '')
-        .trim()
-        .toLowerCase();
+      var q = String(input.value || '').trim();
       if (searchChip) searchChip.classList.toggle('is-active', !!q);
-      $all('tr.pos-il-row', page).forEach(function (row) {
-        var hay = row.getAttribute('data-search') || '';
-        row.style.display = !q || hay.indexOf(q) !== -1 ? '' : 'none';
-      });
+      var rows = $all('tr.pos-il-row', page);
+      var tbody = rows.length ? rows[0].parentNode : null;
+      if (!q) {
+        rows.forEach(function (row) { row.style.display = ''; });
+      } else {
+        var ranked = rows.map(function (row) {
+          return { row: row, score: window.hbeBestSearchScore([row.getAttribute('data-search') || ''], q) };
+        }).sort(function (a, b) { return b.score - a.score; });
+        ranked.forEach(function (entry) {
+          var show = entry.score >= 0;
+          entry.row.style.display = show ? '' : 'none';
+          if (show && tbody) tbody.appendChild(entry.row);
+        });
+      }
       updateVisibleCount(page);
       syncSelection(page);
     }
@@ -683,7 +691,14 @@
       });
   }
 
-  function openSettleFromUnsettledRow(row) {
+  function roomNumberFromPaymentNotes(notes) {
+    var text = String(notes || '');
+    var match = text.match(/hotel_room_number\s*=\s*([^\s|,;]+)/i);
+    return match ? String(match[1] || '').trim() : '';
+  }
+
+  function openSettleFromLedgerRow(row, opts) {
+    opts = opts || {};
     if (!row) return;
     var invoiceId = row.getAttribute('data-invoice-id');
     if (!invoiceId) return;
@@ -694,24 +709,96 @@
       toast('Settle dialog is not available.');
       return;
     }
-    global.openPosSettleModal({
+    var resettle = !!opts.resettle || row.classList.contains('is-resettleable');
+    var baseOpts = {
       invoiceId: invoiceId,
       orderNo: row.getAttribute('data-order-no') || '—',
       tableLabel: row.getAttribute('data-table') || '',
       grandTotal: row.getAttribute('data-grand-total'),
       apiBase: resolvePosApiBase(),
+      editingSettlement: resettle,
       onSettled: function (_settledInvoice, meta) {
         var table = (meta && meta.tableLabel) || row.getAttribute('data-table') || '';
-        toast(
-          table
-            ? 'Bill settled. ' + table + ' is now available.'
-            : 'Bill settled successfully.'
-        );
+        if (resettle) {
+          toast('Settlement updated successfully.');
+        } else {
+          toast(
+            table
+              ? 'Bill settled. ' + table + ' is now available.'
+              : 'Bill settled successfully.'
+          );
+        }
         window.setTimeout(function () {
           refreshLedgerPage();
         }, 400);
       }
-    });
+    };
+
+    function openWith(extra) {
+      global.openPosSettleModal(Object.assign({}, baseOpts, extra || {}));
+    }
+
+    if (!resettle) {
+      openWith({});
+      return;
+    }
+
+    fetch(resolvePosApiBase() + '/api/invoices/' + encodeURIComponent(invoiceId), {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' }
+    })
+      .then(function (res) {
+        return res.json().then(function (data) {
+          return { ok: res.ok, data: data || {} };
+        });
+      })
+      .then(function (result) {
+        var inv = result.ok && result.data && result.data.invoice;
+        if (!inv) {
+          openWith({});
+          return;
+        }
+        var payments = Array.isArray(inv.payments) ? inv.payments : [];
+        var splits = payments
+          .filter(function (p) {
+            return p && Number(p.amount) > 0.009;
+          })
+          .map(function (p) {
+            return {
+              payment_method: p.payment_method || p.method || '',
+              amount: p.amount,
+              transaction_id: p.transaction_id || ''
+            };
+          });
+        var roomNo = '';
+        payments.forEach(function (p) {
+          if (roomNo) return;
+          var method = String(p.payment_method || '').toLowerCase();
+          if (method === 'room_transfer') {
+            roomNo = roomNumberFromPaymentNotes(p.notes);
+          }
+        });
+        openWith({
+          orderNo: inv.order_no || baseOpts.orderNo,
+          tableLabel: inv.table_label || inv.table || baseOpts.tableLabel,
+          grandTotal:
+            inv.grand_total != null ? inv.grand_total : baseOpts.grandTotal,
+          notes: inv.payment_notes || '',
+          paymentSplits: splits,
+          hotelRoomNumber: roomNo
+        });
+      })
+      .catch(function () {
+        openWith({});
+      });
+  }
+
+  function openSettleFromUnsettledRow(row) {
+    openSettleFromLedgerRow(row, { resettle: false });
+  }
+
+  function openResettleFromRow(row) {
+    openSettleFromLedgerRow(row, { resettle: true });
   }
 
   function rowGrandTotal(row) {
@@ -922,6 +1009,15 @@
         reopenInvoiceForEdit(page, editBtn);
         return;
       }
+      var resettleBtn = ev.target.closest('.pos-il-resettle-btn');
+      if (resettleBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (resettleBtn.disabled) return;
+        var resettleRow = resettleBtn.closest('tr.pos-il-row');
+        openResettleFromRow(resettleRow);
+        return;
+      }
       var voidBtn = ev.target.closest('.pos-il-delete-btn, .pos-il-cancel-btn');
       if (voidBtn) {
         ev.preventDefault();
@@ -940,15 +1036,32 @@
       ) {
         ev.preventDefault();
         openSettleFromUnsettledRow(unsettledRow);
+        return;
+      }
+      var resettleableRow = ev.target.closest('tr.pos-il-row.is-resettleable');
+      if (
+        resettleableRow &&
+        page.contains(resettleableRow) &&
+        !ev.target.closest('.pl-col-actions, .cp-col-check, .pos-il-row-check, #pos-il-select-all, #pos-il-selection-bar')
+      ) {
+        ev.preventDefault();
+        openResettleFromRow(resettleableRow);
       }
     });
 
     page.addEventListener('keydown', function (ev) {
       if (ev.key !== 'Enter' && ev.key !== ' ') return;
-      var row = ev.target.closest('tr.pos-il-row.is-unsettled');
-      if (!row || row !== ev.target) return;
-      ev.preventDefault();
-      openSettleFromUnsettledRow(row);
+      var unsettled = ev.target.closest('tr.pos-il-row.is-unsettled');
+      if (unsettled && unsettled === ev.target) {
+        ev.preventDefault();
+        openSettleFromUnsettledRow(unsettled);
+        return;
+      }
+      var resettleable = ev.target.closest('tr.pos-il-row.is-resettleable');
+      if (resettleable && resettleable === ev.target) {
+        ev.preventDefault();
+        openResettleFromRow(resettleable);
+      }
     });
 
     var modal = document.getElementById('pos-il-view-modal');
@@ -1225,6 +1338,12 @@
     var page = document.getElementById('pos-invoice-ledger-page');
     if (!page || !btn) return false;
     reopenInvoiceForEdit(page, btn);
+    return false;
+  };
+  global.posIlResettleClick = function (btn) {
+    if (!btn) return false;
+    var row = btn.closest('tr.pos-il-row');
+    openResettleFromRow(row);
     return false;
   };
   global.posIlVoidClick = function (btn) {

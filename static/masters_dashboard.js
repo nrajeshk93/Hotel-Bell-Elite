@@ -12,6 +12,7 @@
     product: '/stores/product-master',
     menu: '/point-of-sale/menu',
     category: '/masters/categories',
+    unit: '/masters/units',
     employee: '/employees'
   };
 
@@ -369,6 +370,9 @@
         }
         if (inject.querySelector('#cm-category-modal') && typeof global.initCategoryMasterPage === 'function') {
           global.initCategoryMasterPage();
+        }
+        if (inject.querySelector('#um-unit-modal') && typeof global.initUnitMasterPage === 'function') {
+          global.initUnitMasterPage();
         }
         if (inject.querySelector('#emp-main-table') && typeof global.initEmpMasterTableSort === 'function') {
           global.initEmpMasterTableSort();
@@ -735,19 +739,26 @@
     }
 
     function cardMatches(card) {
-      var name = (card.getAttribute('data-master-name') || '').toLowerCase();
+      var name = card.getAttribute('data-master-name') || '';
       var category = card.getAttribute('data-master-category') || '';
-      var matchesSearch = !searchTerm || name.indexOf(searchTerm) !== -1;
+      var matchesSearch = !searchTerm || window.hbeBestSearchScore([name], searchTerm) >= 0;
       var matchesCategory = activeCategory === 'all' || category === activeCategory;
       return matchesSearch && matchesCategory;
     }
 
     function applyFilters() {
       var visible = 0;
-      cards.forEach(function (card) {
-        var show = cardMatches(card);
-        card.classList.toggle('is-hidden', !show);
-        if (show) visible += 1;
+      var ranked = cards.map(function (card) {
+        var score = searchTerm ? window.hbeBestSearchScore([card.getAttribute('data-master-name') || ''], searchTerm) : 0;
+        return { card: card, score: score, show: cardMatches(card) };
+      });
+      if (searchTerm) ranked.sort(function (a, b) { return b.score - a.score; });
+      ranked.forEach(function (entry) {
+        entry.card.classList.toggle('is-hidden', !entry.show);
+        if (entry.show) {
+          visible += 1;
+          if (searchTerm && entry.card.parentNode) entry.card.parentNode.appendChild(entry.card);
+        }
       });
 
       var addCard = document.getElementById('md-add-card');
@@ -763,7 +774,7 @@
 
     if (searchInput) {
       searchInput.addEventListener('input', function () {
-        searchTerm = String(searchInput.value || '').trim().toLowerCase();
+        searchTerm = String(searchInput.value || '').trim();
         applyFilters();
       }, { signal: signal });
     }

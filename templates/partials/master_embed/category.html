@@ -65,20 +65,27 @@
     var chip = document.getElementById('cm-category-search-chip');
 
     function applyFilters(){
-      var needle = searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
+      var needle = searchInput ? String(searchInput.value || '').trim() : '';
       var outlet = outletInput ? String(outletInput.value || 'all').trim().toLowerCase() : 'all';
       if (outlet !== 'all' && outlet !== 'bar' && outlet !== 'restaurant') outlet = 'all';
       if (chip) chip.classList.toggle('is-active', !!needle);
       var rows = Array.from(table.querySelectorAll('tbody tr[data-sort-row]'));
       var visible = 0;
-      rows.forEach(function(row){
-        var hay = String(row.getAttribute('data-search') || '').toLowerCase();
+      var tbody = table.tBodies[0];
+      var ranked = rows.map(function(row){
+        var score = needle ? window.hbeBestSearchScore([row.getAttribute('data-search') || ''], needle) : 0;
         var rowOutlet = String(row.getAttribute('data-category-outlet') || '').toLowerCase();
         var matchOutlet = outlet === 'all' || rowOutlet === outlet;
-        var matchSearch = !needle || hay.indexOf(needle) !== -1;
-        var match = matchOutlet && matchSearch;
-        row.hidden = !match;
-        if (match) visible += 1;
+        var matchSearch = !needle || score >= 0;
+        return { row: row, score: score, match: matchOutlet && matchSearch };
+      });
+      if (needle) ranked.sort(function(a, b){ return b.score - a.score; });
+      ranked.forEach(function(entry){
+        entry.row.hidden = !entry.match;
+        if (entry.match) {
+          visible += 1;
+          if (needle && tbody) tbody.appendChild(entry.row);
+        }
       });
       if (countEl) countEl.textContent = visible + ' total';
       var noMatch = visible === 0 && (!!needle || outlet !== 'all');

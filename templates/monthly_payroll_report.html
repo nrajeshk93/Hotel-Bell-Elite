@@ -350,16 +350,25 @@
 
   function applySearch(){
     if (!tbody) return;
-    var q = searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
+    var q = searchInput ? String(searchInput.value || '').trim() : '';
     if (searchChip) searchChip.classList.toggle('is-active', !!q);
-    var rows = tbody.querySelectorAll('tr[data-sort-row]');
+    var rows = Array.from(tbody.querySelectorAll('tr[data-sort-row]'));
     var visible = 0;
-    rows.forEach(function(row){
-      var hay = row.getAttribute('data-search') || '';
-      var show = !q || hay.indexOf(q) !== -1;
-      row.hidden = !show;
-      if (show) visible += 1;
-    });
+    if (!q) {
+      rows.forEach(function(row){ row.hidden = false; visible += 1; });
+    } else {
+      var ranked = rows.map(function(row){
+        return { row: row, score: window.hbeBestSearchScore([row.getAttribute('data-search') || ''], q) };
+      }).sort(function(a, b){ return b.score - a.score; });
+      ranked.forEach(function(entry){
+        var show = entry.score >= 0;
+        entry.row.hidden = !show;
+        if (show) {
+          visible += 1;
+          tbody.appendChild(entry.row);
+        }
+      });
+    }
     updateCount(visible);
   }
 

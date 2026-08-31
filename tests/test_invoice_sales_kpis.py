@@ -102,15 +102,15 @@ class InvoiceSalesKpisTests(unittest.TestCase):
             )
         return invoice_id
 
-    def test_in_range_settled_and_unsettled_included(self):
-        # Hotel open (unsettled) — counts toward actual, no tender → difference
+    def test_settled_ledger_only_excludes_unsettled(self):
+        # Hotel open (unsettled payment) — still counts toward Hotel Total billed
         self._insert_hotel(
             invoice_number="HBE/RM/KPI/1",
             generated_at="2026-04-10 12:00:00",
             total=1000.0,
             status="open",
         )
-        # Restaurant closed with UPI — digital
+        # Restaurant closed with UPI — digital (ledger settled)
         self._insert_pos(
             order_no="SPC/KPI/1",
             outlet=db_mod.POS_OUTLET_RESTAURANT,
@@ -119,7 +119,7 @@ class InvoiceSalesKpisTests(unittest.TestCase):
             status="closed",
             payments=[{"method": "upi", "amount": 500.0}],
         )
-        # Bar open unpaid — actual only
+        # Bar open unpaid — excluded from POS settled ledger
         self._insert_pos(
             order_no="BEB/KPI/1",
             outlet=db_mod.POS_OUTLET_BAR,
@@ -150,12 +150,13 @@ class InvoiceSalesKpisTests(unittest.TestCase):
             self.conn, "2026-04-01", "2026-05-04"
         )
 
-        self.assertEqual(kpis["actual_sales"], 1700.0)
+        # Hotel open 1000 + restaurant settled 500; bar open excluded
+        self.assertEqual(kpis["actual_sales"], 1500.0)
         self.assertEqual(kpis["digital_transactions"], 500.0)
         self.assertEqual(kpis["cash"], 0.0)
         self.assertEqual(kpis["room_credit"], 0.0)
-        # 1700 - (0 + 500 + 0) = 1200 unpaid/open gap
-        self.assertEqual(kpis["difference"], 1200.0)
+        # Hotel open has no tenders → difference gap 1000
+        self.assertEqual(kpis["difference"], 1000.0)
 
     def test_cancelled_pos_excluded(self):
         self._insert_pos(

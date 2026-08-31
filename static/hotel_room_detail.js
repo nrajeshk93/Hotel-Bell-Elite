@@ -6795,17 +6795,19 @@
   }
 
   function filterAgencies(agencies, query) {
-    var q = String(query || '').trim().toLowerCase();
+    var q = String(query || '').trim();
     var list = (agencies || []).filter(function (agency) {
       return agency && String(agency.name || '').trim();
     });
     if (!q) return list;
-    return list.filter(function (agency) {
-      var name = String(agency.name || '').toLowerCase();
-      var gst = String(agency.gst || '').toLowerCase();
-      var address = String(agency.address || '').toLowerCase();
-      return name.indexOf(q) !== -1 || gst.indexOf(q) !== -1 || address.indexOf(q) !== -1;
-    });
+    return list.map(function (agency) {
+      return {
+        agency: agency,
+        score: window.hbeBestSearchScore([agency.name, agency.gst, agency.address], q)
+      };
+    }).filter(function (row) { return row.score >= 0; })
+      .sort(function (a, b) { return b.score - a.score || String(a.agency.name || '').localeCompare(String(b.agency.name || '')); })
+      .map(function (row) { return row.agency; });
   }
 
   function findAgencyByName(agencies, typed) {
@@ -9564,22 +9566,33 @@
           break;
         }
       }
+      var score = 0;
       var show = true;
       if (query && room) {
-        var label = normalize(hrdMergeRoomOptionLabel(room));
-        var number = normalize(room.number || room.roomNumber || '');
-        var typeLabel = normalize(room.roomTypeLabel || room.roomType || '');
-        show =
-          label.indexOf(query) !== -1 ||
-          number.indexOf(query) !== -1 ||
-          typeLabel.indexOf(query) !== -1 ||
-          normalize(room.id || '').indexOf(query) !== -1;
+        score = window.hbeBestSearchScore([
+          hrdMergeRoomOptionLabel(room),
+          room.number || room.roomNumber || '',
+          room.roomTypeLabel || room.roomType || '',
+          room.id || ''
+        ], query);
+        show = score >= 0;
       } else if (query && !room) {
         show = false;
+        score = -1;
       }
+      row.__hbeSearchScore = score;
       row.hidden = !show;
       if (show) visible += 1;
     });
+    if (query) {
+      var kids = $all('.hr-board-rooms-option', optionsEl);
+      kids.sort(function (a, b) {
+        var as = a.hidden ? -1 : (a.__hbeSearchScore || 0);
+        var bs = b.hidden ? -1 : (b.__hbeSearchScore || 0);
+        return bs - as;
+      });
+      kids.forEach(function (row) { optionsEl.appendChild(row); });
+    }
     if (emptyEl) {
       if (!available.length) {
         emptyEl.textContent = 'No rooms available to merge.';

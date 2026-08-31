@@ -40,22 +40,30 @@
     var currentPage = 1;
 
     function getFilteredRows(){
-      var query = (searchEl && searchEl.value || '').trim().toLowerCase();
+      var query = (searchEl && searchEl.value || '').trim();
       var role = roleFilterEl ? roleFilterEl.value : 'all';
       var status = statusFilterEl ? statusFilterEl.value : 'all';
 
-      return rows.filter(function(row){
+      var scored = rows.map(function(row){
         var searchData = row.getAttribute('data-search') || '';
         var rowRole = row.getAttribute('data-role') || '';
         var rowStatus = row.getAttribute('data-status') || '';
-        var matchesSearch = !query || searchData.indexOf(query) !== -1;
+        var score = query ? window.hbeBestSearchScore([searchData], query) : 0;
+        var matchesSearch = !query || score >= 0;
         var matchesRole = role === 'all' || rowRole === role;
         var matchesStatus = status === 'all' || rowStatus === status;
-        return matchesSearch && matchesRole && matchesStatus;
-      });
+        return { row: row, score: score, ok: matchesSearch && matchesRole && matchesStatus };
+      }).filter(function(entry){ return entry.ok; });
+      if (query) {
+        scored.sort(function(a, b){ return b.score - a.score; });
+        return scored.map(function(entry){ return entry.row; });
+      }
+      return scored.map(function(entry){ return entry.row; });
     }
 
     function sortRows(filtered){
+      var query = (searchEl && searchEl.value || '').trim();
+      if (query) return filtered.slice();
       return filtered.slice().sort(function(a, b){
         var nameA = a.getAttribute('data-name') || '';
         var nameB = b.getAttribute('data-name') || '';

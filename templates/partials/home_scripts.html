@@ -5,10 +5,17 @@
   if (searchInput && searchInput.dataset.searchBound !== '1') {
     searchInput.dataset.searchBound = '1';
     searchInput.addEventListener('input', function(){
-      const query = this.value.trim().toLowerCase();
-      cards.forEach((card) => {
-        const haystack = (card.getAttribute('data-search') || '').toLowerCase();
-        card.hidden = query && !haystack.includes(query);
+      const query = this.value.trim();
+      const parent = cards[0] && cards[0].parentNode;
+      const ranked = cards.map((card) => ({
+        card: card,
+        score: query ? window.hbeBestSearchScore([card.getAttribute('data-search') || ''], query) : 0
+      }));
+      if (query) ranked.sort((a, b) => b.score - a.score);
+      ranked.forEach((entry) => {
+        const hide = !!(query && entry.score < 0);
+        entry.card.hidden = hide;
+        if (query && !hide && parent) parent.appendChild(entry.card);
       });
     });
   }

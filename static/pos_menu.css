@@ -1927,9 +1927,10 @@ body.pos-settings-module #pos-md-save.btn-primary:hover,
   font-weight:650;
   color:#0F172A;
   line-height:1.35;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
+  white-space:normal;
+  overflow:visible;
+  overflow-wrap:anywhere;
+  word-break:break-word;
 }
 #pos-menu-item-modal .pos-menu-recipe-field--qty input[type="number"]{
   width:100%;

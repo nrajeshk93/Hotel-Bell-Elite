@@ -26,18 +26,27 @@
     var countEl = document.getElementById('st-audit-report-count');
 
     function applySearch() {
-      var needle = String(searchInput.value || '').trim().toLowerCase();
+      var needle = String(searchInput.value || '').trim();
       if (searchChip) searchChip.classList.toggle('is-active', !!needle);
       var rows = Array.prototype.slice.call(
         document.querySelectorAll('.st-audit-report-table tbody tr.st-audit-report-row')
       );
       var visible = 0;
-      rows.forEach(function (row) {
-        var hay = String(row.getAttribute('data-search') || row.textContent || '').toLowerCase();
-        var match = !needle || hay.indexOf(needle) !== -1;
-        row.hidden = !match;
-        if (match) visible += 1;
-      });
+      if (!needle) {
+        rows.forEach(function (row) { row.hidden = false; visible += 1; });
+      } else {
+        var ranked = rows.map(function (row) {
+          return { row: row, score: window.hbeBestSearchScore([row.getAttribute('data-search') || row.textContent || ''], needle) };
+        }).sort(function (a, b) { return b.score - a.score; });
+        ranked.forEach(function (entry) {
+          var match = entry.score >= 0;
+          entry.row.hidden = !match;
+          if (match) {
+            visible += 1;
+            if (entry.row.parentNode) entry.row.parentNode.appendChild(entry.row);
+          }
+        });
+      }
       if (countEl) {
         countEl.textContent = visible + ' entr' + (visible === 1 ? 'y' : 'ies');
       }

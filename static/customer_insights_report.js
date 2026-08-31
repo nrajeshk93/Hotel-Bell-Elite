@@ -58,14 +58,21 @@
     if (!input || input.getAttribute('data-cir-bound') === '1') return;
     input.setAttribute('data-cir-bound', '1');
     function apply() {
-      var needle = String(input.value || '')
-        .trim()
-        .toLowerCase();
-      $all('tr.cir-row', page).forEach(function (row) {
-        var hay = String(row.getAttribute('data-search') || '').toLowerCase();
-        var match = !needle || hay.indexOf(needle) !== -1;
-        row.style.display = match ? '' : 'none';
-      });
+      var needle = String(input.value || '').trim();
+      var rows = $all('tr.cir-row', page);
+      var tbody = rows.length ? rows[0].parentNode : null;
+      if (!needle) {
+        rows.forEach(function (row) { row.style.display = ''; });
+      } else {
+        var ranked = rows.map(function (row) {
+          return { row: row, score: window.hbeBestSearchScore([row.getAttribute('data-search') || ''], needle) };
+        }).sort(function (a, b) { return b.score - a.score; });
+        ranked.forEach(function (entry) {
+          var match = entry.score >= 0;
+          entry.row.style.display = match ? '' : 'none';
+          if (match && tbody) tbody.appendChild(entry.row);
+        });
+      }
       updateVisibleCount(page);
     }
     input.addEventListener('input', apply);

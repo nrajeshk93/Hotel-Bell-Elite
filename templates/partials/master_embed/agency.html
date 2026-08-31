@@ -62,16 +62,26 @@
     var emptyEl = document.getElementById('sm-agency-search-empty');
     var chip = document.getElementById('sm-agency-search-chip');
     function applySearch(){
-      var needle = String(searchInput.value || '').trim().toLowerCase();
+      var needle = String(searchInput.value || '').trim();
       if (chip) chip.classList.toggle('is-active', !!needle);
       var rows = Array.from(table.querySelectorAll('tbody tr[data-sort-row]'));
       var visible = 0;
-      rows.forEach(function(row){
-        var hay = String(row.getAttribute('data-search') || '').toLowerCase();
-        var match = !needle || hay.indexOf(needle) !== -1;
-        row.hidden = !match;
-        if (match) visible += 1;
-      });
+      var tbody = table.tBodies[0];
+      if (!needle) {
+        rows.forEach(function(row){ row.hidden = false; visible += 1; });
+      } else {
+        var ranked = rows.map(function(row){
+          return { row: row, score: window.hbeBestSearchScore([row.getAttribute('data-search') || ''], needle) };
+        }).sort(function(a, b){ return b.score - a.score; });
+        ranked.forEach(function(entry){
+          var match = entry.score >= 0;
+          entry.row.hidden = !match;
+          if (match) {
+            visible += 1;
+            if (tbody) tbody.appendChild(entry.row);
+          }
+        });
+      }
       if (countEl) countEl.textContent = visible + ' total';
       if (emptyEl) emptyEl.hidden = !(needle && visible === 0);
       if (tableWrap) tableWrap.hidden = !!(needle && visible === 0);

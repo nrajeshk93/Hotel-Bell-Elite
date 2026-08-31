@@ -208,14 +208,24 @@
     if (!panel) return;
     var list = panel.querySelector('.sd-list');
     if (!list) return;
-    var q = searchInput.value.toLowerCase();
-    var items = list.querySelectorAll('.sd-item');
+    var q = String(searchInput.value || '').trim();
+    var items = Array.from(list.querySelectorAll('.sd-item'));
     var any = false;
-    items.forEach(function (item) {
-      var m = String(item.dataset.value || '').toLowerCase().includes(q);
-      item.style.display = m ? '' : 'none';
-      if (m) any = true;
-    });
+    if (!q) {
+      items.forEach(function (item) { item.style.display = ''; any = true; });
+    } else {
+      var ranked = items.map(function (item) {
+        return { item: item, score: window.hbeBestSearchScore([item.dataset.value || ''], q) };
+      }).sort(function (a, b) { return b.score - a.score; });
+      ranked.forEach(function (entry) {
+        var m = entry.score >= 0;
+        entry.item.style.display = m ? '' : 'none';
+        if (m) {
+          any = true;
+          list.appendChild(entry.item);
+        }
+      });
+    }
     var empty = list.querySelector('.sd-empty');
     if (!any) {
       if (!empty) {
@@ -390,13 +400,29 @@
     var location = ((byId('cd-location') || {}).value || '').toLowerCase();
     var rows = document.querySelectorAll('#credit-emp-table tbody tr');
     var visible = 0;
-    rows.forEach(function (row) {
-      var name = row.dataset.name || '';
-      var loc = row.dataset.location || '';
-      var show = (!q || name.indexOf(q) !== -1) && (!location || loc === location);
-      row.style.display = show ? '' : 'none';
-      if (show) visible++;
-    });
+    var tbody = rows.length && rows[0].parentNode;
+    if (!q) {
+      rows.forEach(function (row) {
+        var loc = row.dataset.location || '';
+        var show = !location || loc === location;
+        row.style.display = show ? '' : 'none';
+        if (show) visible++;
+      });
+    } else {
+      var ranked = Array.prototype.map.call(rows, function (row) {
+        return { row: row, score: window.hbeBestSearchScore([row.dataset.name || ''], q) };
+      });
+      ranked.sort(function (a, b) { return b.score - a.score; });
+      ranked.forEach(function (entry) {
+        var loc = entry.row.dataset.location || '';
+        var show = entry.score >= 0 && (!location || loc === location);
+        entry.row.style.display = show ? '' : 'none';
+        if (show) {
+          visible++;
+          if (tbody) tbody.appendChild(entry.row);
+        }
+      });
+    }
     var noRes = byId('cd-no-results');
     if (noRes) noRes.hidden = !(visible === 0 && rows.length > 0);
     var badge = byId('cd-count-badge');

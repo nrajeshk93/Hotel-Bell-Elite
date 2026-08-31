@@ -2491,7 +2491,9 @@
       width: 100%;
     }
     .panel-payroll-attendance .att-toolbar .pos-search {
-      width: 100%;
+      width: auto;
+      min-width: 0;
+      flex: 1 1 auto;
       margin: 0;
     }
 
@@ -2582,6 +2584,40 @@
     }
     [data-panel="payroll-attendance"] .ap-date-chip {
       display: block;
+      position: relative;
+    }
+    [data-panel="payroll-attendance"] .att-date-chip-control {
+      display: inline-flex;
+      align-items: center;
+      height: 32px;
+      border: 1px solid #E2E8F0;
+      border-radius: 20px;
+      background: #fff;
+      overflow: hidden;
+    }
+    [data-panel="payroll-attendance"] .att-date-step {
+      flex: 0 0 28px;
+      width: 28px;
+      height: 32px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: #1A202C;
+      font-size: 18px;
+      line-height: 32px;
+      cursor: pointer;
+    }
+    [data-panel="payroll-attendance"] .att-date-step:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+    [data-panel="payroll-attendance"] .att-native-date {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
     }
     [data-panel="payroll-attendance"] .ap-date-chip-label {
       display: none;
@@ -2595,10 +2631,10 @@
       max-width: 168px;
       min-height: 32px;
       height: 32px;
-      padding: 0 12px;
-      border: 1px solid #E2E8F0;
-      border-radius: 20px;
-      background: #fff;
+      padding: 0 6px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
       box-shadow: none;
       font: inherit;
       font-size: 12px;
@@ -2608,11 +2644,12 @@
       cursor: pointer;
     }
     [data-panel="payroll-attendance"] .ap-date-chip-panel {
+      position: fixed;
       left: auto;
-      right: 0;
-      width: min(320px, calc(100vw - 48px));
+      right: 12px;
+      width: min(320px, calc(100vw - 24px));
       min-width: 0;
-      z-index: 40;
+      z-index: 80;
     }
     [data-panel="payroll-attendance"] .pos-search {
       display: flex;
@@ -7896,10 +7933,14 @@
               <div class="ap-date-filter att-date-filter" data-att-dates="1">
                 <div class="ap-date-chip" id="pay-att-date-chip">
                   <div class="ap-date-chip-label">Date</div>
-                  <button type="button" class="ap-date-chip-trigger" id="pay-att-date-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="pay-att-date-panel">
-                    <svg class="ap-date-chip-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 3v4"/><path d="M16 3v4"/></svg>
-                    <span class="ap-date-chip-value" id="pay-att-date-display">Select date…</span>
-                  </button>
+                  <div class="att-date-chip-control">
+                    <button type="button" class="att-date-step" id="pay-att-date-prev" aria-label="Previous day">‹</button>
+                    <button type="button" class="ap-date-chip-trigger" id="pay-att-date-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="pay-att-date-panel">
+                      <svg class="ap-date-chip-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 3v4"/><path d="M16 3v4"/></svg>
+                      <span class="ap-date-chip-value" id="pay-att-date-display">Select date…</span>
+                    </button>
+                    <button type="button" class="att-date-step" id="pay-att-date-next" aria-label="Next day">›</button>
+                  </div>
 <div class="ap-date-chip-panel" id="pay-att-date-panel" role="dialog" aria-label="Attendance date" hidden>
                       <div class="md-date-header">
                         <div class="md-date-label ap-date-chip-panel-h">Select date</div>
@@ -7930,7 +7971,7 @@
                         </div>
                       </div>
                     </div>
-                  <input type="hidden" id="pay-att-date" value="" />
+                  <input type="date" id="pay-att-date" class="att-native-date" value="" />
                 </div>
               </div>
               <div class="pos-search att-search">
@@ -8216,6 +8257,50 @@
       'payroll-tips': 'payroll_tips',
       about: 'home',
     };
+
+    function hbeNorm(s){ return String(s || '').toLowerCase().trim(); }
+    function hbeSearchScore(text, query){
+      var hay = hbeNorm(text);
+      var q = hbeNorm(query);
+      if (!q) return 0;
+      if (!hay) return -1;
+      if (hay === q) return 400;
+      if (hay.indexOf(q) === 0) return 300;
+      var tokens = hay.split(/[\s\/\-_.,;:()]+/).filter(Boolean);
+      var i, t;
+      for (i = 0; i < tokens.length; i++) {
+        t = tokens[i];
+        if (t === q) return 250;
+        if (t.indexOf(q) === 0) return 200;
+      }
+      if (hay.indexOf(q) !== -1) return 100;
+      return -1;
+    }
+    function hbeSearchScoreQuery(text, query){
+      var terms = hbeNorm(query).split(/\s+/).filter(Boolean);
+      if (!terms.length) return 0;
+      var score = 0, s, i;
+      for (i = 0; i < terms.length; i++) {
+        s = hbeSearchScore(text, terms[i]);
+        if (s < 0) return -1;
+        score += s;
+      }
+      return score;
+    }
+    function hbeBestSearchScore(fields, query){
+      var best = -1, i, s;
+      fields = fields || [];
+      for (i = 0; i < fields.length; i++) {
+        s = hbeSearchScoreQuery(fields[i], query);
+        if (s > best) best = s;
+      }
+      return best;
+    }
+    window.hbeNorm = hbeNorm;
+    window.hbeSearchScore = hbeSearchScore;
+    window.hbeSearchScoreQuery = hbeSearchScoreQuery;
+    window.hbeBestSearchScore = hbeBestSearchScore;
+
     let previewAccess = null;
     const HBE_PRODUCTION = 'https://belleliteaccounts.com';
     const IS_BUNDLED_APP = location.protocol === 'file:'
@@ -9631,9 +9716,9 @@
       const st = ledgerState.approvals || {};
       const id = st.supplierId;
       if (id) return String(row && row.supplier_id) === String(id);
-      const q = String(st.supplierQuery || st.supplierName || '').trim().toLowerCase();
+      const q = String(st.supplierQuery || st.supplierName || '').trim();
       if (!q || approvalsSupplierIsAllLabel(q)) return true;
-      return String((row && row.supplier_name) || '').toLowerCase().indexOf(q) !== -1;
+      return hbeBestSearchScore([String((row && row.supplier_name) || '')], q) >= 0;
     }
 
     function syncApprovalsSupplierChrome() {
@@ -9691,13 +9776,32 @@
       const wrap = document.getElementById('approvals-supplier-options');
       const search = document.getElementById('approvals-supplier-search');
       if (!wrap) return;
-      const q = String(search && search.value || '').trim().toLowerCase();
-      wrap.querySelectorAll('.chip').forEach((opt) => {
+      const q = String(search && search.value || '').trim();
+      const chips = Array.from(wrap.querySelectorAll('.chip'));
+      const allChip = chips.find((opt) => {
         const id = opt.getAttribute('data-ap-supplier') || '';
-        const name = String(opt.getAttribute('data-ap-supplier-name') || opt.textContent || '').toLowerCase();
-        const isAll = !id && name === 'all suppliers';
-        opt.hidden = !!(q && !isAll && name.indexOf(q) === -1);
+        const name = String(opt.getAttribute('data-ap-supplier-name') || opt.textContent || '').trim().toLowerCase();
+        return !id && name === 'all suppliers';
       });
+      const ranked = chips.map((opt) => {
+        const id = opt.getAttribute('data-ap-supplier') || '';
+        const name = String(opt.getAttribute('data-ap-supplier-name') || opt.textContent || '');
+        const isAll = !id && name.trim().toLowerCase() === 'all suppliers';
+        const score = isAll ? Number.POSITIVE_INFINITY : hbeBestSearchScore([name], q);
+        return { opt: opt, score: score, isAll: isAll };
+      });
+      ranked.sort((a, b) => {
+        if (a.isAll && !b.isAll) return -1;
+        if (b.isAll && !a.isAll) return 1;
+        if (b.score !== a.score) return b.score - a.score;
+        return 0;
+      });
+      ranked.forEach((entry) => {
+        const hide = !!(q && !entry.isAll && entry.score < 0);
+        entry.opt.hidden = hide;
+        wrap.appendChild(entry.opt);
+      });
+      if (allChip && q) wrap.insertBefore(allChip, wrap.firstChild);
     }
 
     function setApprovalsSupplier(id, name, query) {
@@ -10633,16 +10737,19 @@
     function renderIrSuggest(query) {
       const box = document.getElementById('ir-suggest');
       if (!box) return;
-      const q = String(query || '').trim().toLowerCase();
+      const q = String(query || '').trim();
       if (!q) {
         box.classList.remove('is-open');
         box.innerHTML = '';
         return;
       }
-      const matches = irState.products.filter((p) => {
-        const hay = ((p.name || '') + ' ' + (p.category_name || '')).toLowerCase();
-        return hay.indexOf(q) >= 0;
-      }).slice(0, 8);
+      const matches = irState.products.map((p) => ({
+        p: p,
+        score: hbeBestSearchScore([p.name || '', p.category_name || ''], q)
+      })).filter((row) => row.score >= 0)
+        .sort((a, b) => b.score - a.score || String(a.p.name || '').localeCompare(String(b.p.name || '')))
+        .slice(0, 8)
+        .map((row) => row.p);
       if (!matches.length) {
         box.classList.remove('is-open');
         box.innerHTML = '';
@@ -11341,13 +11448,110 @@
     /* —— Notifications (topbar bell) —— */
     let notifTimer = null;
     let notifItems = [];
+    let notifOpenSessionItems = null;
+    const NOTIF_SEEN_KEY = 'hbe-home-bell-seen-v3';
+    const NOTIF_PUSHED_KEY = 'hbe-mobile-notif-pushed-v1';
+
+    function notifItemId(item) {
+      return String((item && item.id) || '').trim();
+    }
+
+    function notifItemCount(item) {
+      if (!item) return 0;
+      if (item.count != null && String(item.count).trim() !== '') {
+        const n = Number(item.count);
+        return Number.isFinite(n) ? n : 0;
+      }
+      const body = String(item.body || '');
+      const m = body.match(/(\d+)/);
+      if (m) {
+        const n = Number(m[1]);
+        return Number.isFinite(n) ? n : 1;
+      }
+      return 1;
+    }
+
+    function readNotifSeenMap() {
+      try {
+        const raw = localStorage.getItem(NOTIF_SEEN_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return {};
+        const out = {};
+        Object.keys(parsed).forEach((id) => {
+          const n = Number(parsed[id]);
+          out[id] = Number.isFinite(n) ? n : 0;
+        });
+        return out;
+      } catch (_err) {
+        return {};
+      }
+    }
+
+    function writeNotifSeenMap(map) {
+      try {
+        const keys = Object.keys(map || {});
+        if (!keys.length) localStorage.removeItem(NOTIF_SEEN_KEY);
+        else localStorage.setItem(NOTIF_SEEN_KEY, JSON.stringify(map));
+      } catch (_err) {}
+    }
+
+    function pruneNotifSeenToItems(items, seen) {
+      const next = {};
+      const liveIds = {};
+      (items || []).forEach((item) => {
+        const id = notifItemId(item);
+        if (id) liveIds[id] = true;
+      });
+      Object.keys(seen || {}).forEach((id) => {
+        if (liveIds[id]) next[id] = seen[id];
+      });
+      return next;
+    }
+
+    function markNotifItemsSeen(items) {
+      const seen = readNotifSeenMap();
+      (items || []).forEach((item) => {
+        const id = notifItemId(item);
+        if (!id) return;
+        seen[id] = Math.max(Number(seen[id] || 0), notifItemCount(item));
+      });
+      const live = notifItems.length ? notifItems : items;
+      writeNotifSeenMap(pruneNotifSeenToItems(live, seen));
+    }
+
+    function isNotifItemUnseen(item, seen) {
+      const id = notifItemId(item);
+      if (!id) return false;
+      const count = notifItemCount(item);
+      return !(id in seen) || count > Number(seen[id] || 0);
+    }
+
+    function unseenNotifItems(items) {
+      const seen = readNotifSeenMap();
+      return (items || []).filter((item) => isNotifItemUnseen(item, seen));
+    }
+
+    function hasUnseenNotifs(items) {
+      return unseenNotifItems(items).length > 0;
+    }
 
     function setNotifOpen(open) {
       const panel = document.getElementById('notif-panel');
       const btn = document.getElementById('btn-notifications');
       if (!panel || !btn) return;
+      const wasOpen = !panel.hidden;
       panel.hidden = !open;
       btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) {
+        // Opening the panel acknowledges the current feed (same as desktop home bell).
+        notifOpenSessionItems = (notifItems || []).slice();
+        markNotifItemsSeen(notifOpenSessionItems);
+        renderNotifications(notifItems, { acknowledge: true, fromOpen: true });
+      } else if (wasOpen) {
+        notifOpenSessionItems = null;
+        renderNotifications(notifItems, {});
+      }
       if (typeof scheduleNotifPoll === 'function') scheduleNotifPoll();
     }
 
@@ -11370,44 +11574,85 @@
     }
 
     function renderNotifications(items, meta) {
-      notifItems = mergeApkUpdateNotif(Array.isArray(items) ? items : []);
+      meta = meta || {};
+      const incoming = mergeApkUpdateNotif(Array.isArray(items) ? items : []);
+      notifItems = incoming;
+
+      if (meta.acknowledge) {
+        markNotifItemsSeen(incoming);
+      } else if (incoming.length) {
+        writeNotifSeenMap(pruneNotifSeenToItems(incoming, readNotifSeenMap()));
+      }
+      if (!incoming.length && meta.fromApi) {
+        writeNotifSeenMap({});
+      }
+
+      const panel = document.getElementById('notif-panel');
+      const panelOpen = !!(panel && !panel.hidden);
+      let visible;
+      if (panelOpen && notifOpenSessionItems && notifOpenSessionItems.length) {
+        const byId = {};
+        incoming.forEach((item) => {
+          const id = notifItemId(item);
+          if (id) byId[id] = item;
+        });
+        visible = notifOpenSessionItems
+          .map((item) => {
+            const id = notifItemId(item);
+            return (id && byId[id]) || item;
+          })
+          .filter((item) => {
+            const id = notifItemId(item);
+            return id && byId[id];
+          });
+      } else {
+        visible = unseenNotifItems(incoming);
+      }
+
       const list = document.getElementById('notif-list');
       const btn = document.getElementById('btn-notifications');
       const home = document.getElementById('home-notif');
       const countEl = document.getElementById('notif-count');
       const subEl = document.getElementById('notif-panel-sub');
-      const unread = !!(meta && meta.unread) || notifItems.length > 0;
-      if (btn) btn.classList.toggle('has-unread', unread);
+      const unseen = hasUnseenNotifs(incoming);
+      const quiet = meta.fromOpen || meta.acknowledge || !unseen || !incoming.length;
+      if (btn) btn.classList.toggle('has-unread', !quiet && unseen);
       if (home) {
-        if (!notifItems.length) home.textContent = 'Notifications: none';
-        else home.textContent = 'Notifications: ' + notifItems.length + ' — ' + (notifItems[0].title || 'Update');
+        if (!incoming.length) home.textContent = 'Notifications: none';
+        else home.textContent = 'Notifications: ' + incoming.length + ' — ' + (incoming[0].title || 'Update');
       }
+      const badgeCount = quiet ? 0 : unseenNotifItems(incoming).length;
       if (countEl) {
-        if (notifItems.length) {
+        if (badgeCount > 0) {
           countEl.hidden = false;
-          countEl.textContent = String(notifItems.length);
+          countEl.textContent = String(badgeCount);
         } else {
           countEl.hidden = true;
           countEl.textContent = '0';
         }
       }
       if (subEl) {
-        subEl.textContent = notifItems.length
-          ? (notifItems.length === 1 ? '1 update waiting' : (notifItems.length + ' updates waiting'))
-          : ((meta && meta.error) ? 'Unable to refresh right now' : 'You’re all caught up');
+        if (meta.error) subEl.textContent = 'Unable to refresh right now';
+        else if (!incoming.length) subEl.textContent = 'You’re all caught up';
+        else if (quiet) subEl.textContent = visible.length
+          ? (visible.length === 1 ? '1 update' : (visible.length + ' updates'))
+          : 'You’re all caught up';
+        else subEl.textContent = badgeCount === 1 ? '1 update waiting' : (badgeCount + ' updates waiting');
       }
-      pushNativeNotifications(notifItems);
+      pushNativeNotifications(unseenNotifItems(incoming));
       if (!list) return;
-      if (!notifItems.length) {
+      if (!visible.length) {
         list.innerHTML = '<div class="notif-empty">' +
           escapeHtml((meta && meta.error) ? String(meta.error) : 'All caught up. No new notifications.') +
           '</div>';
         return;
       }
       const chev = '<span class="notif-item-chev" aria-hidden="true"><svg viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg></span>';
-      list.innerHTML = notifItems.map((item, idx) => {
+      list.innerHTML = visible.map((item, idx) => {
         return (
-          '<button type="button" class="notif-item" data-notif-idx="' + idx + '">' +
+          '<button type="button" class="notif-item" data-notif-idx="' + idx + '"' +
+            ' data-notification-id="' + escapeHtml(notifItemId(item)) + '"' +
+            ' data-notification-count="' + escapeHtml(String(notifItemCount(item))) + '">' +
             notifItemIcon(item) +
             '<span class="notif-item-copy">' +
               '<span class="notif-item-title">' + escapeHtml(item.title || 'Notification') + '</span>' +
@@ -11417,20 +11662,43 @@
           '</button>'
         );
       }).join('');
+      // Keep click handler index mapped to visible session rows.
+      list._visibleNotifItems = visible;
     }
 
-    /** Push alerts to Android system tray (bundled APK only). */
+    /** Push alerts to Android system tray (bundled APK only). Only new/unseen items. */
     function pushNativeNotifications(items) {
       try {
         if (!window.HBEAndroid || typeof window.HBEAndroid.postNotifications !== 'function') return;
-        const payload = (items || []).map((item) => ({
-          id: String(item.id || item.title || ''),
-          title: String(item.title || 'Notification'),
-          body: String(item.body || ''),
-          screen: String(item.screen || ''),
-          count: item.count == null ? '' : item.count,
-        }));
-        window.HBEAndroid.postNotifications(JSON.stringify(payload));
+        let pushed = {};
+        try { pushed = JSON.parse(localStorage.getItem(NOTIF_PUSHED_KEY) || '{}') || {}; } catch (_e) { pushed = {}; }
+        const fresh = [];
+        (items || []).forEach((item) => {
+          const id = notifItemId(item);
+          if (!id) return;
+          const count = notifItemCount(item);
+          if (Number(pushed[id] || 0) >= count) return;
+          pushed[id] = count;
+          fresh.push({
+            id: id,
+            title: String(item.title || 'Notification'),
+            body: String(item.body || ''),
+            screen: String(item.screen || ''),
+            count: count,
+          });
+        });
+        // Drop pushed ids that are no longer in the live feed.
+        const live = {};
+        (notifItems || []).forEach((item) => {
+          const id = notifItemId(item);
+          if (id) live[id] = true;
+        });
+        Object.keys(pushed).forEach((id) => {
+          if (!live[id]) delete pushed[id];
+        });
+        try { localStorage.setItem(NOTIF_PUSHED_KEY, JSON.stringify(pushed)); } catch (_e) {}
+        if (!fresh.length) return;
+        window.HBEAndroid.postNotifications(JSON.stringify(fresh));
       } catch (_err) {
         /* Native bridge unavailable in browser preview. */
       }
@@ -11444,14 +11712,19 @@
         const res = await previewFetch('/preview-api/notifications', { cache: 'no-store' });
         const data = await res.json();
         if (!data || data.ok === false) {
-          renderNotifications([], { unread: false, error: (data && data.error) || 'Unavailable' });
+          renderNotifications([], { unread: false, error: (data && data.error) || 'Unavailable', fromApi: true });
           return;
         }
-        renderNotifications(data.notifications || [], { unread: !!data.unread });
+        renderNotifications(data.notifications || [], {
+          fromApi: true,
+          acknowledge: !!(opts && opts.acknowledge),
+          fromOpen: !!(opts && opts.fromOpen),
+        });
       } catch (err) {
         if (isPreviewAbort(err)) return;
         renderNotifications([], {
           unread: false,
+          fromApi: false,
           error: err && err.message ? err.message : 'Unavailable',
         });
       }
@@ -11577,7 +11850,7 @@
       if (manual) manual.hidden = !showManual;
       try {
         if (typeof renderNotifications === 'function' && typeof notifItems !== 'undefined') {
-          renderNotifications(notifItems, { unread: !!(notifItems && notifItems.length) });
+          renderNotifications(notifItems, {});
         }
       } catch (_e) {}
       if (native && state === 'update_available' && typeof pushNativeNotifications === 'function') {
@@ -11724,7 +11997,7 @@
       const panel = document.getElementById('notif-panel');
       const open = panel ? panel.hidden : true;
       setNotifOpen(open);
-      if (open) loadNotifications();
+      if (open) loadNotifications({ silent: true, fromOpen: true, acknowledge: true });
     });
     document.addEventListener('click', (event) => {
       const panel = document.getElementById('notif-panel');
@@ -11759,8 +12032,17 @@
     document.getElementById('notif-list')?.addEventListener('click', (event) => {
       const btn = event.target && event.target.closest('[data-notif-idx]');
       if (!btn) return;
+      const list = document.getElementById('notif-list');
       const idx = Number(btn.getAttribute('data-notif-idx'));
-      const item = notifItems[idx];
+      const visible = (list && list._visibleNotifItems) || notifItems;
+      const item = visible[idx];
+      if (item) {
+        markNotifItemsSeen([item]);
+        if (notifOpenSessionItems) {
+          const id = notifItemId(item);
+          notifOpenSessionItems = notifOpenSessionItems.filter((row) => notifItemId(row) !== id);
+        }
+      }
       setNotifOpen(false);
       if (!item) return;
       if (item.screen) {
@@ -12582,7 +12864,7 @@
       }
     });
     document.getElementById('pos-menu-search')?.addEventListener('input', async (event) => {
-      const q = String(event.target.value || '').trim().toLowerCase();
+      const q = String(event.target.value || '').trim();
       const suggest = document.getElementById('pos-menu-suggest');
       if (!suggest) return;
       await loadPosMenu();
@@ -12591,11 +12873,13 @@
         suggest.innerHTML = '';
         return;
       }
-      const hits = posState.menu.filter((item) => {
-        const name = String(item.name || '').toLowerCase();
-        const code = String(item.code || item.barcode || '').toLowerCase();
-        return name.indexOf(q) >= 0 || code.indexOf(q) >= 0;
-      }).slice(0, 12);
+      const hits = posState.menu.map((item) => ({
+        item: item,
+        score: hbeBestSearchScore([item.name || '', item.code || '', item.barcode || ''], q)
+      })).filter((row) => row.score >= 0)
+        .sort((a, b) => b.score - a.score || String(a.item.name || '').localeCompare(String(b.item.name || '')))
+        .slice(0, 12)
+        .map((row) => row.item);
       if (!hits.length) {
         suggest.classList.remove('is-open');
         suggest.innerHTML = '';
@@ -13514,6 +13798,7 @@
     }
 
     function formatLedgerDisplayDate(iso) {
+      // Same chip format as purchase/expense (SalesDateRangePicker): "31 August 26"
       if (!iso) return '';
       const parts = String(iso).slice(0, 10).split('-');
       if (parts.length !== 3) return String(iso);
@@ -13521,7 +13806,7 @@
       const m = Number(parts[1]);
       const d = Number(parts[2]);
       if (!y || !m || !d) return String(iso);
-      return String(d).padStart(2, '0') + ' ' + LEDGER_MONTHS[m - 1] + ' ' + y;
+      return d + ' ' + MD_MONTHS_FULL[m - 1] + ' ' + String(y).slice(-2);
     }
 
     function syncLedgerDateInputs(screen) {
@@ -13569,7 +13854,7 @@
     seedDashboardDates();
 
     function closeAllLedgerDatePanels(exceptScreen) {
-      if (typeof closeAttDatePanel === 'function') closeAttDatePanel();
+      if (exceptScreen !== 'att' && typeof closeAttDatePanel === 'function') closeAttDatePanel();
       if (typeof closeCrDatePanels === 'function') closeCrDatePanels();
       if (typeof closeTipEntryPanel === 'function') closeTipEntryPanel();
       ['ledger', 'cash-ledger', 'pay-tip', 'approvals', 'dashboard'].forEach((screen) => {
@@ -14210,12 +14495,11 @@
 
     function storeMatchesQuery(item, q) {
       if (!q) return true;
-      const hay = [
-        item.item_name,
-        item.category_name,
-        item.unit,
-      ].join(' ').toLowerCase();
-      return hay.indexOf(q) >= 0;
+      return hbeBestSearchScore([item.item_name, item.category_name, item.unit], q) >= 0;
+    }
+    function storeQueryScore(item, q) {
+      if (!q) return 0;
+      return hbeBestSearchScore([item.item_name, item.category_name, item.unit], q);
     }
 
     function storeMatchesKpi(item, filter) {
@@ -14229,8 +14513,12 @@
     }
 
     function filteredStoreItems() {
-      const q = (storeState.q || '').trim().toLowerCase();
-      return (storeState.items || []).filter((item) => storeMatchesQuery(item, q) && storeMatchesKpi(item, storeState.kpiFilter));
+      const q = (storeState.q || '').trim();
+      const rows = (storeState.items || []).filter((item) => storeMatchesQuery(item, q) && storeMatchesKpi(item, storeState.kpiFilter));
+      if (!q) return rows;
+      return rows.map((item) => ({ item: item, score: storeQueryScore(item, q) }))
+        .sort((a, b) => b.score - a.score || String(a.item.item_name || '').localeCompare(String(b.item.item_name || '')))
+        .map((row) => row.item);
     }
 
     function renderStoreKpis() {
@@ -14420,8 +14708,11 @@
 
     function auditMatchesQuery(line, q) {
       if (!q) return true;
-      const hay = [line.item_name, line.category_name, line.unit, auditLineStatus(line)].join(' ').toLowerCase();
-      return hay.indexOf(q) >= 0;
+      return hbeBestSearchScore([line.item_name, line.category_name, line.unit, auditLineStatus(line)], q) >= 0;
+    }
+    function auditQueryScore(line, q) {
+      if (!q) return 0;
+      return hbeBestSearchScore([line.item_name, line.category_name, line.unit, auditLineStatus(line)], q);
     }
 
     function auditMatchesKpi(line, filter) {
@@ -14434,8 +14725,12 @@
     }
 
     function filteredAuditLines() {
-      const q = (stockAuditState.q || '').trim().toLowerCase();
-      return (stockAuditState.lines || []).filter((line) => auditMatchesQuery(line, q) && auditMatchesKpi(line, stockAuditState.kpiFilter));
+      const q = (stockAuditState.q || '').trim();
+      const rows = (stockAuditState.lines || []).filter((line) => auditMatchesQuery(line, q) && auditMatchesKpi(line, stockAuditState.kpiFilter));
+      if (!q) return rows;
+      return rows.map((line) => ({ line: line, score: auditQueryScore(line, q) }))
+        .sort((a, b) => b.score - a.score || String(a.line.item_name || '').localeCompare(String(b.line.item_name || '')))
+        .map((row) => row.line);
     }
 
     function renderStockAuditKpis() {
@@ -14940,7 +15235,16 @@
         payState.emp.year = data.year;
         payState.emp.month = data.month;
         const st = data.payroll_state || {};
-        const employees = data.employees || [];
+        let employees = data.employees || [];
+        const qRank = String(q || '').trim();
+        if (qRank) {
+          employees = employees.map((e) => ({
+            e: e,
+            score: hbeBestSearchScore([e.name, e.emp_code, e.mobile], qRank)
+          })).filter((row) => row.score >= 0)
+            .sort((a, b) => b.score - a.score || String(a.e.name || '').localeCompare(String(b.e.name || '')))
+            .map((row) => row.e);
+        }
         if (status) {
           status.textContent = employees.length + ' employees' +
             (st.label ? (' · ' + st.label) : '') +
@@ -15072,7 +15376,13 @@
       const hidden = document.getElementById('pay-att-date');
       const display = document.getElementById('pay-att-date-display');
       const chip = document.getElementById('pay-att-date-chip');
-      if (hidden) hidden.value = attDateState.date || '';
+      const nextBtn = document.getElementById('pay-att-date-next');
+      const today = attTodayIso();
+      if (hidden) {
+        hidden.max = today;
+        hidden.value = attDateState.date || '';
+      }
+      if (nextBtn) nextBtn.disabled = !attDateState.date || attDateState.date >= today;
       if (display) {
         if (attDateState.date) {
           display.textContent = formatLedgerDisplayDate(attDateState.date);
@@ -15111,7 +15421,7 @@
       const prevDays = new Date(year, month, 0).getDate();
       const selected = attDateState.draft || attDateState.date || '';
       const head = document.getElementById('pay-att-date-headline');
-      if (head) head.textContent = selected ? formatMdHeadlineDay(selected) : 'Select date';
+      if (head) head.textContent = selected ? formatLedgerDisplayDate(selected) : 'Select date';
       let out = '';
       for (let i = 0; i < 42; i++) {
         let dayNum;
@@ -15140,17 +15450,70 @@
       grid.innerHTML = out;
     }
 
+    function positionAttDatePanel() {
+      const trigger = document.getElementById('pay-att-date-trigger');
+      const panel = document.getElementById('pay-att-date-panel');
+      if (!trigger || !panel) return;
+      const r = trigger.getBoundingClientRect();
+      const width = Math.min(320, window.innerWidth - 24);
+      let left = r.right - width;
+      if (left < 12) left = 12;
+      let top = r.bottom + 8;
+      panel.style.position = 'fixed';
+      panel.style.left = left + 'px';
+      panel.style.right = 'auto';
+      panel.style.width = width + 'px';
+      panel.style.top = top + 'px';
+      panel.style.zIndex = '80';
+      requestAnimationFrame(() => {
+        const ph = panel.getBoundingClientRect().height;
+        if (top + ph > window.innerHeight - 12) {
+          panel.style.top = Math.max(12, r.top - ph - 8) + 'px';
+        }
+      });
+    }
+
+    function attIsoFromParts(d) {
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+
+    function shiftAttDate(delta) {
+      const iso = attDateState.date || attTodayIso();
+      const d = new Date(iso + 'T12:00:00');
+      if (Number.isNaN(d.getTime())) return;
+      d.setDate(d.getDate() + delta);
+      const next = attIsoFromParts(d);
+      if (next > attTodayIso()) return;
+      commitAttDate(next);
+    }
+
+    function openAttNativePicker() {
+      const input = document.getElementById('pay-att-date');
+      if (!input) return false;
+      input.max = attTodayIso();
+      input.value = attDateState.date || attTodayIso();
+      if (typeof input.showPicker === 'function') {
+        try {
+          input.showPicker();
+          return true;
+        } catch (_err) {}
+      }
+      return false;
+    }
+
     function openAttDatePanel() {
       const chip = document.getElementById('pay-att-date-chip');
       const trigger = document.getElementById('pay-att-date-trigger');
       const panel = document.getElementById('pay-att-date-panel');
       if (!chip || !panel) return;
       const willOpen = !chip.classList.contains('is-open');
-      if (typeof closeAllLedgerDatePanels === 'function') closeAllLedgerDatePanels();
+      if (typeof closeAllLedgerDatePanels === 'function') closeAllLedgerDatePanels('att');
       if (typeof closeCrDatePanels === 'function') closeCrDatePanels();
       if (typeof closeEmpDatePanel === 'function') closeEmpDatePanel();
-      closeAttDatePanel();
-      if (!willOpen) return;
+      if (!willOpen) {
+        closeAttDatePanel();
+        return;
+      }
       chip.classList.add('is-open');
       if (trigger) trigger.setAttribute('aria-expanded', 'true');
       panel.hidden = false;
@@ -15158,6 +15521,7 @@
       const base = attDateState.draft ? new Date(attDateState.draft + 'T12:00:00') : new Date();
       attDateState.calMonth = new Date(base.getFullYear(), base.getMonth(), 1);
       renderAttCalendar();
+      positionAttDatePanel();
     }
 
     function commitAttDate(iso) {
@@ -15203,11 +15567,20 @@
           }).join('');
         }
         if (!list) return;
-        const employees = (data.employees || []).filter((e) => {
+        const qRank = String(q || '').trim();
+        let employees = (data.employees || []).filter((e) => {
           if (!attKpiFilter) return true;
           const mark = (e.date_status || '').trim() || 'unmarked';
           return mark === attKpiFilter;
         });
+        if (qRank) {
+          employees = employees.map((e) => ({
+            e: e,
+            score: hbeBestSearchScore([e.name, e.emp_code, e.mobile], qRank)
+          })).filter((row) => row.score >= 0)
+            .sort((a, b) => b.score - a.score || String(a.e.name || '').localeCompare(String(b.e.name || '')))
+            .map((row) => row.e);
+        }
         if (!employees.length) {
           const empty = attKpiFilter === 'unmarked'
             ? 'No unmarked employees for this date.'
@@ -15288,10 +15661,9 @@
       if (!query) return -1;
       if (name === query || code === query || id === query) return 0;
       if (name.startsWith(query) || code.startsWith(query)) return 1;
-      if (name.includes(query) || code.includes(query) || id.includes(query)) return 2;
-      // token nearest match: any word starting with query
       const tokens = name.split(/\s+/);
       if (tokens.some((t) => t.startsWith(query))) return 1;
+      if (name.includes(query) || code.includes(query) || id.includes(query)) return 2;
       if (tokens.some((t) => t.includes(query))) return 2;
       return -1;
     }
@@ -15899,19 +16271,41 @@
       
       document.getElementById('pay-att-date-trigger')?.addEventListener('click', (event) => {
         event.preventDefault();
+        event.stopPropagation();
+        // Use the same custom calendar UI as purchase/expense (not the OS date picker).
         openAttDatePanel();
       });
-      document.getElementById('pay-att-cal-prev')?.addEventListener('click', () => {
+      document.getElementById('pay-att-date-prev')?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        shiftAttDate(-1);
+      });
+      document.getElementById('pay-att-date-next')?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        shiftAttDate(1);
+      });
+      document.getElementById('pay-att-date')?.addEventListener('change', (event) => {
+        const value = String((event.target && event.target.value) || '').slice(0, 10);
+        if (!value) return;
+        commitAttDate(value > attTodayIso() ? attTodayIso() : value);
+      });
+      document.getElementById('pay-att-cal-prev')?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
         if (!attDateState.calMonth) attDateState.calMonth = new Date();
         attDateState.calMonth = new Date(attDateState.calMonth.getFullYear(), attDateState.calMonth.getMonth() - 1, 1);
         renderAttCalendar();
       });
-      document.getElementById('pay-att-cal-next')?.addEventListener('click', () => {
+      document.getElementById('pay-att-cal-next')?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
         if (!attDateState.calMonth) attDateState.calMonth = new Date();
         attDateState.calMonth = new Date(attDateState.calMonth.getFullYear(), attDateState.calMonth.getMonth() + 1, 1);
         renderAttCalendar();
       });
       document.getElementById('pay-att-cal-grid')?.addEventListener('click', (event) => {
+        event.stopPropagation();
         const day = event.target.closest('[data-att-cal-day]');
         if (!day) return;
         attDateState.draft = day.getAttribute('data-att-cal-day') || '';

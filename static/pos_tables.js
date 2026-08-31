@@ -1815,17 +1815,36 @@
       var seats = normalize(tile.getAttribute('data-seats'));
       var matchArea = !area || tileArea === area;
       var matchStatus = !statusFilter || tileStatus === statusFilter;
-      var matchQuery =
-        !query ||
-        tileName.indexOf(query) !== -1 ||
-        tileDisplay.indexOf(query) !== -1 ||
-        tileSearch.indexOf(query) !== -1 ||
-        guestName.indexOf(query) !== -1 ||
-        seats.indexOf(query) !== -1;
+      var searchScore = 0;
+      var matchQuery = !query;
+      if (query) {
+        searchScore = window.hbeBestSearchScore(
+          [tileName, tileDisplay, tileSearch, guestName, seats],
+          query
+        );
+        matchQuery = searchScore >= 0;
+      }
       var show = matchArea && matchStatus && matchQuery;
+      tile.__hbeSearchScore = show ? searchScore : -1;
       tile.classList.toggle('is-hidden', !show);
       if (show) visible += 1;
     });
+    if (query) {
+      var parents = [];
+      tiles.forEach(function (tile) {
+        var parent = tile.parentNode;
+        if (parent && parents.indexOf(parent) === -1) parents.push(parent);
+      });
+      parents.forEach(function (parent) {
+        var kids = Array.from(parent.querySelectorAll('[data-table-tile]'));
+        kids.sort(function (a, b) {
+          var as = a.classList.contains('is-hidden') ? -1 : (a.__hbeSearchScore || 0);
+          var bs = b.classList.contains('is-hidden') ? -1 : (b.__hbeSearchScore || 0);
+          return bs - as;
+        });
+        kids.forEach(function (tile) { parent.appendChild(tile); });
+      });
+    }
 
     $all('.pos-floor-section', root).forEach(function (section) {
       var any = section.querySelector('[data-table-tile]:not(.is-hidden)');

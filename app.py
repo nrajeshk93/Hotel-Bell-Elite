@@ -145,6 +145,7 @@ from db import (
     list_pos_today_invoices,
     get_pos_menu_item_details,
     list_pos_menu_categories,
+    list_store_product_units,
     list_pos_menu_items,
     list_store_products_lite,
     normalize_pos_outlet,
@@ -161,10 +162,12 @@ from db import (
     update_hotel_room_status,
     save_pos_invoice,
     save_pos_menu_category,
+    save_store_product_unit,
     save_pos_menu_item,
     send_pos_invoice_pending_kot,
     settle_pos_invoice,
     settle_pos_invoices,
+    pos_invoice_can_resettle_same_day,
     sync_pos_floor_occupancy_from_open_orders,
     transfer_pos_invoice_table,
     merge_pos_invoice_tables,
@@ -175,6 +178,7 @@ from db import (
     cancel_pos_invoice,
     reopen_pos_invoice_for_edit,
     soft_delete_pos_menu_category,
+    soft_delete_store_product_unit,
     soft_delete_pos_menu_item,
 )
 import pos_menu_bulk
@@ -238,6 +242,7 @@ from workspace_access import (
     user_can_access_accounts_submodule,
     user_can_access_agency_master,
     user_can_access_category_master,
+    user_can_access_unit_master,
     user_can_access_communication_hub_submodule,
     user_can_access_customer_master,
     user_can_access_dashboard,
@@ -4584,8 +4589,25 @@ def _normalize_dashboard_location_filter(location):
     return None
 
 
+def _sales_entry_difference_for_location(vals, location, difference_mode=None):
+    """Sales Update Difference for one outlet row.
+
+    Restaurant/Bar: cash − actual_cash (same as Sales Update KPI).
+    Hotel (default): total_sales − tender total (get_difference).
+    """
+    if difference_mode == "cash_actual":
+        return get_cash_actual_difference(vals)
+    loc = str(location or "").strip()
+    if loc and loc not in HOTEL_LOCATIONS:
+        return get_cash_actual_difference(vals)
+    return get_difference(vals)
+
+
 def _aggregate_sales_kpis(conn, date_from, date_to, company=None, location=None, difference_mode=None):
-    sql = "SELECT sales_entry_values FROM sales_updates WHERE sales_date >= ? AND sales_date <= ?"
+    sql = (
+        "SELECT location, sales_entry_values FROM sales_updates "
+        "WHERE sales_date >= ? AND sales_date <= ?"
+    )
     params = [date_from.isoformat(), date_to.isoformat()]
     if company:
         sql += " AND company = ?"
@@ -4593,7 +4615,7 @@ def _aggregate_sales_kpis(conn, date_from, date_to, company=None, location=None,
     sql, params = _append_sales_location_sql(sql, params, location)
     rows = conn.execute(sql, params).fetchall()
 
-    actual = digital = cash = room_credit = tips = actual_cash = difference = 0.0
+    actual = digital = cash = room_credit = tips = difference = 0.0
     for row in rows:
         vals = json.loads(row["sales_entry_values"] or "{}")
         actual += parse_money(vals.get("total_sales"))
@@ -4601,12 +4623,9 @@ def _aggregate_sales_kpis(conn, date_from, date_to, company=None, location=None,
         cash += parse_money(vals.get("cash"))
         room_credit += parse_money(vals.get("room_credit"))
         tips += parse_money(vals.get("tips"))
-        actual_cash += parse_money(vals.get("actual_cash"))
-        if difference_mode != "cash_actual":
-            difference += get_difference(vals)
-
-    if difference_mode == "cash_actual":
-        difference = round_half_up(cash - actual_cash, 2)
+        difference += _sales_entry_difference_for_location(
+            vals, row["location"], difference_mode
+        )
 
     expense_sql = "SELECT COALESCE(SUM(amount), 0) AS total FROM sales_update_expenses WHERE sales_date >= ? AND sales_date <= ?"
     expense_params = [date_from.isoformat(), date_to.isoformat()]
@@ -4626,6 +4645,85 @@ def _aggregate_sales_kpis(conn, date_from, date_to, company=None, location=None,
         "expense": expense,
         "difference": round_half_up(difference, 2),
     }
+
+
+def _dashboard_difference_outlets(location=None):
+    """Hotel / Restaurant / Bar outlets included in dashboard Difference."""
+    if not location or location == DASHBOARD_FILTER_LOCATION_ALL:
+        return [OUTLET_HOTEL, OUTLET_RESTAURANT, OUTLET_BAR]
+    if location == DASHBOARD_FILTER_LOCATION_RESTAURANT_BAR:
+        return [OUTLET_RESTAURANT, OUTLET_BAR]
+    if isinstance(location, (list, tuple)):
+        ordered = []
+        for outlet in (OUTLET_HOTEL, OUTLET_RESTAURANT, OUTLET_BAR):
+            if outlet in location:
+                ordered.append(outlet)
+        return ordered or [OUTLET_HOTEL, OUTLET_RESTAURANT, OUTLET_BAR]
+    if location in (OUTLET_HOTEL, OUTLET_RESTAURANT, OUTLET_BAR):
+        return [location]
+    return [OUTLET_HOTEL, OUTLET_RESTAURANT, OUTLET_BAR]
+
+
+def _module_sales_update_difference_for_day(
+    conn, sales_date, location=None, company=None, user=None
+):
+    """One day's Difference as shown on module Sales Update pages.
+
+    Uses ``_load_outlet_entry_bundle(..., overlay_invoices=True)`` — the same
+    path as /hotel/sales-update, /point-of-sale/sales-update, and
+    /bar-point-of-sale/sales-update — then applies each outlet's Difference rule.
+    """
+    company = company or DEFAULT_COMPANY
+    user = user or {}
+    if isinstance(sales_date, date):
+        day_iso = sales_date.isoformat()
+    else:
+        day_iso = str(sales_date or "")[:10]
+    today_iso = date.today().isoformat()
+    total = 0.0
+    for outlet in _dashboard_difference_outlets(location):
+        bundle = _load_outlet_entry_bundle(
+            conn,
+            user,
+            company,
+            outlet,
+            day_iso,
+            today_iso,
+            overlay_invoices=True,
+        )
+        total += _sales_entry_difference_for_location(
+            bundle.get("sales_entry_values") or {}, outlet
+        )
+    return round_half_up(total, 2)
+
+
+def _module_sales_update_difference_total(
+    conn, date_from, date_to, location=None, company=None, user=None
+):
+    """Sum of module Sales Update Difference KPIs over an inclusive date range."""
+    total = 0.0
+    cursor = date_from
+    while cursor <= date_to:
+        total += _module_sales_update_difference_for_day(
+            conn, cursor, location=location, company=company, user=user
+        )
+        cursor += timedelta(days=1)
+    return round_half_up(total, 2)
+
+
+def _module_sales_update_difference_by_day(
+    conn, date_from, date_to, location=None, company=None, user=None
+):
+    """Daily module Sales Update Difference totals for dashboard sparklines."""
+    by_day = {}
+    cursor = date_from
+    while cursor <= date_to:
+        day_iso = cursor.isoformat()
+        by_day[day_iso] = _module_sales_update_difference_for_day(
+            conn, cursor, location=location, company=company, user=user
+        )
+        cursor += timedelta(days=1)
+    return by_day
 
 
 def _sales_report_kpi_bundle(conn, date_from, date_to, company=None, location=None, difference_mode=None):
@@ -4689,8 +4787,8 @@ def _format_kpi_date_window(date_from, date_to):
 
 def _format_invoice_kpi_note(date_from, date_to):
     return (
-        f"All values are from invoices ({_format_kpi_date_window(date_from, date_to)}), "
-        "settled and unsettled."
+        f"Values are from invoice ledgers ({_format_kpi_date_window(date_from, date_to)}): "
+        "Hotel Total billed; Restaurant/Bar settled invoices."
     )
 
 
@@ -5613,11 +5711,16 @@ def _dashboard_kpi_spark_series(conn, date_from, date_to, company=None, location
 
     Single-day filters stay single-day (flat spark matching the KPI), so Today
     at ₹0 does not plot unrelated prior-week peaks.
+
+    Difference mirrors module Sales Update pages (invoice overlay + outlet rules).
     """
     spark_from = date_from
     spark_to = date_to
 
     by_day = aggregate_invoice_sales_kpis_by_day(conn, spark_from, spark_to, location=location)
+    su_diff_by_day = _module_sales_update_difference_by_day(
+        conn, spark_from, spark_to, location=location, company=company or DEFAULT_COMPANY
+    )
 
     expense_sql = """SELECT sales_date, COALESCE(SUM(amount), 0) AS total
                      FROM sales_update_expenses
@@ -5653,8 +5756,9 @@ def _dashboard_kpi_spark_series(conn, date_from, date_to, company=None, location
     series = {key: [] for key in DASHBOARD_KPI_KEYS}
     cursor = spark_from
     while cursor <= spark_to:
-        bucket = by_day.get(cursor.isoformat()) or {}
-        day_difference = round_half_up(float(bucket.get("difference") or 0), 2)
+        day_iso = cursor.isoformat()
+        bucket = by_day.get(day_iso) or {}
+        day_difference = round_half_up(float(su_diff_by_day.get(day_iso) or 0), 2)
         series["actual_sales"].append(round_half_up(float(bucket.get("actual_sales") or 0), 2))
         series["digital_transactions"].append(
             round_half_up(float(bucket.get("digital_transactions") or 0), 2)
@@ -5667,7 +5771,19 @@ def _dashboard_kpi_spark_series(conn, date_from, date_to, company=None, location
 
 
 def _dashboard_invoice_kpi_bundle(conn, date_from, date_to, location=None, company=None):
-    """Main dashboard KPI bundle from invoices for the selected range/location."""
+    """Main dashboard KPI bundle from invoice ledgers for the selected range.
+
+    TOTAL SALES / digital / cash / room credit come from
+    ``aggregate_invoice_sales_kpis``:
+
+    - Hotel: Invoice Ledger Total billed (open + settled stay invoices only;
+      excludes POS room-transfer and FBE F&B, by ``invoice_generated_at``)
+    - Restaurant / Bar: Invoice Ledger settled + generated invoices
+
+    Difference is the sum of module Sales Update Difference KPIs (Hotel +
+    Restaurant + Bar) for the same dates — using invoice overlay + the same
+    helpers as those pages — not raw sales_updates rows or invoice tender gaps.
+    """
     is_single_day = date_from == date_to
     if is_single_day:
         prev_from = prev_to = date_from - timedelta(days=1)
@@ -5685,6 +5801,13 @@ def _dashboard_invoice_kpi_bundle(conn, date_from, date_to, location=None, compa
     )
     previous["expense"] = _invoice_sales_expense_total(
         conn, prev_from, prev_to, company, location
+    )
+    su_company = company or DEFAULT_COMPANY
+    current["difference"] = _module_sales_update_difference_total(
+        conn, date_from, date_to, location=location, company=su_company
+    )
+    previous["difference"] = _module_sales_update_difference_total(
+        conn, prev_from, prev_to, location=location, company=su_company
     )
     trends = {
         key: _pct_change_vs_previous(current[key], previous[key])
@@ -5771,7 +5894,7 @@ def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
         spark_from = date_from
     spark_to = date_to
 
-    # Total Sales = invoice ledger totals (Hotel + Restaurant + Bar).
+    # Total Sales = Hotel ledger Total billed + Restaurant/Bar settled ledger.
     # Sparklines track the selected range only (same days the KPI aggregates).
     spark_dates = date_range_days(spark_from, spark_to)
 
@@ -5973,6 +6096,8 @@ def master():
             visible.append(item)
         elif mid == "category" and user_can_access_category_master(user):
             visible.append(item)
+        elif mid == "unit" and user_can_access_unit_master(user):
+            visible.append(item)
         elif mid == "employee" and user_can_access_payroll_submodule(user, "employee"):
             visible.append(item)
     payload["masters"] = visible
@@ -6156,6 +6281,149 @@ def delete_category_master():
 
     redirect_kwargs["saved"] = "deleted"
     return redirect(url_for("category_master", **redirect_kwargs))
+
+
+def _unit_master_page_render(template, **kwargs):
+    kwargs.setdefault("auth_notice", _pop_auth_notice())
+    kwargs.setdefault("de_nav_section", "master")
+    kwargs.setdefault("de_nav_master_view", "unit_master")
+    return render_template(template, **kwargs)
+
+
+def _unit_master_form_payload(source=None, *, unit_id=""):
+    source = source or {}
+    return {
+        "id": unit_id or "",
+        "name": " ".join(str(source.get("name") or "").split()).strip(),
+    }
+
+
+@app.route("/masters/units", endpoint="unit_master")
+def unit_master():
+    """Product Unit Master — bottle, liter, milliliter, and other inventory units."""
+    user = get_current_user()
+    if not user_can_access_unit_master(user):
+        return _permission_denied_response("You do not have access to Unit Master.")
+
+    selected_id = (request.args.get("unit_id") or "").strip()
+    saved_flag = (request.args.get("saved") or "").strip()
+    form_focus = (request.args.get("focus") or "").strip() == "form"
+
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        units = list_store_product_units(conn)
+        selected = None
+        if selected_id:
+            selected = next((u for u in units if str(u["id"]) == selected_id), None)
+        conn.commit()
+    finally:
+        conn.close()
+
+    if selected:
+        form = {"id": selected["id"], "name": selected.get("name") or ""}
+    else:
+        form = _unit_master_form_payload()
+
+    success_message = ""
+    if saved_flag == "created":
+        success_message = "Unit created successfully."
+    elif saved_flag == "updated":
+        success_message = "Unit updated successfully."
+    elif saved_flag == "deleted":
+        success_message = "Unit deleted successfully."
+
+    return _unit_master_page_render(
+        "partials/master_embed/unit.html" if is_embed_request() else "unit_master.html",
+        units=units,
+        form=form,
+        errors=[],
+        success_message=success_message,
+        form_focus=form_focus or bool(selected),
+        show_form=form_focus or bool(selected),
+        embed_mode=is_embed_request(),
+    )
+
+
+@app.route("/masters/units/save", methods=["POST"], endpoint="save_unit_master")
+def save_unit_master():
+    user = get_current_user()
+    if not user_can_access_unit_master(user):
+        return _permission_denied_response("You do not have access to Unit Master.")
+
+    unit_id_raw = (request.form.get("unit_id") or "").strip()
+    try:
+        unit_id = int(unit_id_raw) if unit_id_raw else None
+    except (TypeError, ValueError):
+        unit_id = None
+    payload = _unit_master_form_payload(request.form, unit_id=unit_id or "")
+    embed = is_embed_request() or str(request.form.get("embed") or request.args.get("embed") or "") == "1"
+
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        try:
+            save_store_product_unit(conn, unit_id=unit_id, name=payload["name"])
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            units = list_store_product_units(conn)
+            form = dict(payload)
+            form["id"] = unit_id or ""
+            return _unit_master_page_render(
+                "partials/master_embed/unit.html" if embed else "unit_master.html",
+                units=units,
+                form=form,
+                errors=[str(exc)],
+                success_message="",
+                form_focus=True,
+                show_form=True,
+                embed_mode=embed,
+            ), 400
+    finally:
+        conn.close()
+
+    redirect_kwargs = {"saved": "updated" if unit_id else "created"}
+    if embed:
+        redirect_kwargs["embed"] = 1
+    return redirect(url_for("unit_master", **redirect_kwargs))
+
+
+@app.route("/masters/units/delete", methods=["POST"], endpoint="delete_unit_master")
+def delete_unit_master():
+    user = get_current_user()
+    if not user_can_access_unit_master(user):
+        return _permission_denied_response("You do not have access to Unit Master.")
+
+    unit_id_raw = (request.form.get("unit_id") or "").strip()
+    embed = is_embed_request() or str(request.form.get("embed") or request.args.get("embed") or "") == "1"
+    redirect_kwargs = {}
+    if embed:
+        redirect_kwargs["embed"] = 1
+
+    try:
+        unit_id = int(unit_id_raw)
+    except (TypeError, ValueError):
+        _queue_auth_notice("Unit not found.")
+        return redirect(url_for("unit_master", **redirect_kwargs))
+
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        try:
+            soft_delete_store_product_unit(conn, unit_id)
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            _queue_auth_notice(str(exc))
+            fail_kwargs = dict(redirect_kwargs)
+            fail_kwargs["unit_id"] = unit_id
+            return redirect(url_for("unit_master", **fail_kwargs))
+    finally:
+        conn.close()
+
+    redirect_kwargs["saved"] = "deleted"
+    return redirect(url_for("unit_master", **redirect_kwargs))
 
 
 @app.route("/reports")
@@ -12408,6 +12676,10 @@ def point_of_sale_invoice_ledger():
             can_cancel and (not is_settled) and (not is_cancelled) and is_generated
         )
         inv["ledger_can_edit"] = can_edit and (not is_settled) and (not is_cancelled)
+        # All users: edit settlement modes until end of the settlement day.
+        inv["ledger_can_resettle"] = pos_invoice_can_resettle_same_day(
+            inv, today=filters["today"].isoformat()
+        )
 
     selected_order_type = filters["selected_order_type"]
     selected_order_type_label = "All"

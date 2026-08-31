@@ -159,11 +159,12 @@
         _attendanceAcIdx = -1;
         q = q.trim().toLowerCase();
         if (!q) { list.hidden = true; list.style.display = 'none'; return; }
-        var matches = _attendanceAcData.filter(function(e) {
-          return e.name.toLowerCase().includes(q)
-              || (e.emp_code && e.emp_code.toLowerCase().includes(q))
-              || (e.location && e.location.toLowerCase().includes(q));
-        }).slice(0, 10);
+        var matches = _attendanceAcData.map(function(e) {
+          return { e: e, score: window.hbeBestSearchScore([e.name, e.emp_code, e.location], q) };
+        }).filter(function(row) { return row.score >= 0; })
+          .sort(function(a, b) { return b.score - a.score || String(a.e.name || '').localeCompare(String(b.e.name || '')); })
+          .slice(0, 10)
+          .map(function(row) { return row.e; });
         if (!matches.length) { list.hidden = true; list.style.display = 'none'; return; }
         list.innerHTML = matches.map(function(e, i) {
           var name = attendanceAcEscape(e.name);
@@ -300,11 +301,12 @@
         _attendanceAcIdx = -1;
         q = q.trim().toLowerCase();
         if (!q) { list.hidden = true; list.style.display = 'none'; return; }
-        var matches = _attendanceAcData.filter(function(e) {
-          return e.name.toLowerCase().includes(q)
-              || (e.emp_code && e.emp_code.toLowerCase().includes(q))
-              || (e.location && e.location.toLowerCase().includes(q));
-        }).slice(0, 10);
+        var matches = _attendanceAcData.map(function(e) {
+          return { e: e, score: window.hbeBestSearchScore([e.name, e.emp_code, e.location], q) };
+        }).filter(function(row) { return row.score >= 0; })
+          .sort(function(a, b) { return b.score - a.score || String(a.e.name || '').localeCompare(String(b.e.name || '')); })
+          .slice(0, 10)
+          .map(function(row) { return row.e; });
         if (!matches.length) { list.hidden = true; list.style.display = 'none'; return; }
         list.innerHTML = matches.map(function(e, i) {
           var name = attendanceAcEscape(e.name);
@@ -712,10 +714,12 @@
         _empAcIdx = -1;
         q = q.trim().toLowerCase();
         if (!q) { list.hidden = true; list.style.display = 'none'; return; }
-        var matches = _empAcData.filter(function(e) {
-          return e.name.toLowerCase().includes(q)
-              || (e.emp_code && e.emp_code.toLowerCase().includes(q));
-        }).slice(0, 10);
+        var matches = _empAcData.map(function(e) {
+          return { e: e, score: window.hbeBestSearchScore([e.name, e.emp_code], q) };
+        }).filter(function(row) { return row.score >= 0; })
+          .sort(function(a, b) { return b.score - a.score || String(a.e.name || '').localeCompare(String(b.e.name || '')); })
+          .slice(0, 10)
+          .map(function(row) { return row.e; });
         if (!matches.length) { list.hidden = true; list.style.display = 'none'; return; }
         list.innerHTML = matches.map(function(e, i) {
           // Check if name is shared by more than one employee

@@ -1031,7 +1031,7 @@ body.pos-settings-module #pos-menu-item-modal .pos-menu-unit-listbox .se-filter-
 .pos-menu-recipe-product-name,
 .pos-menu-recipe-row-main strong{
   display:block;font-size:13px;font-weight:650;color:var(--pos-text,#0F172A);
-  line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  line-height:1.35;white-space:normal;overflow:visible;overflow-wrap:anywhere;word-break:break-word;
 }
 .pos-menu-recipe-row-main{min-width:0}
 .pos-menu-recipe-row-main small{display:block;font-size:11px;color:var(--pos-muted,#64748B);margin-top:2px}

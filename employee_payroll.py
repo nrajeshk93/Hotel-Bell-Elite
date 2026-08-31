@@ -11,7 +11,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from flask import Blueprint, has_request_context, jsonify, redirect, render_template, request, send_file, session, url_for
 
-from db import SQL_NOW, get_db
+from db import SQL_NOW, get_db, hbe_rank_records
 from embed_helpers import is_embed_request
 from reports import (
     SALARY_PAYMENT_NAME,
@@ -1674,6 +1674,8 @@ def _load_employees_list_context():
             f"SELECT * FROM employees{where} ORDER BY {order_by}",
             tuple(params)
         ).fetchall()
+        if q:
+            rows = hbe_rank_records(rows, q, ("name", "emp_code", "location", "mobile", "address"))
         payroll_state = _get_payroll_month_state(conn, year, month)
 
         emps = []
@@ -2322,6 +2324,8 @@ def attendance_overview():
         f"SELECT * FROM employees{where} ORDER BY {_EMPLOYEE_DISPLAY_ORDER}",
         tuple(params)
     ).fetchall()
+    if q:
+        rows = hbe_rank_records(rows, q, ("name", "emp_code", "mobile", "location"))
 
     emps = []
     tracked = total_present = total_absent = total_half = 0
@@ -2422,6 +2426,8 @@ def attendance_date_view():
         f"SELECT * FROM employees WHERE {' AND '.join(_conds)} ORDER BY {_EMPLOYEE_DISPLAY_ORDER}",
         _params
     ).fetchall()
+    if q:
+        rows = hbe_rank_records(rows, q, ("name", "emp_code", "mobile", "location"))
 
     payroll_state = _get_payroll_month_state(conn, sel_dt.year, sel_dt.month)
     payroll_locked = bool(payroll_state['locked'])

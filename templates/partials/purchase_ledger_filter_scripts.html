@@ -1,5 +1,47 @@
 <script>
 (function(){
+
+  if (typeof window.hbeBestSearchScore !== 'function') {
+    window.hbeNorm = function(s){ return String(s || '').toLowerCase().trim(); };
+    window.hbeSearchScore = function(text, query){
+      var hay = window.hbeNorm(text);
+      var q = window.hbeNorm(query);
+      if (!q) return 0;
+      if (!hay) return -1;
+      if (hay === q) return 400;
+      if (hay.indexOf(q) === 0) return 300;
+      var tokens = hay.split(/[\s\/\-_.,;:()]+/).filter(Boolean);
+      var i, t;
+      for (i = 0; i < tokens.length; i++) {
+        t = tokens[i];
+        if (t === q) return 250;
+        if (t.indexOf(q) === 0) return 200;
+      }
+      if (hay.indexOf(q) !== -1) return 100;
+      return -1;
+    };
+    window.hbeSearchScoreQuery = function(text, query){
+      var terms = window.hbeNorm(query).split(/\s+/).filter(Boolean);
+      if (!terms.length) return 0;
+      var score = 0, s, i;
+      for (i = 0; i < terms.length; i++) {
+        s = window.hbeSearchScore(text, terms[i]);
+        if (s < 0) return -1;
+        score += s;
+      }
+      return score;
+    };
+    window.hbeBestSearchScore = function(fields, query){
+      var best = -1, i, s;
+      fields = fields || [];
+      for (i = 0; i < fields.length; i++) {
+        s = window.hbeSearchScoreQuery(fields[i], query);
+        if (s > best) best = s;
+      }
+      return best;
+    };
+  }
+
   var f = document.getElementById('purchase-ledger-filter-form');
 
   function submitScope(){
@@ -71,18 +113,31 @@
 
   function scoreSearchOption(option, needle){
     if (!needle) return 0;
+    if (typeof window.hbeBestSearchScore === 'function') {
+      return window.hbeBestSearchScore([
+        option.getAttribute('data-name') || '',
+        option.getAttribute('data-gst') || '',
+        option.getAttribute('data-label') || option.textContent || ''
+      ], needle);
+    }
     var name = (option.getAttribute('data-name') || '').toLowerCase();
     var gst = (option.getAttribute('data-gst') || '').toLowerCase();
-    var terms = needle.split(/\s+/).filter(Boolean);
+    var terms = String(needle || '').toLowerCase().split(/\s+/).filter(Boolean);
     var score = 0;
     for (var i = 0; i < terms.length; i++) {
       var term = terms[i];
-      if (name === term || (gst && gst === term)) score += 120;
-      else if (name.indexOf(term) === 0) score += 90;
-      else if (gst && gst.indexOf(term) === 0) score += 80;
-      else if (name.indexOf(term) !== -1) score += 60;
-      else if (gst && gst.indexOf(term) !== -1) score += 50;
-      else return -1;
+      if (name === term || (gst && gst === term)) score += 400;
+      else if (name.indexOf(term) === 0 || (gst && gst.indexOf(term) === 0)) score += 300;
+      else {
+        var tokens = name.split(/[\s\/_\-.,;:()]+/).filter(Boolean);
+        var word = false;
+        for (var t = 0; t < tokens.length; t++) {
+          if (tokens[t].indexOf(term) === 0) { word = true; break; }
+        }
+        if (word) score += 200;
+        else if (name.indexOf(term) !== -1 || (gst && gst.indexOf(term) !== -1)) score += 100;
+        else return -1;
+      }
     }
     return score;
   }
@@ -499,16 +554,26 @@
     var entryCountEl = document.getElementById('pl-entry-count');
 
     function applyPurchaseLedgerSearch(){
-      var needle = String(searchInput.value || '').trim().toLowerCase();
+      var needle = String(searchInput.value || '').trim();
       if (searchChip) searchChip.classList.toggle('is-active', !!needle);
       var rows = Array.from(document.querySelectorAll('.pl-table tbody tr.pl-expense-row'));
       var visible = 0;
-      rows.forEach(function(row){
-        var hay = String(row.getAttribute('data-search') || row.textContent || '').toLowerCase();
-        var match = !needle || hay.indexOf(needle) !== -1;
-        row.hidden = !match;
-        if (match) visible += 1;
-      });
+      if (!needle) {
+        rows.forEach(function(row){ row.hidden = false; visible += 1; });
+      } else {
+        var ranked = rows.map(function(row){
+          return { row: row, score: window.hbeBestSearchScore([row.getAttribute('data-search') || row.textContent || ''], needle) };
+        });
+        ranked.sort(function(a, b){ return b.score - a.score; });
+        ranked.forEach(function(entry){
+          var match = entry.score >= 0;
+          entry.row.hidden = !match;
+          if (match) {
+            visible += 1;
+            if (entry.row.parentNode) entry.row.parentNode.appendChild(entry.row);
+          }
+        });
+      }
       if (entryCountEl) {
         entryCountEl.textContent = visible + ' entr' + (visible === 1 ? 'y' : 'ies');
       }

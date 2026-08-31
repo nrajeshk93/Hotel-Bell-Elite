@@ -300,24 +300,34 @@
 
   function applySearch(){
     if (!table) return;
-    var q = (searchInput && searchInput.value || '').trim().toLowerCase();
+    var q = (searchInput && searchInput.value || '').trim();
     var rows = Array.from(table.querySelectorAll('tbody tr.br-bank-row'));
     var visible = 0, total = 0, ft = 0, neft = 0;
-    rows.forEach(function(row){
-      var hay = [
-        row.getAttribute('data-name') || '',
-        row.getAttribute('data-code') || '',
-        row.getAttribute('data-account') || '',
-        row.getAttribute('data-ifsc') || '',
-        row.getAttribute('data-mode') || ''
-      ].join(' ');
-      var show = !q || hay.indexOf(q) !== -1;
+    var tbody = table.tBodies[0];
+    var ranked = q
+      ? rows.map(function(row){
+          return {
+            row: row,
+            score: window.hbeBestSearchScore([
+              row.getAttribute('data-name') || '',
+              row.getAttribute('data-code') || '',
+              row.getAttribute('data-account') || '',
+              row.getAttribute('data-ifsc') || '',
+              row.getAttribute('data-mode') || ''
+            ], q)
+          };
+        }).sort(function(a, b){ return b.score - a.score; })
+      : rows.map(function(row){ return { row: row, score: 0 }; });
+    ranked.forEach(function(entry){
+      var row = entry.row;
+      var show = !q || entry.score >= 0;
       row.hidden = !show;
       if (show) {
         visible++;
         total += Number(row.getAttribute('data-amount') || 0) || 0;
         if ((row.getAttribute('data-mode') || '') === 'FT') ft++;
         else neft++;
+        if (q && tbody) tbody.appendChild(row);
       }
     });
     if (rowCount) rowCount.textContent = visible + ' payout' + (visible === 1 ? '' : 's') + ' · ' + period;

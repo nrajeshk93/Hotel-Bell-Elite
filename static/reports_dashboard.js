@@ -155,9 +155,9 @@
     }
 
     function cardMatches(card) {
-      var name = (card.getAttribute('data-report-name') || '').toLowerCase();
+      var name = card.getAttribute('data-report-name') || '';
       var category = card.getAttribute('data-report-category') || '';
-      var matchesSearch = !searchTerm || name.indexOf(searchTerm) !== -1;
+      var matchesSearch = !searchTerm || window.hbeBestSearchScore([name], searchTerm) >= 0;
       var matchesCategory = activeCategory === 'all' || category === activeCategory;
       return matchesSearch && matchesCategory;
     }
@@ -172,10 +172,17 @@
         );
         var visibleInSection = 0;
 
-        sectionCards.forEach(function (card) {
-          var show = cardMatches(card);
-          card.classList.toggle('is-hidden', !show);
-          if (show) visibleInSection += 1;
+        var ranked = sectionCards.map(function (card) {
+          var score = searchTerm ? window.hbeBestSearchScore([card.getAttribute('data-report-name') || ''], searchTerm) : 0;
+          return { card: card, score: score, show: cardMatches(card) };
+        });
+        if (searchTerm) ranked.sort(function (a, b) { return b.score - a.score; });
+        ranked.forEach(function (entry) {
+          entry.card.classList.toggle('is-hidden', !entry.show);
+          if (entry.show) {
+            visibleInSection += 1;
+            if (searchTerm && entry.card.parentNode) entry.card.parentNode.appendChild(entry.card);
+          }
         });
 
         var showSection =
@@ -198,7 +205,7 @@
 
     if (searchInput) {
       searchInput.addEventListener('input', function () {
-        searchTerm = String(searchInput.value || '').trim().toLowerCase();
+        searchTerm = String(searchInput.value || '').trim();
         applyFilters();
       }, { signal: signal });
     }

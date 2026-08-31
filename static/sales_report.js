@@ -75,17 +75,30 @@
 
   function applyRowFilters(page) {
     var input = $('#sr-search', page);
-    var needle = String((input && input.value) || '')
-      .trim()
-      .toLowerCase();
+    var needle = String((input && input.value) || '').trim();
     var kpi = currentKpiFilter(page);
     $all('tr.sr-row', page).forEach(function (row) {
-      var hay = String(row.getAttribute('data-search') || '').toLowerCase();
-      var searchOk = !needle || hay.indexOf(needle) !== -1;
+      var hay = String(row.getAttribute('data-search') || '');
+      var score = needle ? window.hbeBestSearchScore([hay], needle) : 0;
+      row.__hbeSearchScore = score;
+      var searchOk = !needle || score >= 0;
       var status = String(row.getAttribute('data-status') || '').toLowerCase();
       var kpiOk = kpi === 'total' || !kpi || status === kpi;
       row.style.display = searchOk && kpiOk ? '' : 'none';
     });
+    if (needle) {
+      $all('tr.sr-group-header', page).forEach(function (header) {
+        var gid = header.getAttribute('data-group') || '';
+        var items = $all('tr.sr-row[data-group="' + gid + '"]', page);
+        items.sort(function (a, b) { return (b.__hbeSearchScore || 0) - (a.__hbeSearchScore || 0); });
+        var tbody = header.parentNode;
+        if (!tbody) return;
+        var frag = document.createDocumentFragment();
+        items.forEach(function (row) { frag.appendChild(row); });
+        if (header.nextSibling) tbody.insertBefore(frag, header.nextSibling);
+        else tbody.appendChild(frag);
+      });
+    }
     syncGroupVisibility(page);
     updateVisibleCount(page);
   }

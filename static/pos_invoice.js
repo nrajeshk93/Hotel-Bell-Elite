@@ -7,6 +7,47 @@
 (function (global) {
   'use strict';
 
+  if (typeof global.hbeBestSearchScore !== 'function') {
+    global.hbeNorm = function(s){ return String(s || '').toLowerCase().trim(); };
+    global.hbeSearchScore = function(text, query){
+      var hay = global.hbeNorm(text);
+      var q = global.hbeNorm(query);
+      if (!q) return 0;
+      if (!hay) return -1;
+      if (hay === q) return 400;
+      if (hay.indexOf(q) === 0) return 300;
+      var tokens = hay.split(/[\s\/_\-.,;:()]+/).filter(Boolean);
+      var i, t;
+      for (i = 0; i < tokens.length; i++) {
+        t = tokens[i];
+        if (t === q) return 250;
+        if (t.indexOf(q) === 0) return 200;
+      }
+      if (hay.indexOf(q) !== -1) return 100;
+      return -1;
+    };
+    global.hbeSearchScoreQuery = function(text, query){
+      var terms = global.hbeNorm(query).split(/\s+/).filter(Boolean);
+      if (!terms.length) return 0;
+      var score = 0, s, i;
+      for (i = 0; i < terms.length; i++) {
+        s = global.hbeSearchScore(text, terms[i]);
+        if (s < 0) return -1;
+        score += s;
+      }
+      return score;
+    };
+    global.hbeBestSearchScore = function(fields, query){
+      var best = -1, i, s;
+      fields = fields || [];
+      for (i = 0; i < fields.length; i++) {
+        s = global.hbeSearchScoreQuery(fields[i], query);
+        if (s > best) best = s;
+      }
+      return best;
+    };
+  }
+
   var FLOOR_API = '/point-of-sale/api/floor';
   var MENU_ITEMS_API = '/point-of-sale/api/menu/items';
   var MENU_CATEGORIES_API = '/point-of-sale/api/menu/categories';
@@ -1371,20 +1412,24 @@
   }
 
   function searchMenu(q) {
-    var query = String(q || '').trim().toLowerCase();
+    var query = String(q || '').trim();
     if (query.length < MIN_QUERY) return [];
     if (menuCatalogStatus === 'loading' || menuCatalogStatus === 'idle' || menuCatalogStatus === 'error' || !menuCatalog.length) {
       return [];
     }
-    return menuCatalog.filter(function (item) {
-      return (
-        item.name.toLowerCase().indexOf(query) !== -1 ||
-        item.code.toLowerCase().indexOf(query) !== -1 ||
-        String(item.barcode).indexOf(query) !== -1 ||
-        item.category.toLowerCase().indexOf(query) !== -1 ||
-        (item.variant && item.variant.toLowerCase().indexOf(query) !== -1)
-      );
-    }).slice(0, 8);
+    return menuCatalog.map(function (item) {
+      return {
+        item: item,
+        score: window.hbeBestSearchScore([
+          item.name, item.code, String(item.barcode || ''), item.category, item.variant || ''
+        ], query)
+      };
+    }).filter(function (row) { return row.score >= 0; })
+      .sort(function (a, b) {
+        return b.score - a.score || String(a.item.name || '').localeCompare(String(b.item.name || ''));
+      })
+      .slice(0, 8)
+      .map(function (row) { return row.item; });
   }
 
   function customerQueryKey(q) {
@@ -1406,12 +1451,15 @@
         .slice(0, 8);
     }
     return customerCache
-      .filter(function (c) {
-        return String(c.name || '')
-          .toLowerCase()
-          .indexOf(key) !== -1;
+      .map(function (c) {
+        return { c: c, score: window.hbeBestSearchScore([c.name], key) };
       })
-      .slice(0, 8);
+      .filter(function (row) { return row.score >= 0; })
+      .sort(function (a, b) {
+        return b.score - a.score || String(a.c.name || '').localeCompare(String(b.c.name || ''));
+      })
+      .slice(0, 8)
+      .map(function (row) { return row.c; });
   }
 
   function fetchCustomers(q, done) {

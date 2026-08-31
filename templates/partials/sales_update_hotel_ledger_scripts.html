@@ -245,16 +245,10 @@
 
   function scoreCategoryOption(option, needle){
     if (!needle) return 0;
-    const name = (option.getAttribute('data-name') || '').toLowerCase();
-    const terms = needle.split(/\s+/).filter(Boolean);
-    let score = 0;
-    for (const term of terms) {
-      if (name === term) score += 120;
-      else if (name.startsWith(term)) score += 90;
-      else if (name.includes(term)) score += 60;
-      else return -1;
-    }
-    return score;
+    return window.hbeBestSearchScore([
+      option.getAttribute('data-name') || '',
+      option.getAttribute('data-label') || option.textContent || ''
+    ], needle);
   }
 
   function filterExpenseCategoryOptions(query){
@@ -282,7 +276,7 @@
     ranked.sort((a, b) => b.score - a.score
       || (a.option.getAttribute('data-name') || '').localeCompare(b.option.getAttribute('data-name') || ''));
 
-    const best = ranked.length ? [ranked[0]] : [];
+    const best = ranked;
 
     options.forEach((option) => option.classList.add('is-filtered-out'));
     best.forEach((entry) => {
@@ -537,19 +531,11 @@
 
   function scoreSupplierOption(option, needle){
     if (!needle) return 0;
-    const name = (option.getAttribute('data-name') || '').toLowerCase();
-    const gst = (option.getAttribute('data-gst') || '').toLowerCase();
-    const terms = needle.split(/\s+/).filter(Boolean);
-    let score = 0;
-    for (const term of terms) {
-      if (name === term || gst === term) score += 120;
-      else if (name.startsWith(term)) score += 90;
-      else if (gst.startsWith(term)) score += 80;
-      else if (name.includes(term)) score += 60;
-      else if (gst.includes(term)) score += 50;
-      else return -1;
-    }
-    return score;
+    return window.hbeBestSearchScore([
+      option.getAttribute('data-name') || '',
+      option.getAttribute('data-gst') || '',
+      option.getAttribute('data-label') || option.textContent || ''
+    ], needle);
   }
 
   function renderSupplierOptions(){
@@ -589,7 +575,7 @@
       return (a.option.getAttribute('data-name') || '').localeCompare(b.option.getAttribute('data-name') || '');
     });
 
-    const best = needle && ranked.length ? [ranked[0]] : ranked;
+    const best = ranked;
 
     options.forEach((option) => option.classList.add('is-filtered-out'));
     best.forEach(({ option }) => {

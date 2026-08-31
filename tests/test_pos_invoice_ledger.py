@@ -342,6 +342,10 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertNotIn("pos-il-delete-btn", settled_block)
         self.assertNotIn("pos-il-cancel-btn", settled_block)
         self.assertNotIn("pos-il-edit-btn", settled_block)
+        # Same-day settled bills keep Edit settlement for all users.
+        self.assertIn("pos-il-resettle-btn", settled_block)
+        row_head = html.split(f'data-invoice-id="{settled_id}"', 1)[0][-280:]
+        self.assertIn("is-resettleable", row_head)
 
         # Settled cancel blocked for everyone (admin included).
         blocked = self.client.post(
@@ -1037,6 +1041,94 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         html = settled_page.get_data(as_text=True)
         self.assertIn(inv["order_no"], html)
         self.assertIn(f'data-invoice-id="{inv["id"]}"', html)
+
+    def test_single_day_date_filter_keeps_from_and_to_equal(self):
+        """Apply of one calendar day must not fall back to FY start → that day."""
+        day = "2026-08-30"
+        filters = self.app_mod._pos_invoice_ledger_filters(
+            {"date_from": day, "date_to": day}
+        )
+        self.assertTrue(filters["date_filter_active"])
+        self.assertEqual(filters["date_from"].isoformat(), day)
+        self.assertEqual(filters["date_to"].isoformat(), day)
+
+        page = self.client.get(
+            f"/point-of-sale/invoice-ledger?date_from={day}&date_to={day}"
+        )
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn(f'id="pos-il-date-from" name="date_from" value="{day}"', html)
+        self.assertIn(f'id="pos-il-date-to" name="date_to" value="{day}"', html)
+        self.assertIn("sales_date_range.js?v=18", html)
+
+        # Shared picker must commit first click as a complete single-day range.
+        with open(
+            os.path.join(os.path.dirname(__file__), "..", "static", "sales_date_range.js"),
+            encoding="utf-8",
+        ) as fh:
+            picker_js = fh.read()
+        self.assertIn("rangePickStep", picker_js)
+        self.assertIn("ignoreOutsideClickUntil", picker_js)
+
+    def test_same_day_settlement_can_be_edited(self):
+        """Settled today → Edit settlement; settle API accepts a same-day resettle."""
+        today = date.today().isoformat()
+        created = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                order_no="ORD-RESETTLE-01",
+                total=250,
+                table="",
+                orderType="takeaway",
+                orderDate=today,
+                savedAt=today + " 11:00:00",
+                customerBill=True,
+            ),
+        )
+        self.assertEqual(created.status_code, 200, created.get_data(as_text=True))
+        inv_id = created.get_json()["invoice"]["id"]
+        settle = self.client.post(
+            f"/point-of-sale/api/invoices/{inv_id}/settle",
+            json={"payment_splits": [{"payment_method": "cash", "amount": 250}]},
+        )
+        self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
+        self.assertEqual(settle.get_json()["invoice"]["status"], "closed")
+
+        page = self.client.get("/point-of-sale/invoice-ledger")
+        html = page.get_data(as_text=True)
+        block = html.split(f'data-invoice-id="{inv_id}"', 1)[1].split("</tr>", 1)[0]
+        self.assertIn("pos-il-resettle-btn", block)
+
+        again = self.client.post(
+            f"/point-of-sale/api/invoices/{inv_id}/settle",
+            json={
+                "payment_splits": [
+                    {"payment_method": "upi", "amount": 100},
+                    {"payment_method": "card", "amount": 150},
+                ]
+            },
+        )
+        self.assertEqual(again.status_code, 200, again.get_data(as_text=True))
+        payments = again.get_json()["invoice"].get("payments") or []
+        methods = sorted(p.get("payment_method") for p in payments)
+        self.assertEqual(methods, ["card", "upi"])
+
+        # Prior-day settlement cannot be edited.
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                "UPDATE pos_invoices SET settled_at = '2020-01-01 12:00:00' WHERE id = ?",
+                (inv_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        blocked = self.client.post(
+            f"/point-of-sale/api/invoices/{inv_id}/settle",
+            json={"payment_splits": [{"payment_method": "cash", "amount": 250}]},
+        )
+        self.assertEqual(blocked.status_code, 400)
+        self.assertIn("already settled", (blocked.get_json() or {}).get("error", "").lower())
 
 
 if __name__ == "__main__":

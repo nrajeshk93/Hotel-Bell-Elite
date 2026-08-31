@@ -94,16 +94,26 @@
     var entryCountEl = document.getElementById('cl-entry-count');
 
     function applyCashLedgerSearch(){
-      var needle = String(searchInput.value || '').trim().toLowerCase();
+      var needle = String(searchInput.value || '').trim();
       if (searchChip) searchChip.classList.toggle('is-active', !!needle);
       var rows = Array.from(document.querySelectorAll('#cl-ledger-table tbody tr.cl-ledger-row'));
       var visible = 0;
-      rows.forEach(function(row){
-        var hay = String(row.getAttribute('data-search') || row.textContent || '').toLowerCase();
-        var match = !needle || hay.indexOf(needle) !== -1;
-        row.hidden = !match;
-        if (match) visible += 1;
-      });
+      var tbody = rows.length ? rows[0].parentNode : null;
+      if (!needle) {
+        rows.forEach(function(row){ row.hidden = false; visible += 1; });
+      } else {
+        var ranked = rows.map(function(row){
+          return { row: row, score: window.hbeBestSearchScore([row.getAttribute('data-search') || row.textContent || ''], needle) };
+        }).sort(function(a, b){ return b.score - a.score; });
+        ranked.forEach(function(entry){
+          var match = entry.score >= 0;
+          entry.row.hidden = !match;
+          if (match) {
+            visible += 1;
+            if (tbody) tbody.appendChild(entry.row);
+          }
+        });
+      }
       if (entryCountEl) {
         entryCountEl.textContent = visible + ' entr' + (visible === 1 ? 'y' : 'ies');
       }

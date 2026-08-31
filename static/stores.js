@@ -4283,21 +4283,32 @@
     });
 
     function applyFilter() {
-      var needle = searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
+      var needle = searchInput ? String(searchInput.value || '').trim() : '';
       if (searchChip) searchChip.classList.toggle('is-active', !!needle);
       if (clearBtn) clearBtn.hidden = !needle;
 
       var rows = productRows();
       var visible = 0;
-      rows.forEach(function (row) {
-        var match = !needle
-          || String(row.getAttribute('data-search') || '').indexOf(needle) !== -1;
-        row.hidden = !match;
-        if (match) visible += 1;
-        var pid = row.getAttribute('data-product-id');
+      var ranked = needle
+        ? rows.map(function (row) {
+            return { row: row, score: window.hbeBestSearchScore([row.getAttribute('data-search') || ''], needle) };
+          }).sort(function (a, b) { return b.score - a.score; })
+        : rows.map(function (row) { return { row: row, score: 0 }; });
+      ranked.forEach(function (entry) {
+        var match = !needle || entry.score >= 0;
+        entry.row.hidden = !match;
+        if (match) {
+          visible += 1;
+          if (needle && tbody) {
+            tbody.appendChild(entry.row);
+            var pidAttach = entry.row.getAttribute('data-product-id');
+            if (pidAttach) packRowsFor(pidAttach).forEach(function (packRow) { tbody.appendChild(packRow); });
+          }
+        }
+        var pid = entry.row.getAttribute('data-product-id');
         if (!pid) return;
-        var expanded = match && row.getAttribute('aria-expanded') === 'true';
-        if (expanded) ensureProductPackRows(row);
+        var expanded = match && entry.row.getAttribute('aria-expanded') === 'true';
+        if (expanded) ensureProductPackRows(entry.row);
         packRowsFor(pid).forEach(function (packRow) {
           packRow.hidden = !expanded;
         });
@@ -4557,18 +4568,26 @@
     var emptyEl = document.getElementById('st-indent-search-empty');
 
     function applyIndentSearch() {
-      var needle = String(searchInput.value || '').trim().toLowerCase();
+      var needle = String(searchInput.value || '').trim();
       if (searchChip) searchChip.classList.toggle('is-active', !!needle);
       if (!tables.length) return;
       var totalVisible = 0;
       tables.forEach(function (table) {
         var rows = Array.from(table.querySelectorAll('tbody tr[data-sort-row]'));
         var visible = 0;
-        rows.forEach(function (row) {
-          var hay = String(row.getAttribute('data-search') || row.textContent || '').toLowerCase();
-          var match = !needle || hay.indexOf(needle) !== -1;
-          row.hidden = !match;
-          if (match) visible += 1;
+        var tbody = table.tBodies[0];
+        var ranked = needle
+          ? rows.map(function (row) {
+              return { row: row, score: window.hbeBestSearchScore([row.getAttribute('data-search') || row.textContent || ''], needle) };
+            }).sort(function (a, b) { return b.score - a.score; })
+          : rows.map(function (row) { return { row: row, score: 0 }; });
+        ranked.forEach(function (entry) {
+          var match = !needle || entry.score >= 0;
+          entry.row.hidden = !match;
+          if (match) {
+            visible += 1;
+            if (needle && tbody) tbody.appendChild(entry.row);
+          }
         });
         totalVisible += visible;
         var block = table.getAttribute('data-st-po-block') || '';
@@ -4714,21 +4733,24 @@
       var table = getTable();
       var searchEl = document.getElementById('st-stock-search');
       if (!table) return [];
-      var needle = String((searchEl && searchEl.value) || '').trim().toLowerCase();
+      var needle = String((searchEl && searchEl.value) || '').trim();
       var category = getCategory();
       var status = getStatus();
       var place = getPlace();
-      return Array.from(table.querySelectorAll('tbody tr[data-sort-row]')).filter(function (row) {
-        var hay = String(row.getAttribute('data-search') || row.textContent || '').toLowerCase();
-        var searchOk = !needle || hay.indexOf(needle) !== -1;
+      var ranked = Array.from(table.querySelectorAll('tbody tr[data-sort-row]')).map(function (row) {
+        var hay = row.getAttribute('data-search') || row.textContent || '';
+        var score = needle ? window.hbeBestSearchScore([hay], needle) : 0;
         var cat = String(row.getAttribute('data-category') || '').toLowerCase();
         var categoryOk = category === 'all' || cat === category;
         var rowStatus = String(row.getAttribute('data-status') || '').toLowerCase();
         var statusOk = status === 'all' || rowStatus === status;
         var rowPlace = String(row.getAttribute('data-place') || 'warehouse').toLowerCase();
         var placeOk = rowPlace === place;
-        return searchOk && categoryOk && statusOk && placeOk;
-      });
+        var searchOk = !needle || score >= 0;
+        return { row: row, score: score, ok: searchOk && categoryOk && statusOk && placeOk };
+      }).filter(function (entry) { return entry.ok; });
+      if (needle) ranked.sort(function (a, b) { return b.score - a.score; });
+      return ranked.map(function (entry) { return entry.row; });
     }
 
     function updateKpis(rows) {
@@ -4770,17 +4792,19 @@
       var countEl = document.getElementById('st-stock-count');
       var tableWrap = document.getElementById('st-stock-table-wrap') || (table && table.closest('.pl-table-wrap, .st-table-wrap'));
       var emptyEl = document.getElementById('st-stock-search-empty');
-      var needle = String((searchEl && searchEl.value) || '').trim().toLowerCase();
+      var needle = String((searchEl && searchEl.value) || '').trim();
       if (searchChip) searchChip.classList.toggle('is-active', !!needle);
       if (!table) return;
 
       var rows = matchedRows();
       var total = rows.length;
+      var tbody = table.tBodies[0];
       Array.from(table.querySelectorAll('tbody tr[data-sort-row]')).forEach(function (row) {
         row.hidden = true;
       });
       rows.forEach(function (row) {
         row.hidden = false;
+        if (needle && tbody) tbody.appendChild(row);
       });
 
       if (countEl) countEl.textContent = total + ' item' + (total === 1 ? '' : 's');

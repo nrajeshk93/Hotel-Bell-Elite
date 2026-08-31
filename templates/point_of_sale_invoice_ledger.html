@@ -275,7 +275,8 @@
               {% set can_delete = inv.ledger_can_delete if inv.ledger_can_delete is defined else false %}
               {% set can_cancel = inv.ledger_can_cancel if inv.ledger_can_cancel is defined else false %}
               {% set can_edit = inv.ledger_can_edit if inv.ledger_can_edit is defined else false %}
-              <tr class="pos-il-row{% if not is_settled and not is_cancelled %} is-unsettled{% endif %}{% if is_cancelled %} is-cancelled{% endif %}{% if is_settled %} is-settled{% endif %}"
+              {% set can_resettle = inv.ledger_can_resettle if inv.ledger_can_resettle is defined else false %}
+              <tr class="pos-il-row{% if not is_settled and not is_cancelled %} is-unsettled{% endif %}{% if is_cancelled %} is-cancelled{% endif %}{% if is_settled %} is-settled{% endif %}{% if can_resettle %} is-resettleable{% endif %}"
                   data-invoice-id="{{ inv.id }}"
                   data-order-no="{{ inv.order_no or '' }}"
                   data-table="{{ inv.table_label or '' }}"
@@ -283,7 +284,8 @@
                   data-grand-total="{{ inv.grand_total }}"
                   data-settlement="{{ 'settled' if is_settled else ('cancelled' if is_cancelled else 'unsettled') }}"
                   data-generated="{{ '1' if inv.ledger_is_generated else '0' }}"
-                  {% if not is_settled and not is_cancelled %}tabindex="0" role="button" aria-label="Settle invoice {{ inv.order_no }}"{% endif %}
+                  data-can-resettle="{{ '1' if can_resettle else '0' }}"
+                  {% if not is_settled and not is_cancelled %}tabindex="0" role="button" aria-label="Settle invoice {{ inv.order_no }}"{% elif can_resettle %}tabindex="0" role="button" aria-label="Edit settlement for invoice {{ inv.order_no }}"{% endif %}
                   data-search="{{ [inv.order_no or '', inv.order_date or '', inv.saved_at or '', inv.customer_name or '', inv.customer_mobile or '', inv.order_type_label or '', inv.payment_mode_label or '', inv.table_label or '', inv.captain or '', inv.created_by or '', inv.grand_total|string]|join(' ')|lower }}">
                 <td class="cp-col-check">
                   {% if not is_settled and not is_cancelled %}
@@ -317,6 +319,10 @@
                     </button>
                     {% if can_edit %}
                     <button type="button" class="act-btn edit pos-il-edit-btn" data-tip="Edit" aria-label="Edit invoice {{ inv.order_no }}" data-invoice-id="{{ inv.id }}" data-generated="{{ '1' if inv.ledger_is_generated else '0' }}" onclick="return window.posIlEditClick && window.posIlEditClick(this)">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                    {% elif can_resettle %}
+                    <button type="button" class="act-btn edit pos-il-resettle-btn" data-tip="Edit settlement" aria-label="Edit settlement for invoice {{ inv.order_no }}" data-invoice-id="{{ inv.id }}" onclick="return window.posIlResettleClick && window.posIlResettleClick(this)">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                     </button>
                     {% endif %}
@@ -389,11 +395,11 @@
 {% endif %}
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
-<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=18"></script>
 <script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=14"></script>
 <script src="{{ url_for('static', filename='pos_printers.js') }}?v=20"></script>
-<script src="{{ url_for('static', filename='pos_settle.js') }}?v=6"></script>
-<script src="{{ url_for('static', filename='pos_invoice_ledger.js') }}?v=24"></script>
+<script src="{{ url_for('static', filename='pos_settle.js') }}?v=7"></script>
+<script src="{{ url_for('static', filename='pos_invoice_ledger.js') }}?v=27"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

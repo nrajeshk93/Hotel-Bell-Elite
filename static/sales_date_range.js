@@ -86,18 +86,18 @@
     const backdrop = pick(cfg.backdropId);
     const panel = pick(cfg.panelId);
     const display = pick(cfg.displayId);
-    // Prefer the enclosing form: pick() looks inside the chip first and can miss
-    // the filter form on pages that use .de-main-wrapper instead of .de-main-inner.
+    // Prefer the enclosing form: pick()/getElementById can hit stale duplicates
+    // after soft-nav; form-scoped inputs are the ones that actually submit.
     const form =
       (cfg.formId && wrap.closest('#' + cfg.formId)) ||
       wrap.closest('form') ||
       (cfg.formId ? pick(cfg.formId) : null);
     const ff =
-      pick(cfg.fromInputId) ||
-      (form && cfg.fromInputId && form.querySelector('#' + cfg.fromInputId));
+      (form && cfg.fromInputId && form.querySelector('#' + cfg.fromInputId)) ||
+      pick(cfg.fromInputId);
     const ft =
-      pick(cfg.toInputId) ||
-      (form && cfg.toInputId && form.querySelector('#' + cfg.toInputId));
+      (form && cfg.toInputId && form.querySelector('#' + cfg.toInputId)) ||
+      pick(cfg.toInputId);
     const cancelBtn = pick(cfg.cancelId);
     const applyBtn = pick(cfg.applyId);
     const btnPrev = pick(cfg.prevId);
@@ -171,6 +171,11 @@
     let viewY = now.getFullYear();
     let viewM = now.getMonth();
     let openSnapshot = { from: '', to: '' };
+    // 0 = next click starts a range (as a complete single day); 1 = next click sets end.
+    let rangePickStep = 0;
+    // Day-cell re-render can retarget the same click outside the picker and
+    // closePanel() would restore FY defaults while the grid still looks selected.
+    let ignoreOutsideClickUntil = 0;
 
     const initAnchor = parseISO(ff.value || maxDateStr);
     if (initAnchor) {
@@ -319,15 +324,27 @@
       if (singleDay) {
         selFrom = iso;
         selTo = iso;
-      } else if (!selFrom || (selFrom && selTo)) {
+        rangePickStep = 0;
+      } else if (rangePickStep === 0) {
+        // First click commits a complete single-day range immediately so Apply
+        // cannot keep the prior FY start while only the end looks selected.
         selFrom = iso;
-        selTo = '';
+        selTo = iso;
+        rangePickStep = 1;
+      } else if (iso === selFrom) {
+        selTo = iso;
+        rangePickStep = 0;
+      } else if (compareIso(iso, selFrom) < 0) {
+        selTo = selFrom;
+        selFrom = iso;
+        rangePickStep = 0;
       } else {
-        if (compareIso(iso, selFrom) < 0) {
-          selTo = selFrom;
-          selFrom = iso;
-        } else selTo = iso;
+        selTo = iso;
+        rangePickStep = 0;
       }
+      // Guard outside-close for this event turn (cell is destroyed + recreated).
+      ignoreOutsideClickUntil = Date.now() + 500;
+      syncFormHidden();
       renderCalendars();
       refreshTriggerText();
     }
@@ -342,6 +359,7 @@
       selFrom = openSnapshot.from;
       selTo = singleDay ? openSnapshot.from || openSnapshot.to : openSnapshot.to;
       if (singleDay && selFrom) selTo = selFrom;
+      rangePickStep = 0;
       const v = parseISO(selFrom || maxDateStr);
       if (v) {
         viewY = v.y;
@@ -359,8 +377,11 @@
     function closePanel() {
       selFrom = openSnapshot.from;
       selTo = openSnapshot.to;
+      rangePickStep = 0;
       syncFormHidden();
       refreshTriggerText();
+      // Re-render so a wiped selection cannot leave a stale single-day highlight.
+      if (wrap.classList.contains('open')) renderCalendars();
       wrap.classList.remove('open');
       trigger.setAttribute('aria-expanded', 'false');
       panel.setAttribute('hidden', 'hidden');
@@ -435,9 +456,10 @@
     // Outside click (backdrop may be clipped by overflow:hidden chip chrome).
     document.addEventListener('click', function (e) {
       if (!wrap.classList.contains('open')) return;
+      if (Date.now() < ignoreOutsideClickUntil) return;
       if (eventInsidePicker(e.target)) return;
       // Ignore detached targets (e.g. day cell removed mid-bubble by re-render).
-      if (!e.target || (e.target.isConnected === false)) return;
+      if (!e.target || e.target.isConnected === false) return;
       closePanel();
     });
     if (cancelBtn) cancelBtn.addEventListener('click', closePanel);
@@ -445,6 +467,7 @@
       applyBtn.addEventListener('click', function (e) {
         e.preventDefault();
         e.stopPropagation();
+        ignoreOutsideClickUntil = Date.now() + 500;
         if (!selFrom) selFrom = (ff && ff.value) || '';
         if (!selFrom) return;
         if (singleDay || !selTo) selTo = selFrom;
@@ -454,6 +477,11 @@
           lo = selTo;
           hi = selFrom;
         }
+        // Single-day visual (start === end) must never keep a prior FY start.
+        if (!singleDay && lo === hi) {
+          hi = lo;
+        }
+        rangePickStep = 0;
         ff.value = lo;
         ft.value = hi;
         if (ff.name == null || ff.name === '') {

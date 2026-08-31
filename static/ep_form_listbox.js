@@ -1,6 +1,50 @@
 (function (global) {
   'use strict';
 
+  function hbeNorm(s){ return String(s || '').toLowerCase().trim(); }
+  function hbeSearchScore(text, query){
+    var hay = hbeNorm(text);
+    var q = hbeNorm(query);
+    if (!q) return 0;
+    if (!hay) return -1;
+    if (hay === q) return 400;
+    if (hay.indexOf(q) === 0) return 300;
+    var tokens = hay.split(/[\s\/_\-.,;:()]+/).filter(Boolean);
+    var i, t;
+    for (i = 0; i < tokens.length; i++) {
+      t = tokens[i];
+      if (t === q) return 250;
+      if (t.indexOf(q) === 0) return 200;
+    }
+    if (hay.indexOf(q) !== -1) return 100;
+    return -1;
+  }
+  function hbeSearchScoreQuery(text, query){
+    var terms = hbeNorm(query).split(/\s+/).filter(Boolean);
+    if (!terms.length) return 0;
+    var score = 0, s, i;
+    for (i = 0; i < terms.length; i++) {
+      s = hbeSearchScore(text, terms[i]);
+      if (s < 0) return -1;
+      score += s;
+    }
+    return score;
+  }
+  function hbeBestSearchScore(fields, query){
+    var best = -1, i, s;
+    fields = fields || [];
+    for (i = 0; i < fields.length; i++) {
+      s = hbeSearchScoreQuery(fields[i], query);
+      if (s > best) best = s;
+    }
+    return best;
+  }
+
+  global.hbeNorm = hbeNorm;
+  global.hbeSearchScore = hbeSearchScore;
+  global.hbeSearchScoreQuery = hbeSearchScoreQuery;
+  global.hbeBestSearchScore = hbeBestSearchScore;
+
   function listEl(root){
     if (!root) return null;
     if (root.__epPortaledList && root.__epPortaledList.isConnected) {
@@ -49,17 +93,11 @@
 
   function scoreSearchOption(option, needle){
     if (!needle) return 0;
-    var name = (option.getAttribute('data-name') || option.textContent || '').toLowerCase().trim();
-    var terms = needle.split(/\s+/).filter(Boolean);
-    var score = 0;
-    for (var i = 0; i < terms.length; i++) {
-      var term = terms[i];
-      if (name === term) score += 120;
-      else if (name.indexOf(term) === 0) score += 90;
-      else if (name.indexOf(term) !== -1) score += 60;
-      else return -1;
-    }
-    return score;
+    return hbeBestSearchScore([
+      option.getAttribute('data-name') || option.textContent || '',
+      option.getAttribute('data-gst') || '',
+      option.getAttribute('data-label') || ''
+    ], needle);
   }
 
   function isPinnedAllOption(option){
@@ -362,12 +400,15 @@
          because the chip still has a transformed ancestor. */
       return true;
     }
-    /* Product / category / unit overlays sit under a transformed workspace.
-       Must run BEFORE the generic combobox+dialog rule — searchable Supplier
-       listboxes are ep-combobox-listbox inside role=dialog, and fixed coords
-       land nowhere near the chip. Absolute under the chip stays aligned. */
-    if (root.closest('#st-product-modal, #st-category-modal, #st-unit-modal')) {
-      return false;
+    /* Product / category / unit overlays — and especially when nested under
+       Masters (#md-master-modal) — clip absolute menus via overflow:hidden on
+       dialog / embed-body. Portal+fixed onto body / #de-fs-app escapes that
+       (same approach as menu-item / indent / hotel check-in listboxes). */
+    if (
+      root.classList.contains('ep-form-listbox') &&
+      root.closest('#st-product-modal, #st-category-modal, #st-unit-modal')
+    ) {
+      return true;
     }
     if (root.classList.contains('ep-combobox-listbox') && root.closest('.modal-backdrop, .modal-overlay, .staff-credit-box, .pos-inv-modal, [role="dialog"]')) {
       return true;
@@ -621,7 +662,7 @@
       root.closest(
         '.st-indent-page, #st-indent-edit-modal, #st-indent-form, ' +
         '#room-transfer-filter-form, #purchase-ledger-filter-form, #credits-dashboard-filter-form, ' +
-        '#pos-menu-item-modal'
+        '#pos-menu-item-modal, #st-product-modal, #st-category-modal, #st-unit-modal'
       )
     ) {
       root.classList.add('is-open');

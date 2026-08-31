@@ -23,6 +23,81 @@ def is_pos_liquor_category(name):
     return bool(_POS_LIQUOR_CATEGORY_RE.search(str(name or "").strip()))
 
 
+def hbe_norm(s):
+    return str(s or "").lower().strip()
+
+
+def hbe_search_score(text, query):
+    """Exact > whole-string prefix > word-start > substring. -1 = no match."""
+    hay = hbe_norm(text)
+    q = hbe_norm(query)
+    if not q:
+        return 0
+    if not hay:
+        return -1
+    if hay == q:
+        return 400
+    if hay.startswith(q):
+        return 300
+    tokens = [t for t in re.split(r"[\s/\-_.,;:()]+", hay) if t]
+    for token in tokens:
+        if token == q:
+            return 250
+        if token.startswith(q):
+            return 200
+    if q in hay:
+        return 100
+    return -1
+
+
+def hbe_search_score_query(text, query):
+    terms = [t for t in hbe_norm(query).split() if t]
+    if not terms:
+        return 0
+    score = 0
+    for term in terms:
+        s = hbe_search_score(text, term)
+        if s < 0:
+            return -1
+        score += s
+    return score
+
+
+def hbe_best_search_score(fields, query):
+    best = -1
+    for field in fields or []:
+        s = hbe_search_score_query(field, query)
+        if s > best:
+            best = s
+    return best
+
+
+def hbe_rank_records(records, query, fields):
+    """Filter non-matches and sort prefix/word-start first. Empty query is unchanged."""
+    q = str(query or "").strip()
+    rows = list(records or [])
+    if not q:
+        return rows
+    scored = []
+    for row in rows:
+        values = []
+        for field in fields:
+            if isinstance(row, dict):
+                values.append(row.get(field))
+            else:
+                try:
+                    values.append(row[field])
+                except (KeyError, IndexError, TypeError):
+                    values.append("")
+        score = hbe_best_search_score(values, q)
+        if score >= 0:
+            scored.append((score, row))
+    scored.sort(key=lambda item: -item[0])
+    return [row for _, row in scored]
+
+
+
+
 class _RequestScopedConnection:
     """sqlite3 connection reused for one Flask request.
 
@@ -1527,9 +1602,14 @@ def search_customers(conn, query, limit=8):
         ORDER BY LOWER(first_name) ASC, mobile ASC, id ASC
         LIMIT ?
         """,
-        ("%" + name_q + "%", limit),
+        ("%" + name_q + "%", max(limit, 80)),
     ).fetchall()
-    return [customer_row_to_dict(row) for row in rows]
+    ranked = hbe_rank_records(
+        [customer_row_to_dict(row) for row in rows],
+        name_q,
+        ("first_name",),
+    )
+    return ranked[:limit]
 
 
 def upsert_customer(conn, first_name, mobile, address="", email=""):
@@ -3276,6 +3356,150 @@ def soft_delete_pos_menu_item(conn, item_id):
     return True
 
 
+def list_store_product_units(conn):
+    """Active Product Master units with product usage counts."""
+    ensure_stores_schema(conn)
+    rows = conn.execute(
+        """
+        SELECT
+            u.id,
+            u.name,
+            u.sort_order,
+            u.is_active,
+            u.created_at,
+            COALESCE(p.product_count, 0) AS product_count
+        FROM store_product_units u
+        LEFT JOIN (
+            SELECT lower(trim(default_unit)) AS unit_key, COUNT(*) AS product_count
+            FROM store_products
+            WHERE is_active = 1
+              AND default_unit IS NOT NULL
+              AND trim(default_unit) != ''
+            GROUP BY lower(trim(default_unit))
+        ) p ON p.unit_key = lower(u.name)
+        WHERE u.is_active = 1
+        ORDER BY u.sort_order ASC, u.name COLLATE NOCASE ASC
+        """
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def save_store_product_unit(conn, *, unit_id=None, name=""):
+    """Create or update a Product Master unit. Raises ValueError on validation errors."""
+    ensure_stores_schema(conn)
+    unit_name = " ".join(str(name or "").split()).strip()
+    if not unit_name:
+        raise ValueError("Unit name is required.")
+    if len(unit_name) > 40:
+        raise ValueError("Unit name must be 40 characters or fewer.")
+
+    if unit_id is not None:
+        existing = conn.execute(
+            "SELECT id FROM store_product_units WHERE id = ? AND is_active = 1",
+            (int(unit_id),),
+        ).fetchone()
+        if not existing:
+            raise ValueError("Unit not found.")
+        dup = conn.execute(
+            """
+            SELECT id FROM store_product_units
+            WHERE lower(name) = lower(?) AND id != ? AND is_active = 1
+            """,
+            (unit_name, int(unit_id)),
+        ).fetchone()
+        if dup:
+            raise ValueError("That unit already exists.")
+        old = conn.execute(
+            "SELECT name FROM store_product_units WHERE id = ?",
+            (int(unit_id),),
+        ).fetchone()
+        old_name = str((old["name"] if old else "") or "").strip()
+        conn.execute(
+            "UPDATE store_product_units SET name = ? WHERE id = ?",
+            (unit_name, int(unit_id)),
+        )
+        if old_name and old_name.lower() != unit_name.lower():
+            conn.execute(
+                f"""
+                UPDATE store_products
+                SET default_unit = ?, updated_at = {SQL_NOW}
+                WHERE is_active = 1 AND lower(trim(default_unit)) = lower(?)
+                """,
+                (unit_name, old_name),
+            )
+        return int(unit_id)
+
+    dup = conn.execute(
+        """
+        SELECT id FROM store_product_units
+        WHERE lower(name) = lower(?) AND is_active = 1
+        """,
+        (unit_name,),
+    ).fetchone()
+    if dup:
+        raise ValueError("That unit already exists.")
+    inactive = conn.execute(
+        """
+        SELECT id FROM store_product_units
+        WHERE lower(name) = lower(?) AND is_active = 0
+        """,
+        (unit_name,),
+    ).fetchone()
+    if inactive:
+        conn.execute(
+            """
+            UPDATE store_product_units
+            SET name = ?, is_active = 1,
+                sort_order = COALESCE(
+                    (SELECT MAX(sort_order) + 10 FROM store_product_units WHERE is_active = 1),
+                    10
+                )
+            WHERE id = ?
+            """,
+            (unit_name, int(inactive["id"])),
+        )
+        return int(inactive["id"])
+    max_sort = conn.execute(
+        "SELECT COALESCE(MAX(sort_order), 0) AS m FROM store_product_units"
+    ).fetchone()["m"]
+    cursor = conn.execute(
+        """
+        INSERT INTO store_product_units (name, sort_order, is_active)
+        VALUES (?, ?, 1)
+        """,
+        (unit_name, int(max_sort) + 10),
+    )
+    return int(cursor.lastrowid)
+
+
+def soft_delete_store_product_unit(conn, unit_id):
+    """Soft-delete a unit. Raises ValueError when missing or still used by products."""
+    ensure_stores_schema(conn)
+    row = conn.execute(
+        "SELECT id, name FROM store_product_units WHERE id = ? AND is_active = 1",
+        (int(unit_id),),
+    ).fetchone()
+    if not row:
+        raise ValueError("Unit not found.")
+    used = conn.execute(
+        """
+        SELECT COUNT(*) AS n
+        FROM store_products
+        WHERE is_active = 1 AND lower(trim(default_unit)) = lower(?)
+        """,
+        (row["name"],),
+    ).fetchone()["n"]
+    if int(used or 0) > 0:
+        raise ValueError(
+            f"Cannot delete \"{row['name']}\" — it is used by {int(used)} product(s)."
+        )
+    conn.execute(
+        "UPDATE store_product_units SET is_active = 0 WHERE id = ?",
+        (int(unit_id),),
+    )
+    return True
+
+
 def list_store_products_lite(conn, *, outlets=None, q=""):
     """Active Product Master rows for pickers (id, name, unit, outlet, price)."""
     ensure_stores_schema(conn)
@@ -3334,6 +3558,8 @@ def list_store_products_lite(conn, *, outlets=None, q=""):
                 "category_name": r["category_name"] or "",
             }
         )
+    if needle:
+        result = hbe_rank_records(result, needle, ("name", "category_name", "default_unit"))
     return result
 
 
@@ -5621,6 +5847,69 @@ def _parse_pos_payment_splits(raw_splits, target_total):
     return parsed
 
 
+def pos_invoice_settled_same_local_day(settled_at, today=None):
+    """True when settled_at falls on the given local calendar day (YYYY-MM-DD)."""
+    stamp = str(settled_at or "").strip()
+    if len(stamp) < 10:
+        return False
+    day = str(today or "").strip()[:10]
+    if not day:
+        from datetime import date as _date
+
+        day = _date.today().isoformat()
+    return stamp[:10] == day
+
+
+def pos_invoice_can_resettle_same_day(invoice, today=None):
+    """Settled (non-cancelled) invoices may change payment modes until end of day."""
+    if not invoice:
+        return False
+    status = str(invoice.get("status") or "").strip().lower() or "open"
+    if status == "cancelled":
+        return False
+    settled_at = str(invoice.get("settled_at") or "").strip()
+    is_settled = status == "closed" or bool(settled_at) or bool(
+        invoice.get("payment_modes")
+    )
+    if not is_settled:
+        return False
+    # Prefer settled_at; fall back to updated_at for legacy close-without-pay rows.
+    stamp = settled_at or str(invoice.get("updated_at") or "").strip()
+    return pos_invoice_settled_same_local_day(stamp, today=today)
+
+
+def _remove_hotel_folio_charges_for_pos_invoice(conn, invoice_id):
+    """Drop stay folio lines posted from this POS invoice (same-day resettle)."""
+    inv_key = str(invoice_id or "").strip()
+    if not inv_key:
+        return 0
+    layout = get_hotel_rooms_layout(conn)
+    rooms = list(layout.get("rooms") or [])
+    changed = 0
+    for room in rooms:
+        stay = room.get("stay")
+        if not isinstance(stay, dict) or not stay:
+            continue
+        folio = list(stay.get("folioCharges") or stay.get("folio_charges") or [])
+        if not folio:
+            continue
+        kept = [
+            line
+            for line in folio
+            if str(line.get("invoiceId") or line.get("invoice_id") or "").strip()
+            != inv_key
+        ]
+        if len(kept) == len(folio):
+            continue
+        stay = dict(stay)
+        stay["folioCharges"] = kept
+        room["stay"] = _normalize_hotel_room_stay(stay)
+        changed += len(folio) - len(kept)
+    if changed:
+        save_hotel_rooms_layout(conn, layout.get("floors") or [], rooms)
+    return changed
+
+
 def settle_pos_invoice(
     conn,
     invoice_id,
@@ -5638,6 +5927,9 @@ def settle_pos_invoice(
 
     When any split uses room_transfer, hotel_room_id must reference an occupied
     hotel room; the room-transfer amount is posted onto that stay's folio.
+
+    Same-day resettlement: a bill already settled today may replace payment modes
+    until local midnight (does not re-run stock deduction / table free).
     """
     ensure_pos_schema(conn)
     try:
@@ -5655,8 +5947,22 @@ def settle_pos_invoice(
     ).fetchone()
     if not row:
         raise ValueError("Invoice not found.")
-    if str(row["status"] or "").strip().lower() == "closed":
-        raise ValueError("This bill is already settled.")
+    status = str(row["status"] or "").strip().lower() or "open"
+    settled_at = str(row["settled_at"] or "").strip()
+    today = conn.execute("SELECT date('now','localtime')").fetchone()[0]
+    already_settled = status == "closed" or bool(settled_at)
+    resettle = False
+    if already_settled:
+        if status == "cancelled":
+            raise ValueError("Cancelled invoices cannot be settled.")
+        # Legacy close-without-pay may lack settled_at — allow same-day via updated_at.
+        stamp = settled_at
+        if not stamp:
+            full = get_pos_invoice(conn, invoice_id) or {}
+            stamp = str(full.get("updated_at") or "").strip()
+        if not pos_invoice_settled_same_local_day(stamp, today=today):
+            raise ValueError("This bill is already settled.")
+        resettle = True
 
     target = _pos_money(row["grand_total"])
     splits = _parse_pos_payment_splits(payment_splits, target)
@@ -5674,15 +5980,24 @@ def settle_pos_invoice(
 
     pay_date = str(payment_date or "").strip()
     if not pay_date:
-        pay_date = conn.execute("SELECT date('now','localtime')").fetchone()[0]
+        pay_date = today
     notes_clean = str(notes or "").strip()
     transfer_room_number = (
         _pos_room_number_for_hotel_room_id(conn, hotel_room_id)
         if room_transfer_total > 0
         else ""
     )
+    order_no = str(row["order_no"] or "").strip()
 
-    # Replace any prior draft payments (should be empty for open bills).
+    if resettle:
+        # Clear prior room-transfer folio / ledger rows before replacing payments.
+        _remove_hotel_folio_charges_for_pos_invoice(conn, invoice_id)
+        if order_no:
+            _retire_pos_room_transfer_invoice(
+                conn, order_no, reason="Settlement edited same day"
+            )
+
+    # Replace any prior draft / settlement payments.
     conn.execute("DELETE FROM pos_invoice_payments WHERE invoice_id = ?", (invoice_id,))
     for split in splits:
         pay_notes = notes_clean
@@ -5715,14 +6030,17 @@ def settle_pos_invoice(
         (notes_clean, invoice_id),
     )
 
-    invoice = close_pos_invoice_and_free_table(conn, invoice_id, user_id=user_id)
+    if resettle:
+        # Already closed — do not re-run stock deduction or table free.
+        invoice = get_pos_invoice(conn, invoice_id)
+    else:
+        invoice = close_pos_invoice_and_free_table(conn, invoice_id, user_id=user_id)
     payments = list_pos_invoice_payments(conn, invoice_id)
     invoice["payments"] = payments
     invoice["payment_notes"] = notes_clean
 
     if room_transfer_total > 0:
         outlet = str(row["outlet"] or (invoice or {}).get("outlet") or "")
-        order_no = str(row["order_no"] or (invoice or {}).get("order_no") or "")
         kind = _hotel_folio_kind_for_outlet(outlet)
         label = {
             "restaurant_room_transfer": "Restaurant Room Transfer",
@@ -7070,6 +7388,29 @@ def pos_invoice_is_ledger_generated(invoice, outlet=None):
     return not is_provisional_pos_order_no((invoice or {}).get("order_no"), outlet_key)
 
 
+# Invoice Ledger settlement filters (shared by list_pos_invoices + KPI aggregators).
+_POS_INVOICE_SETTLED_SQL = """
+(
+    lower(COALESCE(i.status, 'open')) = 'closed'
+    OR EXISTS (
+        SELECT 1 FROM pos_invoice_payments p
+        WHERE p.invoice_id = i.id AND COALESCE(p.amount, 0) > 0.009
+    )
+    OR TRIM(COALESCE(i.settled_at, '')) != ''
+)
+"""
+
+_POS_INVOICE_UNSETTLED_SQL = """
+(
+    lower(COALESCE(i.status, 'open')) = 'open'
+    AND NOT EXISTS (
+        SELECT 1 FROM pos_invoice_payments p
+        WHERE p.invoice_id = i.id AND COALESCE(p.amount, 0) > 0.009
+    )
+    AND TRIM(COALESCE(i.settled_at, '')) = ''
+)
+"""
+
 def list_pos_invoices(
     conn,
     *,
@@ -7104,29 +7445,9 @@ def list_pos_invoices(
         params.append(_normalize_pos_order_type(order_type))
     settlement_key = str(settlement or "").strip().lower()
     if settlement_key == "settled":
-        clauses.append(
-            """
-            (
-                lower(COALESCE(i.status, 'open')) = 'closed'
-                OR EXISTS (
-                    SELECT 1 FROM pos_invoice_payments p
-                    WHERE p.invoice_id = i.id AND COALESCE(p.amount, 0) > 0.009
-                )
-                OR TRIM(COALESCE(i.settled_at, '')) != ''
-            )
-            """
-        )
+        clauses.append(_POS_INVOICE_SETTLED_SQL)
     elif settlement_key == "unsettled":
-        clauses.append(
-            """
-            lower(COALESCE(i.status, 'open')) = 'open'
-            AND NOT EXISTS (
-                SELECT 1 FROM pos_invoice_payments p
-                WHERE p.invoice_id = i.id AND COALESCE(p.amount, 0) > 0.009
-            )
-            AND TRIM(COALESCE(i.settled_at, '')) = ''
-            """
-        )
+        clauses.append(_POS_INVOICE_UNSETTLED_SQL)
     needle = " ".join(str(q or "").split()).strip().lower()
     if needle:
         like = f"%{needle}%"
@@ -9006,7 +9327,17 @@ def _seed_store_place_demo(cursor, *, migrated_place: bool) -> None:
 
 def _seed_store_product_units(cursor):
     """Seed default product units used on Product Master (idempotent)."""
-    defaults = ("kg", "gram", "pcs", "liter", "mL", "bunch", "bottle", "pack")
+    defaults = (
+        "kg",
+        "gram",
+        "pcs",
+        "liter",
+        "milliliter",
+        "mL",
+        "bunch",
+        "bottle",
+        "pack",
+    )
     for idx, name in enumerate(defaults, start=1):
         cursor.execute(
             """
@@ -13687,8 +14018,9 @@ def _hotel_payload_sales_entry_tenders(payload_json):
 def hotel_sales_entry_from_invoices(conn, sales_date):
     """Build Hotel Sales Entry totals from room invoices for one day.
 
-    Unpaid / unsettled balance is mapped to ``room_credit`` (Guest Credit), matching FO
-    ledger behavior when payment mode is missing. Back Office Receipt tenders map to ``bor``.
+    Stay invoices generated that day only (excludes POS room-transfer and FBE
+    F&B combined-transfer). Unpaid / unsettled balance is mapped to
+    ``room_credit`` (Guest Credit). Back Office Receipt tenders map to ``bor``.
     """
     ensure_hotel_room_invoices_schema(conn)
     day = str(sales_date)[:10]
@@ -13850,8 +14182,76 @@ def _finalize_invoice_kpi_bucket(bucket):
     }
 
 
+def _add_invoice_kpi_tender(bucket_cash_digital_room, payment_method, amount):
+    """Accumulate one tender into (cash, digital, room_credit) mutable list/tuple slots."""
+    amount = float(amount or 0)
+    if abs(amount) < 0.005:
+        return
+    tend = _invoice_kpi_bucket_for_method(payment_method)
+    if tend == "cash":
+        bucket_cash_digital_room[0] += amount
+    elif tend == "digital":
+        bucket_cash_digital_room[1] += amount
+    elif tend == "room_credit":
+        bucket_cash_digital_room[2] += amount
+
+
+def _iter_hotel_ledger_sales_invoices(conn, date_from, date_to):
+    """Hotel Invoice Ledger billable stay rows for dashboard TOTAL SALES.
+
+    Matches the ledger **Total billed** KPI for stay invoices on the same date
+    window: non-cancelled stay invoices (``open`` + ``settled``), attributed by
+    ``invoice_generated_at``.
+
+    Excludes POS room-transfer and F&B combined-transfer (FBE) sources so F&B is
+    not counted under Hotel (it belongs on Restaurant/Bar / room-transfer flows).
+    """
+    ensure_hotel_room_invoices_schema(conn)
+    d0 = str(date_from)[:10]
+    d1 = str(date_to)[:10]
+    return conn.execute(
+        f"""
+        SELECT estimated_total, payload_json,
+               substr(invoice_generated_at, 1, 10) AS sales_day
+        FROM hotel_room_invoices
+        WHERE lower(COALESCE(status, '')) IN ('open', 'settled')
+          AND {_HOTEL_INVOICE_STAY_SOURCE_SQL}
+          AND substr(invoice_generated_at, 1, 10) >= ?
+          AND substr(invoice_generated_at, 1, 10) <= ?
+        """,
+        (d0, d1),
+    ).fetchall()
+
+
+def _iter_settled_ledger_pos_invoices(conn, date_from, date_to, outlets):
+    """POS Invoice Ledger settled rows (generated_only) for dashboard sales KPIs."""
+    for outlet in outlets or []:
+        for inv in list_pos_invoices(
+            conn,
+            date_from=date_from,
+            date_to=date_to,
+            settlement="settled",
+            outlet=outlet,
+            generated_only=True,
+        ):
+            if str(inv.get("status") or "").strip().lower() == "cancelled":
+                continue
+            yield inv
+
+
 def aggregate_invoice_sales_kpis(conn, date_from, date_to, location=None):
-    """Sum invoice KPIs for a date range (settled + unsettled).
+    """Sum module invoice-ledger sales for a date range (Main Dashboard TOTAL SALES).
+
+    Per-module rules match what users see on each Invoice Ledger with the same
+    dates:
+
+    - **Hotel**: Total billed — stay invoices with status ``open`` or ``settled``
+      (excludes POS room-transfer and FBE F&B combined-transfer).
+    - **Restaurant / Bar**: Settlement = Settled, generated invoices only
+      (``list_pos_invoices(..., settlement='settled', generated_only=True)``).
+
+    Provisional POS drafts and cancelled rows are excluded. This is ledger sales,
+    not Sales Update cash / Difference fields.
 
     ``location``: None/All, ``Hotel`` / ``Restaurant`` / ``Bar``, or a list of those.
     Returns keys compatible with ``_aggregate_sales_kpis``.
@@ -13865,96 +14265,38 @@ def aggregate_invoice_sales_kpis(conn, date_from, date_to, location=None):
     include_hotel, outlets = _invoice_kpi_modules(location)
 
     actual = 0.0
-    cash = 0.0
-    digital = 0.0
-    room_credit = 0.0
+    tenders = [0.0, 0.0, 0.0]  # cash, digital, room_credit
 
     if include_hotel:
-        hotel_row = conn.execute(
-            f"""
-            SELECT COALESCE(SUM(estimated_total), 0) AS amount
-            FROM hotel_room_invoices
-            WHERE lower(COALESCE(status, '')) IN ('open', 'settled')
-              AND {_HOTEL_INVOICE_STAY_SOURCE_SQL}
-              AND substr(invoice_generated_at, 1, 10) >= ?
-              AND substr(invoice_generated_at, 1, 10) <= ?
-            """,
-            (d0, d1),
-        ).fetchone()
-        actual += float(hotel_row["amount"] if hotel_row else 0)
-
-        hotel_payloads = conn.execute(
-            f"""
-            SELECT payload_json
-            FROM hotel_room_invoices
-            WHERE lower(COALESCE(status, '')) IN ('open', 'settled')
-              AND {_HOTEL_INVOICE_STAY_SOURCE_SQL}
-              AND substr(invoice_generated_at, 1, 10) >= ?
-              AND substr(invoice_generated_at, 1, 10) <= ?
-            """,
-            (d0, d1),
-        ).fetchall()
-        for row in hotel_payloads:
+        for row in _iter_hotel_ledger_sales_invoices(conn, d0, d1):
+            actual += float(row["estimated_total"] or 0)
             h_cash, h_digital, h_room = _hotel_payload_tender_splits(row["payload_json"])
-            cash += h_cash
-            digital += h_digital
-            room_credit += h_room
+            tenders[0] += h_cash
+            tenders[1] += h_digital
+            tenders[2] += h_room
 
-    if outlets:
-        placeholders = ",".join("?" for _ in outlets)
-        pos_row = conn.execute(
-            f"""
-            SELECT COALESCE(SUM(i.grand_total), 0) AS amount
-            FROM pos_invoices i
-            WHERE i.is_active = 1
-              AND i.outlet IN ({placeholders})
-              AND i.order_date >= ?
-              AND i.order_date <= ?
-              AND lower(COALESCE(i.status, 'open')) != 'cancelled'
-            """,
-            (*outlets, d0, d1),
-        ).fetchone()
-        actual += float(pos_row["amount"] if pos_row else 0)
-
-        pay_rows = conn.execute(
-            f"""
-            SELECT p.payment_method AS payment_method,
-                   COALESCE(SUM(p.amount), 0) AS amount
-            FROM pos_invoice_payments p
-            JOIN pos_invoices i ON i.id = p.invoice_id
-            WHERE i.is_active = 1
-              AND i.outlet IN ({placeholders})
-              AND i.order_date >= ?
-              AND i.order_date <= ?
-              AND lower(COALESCE(i.status, 'open')) != 'cancelled'
-            GROUP BY p.payment_method
-            """,
-            (*outlets, d0, d1),
-        ).fetchall()
-        for row in pay_rows:
-            amount = float(row["amount"] or 0)
-            if abs(amount) < 0.005:
-                continue
-            bucket = _invoice_kpi_bucket_for_method(row["payment_method"])
-            if bucket == "cash":
-                cash += amount
-            elif bucket == "digital":
-                digital += amount
-            elif bucket == "room_credit":
-                room_credit += amount
+    for inv in _iter_settled_ledger_pos_invoices(conn, d0, d1, outlets):
+        actual += float(inv.get("grand_total") or 0)
+        amounts = inv.get("payment_amounts")
+        if isinstance(amounts, dict):
+            for method, amount in amounts.items():
+                _add_invoice_kpi_tender(tenders, method, amount)
 
     return _finalize_invoice_kpi_bucket(
         {
             "actual_sales": actual,
-            "digital_transactions": digital,
-            "cash": cash,
-            "room_credit": room_credit,
+            "digital_transactions": tenders[1],
+            "cash": tenders[0],
+            "room_credit": tenders[2],
         }
     )
 
 
 def aggregate_invoice_sales_kpis_by_day(conn, date_from, date_to, location=None):
-    """Daily invoice KPI buckets for sparkline / trend charts."""
+    """Daily invoice-ledger KPI buckets for sparkline / trend charts.
+
+    Same per-module rules as ``aggregate_invoice_sales_kpis``.
+    """
     ensure_hotel_room_invoices_schema(conn)
     ensure_pos_schema(conn)
 
@@ -13967,19 +14309,7 @@ def aggregate_invoice_sales_kpis_by_day(conn, date_from, date_to, location=None)
         return by_day.setdefault(day, _empty_invoice_kpi_bucket())
 
     if include_hotel:
-        rows = conn.execute(
-            f"""
-            SELECT substr(invoice_generated_at, 1, 10) AS sales_day,
-                   estimated_total, payload_json
-            FROM hotel_room_invoices
-            WHERE lower(COALESCE(status, '')) IN ('open', 'settled')
-              AND {_HOTEL_INVOICE_STAY_SOURCE_SQL}
-              AND substr(invoice_generated_at, 1, 10) >= ?
-              AND substr(invoice_generated_at, 1, 10) <= ?
-            """,
-            (d0, d1),
-        ).fetchall()
-        for row in rows:
+        for row in _iter_hotel_ledger_sales_invoices(conn, d0, d1):
             day = str(row["sales_day"] or "")[:10]
             if not day:
                 continue
@@ -13990,59 +14320,20 @@ def aggregate_invoice_sales_kpis_by_day(conn, date_from, date_to, location=None)
             bucket["digital_transactions"] += h_digital
             bucket["room_credit"] += h_room
 
-    if outlets:
-        placeholders = ",".join("?" for _ in outlets)
-        rows = conn.execute(
-            f"""
-            SELECT i.order_date AS sales_day,
-                   COALESCE(SUM(i.grand_total), 0) AS amount
-            FROM pos_invoices i
-            WHERE i.is_active = 1
-              AND i.outlet IN ({placeholders})
-              AND i.order_date >= ?
-              AND i.order_date <= ?
-              AND lower(COALESCE(i.status, 'open')) != 'cancelled'
-            GROUP BY i.order_date
-            """,
-            (*outlets, d0, d1),
-        ).fetchall()
-        for row in rows:
-            day = str(row["sales_day"] or "")[:10]
-            if not day:
-                continue
-            bucket_for(day)["actual_sales"] += float(row["amount"] or 0)
-
-        pay_rows = conn.execute(
-            f"""
-            SELECT i.order_date AS sales_day,
-                   p.payment_method AS payment_method,
-                   COALESCE(SUM(p.amount), 0) AS amount
-            FROM pos_invoice_payments p
-            JOIN pos_invoices i ON i.id = p.invoice_id
-            WHERE i.is_active = 1
-              AND i.outlet IN ({placeholders})
-              AND i.order_date >= ?
-              AND i.order_date <= ?
-              AND lower(COALESCE(i.status, 'open')) != 'cancelled'
-            GROUP BY i.order_date, p.payment_method
-            """,
-            (*outlets, d0, d1),
-        ).fetchall()
-        for row in pay_rows:
-            day = str(row["sales_day"] or "")[:10]
-            if not day:
-                continue
-            amount = float(row["amount"] or 0)
-            if abs(amount) < 0.005:
-                continue
-            bucket = bucket_for(day)
-            tend = _invoice_kpi_bucket_for_method(row["payment_method"])
-            if tend == "cash":
-                bucket["cash"] += amount
-            elif tend == "digital":
-                bucket["digital_transactions"] += amount
-            elif tend == "room_credit":
-                bucket["room_credit"] += amount
+    for inv in _iter_settled_ledger_pos_invoices(conn, d0, d1, outlets):
+        day = str(inv.get("order_date") or "")[:10]
+        if not day:
+            continue
+        bucket = bucket_for(day)
+        bucket["actual_sales"] += float(inv.get("grand_total") or 0)
+        amounts = inv.get("payment_amounts")
+        if isinstance(amounts, dict):
+            day_tenders = [0.0, 0.0, 0.0]
+            for method, amount in amounts.items():
+                _add_invoice_kpi_tender(day_tenders, method, amount)
+            bucket["cash"] += day_tenders[0]
+            bucket["digital_transactions"] += day_tenders[1]
+            bucket["room_credit"] += day_tenders[2]
 
     return {
         day: _finalize_invoice_kpi_bucket(bucket) for day, bucket in by_day.items()

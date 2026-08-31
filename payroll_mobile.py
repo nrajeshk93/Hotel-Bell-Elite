@@ -12,7 +12,7 @@ from datetime import date, datetime
 
 from flask import Blueprint, jsonify, request
 
-from db import SQL_NOW, get_db
+from db import SQL_NOW, get_db, hbe_rank_records
 from workspace_access import user_can_access_payroll_submodule
 
 payroll_mobile_bp = Blueprint("payroll_mobile", __name__)
@@ -405,6 +405,8 @@ def _attendance_date_payload(conn, user, sel_dt, q="", location=""):
         f"SELECT * FROM employees WHERE {' AND '.join(conds)} ORDER BY {_EMPLOYEE_DISPLAY_ORDER}",
         params,
     ).fetchall()
+    if q:
+        rows = hbe_rank_records(rows, q, ("name", "emp_code", "mobile", "location"))
 
     payroll_state = _get_payroll_month_state(conn, year, month)
     payroll_locked = bool(payroll_state["locked"])
@@ -491,6 +493,8 @@ def _attendance_month_payload(conn, user, year, month, q="", location=""):
         f"SELECT * FROM employees{where} ORDER BY {_EMPLOYEE_DISPLAY_ORDER}",
         tuple(params),
     ).fetchall()
+    if q:
+        rows = hbe_rank_records(rows, q, ("name", "emp_code", "mobile", "location"))
     payroll_state = _get_payroll_month_state(conn, year, month)
     employees = []
     for r in rows:

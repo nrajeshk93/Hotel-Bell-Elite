@@ -227,9 +227,17 @@
       all = rows(page);
     }
     var shown = 0;
-    all.forEach(function (row, idx) {
-      var hay = String(row.getAttribute('data-search') || row.textContent || '').toLowerCase();
-      var searchOk = !needle || hay.indexOf(needle) !== -1;
+    var scored = all.map(function (row) {
+      var score = needle ? window.hbeBestSearchScore([row.getAttribute('data-search') || row.textContent || ''], needle) : 0;
+      return { row: row, score: score };
+    });
+    if (needle) {
+      scored.sort(function (a, b) { return b.score - a.score; });
+      if (tbody) scored.forEach(function (entry) { tbody.appendChild(entry.row); });
+    }
+    scored.forEach(function (entry, idx) {
+      var row = entry.row;
+      var searchOk = !needle || entry.score >= 0;
       var kpiOk = matchesKpi(row, kpi);
       var catOk = category === 'all' || rowCategory(row) === category;
       var match = searchOk && kpiOk && catOk;

@@ -101,18 +101,12 @@
 
   function scoreTipEmployeeOption(option, needle){
     if (!needle) return 0;
-    const name = (option.getAttribute('data-name') || '').toLowerCase();
-    const code = (option.getAttribute('data-code') || '').toLowerCase();
-    const value = (option.getAttribute('data-value') || '').toLowerCase();
-    const terms = needle.split(/\s+/).filter(Boolean);
-    let score = 0;
-    for (const term of terms) {
-      if (name === term || code === term || value === term) score += 120;
-      else if (name.startsWith(term) || code.startsWith(term)) score += 90;
-      else if (name.includes(term) || code.includes(term) || value.includes(term)) score += 60;
-      else return -1;
-    }
-    return score;
+    return window.hbeBestSearchScore([
+      option.getAttribute('data-name') || '',
+      option.getAttribute('data-code') || '',
+      option.getAttribute('data-value') || '',
+      option.textContent || ''
+    ], needle);
   }
 
   function filterTipsEmployeeOptions(query){
@@ -129,7 +123,7 @@
       return (a.option.getAttribute('data-name') || '').localeCompare(b.option.getAttribute('data-name') || '');
     });
 
-    const best = needle && ranked.length ? [ranked[0]] : ranked;
+    const best = ranked;
     options.forEach((option) => option.classList.add('is-filtered-out'));
     best.forEach(({ option }) => {
       option.classList.remove('is-filtered-out');

@@ -1,0 +1,97 @@
+<div class="md-master-embed md-master-embed--page-shell md-master-embed--unit"
+     data-md-modal-title="Unit Master">
+  <header class="se-sales-header su-header md-master-embed-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          <button type="button" class="su-page-back" onclick="if (typeof closeMasterModal === 'function') closeMasterModal()" aria-label="Back to Master">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <h1>Unit Master</h1>
+          </div>
+        </div>
+      </div>
+      <div class="su-header-tools md-master-embed-header-actions">
+        <button type="button" class="btn btn-primary" id="um-open-unit-modal" data-um-action="open-unit-modal">Add Unit</button>
+      </div>
+    </div>
+    <div class="se-sales-header-card">
+      <div class="se-sales-header-filters">
+        <div class="sr-topbar-filters md-master-embed-filter-form-row" aria-label="Unit filters">
+          <div class="se-filter-chip se-filter-chip--search pl-search-chip" id="um-unit-search-chip">
+            <label class="se-filter-chip-label" for="um-unit-search">Search</label>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              </span>
+              <input type="search" id="um-unit-search" class="pl-search-input" placeholder="Unit name…" autocomplete="off" aria-label="Search units">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="md-master-embed-body">
+    {% with embed_page_shell=true %}
+    {% include 'partials/unit_master_body.html' %}
+    {% endwith %}
+  </div>
+
+  <script src="{{ url_for('static', filename='unit_master.js') }}?v=1"></script>
+  <script>
+  (function initUmUnitEmbedFilters(){
+    var searchInput = document.getElementById('um-unit-search');
+    var table = document.getElementById('um-unit-table');
+    if (!table || (searchInput && searchInput.getAttribute('data-um-search-bound') === '1')) return;
+    if (searchInput) searchInput.setAttribute('data-um-search-bound', '1');
+    var countEl = document.getElementById('um-unit-count');
+    var tableWrap = document.getElementById('um-unit-table-wrap');
+    var emptyEl = document.getElementById('um-unit-search-empty');
+    var chip = document.getElementById('um-unit-search-chip');
+
+    function applyFilters(){
+      var needle = searchInput ? String(searchInput.value || '').trim() : '';
+      if (chip) chip.classList.toggle('is-active', !!needle);
+      var rows = Array.from(table.querySelectorAll('tbody tr[data-sort-row]'));
+      var visible = 0;
+      var tbody = table.tBodies[0];
+      var ranked = rows.map(function(row){
+        var score = needle ? window.hbeBestSearchScore([row.getAttribute('data-search') || ''], needle) : 0;
+        var matchSearch = !needle || score >= 0;
+        return { row: row, score: score, match: matchSearch };
+      });
+      if (needle) {
+        ranked.sort(function(a, b){
+          if (a.match !== b.match) return a.match ? -1 : 1;
+          return b.score - a.score;
+        });
+      }
+      ranked.forEach(function(item){
+        item.row.hidden = !item.match;
+        if (item.match) {
+          visible += 1;
+          if (tbody) tbody.appendChild(item.row);
+        }
+      });
+      if (countEl) {
+        countEl.textContent = needle
+          ? (visible + ' of ' + rows.length)
+          : (rows.length + ' total');
+      }
+      if (tableWrap) tableWrap.hidden = visible === 0 && rows.length > 0;
+      if (emptyEl) emptyEl.hidden = !(visible === 0 && rows.length > 0 && needle);
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener('input', applyFilters);
+      searchInput.addEventListener('search', applyFilters);
+    }
+    applyFilters();
+  })();
+  if (typeof window.initUnitMasterPage === 'function') window.initUnitMasterPage();
+  </script>
+</div>

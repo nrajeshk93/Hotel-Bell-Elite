@@ -88,6 +88,18 @@ MASTER_DEFINITIONS = [
         "recently_updated": True,
     },
     {
+        "id": "unit",
+        "name": "Unit Master",
+        "icon": "beaker",
+        "icon_tone": "amber",
+        "category": "inventory",
+        "route": "unit_master",
+        "path": "/masters/units",
+        "record_count": 0,
+        "active": True,
+        "recently_updated": True,
+    },
+    {
         "id": "employee",
         "name": "Employee Master",
         "icon": "person",
@@ -108,6 +120,7 @@ _DB_COUNT_QUERIES = {
     "product": "SELECT COUNT(*) AS n FROM store_products",
     "menu": "SELECT COUNT(*) AS n FROM pos_menu_items WHERE is_active = 1",
     "category": "SELECT COUNT(*) AS n FROM pos_menu_categories WHERE is_active = 1",
+    "unit": "SELECT COUNT(*) AS n FROM store_product_units WHERE is_active = 1",
     "employee": "SELECT COUNT(*) AS n FROM employees WHERE status = 'active'",
 }
 

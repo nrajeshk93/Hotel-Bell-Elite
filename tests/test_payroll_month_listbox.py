@@ -131,6 +131,7 @@ class PayrollMonthListboxTests(unittest.TestCase):
         self.assertIn("function optionMatchingValue", js)
         self.assertIn("Never show the stored id", js)
         self.assertIn("closeListbox(root, { immediate: true })", js)
+        self.assertIn("#st-product-modal, #st-category-modal, #st-unit-modal", js)
         css = (ROOT / "static" / "ep_form_listbox.css").read_text(encoding="utf-8")
         self.assertIn(".se-filter-listbox.ep-listbox-portaled", css)
         self.assertIn("overflow-y:auto", css)

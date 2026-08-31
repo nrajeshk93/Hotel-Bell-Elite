@@ -209,8 +209,7 @@
         if(name.toLowerCase() !== user.toLowerCase()) return false;
       }
       if(search){
-        var hay = (row.getAttribute('data-search') || row.textContent || '').toLowerCase();
-        if(hay.indexOf(search) === -1) return false;
+        if(window.hbeBestSearchScore([row.getAttribute('data-search') || row.textContent || ''], search) < 0) return false;
       }
       return true;
     }
@@ -219,12 +218,20 @@
       var shown = 0;
       var successShown = 0;
       var failedShown = 0;
-      for(var r = 0; r < rows.length; r++){
-        var match = rowMatches(rows[r], activeResult, activeUser, activeSearch);
-        rows[r].classList.toggle('am-logs-row-hidden', !match);
+      var rowList = Array.prototype.slice.call(rows);
+      if(activeSearch){
+        rowList.sort(function(a, b){
+          return window.hbeBestSearchScore([b.getAttribute('data-search') || b.textContent || ''], activeSearch)
+            - window.hbeBestSearchScore([a.getAttribute('data-search') || a.textContent || ''], activeSearch);
+        });
+        if(tbody) rowList.forEach(function(row){ tbody.appendChild(row); });
+      }
+      for(var r = 0; r < rowList.length; r++){
+        var match = rowMatches(rowList[r], activeResult, activeUser, activeSearch);
+        rowList[r].classList.toggle('am-logs-row-hidden', !match);
         if(match){
           shown += 1;
-          if(rows[r].getAttribute('data-success') === '1') successShown += 1;
+          if(rowList[r].getAttribute('data-success') === '1') successShown += 1;
           else failedShown += 1;
         }
       }

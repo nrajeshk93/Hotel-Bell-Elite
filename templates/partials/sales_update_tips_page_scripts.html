@@ -49,24 +49,32 @@
 
   function applySearch(){
     if (!table) return;
-    var needle = String((searchInput && searchInput.value) || '').trim().toLowerCase();
+    var needle = String((searchInput && searchInput.value) || '').trim();
     var rows = Array.from(table.querySelectorAll('tbody tr.tips-employee-row'));
     var visible = 0;
-    rows.forEach(function(row){
-      if (!needle) {
-        row.hidden = false;
-        visible += 1;
-        return;
-      }
-      var hay = [
-        row.getAttribute('data-name') || '',
-        row.getAttribute('data-code') || '',
-        row.getAttribute('data-id') || '',
-      ].join(' ');
-      var match = hay.indexOf(needle) !== -1;
-      row.hidden = !match;
-      if (match) visible += 1;
-    });
+    var tbody = table.tBodies[0];
+    if (!needle) {
+      rows.forEach(function(row){ row.hidden = false; visible += 1; });
+    } else {
+      var ranked = rows.map(function(row){
+        return {
+          row: row,
+          score: window.hbeBestSearchScore([
+            row.getAttribute('data-name') || '',
+            row.getAttribute('data-code') || '',
+            row.getAttribute('data-id') || ''
+          ], needle)
+        };
+      }).sort(function(a, b){ return b.score - a.score; });
+      ranked.forEach(function(entry){
+        var match = entry.score >= 0;
+        entry.row.hidden = !match;
+        if (match) {
+          visible += 1;
+          if (tbody) tbody.appendChild(entry.row);
+        }
+      });
+    }
     if (rowCount) {
       rowCount.textContent = visible + ' employee' + (visible === 1 ? '' : 's');
     }

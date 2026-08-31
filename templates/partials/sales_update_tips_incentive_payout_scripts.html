@@ -249,25 +249,32 @@
 
   function applySearch(){
     if (!tbody) return;
-    var needle = String((searchInput && searchInput.value) || '').trim().toLowerCase();
+    var needle = String((searchInput && searchInput.value) || '').trim();
     var rows = Array.from(tbody.querySelectorAll('tr.tips-payout-row'));
     var visible = 0;
-    rows.forEach(function(row){
-      if (!needle) {
-        row.hidden = false;
-        visible += 1;
-        return;
-      }
-      var hay = [
-        row.getAttribute('data-code') || '',
-        row.getAttribute('data-name') || '',
-        row.getAttribute('data-dept') || '',
-        row.getAttribute('data-id') || '',
-      ].join(' ');
-      var match = hay.indexOf(needle) !== -1;
-      row.hidden = !match;
-      if (match) visible += 1;
-    });
+    if (!needle) {
+      rows.forEach(function(row){ row.hidden = false; visible += 1; });
+    } else {
+      var ranked = rows.map(function(row){
+        return {
+          row: row,
+          score: window.hbeBestSearchScore([
+            row.getAttribute('data-code') || '',
+            row.getAttribute('data-name') || '',
+            row.getAttribute('data-dept') || '',
+            row.getAttribute('data-id') || ''
+          ], needle)
+        };
+      }).sort(function(a, b){ return b.score - a.score; });
+      ranked.forEach(function(entry){
+        var match = entry.score >= 0;
+        entry.row.hidden = !match;
+        if (match) {
+          visible += 1;
+          tbody.appendChild(entry.row);
+        }
+      });
+    }
     var hasRows = rows.length > 0;
     if (emptyEl) emptyEl.hidden = hasRows;
     if (searchEmpty) searchEmpty.hidden = !(hasRows && needle && visible === 0);

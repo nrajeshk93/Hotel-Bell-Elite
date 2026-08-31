@@ -19,9 +19,12 @@ from db import (
     ensure_pos_schema,
     ensure_stores_schema,
     get_db,
+    hbe_best_search_score,
+    hbe_rank_records,
     indian_fiscal_year_bounds,
     indian_fiscal_year_label,
     list_pos_menu_recipe_lines,
+    save_store_product_unit,
 )
 from embed_helpers import is_embed_request
 from reports import report_export_filename
@@ -3057,27 +3060,14 @@ def stores_product_master():
                     errors.append("Unit name is required.")
                     show_unit_modal = True
                 else:
-                    exists = conn.execute(
-                        "SELECT id FROM store_product_units WHERE lower(name) = lower(?)",
-                        (unit_name,),
-                    ).fetchone()
-                    if exists:
-                        errors.append("That unit already exists.")
-                        show_unit_modal = True
-                    else:
-                        max_sort = conn.execute(
-                            "SELECT COALESCE(MAX(sort_order), 0) AS m FROM store_product_units"
-                        ).fetchone()["m"]
-                        conn.execute(
-                            """
-                            INSERT INTO store_product_units (name, sort_order, is_active)
-                            VALUES (?, ?, 1)
-                            """,
-                            (unit_name, int(max_sort) + 10),
-                        )
+                    try:
+                        save_store_product_unit(conn, name=unit_name)
                         conn.commit()
                         flash("Unit added.", "ok")
                         return _pm_redirect(focus="form", unit=unit_name)
+                    except ValueError as exc:
+                        errors.append(str(exc))
+                        show_unit_modal = True
             else:
                 form["name"] = _title_case_product_name(request.form.get("name") or "")
                 raw_outlet = (request.form.get("outlet") or "").strip().lower()
@@ -8428,18 +8418,14 @@ def _load_stock_report_items(
             continue
         if status_filter and status_key != status_filter:
             continue
-        hay = " ".join(
-            [
-                str(item.get("item_name") or ""),
-                str(item.get("unit") or ""),
-                category_name,
-                str(item.get("qty_on_hand") or ""),
-                status_label,
-                str(item.get("place") or place),
-            ]
-        ).lower()
-        if needle and needle not in hay:
-            continue
+        if needle:
+            score = hbe_best_search_score(
+                [item.get("item_name"), item.get("unit"), category_name, status_label],
+                needle,
+            )
+            if score < 0:
+                continue
+            item["_hbe_search_score"] = score
         unit_price = item.get("approximate_price")
         try:
             unit_price_f = float(unit_price) if unit_price is not None else None
@@ -8462,8 +8448,13 @@ def _load_stock_report_items(
                 "outlet_label": _outlet_label(_normalize_outlet_key(item.get("outlet"))),
                 "place": item_place,
                 "place_label": _stock_place_label(item_place),
+                "_hbe_search_score": item.get("_hbe_search_score", 0),
             }
         )
+    if needle:
+        out.sort(key=lambda row: (-float(row.get("_hbe_search_score") or 0), str(row.get("item_name") or "")))
+        for row in out:
+            row.pop("_hbe_search_score", None)
     return out
 
 
@@ -9949,8 +9940,15 @@ def _load_stock_audit_adjustment_rows(
         tuple(params),
     ).fetchall()
 
+    ranked_rows = list(rows)
+    if needle:
+        ranked_rows = hbe_rank_records(
+            [dict(row) for row in rows],
+            needle,
+            ("item_name", "category_name", "unit", "reason", "remarks", "audit_label"),
+        )
     out: list[dict[str, Any]] = []
-    for row in rows:
+    for row in ranked_rows:
         item = dict(row)
         try:
             system_qty = float(item.get("system_qty") or 0)

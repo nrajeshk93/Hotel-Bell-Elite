@@ -79,14 +79,26 @@
     if (!input || input.getAttribute('data-msr-bound') === '1') return;
     input.setAttribute('data-msr-bound', '1');
     function apply() {
-      var needle = String(input.value || '')
-        .trim()
-        .toLowerCase();
+      var needle = String(input.value || '').trim();
       $all('tr.msr-row', page).forEach(function (row) {
-        var hay = String(row.getAttribute('data-search') || '').toLowerCase();
-        var match = !needle || hay.indexOf(needle) !== -1;
-        row.style.display = match ? '' : 'none';
+        var hay = String(row.getAttribute('data-search') || '');
+        var score = needle ? window.hbeBestSearchScore([hay], needle) : 0;
+        row.__hbeSearchScore = score;
+        row.style.display = !needle || score >= 0 ? '' : 'none';
       });
+      if (needle) {
+        $all('tr.msr-group-header', page).forEach(function (header) {
+          var gid = header.getAttribute('data-group') || '';
+          var items = $all('tr.msr-row[data-group="' + gid + '"]', page);
+          items.sort(function (a, b) { return (b.__hbeSearchScore || 0) - (a.__hbeSearchScore || 0); });
+          var tbody = header.parentNode;
+          if (!tbody) return;
+          var frag = document.createDocumentFragment();
+          items.forEach(function (row) { frag.appendChild(row); });
+          if (header.nextSibling) tbody.insertBefore(frag, header.nextSibling);
+          else tbody.appendChild(frag);
+        });
+      }
       syncGroupVisibility(page);
       updateVisibleCount(page);
     }

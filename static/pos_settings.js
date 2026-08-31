@@ -1223,19 +1223,20 @@
     if (!input || input.getAttribute('data-bound') === '1') return;
     input.setAttribute('data-bound', '1');
     input.addEventListener('input', function () {
-      var q = String(input.value || '')
-        .trim()
-        .toLowerCase();
+      var q = String(input.value || '').trim();
       var any = false;
-      $all('.pos-set-nav-item', page).forEach(function (btn) {
-        var hay = (
-          (btn.getAttribute('data-search') || '') +
-          ' ' +
-          (btn.textContent || '')
-        ).toLowerCase();
-        var show = !q || hay.indexOf(q) !== -1;
-        btn.classList.toggle('is-hidden', !show);
+      var items = $all('.pos-set-nav-item', page);
+      var parent = items.length ? items[0].parentNode : null;
+      var ranked = items.map(function (btn) {
+        var score = q ? window.hbeBestSearchScore([btn.getAttribute('data-search') || '', btn.textContent || ''], q) : 0;
+        return { btn: btn, score: score };
+      });
+      if (q) ranked.sort(function (a, b) { return b.score - a.score; });
+      ranked.forEach(function (entry) {
+        var show = !q || entry.score >= 0;
+        entry.btn.classList.toggle('is-hidden', !show);
         if (show) any = true;
+        if (q && parent) parent.appendChild(entry.btn);
       });
       var empty = $('#pos-set-nav-empty', page);
       if (empty) empty.hidden = any;

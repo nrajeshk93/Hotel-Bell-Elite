@@ -287,14 +287,22 @@
     input.setAttribute('data-bound', '1');
     var searchChip = input.closest('.pl-search-chip');
     function applySearch() {
-      var q = String(input.value || '')
-        .trim()
-        .toLowerCase();
+      var q = String(input.value || '').trim();
       if (searchChip) searchChip.classList.toggle('is-active', !!q);
-      $all('tr.hil-row', page).forEach(function (row) {
-        var hay = row.getAttribute('data-search') || '';
-        row.style.display = !q || hay.indexOf(q) !== -1 ? '' : 'none';
-      });
+      var rows = $all('tr.hil-row', page);
+      var tbody = rows.length ? rows[0].parentNode : null;
+      if (!q) {
+        rows.forEach(function (row) { row.style.display = ''; });
+      } else {
+        var ranked = rows.map(function (row) {
+          return { row: row, score: window.hbeBestSearchScore([row.getAttribute('data-search') || ''], q) };
+        }).sort(function (a, b) { return b.score - a.score; });
+        ranked.forEach(function (entry) {
+          var show = entry.score >= 0;
+          entry.row.style.display = show ? '' : 'none';
+          if (show && tbody) tbody.appendChild(entry.row);
+        });
+      }
       updateVisibleCount(page);
       syncSelection(page);
     }

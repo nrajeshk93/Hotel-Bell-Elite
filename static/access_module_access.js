@@ -386,8 +386,8 @@
 
     function matchesSearch(node){
       if(!state.search) return true;
-      var q = state.search.toLowerCase();
-      if(node.label.toLowerCase().indexOf(q) !== -1) return true;
+      var q = state.search;
+      if(window.hbeBestSearchScore([node.label], q) >= 0) return true;
       if(node.children && node.children.length){
         return node.children.some(matchesSearch);
       }
@@ -417,7 +417,14 @@
 
       if(hasChildren){
         var childHtml = '';
-        node.children.forEach(function(child){
+        var kids = node.children.slice();
+        if(state.search){
+          kids.sort(function(a, b){
+            return window.hbeBestSearchScore([b.label], state.search)
+              - window.hbeBestSearchScore([a.label], state.search);
+          });
+        }
+        kids.forEach(function(child){
           childHtml += renderTreeNode(child, depth + 1);
         });
         html += '<ul class="ma-tree-children' + (expanded ? ' is-open' : '') + '" data-children-id="' + escapeAttr(node.id) + '">' + childHtml + '</ul>';

@@ -228,7 +228,7 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(master["dashboardKey"], "master")
         self.assertEqual(
             [child["label"] for child in master["children"]],
-            ["Customer Master", "Agency Master", "Category Master"],
+            ["Customer Master", "Agency Master", "Category Master", "Unit Master"],
         )
         report = next(node for node in tree if node["label"] == "Report")
         self.assertEqual(report["dashboardKey"], "reports")
@@ -462,6 +462,7 @@ class WorkspaceAccessTests(unittest.TestCase):
         )
         self.assertEqual(get_endpoint_master_submodule("customer_master"), "customer")
         self.assertEqual(get_endpoint_master_submodule("category_master"), "category")
+        self.assertEqual(get_endpoint_master_submodule("unit_master"), "unit")
         self.assertEqual(get_endpoint_reports_submodule("sales_report_hotel"), "hotel_sales")
         self.assertEqual(
             get_endpoint_reports_submodule("sales_report_restaurant"),

@@ -90,17 +90,28 @@
     }
 
     function apply() {
-      var q = String(input.value || '').trim().toLowerCase();
+      var q = String(input.value || '').trim();
       if (searchChip) searchChip.classList.toggle('is-active', !!q);
       var rows = Array.prototype.slice.call(
         table.querySelectorAll('tbody tr.bor-ledger-row')
       );
       var shown = 0;
-      rows.forEach(function (row) {
-        var ok = tokensMatch(rowHaystack(row), q);
-        row.hidden = !ok;
-        if (ok) shown += 1;
-      });
+      var tbody = table.tBodies[0];
+      if (!q) {
+        rows.forEach(function (row) { row.hidden = false; shown += 1; });
+      } else {
+        var ranked = rows.map(function (row) {
+          return { row: row, score: window.hbeBestSearchScore([row.getAttribute('data-search') || row.textContent || ''], q) };
+        }).sort(function (a, b) { return b.score - a.score; });
+        ranked.forEach(function (entry) {
+          var ok = entry.score >= 0;
+          entry.row.hidden = !ok;
+          if (ok) {
+            shown += 1;
+            if (tbody) tbody.appendChild(entry.row);
+          }
+        });
+      }
       if (countEl) {
         countEl.textContent = shown + ' entr' + (shown === 1 ? 'y' : 'ies');
       }

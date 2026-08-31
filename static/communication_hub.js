@@ -138,12 +138,16 @@
   function renderList(filter) {
     var list = $('#ch-conv-list');
     if (!list) return;
-    var q = String(filter || '').trim().toLowerCase();
+    var q = String(filter || '').trim();
     var items = state.conversations.filter(function (c) {
       if (!q) return true;
-      var blob = [c.label, c.phone, c.display_name, c.last_preview].join(' ').toLowerCase();
-      return blob.indexOf(q) !== -1;
+      return window.hbeBestSearchScore([c.label, c.phone, c.display_name, c.last_preview], q) >= 0;
     });
+    if (q) {
+      items = items.map(function (c) {
+        return { c: c, score: window.hbeBestSearchScore([c.label, c.phone, c.display_name, c.last_preview], q) };
+      }).sort(function (a, b) { return b.score - a.score; }).map(function (row) { return row.c; });
+    }
     var countEl = $('#ch-conv-count');
     if (countEl) countEl.textContent = String(state.conversations.length);
 

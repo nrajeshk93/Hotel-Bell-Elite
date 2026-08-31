@@ -32,7 +32,10 @@
     grandTotal: 0,
     apiBase: '',
     onSettled: null,
-    onClose: null
+    onClose: null,
+    preferredHotelRoomId: '',
+    preferredHotelRoomNumber: '',
+    editingSettlement: false
   };
   var occupiedRoomsState = {
     loading: false,
@@ -484,13 +487,21 @@
     var optionsWrap = document.getElementById('pos-inv-settle-hotel-room-options');
     if (!optionsWrap) return;
     var prev = hidden ? String(hidden.value || '').trim() : '';
+    var preferId = String(session.preferredHotelRoomId || '').trim();
+    var preferNo = String(session.preferredHotelRoomNumber || '')
+      .trim()
+      .toLowerCase();
+    if (!prev && preferId) prev = preferId;
     var html = '';
     var kept = '';
     var keptLabel = '';
     (rooms || []).forEach(function (room) {
       if (!room || !room.id) return;
       var label = hotelRoomOptionLabel(room);
-      var on = String(room.id) === prev;
+      var roomNo = String(room.number || '').trim().toLowerCase();
+      var on =
+        String(room.id) === prev ||
+        (!kept && preferNo && roomNo === preferNo);
       if (on) {
         kept = String(room.id);
         keptLabel = label;
@@ -740,6 +751,62 @@
     syncRoomTransferField();
   }
 
+  function applySettleSplits(splits) {
+    closeAllSettleSplitListboxes();
+    closeHotelRoomListbox();
+    var root = document.getElementById('pos-inv-settle-splits');
+    if (root) root.innerHTML = '';
+    var list = [];
+    (Array.isArray(splits) ? splits : []).forEach(function (raw) {
+      if (!raw) return;
+      var method = String(
+        raw.payment_method || raw.paymentMethod || raw.method || ''
+      )
+        .trim()
+        .toLowerCase();
+      var amount = Math.round((Number(raw.amount) || 0) * 100) / 100;
+      if (!method) return;
+      if (amount <= 0.009 && settleBillTotal() > 0.009) return;
+      list.push({
+        payment_method: method,
+        amount: amount,
+        transaction_id: String(
+          raw.transaction_id || raw.transactionId || ''
+        ).trim()
+      });
+    });
+    if (!list.length) {
+      addSettleSplitRow('', '');
+      syncSingleSettleAmount();
+      syncRoomTransferField();
+      return;
+    }
+    list.forEach(function (split) {
+      addSettleSplitRow(
+        split.payment_method,
+        list.length === 1 ? '' : String(split.amount)
+      );
+    });
+    if (list.length === 1) {
+      syncSingleSettleAmount();
+    } else {
+      updateSettleRemoveButtons();
+      refreshSettleBalance();
+    }
+    var rows = settleSplitRows();
+    list.forEach(function (split, idx) {
+      var row = rows[idx];
+      if (!row) return;
+      var txn = row.querySelector('.pos-inv-settle-txn');
+      if (txn && split.transaction_id) {
+        txn.value = split.transaction_id;
+      }
+      syncSettleRowState(row);
+    });
+    syncRoomTransferField();
+    syncSettleSubmitEnabled();
+  }
+
   function collectSettleSplits() {
     var splits = [];
     var invalid = '';
@@ -871,6 +938,13 @@
     session.settleSelectedUrl = '';
     session.onSettled = null;
     session.onClose = null;
+    session.preferredHotelRoomId = '';
+    session.preferredHotelRoomNumber = '';
+    session.editingSettlement = false;
+    var titleEl = document.getElementById('pos-inv-settle-title');
+    if (titleEl) titleEl.textContent = 'Payment Details';
+    var submitBtn = document.getElementById('pos-inv-settle-submit');
+    if (submitBtn) submitBtn.textContent = 'Record Payment';
     if (typeof onClose === 'function') {
       try {
         onClose();
@@ -938,6 +1012,17 @@
     session.apiBase = resolveApiBase(opts.apiBase);
     session.onSettled = typeof opts.onSettled === 'function' ? opts.onSettled : null;
     session.onClose = typeof opts.onClose === 'function' ? opts.onClose : null;
+    session.preferredHotelRoomId = String(
+      opts.hotelRoomId || opts.hotel_room_id || ''
+    ).trim();
+    session.preferredHotelRoomNumber = String(
+      opts.hotelRoomNumber || opts.hotel_room_number || ''
+    ).trim();
+    session.editingSettlement = !!(
+      opts.editingSettlement ||
+      opts.editSettlement ||
+      opts.resettle
+    );
 
     setSettleError('');
     var total = settleBillTotal();
@@ -947,13 +1032,36 @@
       totalEl.textContent = settleMoneyLabel(total);
     }
     paintSettleAllocBody();
+    var titleEl = document.getElementById('pos-inv-settle-title');
+    if (titleEl) {
+      titleEl.textContent = session.editingSettlement
+        ? 'Edit Payment Details'
+        : 'Payment Details';
+    }
+    var submitBtn = document.getElementById('pos-inv-settle-submit');
+    if (submitBtn) {
+      submitBtn.textContent = session.editingSettlement
+        ? 'Update Payment'
+        : 'Record Payment';
+    }
     var notesEl = document.getElementById('pos-inv-settle-notes');
-    if (notesEl) notesEl.value = '';
+    if (notesEl) {
+      notesEl.value = String(opts.notes || opts.payment_notes || '').trim();
+    }
     occupiedRoomsState.loading = false;
     occupiedRoomsState.loaded = false;
     occupiedRoomsState.rooms = [];
     fillOccupiedHotelRoomSelect([]);
-    resetSettleSplits();
+    var presetSplits =
+      opts.paymentSplits ||
+      opts.payment_splits ||
+      opts.payments ||
+      null;
+    if (presetSplits && presetSplits.length) {
+      applySettleSplits(presetSplits);
+    } else {
+      resetSettleSplits();
+    }
     modal.hidden = false;
     modal.removeAttribute('hidden');
     var firstTrigger = modal.querySelector(

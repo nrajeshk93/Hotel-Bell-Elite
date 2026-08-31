@@ -1417,23 +1417,17 @@
       } else if (status && effective !== status) {
         show = false;
       }
+      var searchScore = 0;
       if (q) {
-        var number = normalize(
-          tile.getAttribute('data-search-numbers') || tile.getAttribute('data-number')
-        );
-        var typeLabel = normalize(
+        var number = tile.getAttribute('data-search-numbers') || tile.getAttribute('data-number') || '';
+        var typeLabel =
           tile.getAttribute('data-room-type-label') ||
-            (tile.querySelector('.hotel-room-type') || {}).textContent
-        );
-        var guest = normalize(tile.getAttribute('data-guest-search'));
-        if (
-          number.indexOf(q) === -1 &&
-          typeLabel.indexOf(q) === -1 &&
-          guest.indexOf(q) === -1
-        ) {
-          show = false;
-        }
+          ((tile.querySelector('.hotel-room-type') || {}).textContent || '');
+        var guest = tile.getAttribute('data-guest-search') || '';
+        searchScore = window.hbeBestSearchScore([number, typeLabel, guest], q);
+        if (searchScore < 0) show = false;
       }
+      tile.__hbeSearchScore = show ? searchScore : -1;
       tile.hidden = !show;
       tile.classList.toggle('is-hidden', !show);
       var section = tile.closest('[data-floor-section]');
@@ -1449,6 +1443,22 @@
       section.hidden = !showSection;
       section.classList.toggle('is-hidden', !showSection);
     });
+    if (q) {
+      var parents = [];
+      $all('[data-room-tile]', root).forEach(function (tile) {
+        var parent = tile.parentNode;
+        if (parent && parents.indexOf(parent) === -1) parents.push(parent);
+      });
+      parents.forEach(function (parent) {
+        var kids = Array.from(parent.querySelectorAll('[data-room-tile]'));
+        kids.sort(function (a, b) {
+          var as = a.classList.contains('is-hidden') || a.hidden ? -1 : (a.__hbeSearchScore || 0);
+          var bs = b.classList.contains('is-hidden') || b.hidden ? -1 : (b.__hbeSearchScore || 0);
+          return bs - as;
+        });
+        kids.forEach(function (tile) { parent.appendChild(tile); });
+      });
+    }
   }
 
   function setView(root, view) {
@@ -1722,16 +1732,21 @@
 
   function roomMatchesBoardSearch(room, query) {
     if (!query) return true;
-    var label = normalize(boardRoomOptionLabel(room));
-    var number = normalize(room.number || room.roomNumber || '');
-    var typeLabel = normalize(room.roomTypeLabel || room.roomType || '');
-    var id = normalize(room.id || '');
-    return (
-      label.indexOf(query) !== -1 ||
-      number.indexOf(query) !== -1 ||
-      typeLabel.indexOf(query) !== -1 ||
-      id.indexOf(query) !== -1
-    );
+    return window.hbeBestSearchScore([
+      boardRoomOptionLabel(room),
+      room.number || room.roomNumber || '',
+      room.roomTypeLabel || room.roomType || '',
+      room.id || ''
+    ], query) >= 0;
+  }
+  function roomBoardSearchScore(room, query) {
+    if (!query) return 0;
+    return window.hbeBestSearchScore([
+      boardRoomOptionLabel(room),
+      room.number || room.roomNumber || '',
+      room.roomTypeLabel || room.roomType || '',
+      room.id || ''
+    ], query);
   }
 
   function applyBoardRoomsSearchFilter() {
@@ -1741,7 +1756,8 @@
     var query = boardRoomsSearchQuery();
     var available = (optionsEl.__boardAvailableRooms || []).slice();
     var visible = 0;
-    $all('.hr-board-rooms-option', optionsEl).forEach(function (row) {
+    var optionRows = $all('.hr-board-rooms-option', optionsEl);
+    var ranked = optionRows.map(function (row) {
       var input = row.querySelector('input[type="checkbox"]');
       var id = input ? String(input.value || '') : '';
       var room = null;
@@ -1751,13 +1767,19 @@
           break;
         }
       }
-      var show = room ? roomMatchesBoardSearch(room, query) : !query;
-      row.hidden = !show;
+      var score = room ? roomBoardSearchScore(room, query) : (query ? -1 : 0);
+      return { row: row, score: score };
+    });
+    if (query) ranked.sort(function (a, b) { return b.score - a.score; });
+    ranked.forEach(function (entry) {
+      var show = !query || entry.score >= 0;
+      entry.row.hidden = !show;
       if (show) {
-        row.removeAttribute('hidden');
+        entry.row.removeAttribute('hidden');
         visible += 1;
+        if (query) optionsEl.appendChild(entry.row);
       } else {
-        row.setAttribute('hidden', '');
+        entry.row.setAttribute('hidden', '');
       }
     });
     if (emptyEl) {
@@ -1959,17 +1981,19 @@
   }
 
   function filterBoardAgencies(agencies, query) {
-    var q = String(query || '').trim().toLowerCase();
+    var q = String(query || '').trim();
     var list = (agencies || []).filter(function (agency) {
       return agency && String(agency.name || '').trim();
     });
     if (!q) return list;
-    return list.filter(function (agency) {
-      var name = String(agency.name || '').toLowerCase();
-      var gst = String(agency.gst || '').toLowerCase();
-      var address = String(agency.address || '').toLowerCase();
-      return name.indexOf(q) !== -1 || gst.indexOf(q) !== -1 || address.indexOf(q) !== -1;
-    });
+    return list.map(function (agency) {
+      return {
+        agency: agency,
+        score: window.hbeBestSearchScore([agency.name, agency.gst, agency.address], q)
+      };
+    }).filter(function (row) { return row.score >= 0; })
+      .sort(function (a, b) { return b.score - a.score || String(a.agency.name || '').localeCompare(String(b.agency.name || '')); })
+      .map(function (row) { return row.agency; });
   }
 
   function fillBoardAgencyFields(form, agency) {
@@ -2759,7 +2783,8 @@
     var query = mergeRoomsSearchQuery();
     var available = (optionsEl.__mergeAvailableRooms || []).slice();
     var visible = 0;
-    $all('.hr-board-rooms-option', optionsEl).forEach(function (row) {
+    var optionRows = $all('.hr-board-rooms-option', optionsEl);
+    var ranked = optionRows.map(function (row) {
       var input = row.querySelector('input[type="checkbox"]');
       var id = input ? String(input.value || '') : '';
       var room = null;
@@ -2769,9 +2794,17 @@
           break;
         }
       }
-      var show = room ? roomMatchesBoardSearch(room, query) : !query;
-      row.hidden = !show;
-      if (show) visible += 1;
+      var score = room ? roomBoardSearchScore(room, query) : (query ? -1 : 0);
+      return { row: row, score: score };
+    });
+    if (query) ranked.sort(function (a, b) { return b.score - a.score; });
+    ranked.forEach(function (entry) {
+      var show = !query || entry.score >= 0;
+      entry.row.hidden = !show;
+      if (show) {
+        visible += 1;
+        if (query) optionsEl.appendChild(entry.row);
+      }
     });
     if (emptyEl) {
       if (!available.length) {
