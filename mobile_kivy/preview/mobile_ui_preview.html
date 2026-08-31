@@ -8332,18 +8332,106 @@
     let fpAutoPrompted = false;
     let fpOfferDismissed = false;
 
-    function hbeNativeFingerprint() {
-      return !!(window.HBEAndroid && typeof window.HBEAndroid.biometricStatus === 'function');
+    function hbeIsPhoneApp() {
+      try {
+        if (window.HBEAndroid) return true;
+      } catch (_e) {}
+      try {
+        if (document.body && document.body.classList.contains('is-bundled-app')) return true;
+      } catch (_e) {}
+      return /HBEAndroidApp\//.test(String(navigator.userAgent || ''));
     }
 
-    function hbeBiometricStatus() {
-      if (!hbeNativeFingerprint()) return null;
+    function hbeIsMobileDevice() {
+      if (hbeIsPhoneApp()) return true;
+      const ua = String(navigator.userAgent || '');
+      if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return true;
       try {
-        const raw = window.HBEAndroid.biometricStatus();
+        if (navigator.userAgentData && navigator.userAgentData.mobile) return true;
+      } catch (_e) {}
+      return false;
+    }
+
+    function hbeNativeFingerprint() {
+      const bridge = window.HBEAndroid;
+      if (!bridge) return false;
+      try {
+        if (typeof bridge.biometricStatus === 'function') return true;
+        const raw = bridge.biometricStatus();
+        return raw != null;
+      } catch (_e) {
+        return true;
+      }
+    }
+
+    function hbeWebAuthnAvailable() {
+      const proto = String(location.protocol || '');
+      const host = String(location.hostname || '');
+      const secure = proto === 'https:' || host === 'localhost' || host === '127.0.0.1';
+      return !!(secure && window.PublicKeyCredential && navigator.credentials && navigator.credentials.create);
+    }
+
+    function hbeWebAuthnRpId() {
+      const host = String(location.hostname || '');
+      if (!host || host === 'localhost' || host === '127.0.0.1') return '';
+      return host;
+    }
+
+    function hbeB64urlFromBuf(buf) {
+      const bytes = new Uint8Array(buf);
+      let bin = '';
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    }
+
+    function hbeBufFromB64url(value) {
+      const s = String(value || '');
+      const pad = '='.repeat((4 - (s.length % 4)) % 4);
+      const b64 = (s + pad).replace(/-/g, '+').replace(/_/g, '/');
+      const bin = atob(b64);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out.buffer;
+    }
+
+    const HBE_FP_WEB_KEY = 'hbeFpWebLogin';
+
+    function hbeFpWebRead() {
+      try {
+        const raw = localStorage.getItem(HBE_FP_WEB_KEY);
         return raw ? JSON.parse(raw) : null;
       } catch (_e) {
         return null;
       }
+    }
+
+    function hbeFpWebWrite(data) {
+      localStorage.setItem(HBE_FP_WEB_KEY, JSON.stringify(data));
+    }
+
+    function hbeFpWebClear() {
+      try { localStorage.removeItem(HBE_FP_WEB_KEY); } catch (_e) {}
+    }
+
+    function hbeBiometricStatus() {
+      if (hbeNativeFingerprint()) {
+        try {
+          const raw = window.HBEAndroid.biometricStatus();
+          if (!raw) return { ok: true, native: true, available: true, enabled: false, hasHold: false };
+          return typeof raw === 'string' ? JSON.parse(raw) : raw;
+        } catch (_e) {
+          return { ok: true, native: true, available: true, enabled: false, hasHold: false };
+        }
+      }
+      const saved = hbeFpWebRead();
+      return {
+        ok: true,
+        native: false,
+        available: hbeWebAuthnAvailable(),
+        enabled: !!(saved && saved.id && saved.username && saved.password),
+        hasHold: !!(saved && saved.username && saved.password),
+        username: saved && saved.username ? saved.username : '',
+      };
     }
 
     function hbeHoldNativeLogin(username, password) {
@@ -8399,7 +8487,7 @@
         offer.hidden = true;
       }
       if (aboutCard) {
-        aboutCard.hidden = !(nativeOk && (available || enabled));
+        aboutCard.hidden = !((nativeOk || hbeIsMobileDevice()) && (available || enabled));
       }
       if (toggle) {
         toggle.textContent = enabled ? 'Turn off fingerprint' : 'Enable fingerprint';
@@ -8432,31 +8520,133 @@
     }
 
     function hbeEnableFingerprint(username, password) {
-      if (!hbeNativeFingerprint()) return;
       hbeSetFpStatus('Confirm your fingerprint…');
-      try {
-        const raw = window.HBEAndroid.enableBiometric(String(username || ''), String(password || ''));
-        const now = raw ? JSON.parse(raw) : {};
-        if (now && now.ok === false) {
-          hbeSetFpStatus(now.error || 'Could not enable fingerprint.');
-          if (now.needPassword) hbeShowFpReauth(true);
+      if (hbeNativeFingerprint()) {
+        try {
+          const raw = window.HBEAndroid.enableBiometric(String(username || ''), String(password || ''));
+          const now = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
+          if (now && now.ok === false) {
+            hbeSetFpStatus(now.error || 'Could not enable fingerprint.');
+            if (now.needPassword) hbeShowFpReauth(true);
+          }
+        } catch (_e) {
+          hbeSetFpStatus('Could not enable fingerprint.');
         }
-      } catch (_e) {
-        hbeSetFpStatus('Could not enable fingerprint.');
+        return;
       }
+      hbeWebAuthnEnable(username, password);
     }
 
     function hbeUnlockWithFingerprint() {
-      if (!hbeNativeFingerprint()) return;
       const btn = document.getElementById('btn-fingerprint');
       if (btn) {
         btn.disabled = true;
         btn.setAttribute('aria-busy', 'true');
       }
-      try { window.HBEAndroid.unlockWithBiometric(); } catch (_e) {
+      if (hbeNativeFingerprint()) {
+        try { window.HBEAndroid.unlockWithBiometric(); } catch (_e) {
+          if (btn) {
+            btn.disabled = false;
+            btn.removeAttribute('aria-busy');
+          }
+        }
+        return;
+      }
+      hbeWebAuthnUnlock();
+    }
+
+    async function hbeWebAuthnEnable(username, password) {
+      if (!hbeWebAuthnAvailable()) {
+        setLoginError('This phone browser cannot use fingerprint.');
+        hbeSetFpStatus('');
+        return;
+      }
+      try {
+        const challenge = crypto.getRandomValues(new Uint8Array(32));
+        const userId = new TextEncoder().encode('hbe:' + String(username || ''));
+        const rpId = hbeWebAuthnRpId();
+        const publicKey = {
+          challenge: challenge,
+          rp: rpId ? { name: 'Hotel Bell Elite', id: rpId } : { name: 'Hotel Bell Elite' },
+          user: { id: userId, name: String(username || ''), displayName: String(username || '') },
+          pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+          authenticatorSelection: {
+            authenticatorAttachment: 'platform',
+            userVerification: 'required',
+            residentKey: 'preferred',
+          },
+          timeout: 60000,
+        };
+        const cred = await navigator.credentials.create({ publicKey: publicKey });
+        if (!cred || !cred.rawId) throw new Error('cancelled');
+        hbeFpWebWrite({
+          id: hbeB64urlFromBuf(cred.rawId),
+          username: String(username || ''),
+          password: String(password || ''),
+        });
+        if (typeof window.__hbeOnBiometricEnable === 'function') {
+          window.__hbeOnBiometricEnable({ ok: true });
+        }
+      } catch (err) {
+        const name = err && err.name ? String(err.name) : '';
+        if (name === 'NotAllowedError') {
+          setLoginError('Fingerprint was cancelled.');
+        } else {
+          setLoginError('Could not enable fingerprint on this phone.');
+        }
+        hbeSetFpStatus('');
+        const btn = document.getElementById('btn-fingerprint');
         if (btn) {
           btn.disabled = false;
           btn.removeAttribute('aria-busy');
+        }
+      }
+    }
+
+    async function hbeWebAuthnUnlock() {
+      const btn = document.getElementById('btn-fingerprint');
+      const saved = hbeFpWebRead();
+      if (!(saved && saved.id && saved.username && saved.password)) {
+        if (btn) {
+          btn.disabled = false;
+          btn.removeAttribute('aria-busy');
+        }
+        setLoginError('Enter username and password, then tap Use fingerprint.');
+        return;
+      }
+      if (!hbeWebAuthnAvailable()) {
+        if (btn) {
+          btn.disabled = false;
+          btn.removeAttribute('aria-busy');
+        }
+        setLoginError('This phone browser cannot use fingerprint.');
+        return;
+      }
+      try {
+        const challenge = crypto.getRandomValues(new Uint8Array(32));
+        const rpId = hbeWebAuthnRpId();
+        const publicKey = {
+          challenge: challenge,
+          allowCredentials: [{ type: 'public-key', id: hbeBufFromB64url(saved.id) }],
+          userVerification: 'required',
+          timeout: 60000,
+        };
+        if (rpId) publicKey.rpId = rpId;
+        const assertion = await navigator.credentials.get({ publicKey: publicKey });
+        if (!assertion) throw new Error('cancelled');
+        if (typeof window.__hbeOnBiometricUnlock === 'function') {
+          window.__hbeOnBiometricUnlock({ ok: true, username: saved.username, password: saved.password });
+        }
+      } catch (err) {
+        if (btn) {
+          btn.disabled = false;
+          btn.removeAttribute('aria-busy');
+        }
+        const name = err && err.name ? String(err.name) : '';
+        if (name === 'NotAllowedError') {
+          setLoginError('Fingerprint was cancelled.');
+        } else {
+          setLoginError('Fingerprint did not match. Try again or sign in with your password.');
         }
       }
     }
@@ -8470,7 +8660,15 @@
         hbeHapticSuccess();
         hbeRefreshFingerprintUi();
         if (login && login.classList.contains('is-active')) {
-          hbeUnlockWithFingerprint();
+          const userEl = document.getElementById('username');
+          const passEl = document.getElementById('password');
+          const username = userEl ? String(userEl.value || '').trim() : '';
+          const password = passEl ? String(passEl.value || '') : '';
+          if (username && password) {
+            signInWithCredentials(username, password, { fromFingerprint: true });
+          } else {
+            hbeUnlockWithFingerprint();
+          }
         }
         return;
       }
@@ -9133,34 +9331,38 @@
       input.type = input.type === 'password' ? 'text' : 'password';
     });
     document.getElementById('btn-fingerprint')?.addEventListener('click', () => {
-      if (!hbeNativeFingerprint()) {
-        setLoginError('Fingerprint is only on the phone app.');
-        return;
-      }
-      const st = hbeBiometricStatus();
-      if (st && st.enabled) {
-        hbeUnlockWithFingerprint();
-        return;
-      }
-      if (st && !st.available) {
-        setLoginError('Add a fingerprint in this phone first, then try again.');
-        return;
-      }
+      setLoginError('');
+      const st = hbeBiometricStatus() || {};
       const userEl = document.getElementById('username');
       const passEl = document.getElementById('password');
       const username = userEl ? String(userEl.value || '').trim() : '';
       const password = passEl ? String(passEl.value || '') : '';
-      if (!username || !password) {
-        setLoginError('Enter username and password, then tap Use fingerprint.');
+      if (hbeNativeFingerprint() || hbeIsMobileDevice()) {
+        if (st.enabled) {
+          hbeUnlockWithFingerprint();
+          return;
+        }
+        if (st.available === false) {
+          setLoginError('Add a fingerprint in this phone first, then try again.');
+          return;
+        }
+        if (!username || !password) {
+          setLoginError('Enter username and password, then tap Use fingerprint.');
+          return;
+        }
+        hbeEnableFingerprint(username, password);
         return;
       }
-      setLoginError('');
-      hbeEnableFingerprint(username, password);
+      setLoginError('Open this on your phone to use fingerprint.');
     });
     document.getElementById('about-fp-toggle')?.addEventListener('click', () => {
       const st = hbeBiometricStatus();
       if (st && st.enabled) {
-        try { window.HBEAndroid.disableBiometric(); } catch (_e) {}
+        if (hbeNativeFingerprint()) {
+          try { window.HBEAndroid.disableBiometric(); } catch (_e) {}
+        } else {
+          hbeFpWebClear();
+        }
         hbeShowFpReauth(false);
         hbeSetFpStatus('Fingerprint is off.');
         hbeRefreshFingerprintUi();
