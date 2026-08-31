@@ -1,6 +1,7 @@
 package com.hotelbellelite.hbe
 
 import android.content.Context
+import android.view.inputmethod.InputMethodManager
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -178,34 +179,61 @@ object HbeBiometric {
             onFail("Fingerprint is not available right now.")
             return
         }
-        val info = BiometricPrompt.PromptInfo.Builder()
-            .setTitle(title)
-            .setSubtitle(subtitle)
-            .setNegativeButtonText("Use password")
-            .setAllowedAuthenticators(authenticators())
-            .build()
-        val biometricPrompt = BiometricPrompt(
-            activity,
-            ContextCompat.getMainExecutor(activity),
-            object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    onOk()
-                }
-
-                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                    if (
-                        errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
-                        errorCode == BiometricPrompt.ERROR_USER_CANCELED ||
-                        errorCode == BiometricPrompt.ERROR_CANCELED
-                    ) {
-                        onFail("")
-                        return
+        try {
+            val imm = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+            val token = activity.currentFocus?.windowToken
+                ?: activity.window?.decorView?.windowToken
+            if (token != null) {
+                imm?.hideSoftInputFromWindow(token, 0)
+            }
+        } catch (_: Exception) {
+            // Keyboard may already be closed.
+        }
+        val info = try {
+            BiometricPrompt.PromptInfo.Builder()
+                .setTitle(title)
+                .setSubtitle(subtitle)
+                .setNegativeButtonText("Use password")
+                .setAllowedAuthenticators(authenticators())
+                .build()
+        } catch (_: Exception) {
+            try {
+                BiometricPrompt.PromptInfo.Builder()
+                    .setTitle(title)
+                    .setSubtitle(subtitle)
+                    .setNegativeButtonText("Use password")
+                    .build()
+            } catch (_: Exception) {
+                onFail("Could not open fingerprint.")
+                return
+            }
+        }
+        try {
+            val biometricPrompt = BiometricPrompt(
+                activity,
+                ContextCompat.getMainExecutor(activity),
+                object : BiometricPrompt.AuthenticationCallback() {
+                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                        onOk()
                     }
-                    onFail(errString.toString().ifBlank { "Fingerprint did not work." })
-                }
-            },
-        )
-        biometricPrompt.authenticate(info)
+
+                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                        if (
+                            errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
+                            errorCode == BiometricPrompt.ERROR_USER_CANCELED ||
+                            errorCode == BiometricPrompt.ERROR_CANCELED
+                        ) {
+                            onFail("")
+                            return
+                        }
+                        onFail(errString.toString().ifBlank { "Fingerprint did not work." })
+                    }
+                },
+            )
+            biometricPrompt.authenticate(info)
+        } catch (_: Exception) {
+            onFail("Could not open fingerprint.")
+        }
     }
 
     private fun secretKey(): SecretKey {
