@@ -6824,12 +6824,6 @@
           </div>
           <div class="login-error" id="login-error" hidden role="alert"></div>
           <button class="btn-primary" id="btn-sign-in" type="button">Sign In</button>
-          <div class="login-or" aria-hidden="true">or</div>
-          <button class="btn-fingerprint" id="btn-fingerprint" type="button">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/><path d="M2 12a10 10 0 0 1 18-6"/><path d="M2 16h.01"/><path d="M21.8 16c.2-2 .131-5.354 0-6"/><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/><path d="M8.65 22c.21-.66.45-1.32.57-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/></svg>
-            Use fingerprint
-          </button>
-          <div class="login-error" id="fp-login-status" hidden role="status"></div>
           <p class="login-staff">Staff</p>
         </div>
       </div>
@@ -8145,17 +8139,6 @@
                 <p id="about-update-status"></p>
                 <button type="button" id="about-install-manual" hidden>Install</button>
               </article>
-              <article class="about-card" id="about-fingerprint-card" hidden>
-                <h3>Fingerprint</h3>
-                <p id="about-fp-copy">Unlock Hotel Bell Elite with your fingerprint the next time you sign in.</p>
-                <button type="button" id="about-fp-toggle">Enable fingerprint</button>
-                <p id="about-fp-status"></p>
-                <div id="about-fp-reauth" hidden>
-                  <label for="about-fp-password">Password</label>
-                  <input id="about-fp-password" type="password" autocomplete="current-password" placeholder="Password" />
-                  <button type="button" id="about-fp-confirm">Confirm</button>
-                </div>
-              </article>
               <p class="about-copy">&copy; 2026 DhiyaOne. All rights reserved.</p>
             </div>
           </div>
@@ -8389,13 +8372,7 @@
     }
 
     function setFingerprintLoginMessage(message) {
-      const text = String(message || '').trim();
-      setLoginError(text);
-      const el = document.getElementById('fp-login-status');
-      if (el) {
-        el.hidden = !text;
-        el.textContent = text;
-      }
+      return;
     }
 
     function hbeCloseLoginKeyboard() {
@@ -8522,50 +8499,13 @@
     }
 
     function hbeRefreshFingerprintUi(opts) {
-      opts = opts || {};
-      const st = hbeBiometricStatus();
       const fpBtn = document.getElementById('btn-fingerprint');
       const offer = document.getElementById('fp-offer');
       const aboutCard = document.getElementById('about-fingerprint-card');
-      const toggle = document.getElementById('about-fp-toggle');
-      const copy = document.getElementById('about-fp-copy');
-      const onLogin = !!(login && login.classList.contains('is-active'));
-      const nativeOk = !!(st && st.native);
-      const available = !!(st && st.available);
-      const enabled = !!(st && st.enabled);
-      const hasHold = !!(st && st.hasHold);
-      if (fpBtn) {
-        fpBtn.hidden = !onLogin;
-      }
-      if (offer) {
-        offer.hidden = true;
-      }
-      if (aboutCard) {
-        aboutCard.hidden = !((nativeOk || hbeIsMobileDevice()) && (available || enabled));
-      }
-      if (toggle) {
-        toggle.textContent = enabled ? 'Turn off fingerprint' : 'Enable fingerprint';
-        toggle.classList.toggle('is-on', !!enabled);
-        toggle.disabled = !available && !enabled;
-      }
-      if (copy) {
-        if (!available && !enabled) {
-          copy.textContent = 'Set up a fingerprint on this phone, then you can use it to sign in.';
-        } else if (enabled) {
-          copy.textContent = 'Fingerprint is on. The next sign-in can use it instead of a password.';
-        } else {
-          copy.textContent = 'Unlock Hotel Bell Elite with your fingerprint the next time you sign in.';
-        }
-      }
-      if (enabled && st.username) {
-        const userEl = document.getElementById('username');
-        if (userEl && !String(userEl.value || '').trim()) userEl.value = st.username;
-      }
-      if (opts.autoPrompt && nativeOk && available && enabled && onLogin) {
-        hbeMaybeAutoFingerprint();
-      }
+      if (fpBtn) fpBtn.hidden = true;
+      if (offer) offer.hidden = true;
+      if (aboutCard) aboutCard.hidden = true;
     }
-
     function hbeMaybeAutoFingerprint() {
       if (fpAutoPrompted) return;
       if (!(login && login.classList.contains('is-active'))) return;
