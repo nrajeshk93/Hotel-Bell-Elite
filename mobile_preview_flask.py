@@ -199,7 +199,12 @@ def mobile_app_files(filename="mobile_ui_preview.html"):
         return _json({"ok": False, "error": "Not found"}, 404)
     if not target.is_file():
         return _json({"ok": False, "error": "Not found"}, 404)
-    return send_from_directory(PREVIEW_DIR, rel.as_posix())
+    resp = send_from_directory(PREVIEW_DIR, rel.as_posix())
+    if rel.suffix.lower() == ".html" or rel.name == "mobile_ui_preview.html":
+        resp.headers["Permissions-Policy"] = (
+            "publickey-credentials-create=*, publickey-credentials-get=*"
+        )
+    return resp
 
 
 @bp.route("/preview-api/session", methods=["GET"])

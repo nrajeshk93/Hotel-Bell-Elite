@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta http-equiv="Permissions-Policy" content="publickey-credentials-create=*, publickey-credentials-get=*">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>HBE Mobile Preview (Kivy look-alike)</title>
   <style>
     /* Self-hosted Inter / Manrope / Cormorant Garamond (latin + latin-ext, variable weights). */
@@ -8354,16 +8355,10 @@
     }
 
     function hbeNativeFingerprint() {
-      // Android WebView hides @JavascriptInterface methods as JS properties.
-      // If the bridge object or the app UA is present, call native. Do not
-      // test bridge.enableBiometric / typeof === 'function'.
-      try {
-        if (window.HBEAndroid) return true;
-      } catch (_e) {}
-      try {
-        if (document.body && document.body.classList.contains('is-bundled-app')) return true;
-      } catch (_e) {}
-      return /HBEAndroidApp\//.test(String(navigator.userAgent || ''));
+      // Only the live JS bridge can open BiometricPrompt.
+      // Do not treat is-bundled-app / UA as native — those made the
+      // website skip WebAuthn and then fail with "could not open".
+      try { return !!window.HBEAndroid; } catch (_e) { return false; }
     }
 
     function hbeNativeInvoke(methodName, arg0, arg1) {
@@ -8486,7 +8481,7 @@
       return {
         ok: true,
         native: false,
-        available: hbeWebAuthnAvailable(),
+        available: true,
         enabled: !!(saved && saved.id && saved.username && saved.password),
         hasHold: !!(saved && saved.username && saved.password),
         username: saved && saved.username ? saved.username : '',
@@ -8579,17 +8574,11 @@
     }
 
     function hbeEnableFingerprint(username, password) {
-      hbeCloseLoginKeyboard();
       setFingerprintLoginMessage('Confirm your fingerprint…');
       hbeSetFpStatus('Confirm your fingerprint…');
       if (hbeNativeFingerprint()) {
         const called = hbeNativeInvoke('enableBiometric', username, password);
-        if (called && !called.missing) {
-          if (called.ok === false && called.error && !called.raw) {
-            hbeSetFpStatus('Could not enable fingerprint.');
-            setFingerprintLoginMessage('Could not open fingerprint. Try again.');
-            return;
-          }
+        if (called && !called.missing && !(called.ok === false && called.error && !called.raw)) {
           try {
             const raw = called.raw;
             const now = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
@@ -8598,17 +8587,20 @@
               hbeSetFpStatus(err);
               setFingerprintLoginMessage(err);
               if (now.needPassword) hbeShowFpReauth(true);
+            } else {
+              hbeCloseLoginKeyboard();
             }
-          } catch (_e) {}
+          } catch (_e) {
+            hbeCloseLoginKeyboard();
+          }
           return;
         }
       }
-      hbeWebAuthnEnable(username, password);
+      hbeStartWebAuthnPrompt('enable', username, password);
     }
 
     function hbeUnlockWithFingerprint() {
       const btn = document.getElementById('btn-fingerprint');
-      hbeCloseLoginKeyboard();
       setFingerprintLoginMessage('Confirm your fingerprint…');
       if (btn) {
         btn.disabled = true;
@@ -8617,111 +8609,200 @@
       if (hbeNativeFingerprint()) {
         const called = hbeNativeInvoke('unlockWithBiometric');
         if (called && !called.missing && !(called.ok === false && called.error && !called.raw)) {
+          hbeCloseLoginKeyboard();
           return;
         }
-        if (called && called.missing === true) {
-          // Bridge object was inferred from the app UA; still try WebAuthn.
-        } else if (called && called.ok === false) {
+      }
+      hbeStartWebAuthnPrompt('unlock', '', '');
+    }
+
+    function hbeWebAuthnCreateOptions(username) {
+      const challenge = crypto.getRandomValues(new Uint8Array(32));
+      const userId = crypto.getRandomValues(new Uint8Array(16));
+      return {
+        challenge: challenge,
+        rp: { name: 'Hotel Bell Elite' },
+        user: {
+          id: userId,
+          name: String(username || 'hbe'),
+          displayName: String(username || 'Hotel Bell Elite'),
+        },
+        pubKeyCredParams: [
+          { type: 'public-key', alg: -7 },
+          { type: 'public-key', alg: -257 },
+        ],
+        authenticatorSelection: {
+          authenticatorAttachment: 'platform',
+          userVerification: 'preferred',
+        },
+        timeout: 120000,
+        attestation: 'none',
+      };
+    }
+
+    function hbeStartWebAuthnPrompt(mode, username, password) {
+      const btn = document.getElementById('btn-fingerprint');
+      const saved = hbeFpWebRead();
+      let pending = null;
+      // Start create/get in this turn, while the tap is still a user gesture.
+      try {
+        if (!navigator.credentials) throw new Error('no-credentials');
+        if (mode === 'unlock') {
+          if (!(saved && saved.id && saved.username && saved.password)) {
+            if (btn) {
+              btn.disabled = false;
+              btn.removeAttribute('aria-busy');
+            }
+            setFingerprintLoginMessage('Enter username and password, then tap Use fingerprint.');
+            return;
+          }
+          if (typeof navigator.credentials.get !== 'function') throw new Error('no-get');
+          pending = navigator.credentials.get({
+            publicKey: {
+              challenge: crypto.getRandomValues(new Uint8Array(32)),
+              allowCredentials: [{ type: 'public-key', id: hbeBufFromB64url(saved.id) }],
+              userVerification: 'preferred',
+              timeout: 120000,
+            },
+          });
+        } else {
+          if (typeof navigator.credentials.create !== 'function') throw new Error('no-create');
+          pending = navigator.credentials.create({ publicKey: hbeWebAuthnCreateOptions(username) });
+        }
+      } catch (_startErr) {
+        hbeFingerprintWebFallback(mode, username, password, _startErr);
+        return;
+      }
+      if (btn) {
+        btn.disabled = true;
+        btn.setAttribute('aria-busy', 'true');
+      }
+      setFingerprintLoginMessage('Confirm your fingerprint…');
+      hbeCloseLoginKeyboard();
+      Promise.resolve(pending).then(function (cred) {
+        if (mode === 'enable') {
+          if (!cred || !cred.rawId) throw new Error('cancelled');
+          hbeFpWebWrite({
+            id: hbeB64urlFromBuf(cred.rawId),
+            username: String(username || ''),
+            password: String(password || ''),
+          });
+          if (typeof window.__hbeOnBiometricEnable === 'function') {
+            window.__hbeOnBiometricEnable({ ok: true });
+          }
+          return;
+        }
+        if (!cred) throw new Error('cancelled');
+        if (typeof window.__hbeOnBiometricUnlock === 'function') {
+          window.__hbeOnBiometricUnlock({ ok: true, username: saved.username, password: saved.password });
+        }
+      }).catch(function (err) {
+        const name = err && err.name ? String(err.name) : '';
+        if (name === 'NotAllowedError') {
           if (btn) {
             btn.disabled = false;
             btn.removeAttribute('aria-busy');
           }
-          setFingerprintLoginMessage('Could not open fingerprint. Try again.');
+          setFingerprintLoginMessage('Fingerprint was cancelled. Tap Use fingerprint again.');
+          hbeSetFpStatus('');
           return;
         }
-      }
-      hbeWebAuthnUnlock();
+        if (mode === 'enable' && name === 'InvalidStateError') {
+          setFingerprintLoginMessage('Fingerprint is already saved. Tap Use fingerprint again.');
+          if (typeof window.__hbeOnBiometricEnable === 'function') {
+            window.__hbeOnBiometricEnable({ ok: true });
+          }
+          return;
+        }
+        if (mode === 'enable') {
+          let retry = null;
+          try {
+            const loose = hbeWebAuthnCreateOptions(username);
+            delete loose.authenticatorSelection.authenticatorAttachment;
+            retry = navigator.credentials.create({ publicKey: loose });
+          } catch (_retryErr) {
+            hbeFingerprintWebFallback(mode, username, password, err);
+            return;
+          }
+          Promise.resolve(retry).then(function (cred) {
+            if (!cred || !cred.rawId) throw new Error('cancelled');
+            hbeFpWebWrite({
+              id: hbeB64urlFromBuf(cred.rawId),
+              username: String(username || ''),
+              password: String(password || ''),
+            });
+            if (typeof window.__hbeOnBiometricEnable === 'function') {
+              window.__hbeOnBiometricEnable({ ok: true });
+            }
+          }).catch(function (err2) {
+            hbeFingerprintWebFallback(mode, username, password, err2);
+          });
+          return;
+        }
+        hbeFingerprintWebFallback(mode, username, password, err);
+      });
     }
 
-    async function hbeWebAuthnEnable(username, password) {
+    function hbeFingerprintWebFallback(mode, username, password, err) {
       const btn = document.getElementById('btn-fingerprint');
-      try {
-        if (btn) {
-          btn.disabled = true;
-          btn.setAttribute('aria-busy', 'true');
+      const tryPasswordSheet = function () {
+        if (!window.PasswordCredential || !navigator.credentials) return Promise.resolve(false);
+        if (mode === 'enable' && username && password && typeof navigator.credentials.store === 'function') {
+          const stored = new PasswordCredential({
+            id: String(username),
+            name: String(username),
+            password: String(password),
+          });
+          return Promise.resolve(navigator.credentials.store(stored)).then(function () {
+            if (typeof navigator.credentials.get !== 'function') return true;
+            return navigator.credentials.get({ password: true, mediation: 'required' }).then(function () {
+              return true;
+            }).catch(function () { return true; });
+          }).then(function (ok) {
+            if (!ok) return false;
+            hbeFpWebWrite({
+              kind: 'password',
+              id: 'password',
+              username: String(username || ''),
+              password: String(password || ''),
+            });
+            if (typeof window.__hbeOnBiometricEnable === 'function') {
+              window.__hbeOnBiometricEnable({ ok: true });
+            }
+            return true;
+          }).catch(function () { return false; });
         }
-        const challenge = crypto.getRandomValues(new Uint8Array(32));
-        const userId = new TextEncoder().encode('hbe:' + String(username || ''));
-        const rpId = hbeWebAuthnRpId();
-        const publicKey = {
-          challenge: challenge,
-          rp: rpId ? { name: 'Hotel Bell Elite', id: rpId } : { name: 'Hotel Bell Elite' },
-          user: { id: userId, name: String(username || ''), displayName: String(username || '') },
-          pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
-          authenticatorSelection: {
-            userVerification: 'required',
-          },
-          timeout: 90000,
-        };
-        const cred = await navigator.credentials.create({ publicKey: publicKey });
-        if (!cred || !cred.rawId) throw new Error('cancelled');
-        hbeFpWebWrite({
-          id: hbeB64urlFromBuf(cred.rawId),
-          username: String(username || ''),
-          password: String(password || ''),
-        });
+        if (mode === 'unlock' && typeof navigator.credentials.get === 'function') {
+          const saved = hbeFpWebRead();
+          return navigator.credentials.get({ password: true, mediation: 'required' }).then(function (got) {
+            if (!got || !got.id) return false;
+            const pass = got.password || (saved && saved.username === got.id ? saved.password : '');
+            if (!pass) return false;
+            if (typeof window.__hbeOnBiometricUnlock === 'function') {
+              window.__hbeOnBiometricUnlock({ ok: true, username: String(got.id), password: String(pass) });
+            }
+            return true;
+          }).catch(function () { return false; });
+        }
+        return Promise.resolve(false);
+      };
+      tryPasswordSheet().then(function (used) {
+        if (used) return;
         if (btn) {
           btn.disabled = false;
           btn.removeAttribute('aria-busy');
-        }
-        if (typeof window.__hbeOnBiometricEnable === 'function') {
-          window.__hbeOnBiometricEnable({ ok: true });
-        }
-      } catch (err) {
-        const name = err && err.name ? String(err.name) : '';
-        if (name === 'NotAllowedError') {
-          setFingerprintLoginMessage('Fingerprint was cancelled. Tap Use fingerprint again.');
-        } else if (name === 'InvalidStateError') {
-          setFingerprintLoginMessage('Fingerprint is already saved. Tap Use fingerprint again.');
-        } else {
-          setFingerprintLoginMessage('Could not open fingerprint. Try again, or tap Sign In.');
         }
         hbeSetFpStatus('');
-        if (btn) {
-          btn.disabled = false;
-          btn.removeAttribute('aria-busy');
-        }
-      }
+        setFingerprintLoginMessage('Could not open fingerprint. Try again, or tap Sign In.');
+      });
     }
 
-    async function hbeWebAuthnUnlock() {
-      const btn = document.getElementById('btn-fingerprint');
-      const saved = hbeFpWebRead();
-      if (!(saved && saved.id && saved.username && saved.password)) {
-        if (btn) {
-          btn.disabled = false;
-          btn.removeAttribute('aria-busy');
-        }
-        setFingerprintLoginMessage('Enter username and password, then tap Use fingerprint.');
-        return;
-      }
-      try {
-        const challenge = crypto.getRandomValues(new Uint8Array(32));
-        const rpId = hbeWebAuthnRpId();
-        const publicKey = {
-          challenge: challenge,
-          allowCredentials: [{ type: 'public-key', id: hbeBufFromB64url(saved.id) }],
-          userVerification: 'required',
-          timeout: 90000,
-        };
-        if (rpId) publicKey.rpId = rpId;
-        const assertion = await navigator.credentials.get({ publicKey: publicKey });
-        if (!assertion) throw new Error('cancelled');
-        if (typeof window.__hbeOnBiometricUnlock === 'function') {
-          window.__hbeOnBiometricUnlock({ ok: true, username: saved.username, password: saved.password });
-        }
-      } catch (err) {
-        if (btn) {
-          btn.disabled = false;
-          btn.removeAttribute('aria-busy');
-        }
-        const name = err && err.name ? String(err.name) : '';
-        if (name === 'NotAllowedError') {
-          setFingerprintLoginMessage('Fingerprint was cancelled. Tap Use fingerprint again.');
-        } else {
-          setFingerprintLoginMessage('Fingerprint did not match. Try again or tap Sign In.');
-        }
-      }
+    function hbeWebAuthnEnable(username, password) {
+      hbeStartWebAuthnPrompt('enable', username, password);
+    }
+
+    function hbeWebAuthnUnlock() {
+      hbeStartWebAuthnPrompt('unlock', '', '');
     }
 
     window.__hbeOnBiometricEnable = function (payload) {
@@ -9406,7 +9487,6 @@
       input.type = input.type === 'password' ? 'text' : 'password';
     });
     document.getElementById('btn-fingerprint')?.addEventListener('click', () => {
-      const st = hbeBiometricStatus() || {};
       const userEl = document.getElementById('username');
       const passEl = document.getElementById('password');
       const username = userEl ? String(userEl.value || '').trim() : '';
@@ -9415,15 +9495,22 @@
         setFingerprintLoginMessage('Open this on your phone to use fingerprint.');
         return;
       }
+      const st = hbeBiometricStatus() || {};
+      if (hbeNativeFingerprint()) {
+        if (st.enabled) hbeUnlockWithFingerprint();
+        else if (!username || !password) setFingerprintLoginMessage('Enter username and password, then tap Use fingerprint.');
+        else hbeEnableFingerprint(username, password);
+        return;
+      }
       if (st.enabled) {
-        hbeUnlockWithFingerprint();
+        hbeStartWebAuthnPrompt('unlock', username, password);
         return;
       }
       if (!username || !password) {
         setFingerprintLoginMessage('Enter username and password, then tap Use fingerprint.');
         return;
       }
-      hbeEnableFingerprint(username, password);
+      hbeStartWebAuthnPrompt('enable', username, password);
     });
     document.getElementById('about-fp-toggle')?.addEventListener('click', () => {
       const st = hbeBiometricStatus();
