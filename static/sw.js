@@ -3,7 +3,7 @@
  * Cache Storage is a fallback for offline + brief disconnects.
  * Floor APIs are never cached — occupancy must not go stale.
  * POS menu GETs stay network-first; mutation APIs are not intercepted. */
-var CACHE_VERSION = 'hbe-app-v19';
+var CACHE_VERSION = 'hbe-app-v20';
 var OFFLINE_LOGIN_URL = '/static/offline_login.html?v=10';
 var OFFLINE_AUTH_URL = '/static/offline_auth.js?v=12';
 var CRITICAL_STATIC_ALIASES = {
@@ -50,8 +50,8 @@ var PRECACHE = [
   '/static/hbe_app_toast.css?v=1',
   '/static/reports_page_scroll.css?v=5',
   '/static/pos_invoice.css?v=52',
-  '/static/pos_invoice.js?v=148',
-  '/static/pos_offline.js?v=5',
+  '/static/pos_invoice.js?v=156',
+  '/static/pos_offline.js?v=6',
   '/static/ep_form_listbox.js?v=66',
   '/static/de_workspace_nav.js?v=46',
   '/static/de_workspace_transitions.js?v=193',
@@ -281,17 +281,9 @@ function networkOnlyFloor(req) {
         );
       });
   }
+  /* Do not cache occupancy. Offline Tables paints from the local snapshot + outbox. */
   return fetch(req, { cache: 'no-store' })
     .then(function (res) {
-      if (res && res.ok) {
-        var copy = res.clone();
-        caches.open(CACHE_VERSION).then(function (cache) {
-          cache.put(req, copy);
-          try {
-            cache.put(new URL(req.url).pathname, res.clone());
-          } catch (e) {}
-        });
-      }
       return res;
     })
     .catch(function () {

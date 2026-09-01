@@ -201,18 +201,36 @@
   }
 
   function saveCatalog(snapshot) {
-    var row = {
-      id: CATALOG_KEY,
-      savedAt: new Date().toISOString(),
-      floor: snapshot.floor || null,
-      menuItems: snapshot.menuItems || null,
-      menuCategories: snapshot.menuCategories || null
-    };
-    return withStore(STORE_CATALOG, 'readwrite', function (store) {
-      return idbReq(store.put(row));
-    }).catch(function () {
-      return null;
-    });
+    snapshot = snapshot || {};
+    return loadCatalog()
+      .catch(function () {
+        return null;
+      })
+      .then(function (existing) {
+        existing = existing || {};
+        var row = {
+          id: CATALOG_KEY,
+          savedAt: new Date().toISOString(),
+          floor: Object.prototype.hasOwnProperty.call(snapshot, 'floor')
+            ? snapshot.floor
+            : existing.floor || null,
+          menuItems: Object.prototype.hasOwnProperty.call(snapshot, 'menuItems')
+            ? snapshot.menuItems
+            : existing.menuItems || null,
+          menuCategories: Object.prototype.hasOwnProperty.call(snapshot, 'menuCategories')
+            ? snapshot.menuCategories
+            : existing.menuCategories || null,
+          customers: Object.prototype.hasOwnProperty.call(snapshot, 'customers')
+            ? snapshot.customers
+            : existing.customers || []
+        };
+        return withStore(STORE_CATALOG, 'readwrite', function (store) {
+          return idbReq(store.put(row));
+        });
+      })
+      .catch(function () {
+        return null;
+      });
   }
 
   function loadCatalog() {
@@ -468,6 +486,407 @@
     return flushInflight;
   }
 
+  function listDrafts() {
+    return withStore(STORE_DRAFTS, "readonly", function (store) {
+      return idbReq(store.getAll());
+    })
+      .then(function (rows) {
+        return Array.isArray(rows) ? rows : [];
+      })
+      .catch(function () {
+        return [];
+      });
+  }
+
+  function normalizeOutlet(value) {
+    var o = String(value || "").trim().toLowerCase();
+    if (o === "bar") return "bar";
+    if (o === "restaurant") return "restaurant";
+    return "";
+  }
+
+  function currentOutlet() {
+    if (typeof document !== "undefined") {
+      var el =
+        document.getElementById("pos-invoice-page") ||
+        document.getElementById("pos-tables-page") ||
+        document.getElementById("pos-invoice-ledger-page") ||
+        document.querySelector("[data-pos-outlet]");
+      if (el) {
+        var fromEl = normalizeOutlet(el.getAttribute("data-pos-outlet"));
+        if (fromEl) return fromEl;
+      }
+    }
+    if (typeof window !== "undefined") {
+      return String((window.location && window.location.pathname) || "").indexOf("/bar-point-of-sale") === 0
+        ? "bar"
+        : "restaurant";
+    }
+    return "restaurant";
+  }
+
+  function floorSnapshotKey(outlet) {
+    return normalizeOutlet(outlet) === "bar"
+      ? "hbe_pos_floor_snapshot_bar"
+      : "hbe_pos_floor_snapshot";
+  }
+
+  var LOCAL_CHANNEL_NAME = "hbe-pos-local";
+  var LOCAL_PING_KEY = "hbe_pos_local_ping";
+  var localChannel = null;
+  try {
+    if (typeof BroadcastChannel !== "undefined") {
+      localChannel = new BroadcastChannel(LOCAL_CHANNEL_NAME);
+    }
+  } catch (eChan) {}
+
+  function notifyChange(kind, detail) {
+    var msg = { kind: kind || "change", at: Date.now(), detail: detail || {} };
+    try {
+      if (localChannel) localChannel.postMessage(msg);
+    } catch (ePost) {}
+    try {
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem(LOCAL_PING_KEY, JSON.stringify(msg));
+      }
+    } catch (ePing) {}
+  }
+
+  function onChange(handler) {
+    if (typeof handler !== "function") return function () {};
+    function fromChannel(ev) {
+      handler((ev && ev.data) || {});
+    }
+    function fromStorage(ev) {
+      if (!ev || ev.key !== LOCAL_PING_KEY || !ev.newValue) return;
+      try {
+        handler(JSON.parse(ev.newValue));
+      } catch (eParse) {}
+    }
+    if (localChannel) localChannel.addEventListener("message", fromChannel);
+    if (typeof window !== "undefined") {
+      window.addEventListener("storage", fromStorage);
+    }
+    return function () {
+      if (localChannel) localChannel.removeEventListener("message", fromChannel);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("storage", fromStorage);
+      }
+    };
+  }
+
+  function persistFloorSnapshot(floor, outlet) {
+    if (!floor || !Array.isArray(floor.tables)) return floor;
+    var key = floorSnapshotKey(outlet || currentOutlet());
+    var blob = JSON.stringify({
+      areas: Array.isArray(floor.areas) ? floor.areas : [],
+      tables: floor.tables,
+      savedAt: Date.now()
+    });
+    try {
+      if (typeof sessionStorage !== "undefined") sessionStorage.setItem(key, blob);
+    } catch (eSess) {}
+    try {
+      if (typeof localStorage !== "undefined") localStorage.setItem(key + "_local", blob);
+    } catch (eLoc) {}
+    return floor;
+  }
+
+  function readFloorSnapshot(outlet) {
+    var key = floorSnapshotKey(outlet || currentOutlet());
+    var parsed = null;
+    function tryParse(raw) {
+      if (!raw) return null;
+      try {
+        var data = JSON.parse(raw);
+        if (data && Array.isArray(data.tables)) return data;
+      } catch (eRead) {}
+      return null;
+    }
+    try {
+      if (typeof sessionStorage !== "undefined") parsed = tryParse(sessionStorage.getItem(key));
+    } catch (eS) {}
+    if (parsed) return parsed;
+    try {
+      if (typeof localStorage !== "undefined") parsed = tryParse(localStorage.getItem(key + "_local"));
+    } catch (eL) {}
+    return parsed;
+  }
+
+  function stampOf(row, payload) {
+    var iso =
+      (payload && (payload.savedAt || payload.saved_at)) ||
+      (row && (row.updatedAt || row.createdAt)) ||
+      "";
+    var t = Date.parse(String(iso || ""));
+    return isFinite(t) ? t : 0;
+  }
+
+  function pendingOrders() {
+    return Promise.all([listOutbox(), listDrafts()]).then(function (pair) {
+      var byId = {};
+      function consider(localId, payload, row, invoiceId) {
+        if (!payload || typeof payload !== "object") return;
+        var lines = payload.lines;
+        if (!Array.isArray(lines) || !lines.length) return;
+        var id = String(localId || (row && row.localId) || "").trim();
+        if (!id) {
+          id =
+            "anon-" +
+            String(payload.orderNo || "") +
+            "-" +
+            String(payload.table || payload.table_label || "");
+        }
+        var stamp = stampOf(row, payload);
+        var prev = byId[id];
+        if (prev && prev._stamp > stamp) return;
+        byId[id] = {
+          localId: id,
+          payload: payload,
+          invoiceId: invoiceId || (row && row.invoiceId) || null,
+          createdAt: (row && (row.updatedAt || row.createdAt)) || payload.savedAt || "",
+          _stamp: stamp
+        };
+      }
+      (pair[1] || []).forEach(function (row) {
+        consider(row && row.localId, row && row.payload, row, row && row.invoiceId);
+      });
+      (pair[0] || []).forEach(function (row) {
+        consider(row && row.localId, row && row.payload, row, null);
+      });
+      return Object.keys(byId).map(function (k) {
+        return byId[k];
+      });
+    });
+  }
+
+  function findPendingForTable(tableName, outlet) {
+    var needle = String(tableName || "").trim().toLowerCase();
+    var want = normalizeOutlet(outlet) || currentOutlet();
+    if (!needle) return Promise.resolve(null);
+    return pendingOrders().then(function (orders) {
+      var hit = null;
+      orders.forEach(function (order) {
+        var payload = order.payload || {};
+        var ot = String(payload.orderType || payload.order_type || "dine_in").toLowerCase();
+        if (ot !== "dine_in") return;
+        if (!!(payload.customerBill || payload.customer_bill)) return;
+        var table = String(payload.table || payload.table_label || "").trim().toLowerCase();
+        if (table !== needle) return;
+        var out = normalizeOutlet(payload.outlet || payload.posOutlet) || want;
+        if (out !== want) return;
+        if (!hit || order._stamp >= hit._stamp) hit = order;
+      });
+      return hit;
+    });
+  }
+
+  function applyPendingToFloor(floor, outlet) {
+    var areas = (floor && Array.isArray(floor.areas) && floor.areas) || [];
+    var tables = ((floor && floor.tables) || []).map(function (t) {
+      return Object.assign({}, t);
+    });
+    var want = normalizeOutlet(outlet) || currentOutlet() || "restaurant";
+    return pendingOrders().then(function (orders) {
+      var byTable = {};
+      orders.forEach(function (order) {
+        var payload = order.payload || {};
+        var ot = String(payload.orderType || payload.order_type || "dine_in").toLowerCase();
+        if (ot !== "dine_in") return;
+        var table = String(payload.table || payload.table_label || "").trim();
+        if (!table) return;
+        var out = normalizeOutlet(payload.outlet || payload.posOutlet) || want;
+        if (out !== want) return;
+        var key = table.toLowerCase();
+        if (!byTable[key] || order._stamp >= byTable[key]._stamp) {
+          byTable[key] = order;
+        }
+      });
+      Object.keys(byTable).forEach(function (key) {
+        var order = byTable[key];
+        var payload = order.payload || {};
+        var bill = !!(payload.customerBill || payload.customer_bill);
+        var guest = String(payload.customerName || payload.customer_name || "").trim();
+        tables.forEach(function (t) {
+          if (String(t.name || "").trim().toLowerCase() !== key) return;
+          var st = String(t.status || "").trim().toLowerCase();
+          if (st === "inactive" || st === "blocked") return;
+          if (bill) {
+            if (st === "occupied") {
+              t.status = "available";
+              t.customerName = "";
+              t.customer_name = "";
+            }
+            return;
+          }
+          t.status = "occupied";
+          if (guest) {
+            t.customerName = guest;
+            t.customer_name = guest;
+          }
+          if (!t.occupiedSince && !t.occupied_since) {
+            t.occupiedSince = payload.savedAt || order.createdAt || new Date().toISOString();
+          }
+        });
+      });
+      return { areas: areas, tables: tables };
+    });
+  }
+
+  function patchFloorOccupancy(tableName, status, extra, outlet) {
+    extra = extra || {};
+    var needle = String(tableName || "").trim().toLowerCase();
+    if (!needle) return Promise.resolve(null);
+    var want = normalizeOutlet(outlet) || currentOutlet();
+    function apply(floor) {
+      if (!floor || !Array.isArray(floor.tables)) return null;
+      var next = {
+        areas: Array.isArray(floor.areas) ? floor.areas : [],
+        tables: floor.tables.map(function (t) {
+          t = Object.assign({}, t);
+          if (String(t.name || "").trim().toLowerCase() !== needle) return t;
+          var st = String(t.status || "").trim().toLowerCase();
+          if (st === "inactive" || st === "blocked") return t;
+          t.status = status;
+          if (status === "occupied") {
+            if (extra.customerName) {
+              t.customerName = extra.customerName;
+              t.customer_name = extra.customerName;
+            }
+            t.occupiedSince =
+              t.occupiedSince || extra.occupiedSince || new Date().toISOString();
+          } else if (status === "available") {
+            t.customerName = "";
+            t.customer_name = "";
+          }
+          return t;
+        })
+      };
+      persistFloorSnapshot(next, want);
+      return next;
+    }
+    var local = readFloorSnapshot(want);
+    var patched = apply(local);
+    return loadCatalog()
+      .then(function (snap) {
+        var floor = (snap && snap.floor) || local;
+        var next = apply(floor) || patched;
+        if (next) {
+          return saveCatalog({ floor: next }).then(function () {
+            return next;
+          });
+        }
+        return patched;
+      })
+      .catch(function () {
+        return patched;
+      });
+  }
+
+  function normalizeCustomer(customer) {
+    if (!customer || typeof customer !== "object") return null;
+    var name = String(
+      customer.name || customer.customerName || customer.first_name || customer.customer_name || ""
+    ).trim();
+    var mobile = String(customer.mobile || customer.customerMobile || customer.customer_mobile || "")
+      .replace(/\D/g, "")
+      .slice(0, 10);
+    if (!name && mobile.length < 2) return null;
+    return {
+      id: customer.id || (mobile ? "m:" + mobile : "n:" + name.toLowerCase()),
+      name: name,
+      first_name: name,
+      mobile: mobile
+    };
+  }
+
+  function rememberCustomer(customer) {
+    var row = normalizeCustomer(customer);
+    if (!row) return Promise.resolve(null);
+    return loadCatalog().then(function (snap) {
+      var list = ((snap && snap.customers) || []).slice();
+      var idx = -1;
+      var i;
+      if (row.mobile.length === 10) {
+        for (i = 0; i < list.length; i++) {
+          if (String(list[i].mobile || "") === row.mobile) {
+            idx = i;
+            break;
+          }
+        }
+      }
+      if (idx < 0 && row.name) {
+        var needle = row.name.toLowerCase();
+        for (i = 0; i < list.length; i++) {
+          if (
+            String(list[i].name || list[i].first_name || "").trim().toLowerCase() === needle &&
+            !String(list[i].mobile || "")
+          ) {
+            idx = i;
+            break;
+          }
+        }
+      }
+      if (idx >= 0) {
+        list[idx] = Object.assign({}, list[idx], row, {
+          name: row.name || list[idx].name,
+          first_name: row.name || list[idx].first_name,
+          mobile: row.mobile || list[idx].mobile
+        });
+      } else {
+        list.push(row);
+      }
+      return saveCatalog({ customers: list }).then(function () {
+        notifyChange("customers", { name: row.name, mobile: row.mobile });
+        return row;
+      });
+    });
+  }
+
+  function listSavedCustomers() {
+    return loadCatalog().then(function (snap) {
+      return ((snap && snap.customers) || []).slice();
+    });
+  }
+
+  function searchSavedCustomers(q) {
+    var query = String(q || "").trim();
+    var digits = String(q || "").replace(/\D/g, "").slice(0, 10);
+    return listSavedCustomers().then(function (list) {
+      if (digits.length >= 2) {
+        return list
+          .filter(function (c) {
+            return String(c.mobile || "").indexOf(digits) === 0;
+          })
+          .slice(0, 8);
+      }
+      if (query.length < 2) return [];
+      var key = query.toLowerCase();
+      return list
+        .map(function (c) {
+          var name = String(c.name || c.first_name || "");
+          var score =
+            typeof window !== "undefined" && typeof window.hbeBestSearchScore === "function"
+              ? window.hbeBestSearchScore([name], key)
+              : name.toLowerCase().indexOf(key);
+          return { c: c, score: score };
+        })
+        .filter(function (row) {
+          return row.score >= 0;
+        })
+        .sort(function (a, b) {
+          return (
+            b.score - a.score ||
+            String(a.c.name || "").localeCompare(String(b.c.name || ""))
+          );
+        })
+        .slice(0, 8)
+        .map(function (row) {
+          return row.c;
+        });
+    });
+  }
+
   global.HbePosOffline = {
     isOnline: isOnline,
     uuid: uuid,
@@ -477,12 +896,24 @@
     loadCatalog: loadCatalog,
     saveDraft: saveDraft,
     loadDraft: loadDraft,
+    listDrafts: listDrafts,
     enqueueOutbox: enqueueOutbox,
     listOutbox: listOutbox,
     flushOutbox: flushOutbox,
     pruneExpiredOfflineData: pruneExpiredOfflineData,
     MAX_OFFLINE_AGE_MS: MAX_OFFLINE_AGE_MS,
     postInvoice: postInvoice,
-    tryPostWithConflictRetry: tryPostWithConflictRetry
+    tryPostWithConflictRetry: tryPostWithConflictRetry,
+    notifyChange: notifyChange,
+    onChange: onChange,
+    persistFloorSnapshot: persistFloorSnapshot,
+    readFloorSnapshot: readFloorSnapshot,
+    pendingOrders: pendingOrders,
+    findPendingForTable: findPendingForTable,
+    applyPendingToFloor: applyPendingToFloor,
+    patchFloorOccupancy: patchFloorOccupancy,
+    rememberCustomer: rememberCustomer,
+    listSavedCustomers: listSavedCustomers,
+    searchSavedCustomers: searchSavedCustomers
   };
 })(typeof window !== 'undefined' ? window : this);

@@ -1312,6 +1312,213 @@
     });
   }
 
+
+  function escapeHtml(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function orderTypeLabel(value) {
+    var v = String(value || '').toLowerCase();
+    if (v === 'takeaway') return 'Takeaway';
+    if (v === 'delivery') return 'Delivery';
+    if (v === 'room_service' || v === 'room-service') return 'Room service';
+    return 'Dine in';
+  }
+
+  function formatLedgerDate(iso) {
+    var d = new Date(iso || Date.now());
+    if (!isFinite(d.getTime())) d = new Date();
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+  }
+
+  function formatLedgerTime(iso) {
+    var d = new Date(iso || Date.now());
+    if (!isFinite(d.getTime())) return '';
+    var h = d.getHours();
+    var m = d.getMinutes();
+    var ap = h >= 12 ? 'PM' : 'AM';
+    h = h % 12;
+    if (!h) h = 12;
+    return h + ':' + (m < 10 ? '0' : '') + m + ' ' + ap;
+  }
+
+  function pendingMatchesOutlet(payload, outlet) {
+    var want = String(outlet || '').trim().toLowerCase() || 'restaurant';
+    var got = String((payload && (payload.outlet || payload.posOutlet)) || '').trim().toLowerCase();
+    if (!got) return true;
+    return got === want;
+  }
+
+  function ensureLedgerTable(page) {
+    var table = document.getElementById('pos-il-table');
+    if (table) return table;
+    var host = page.querySelector('.pl-table-wrap') || page.querySelector('.pl-empty');
+    if (!host) return null;
+    var wrap = document.createElement('div');
+    wrap.className = 'pl-table-wrap';
+    wrap.tabIndex = 0;
+    wrap.setAttribute('aria-label', 'Saved invoices, scroll for more');
+    wrap.innerHTML =
+      '<table class="pl-table" id="pos-il-table" aria-label="Invoice ledger entries">' +
+      '<thead><tr>' +
+      '<th class="cp-col-check"></th>' +
+      '<th class="pl-sortable" data-sort="order_no" scope="col">Order No</th>' +
+      '<th class="pl-sortable" data-sort="date" scope="col">Date / Time</th>' +
+      '<th class="pl-sortable" data-sort="customer" scope="col">Customer</th>' +
+      '<th class="pl-sortable" data-sort="order_type" scope="col">Order type</th>' +
+      '<th class="pl-sortable" data-sort="payment_mode" scope="col">Payment Mode</th>' +
+      '<th class="pl-sortable pl-col-amount" data-sort="items" data-sort-type="number" scope="col">Items</th>' +
+      '<th class="pl-sortable pl-col-amount" data-sort="total" data-sort-type="number" scope="col">Total</th>' +
+      '<th class="pl-sortable" data-sort="created_by" scope="col">Created by</th>' +
+      '<th class="pl-col-actions">Actions</th>' +
+      '</tr></thead><tbody></tbody></table>';
+    if (host.classList.contains('pl-empty')) {
+      host.replaceWith(wrap);
+    } else {
+      host.parentNode.insertBefore(wrap, host);
+      host.remove();
+    }
+    return wrap.querySelector('#pos-il-table');
+  }
+
+  function ledgerTenderCount(table) {
+    return table ? table.querySelectorAll('thead .pos-il-tender-col').length : 0;
+  }
+
+  function buildLocalLedgerRow(order, tenderCount) {
+    var payload = order.payload || {};
+    var totals = payload.totals || {};
+    var lines = payload.lines || [];
+    var itemCount = 0;
+    lines.forEach(function (line) {
+      itemCount += Number(line.qty) || 0;
+    });
+    if (!itemCount) itemCount = lines.length;
+    var total = Number(totals.total || totals.grand_total || 0) || 0;
+    var name = String(payload.customerName || payload.customer_name || '').trim();
+    var mobile = String(payload.customerMobile || payload.customer_mobile || '').trim();
+    var orderNo = String(payload.orderNo || payload.order_no || 'Offline').trim();
+    var tableName = String(payload.table || payload.table_label || '').trim();
+    var typeLabel = orderTypeLabel(payload.orderType || payload.order_type);
+    var savedAt = payload.savedAt || order.createdAt || '';
+    var localId = String(order.localId || '').trim();
+    var generated = !!(payload.customerBill || payload.customer_bill);
+    var search = [orderNo, name, mobile, tableName, typeLabel, 'offline', 'unsynced'].join(' ');
+    var tr = document.createElement('tr');
+    tr.className = 'pos-il-row is-unsettled is-local-pending';
+    tr.setAttribute('data-local-id', localId);
+    tr.setAttribute('data-invoice-id', localId ? 'local-' + localId : '');
+    tr.setAttribute('data-order-no', orderNo);
+    tr.setAttribute('data-table', tableName);
+    tr.setAttribute('data-customer-name', name);
+    tr.setAttribute('data-grand-total', String(total));
+    tr.setAttribute('data-settlement', generated ? 'generated' : 'unsettled');
+    tr.setAttribute('data-generated', generated ? '1' : '0');
+    tr.setAttribute('data-search', search);
+    tr.setAttribute('tabindex', '0');
+    tr.setAttribute('role', 'button');
+    tr.setAttribute('aria-label', 'Open offline invoice ' + orderNo);
+    var tenders = '';
+    var i;
+    for (i = 0; i < (tenderCount || 0); i++) {
+      tenders += '<td class="pl-col-amount pos-il-tender-col" data-sort-value="0">—</td>';
+    }
+    tr.innerHTML =
+      '<td class="cp-col-check"></td>' +
+      '<td class="pl-col-code" data-sort-value="' + escapeHtml(orderNo) + '"><span class="pl-expense-code">' +
+      escapeHtml(orderNo) + '</span><div class="pl-meta">Unsynced</div></td>' +
+      '<td class="pl-col-date" data-sort-value="' + escapeHtml(savedAt) + '"><div class="pl-name">' +
+      escapeHtml(formatLedgerDate(savedAt)) + '</div><div class="pl-meta">' +
+      escapeHtml(formatLedgerTime(savedAt)) + '</div></td>' +
+      '<td data-sort-value="' + escapeHtml(name) + '"><div class="pl-name">' +
+      escapeHtml(name || '—') + '</div>' +
+      (mobile ? '<div class="pl-meta">' + escapeHtml(mobile) + '</div>' : '') +
+      '</td>' +
+      '<td data-sort-value="' + escapeHtml(typeLabel) + '">' + escapeHtml(typeLabel) + '</td>' +
+      '<td class="pos-il-payment-mode" data-sort-value="Unsettled">Unsettled</td>' +
+      tenders +
+      '<td class="pl-col-amount" data-sort-value="' + itemCount + '">' + itemCount + '</td>' +
+      '<td class="pl-col-amount pl-amount" data-amount="' + total + '" data-sort-value="' + total + '">' +
+      formatMoney(total) + '</td>' +
+      '<td data-sort-value="This device">This device</td>' +
+      '<td class="pl-col-actions"><div class="act-grp pl-action-btns">' +
+      '<button type="button" class="act-btn edit pos-il-local-open-btn" data-tip="Open" aria-label="Open offline invoice ' +
+      escapeHtml(orderNo) + '">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' +
+      '</button></div></td>';
+    return tr;
+  }
+
+  function openLocalLedgerOrder(row) {
+    if (!row) return;
+    var tableName = String(row.getAttribute('data-table') || '').trim();
+    var url = resolvePosApiBase() + '/invoice';
+    if (tableName) url += '?table=' + encodeURIComponent(tableName);
+    if (typeof global.deNavigateWithTransition === 'function') {
+      global.deNavigateWithTransition(url);
+      return;
+    }
+    window.location.href = url;
+  }
+
+  function overlayPendingLedgerRows(page) {
+    var api = global.HbePosOffline;
+    if (!api || typeof api.pendingOrders !== 'function') return;
+    var outlet =
+      (page && page.getAttribute('data-pos-outlet')) ||
+      (String(window.location.pathname || '').indexOf('/bar-point-of-sale') === 0 ? 'bar' : 'restaurant');
+    api.pendingOrders().then(function (orders) {
+      var table = ensureLedgerTable(page);
+      if (!table) return;
+      var tbody = table.querySelector('tbody');
+      if (!tbody) return;
+      $all('tr.pos-il-row.is-local-pending', tbody).forEach(function (row) {
+        row.remove();
+      });
+      var existing = {};
+      $all('tr.pos-il-row', tbody).forEach(function (row) {
+        existing[String(row.getAttribute('data-order-no') || '').trim().toLowerCase()] = true;
+      });
+      var tenderCount = ledgerTenderCount(table);
+      var added = 0;
+      (orders || []).forEach(function (order) {
+        var payload = order.payload || {};
+        if (!pendingMatchesOutlet(payload, outlet)) return;
+        var orderNo = String(payload.orderNo || payload.order_no || '').trim().toLowerCase();
+        if (orderNo && existing[orderNo]) return;
+        var row = buildLocalLedgerRow(order, tenderCount);
+        tbody.insertBefore(row, tbody.firstChild);
+        added += 1;
+      });
+      if (added) {
+        var empty = page.querySelector('.pl-empty');
+        if (empty) empty.hidden = true;
+        formatAmounts(page);
+        updateVisibleCount(page);
+      }
+    }).catch(function () {});
+  }
+
+  function bindLocalLedgerRows(page) {
+    if (!page || page.getAttribute('data-local-ledger-bound') === '1') return;
+    page.setAttribute('data-local-ledger-bound', '1');
+    page.addEventListener('click', function (event) {
+      var btn = event.target.closest('.pos-il-local-open-btn');
+      var row = event.target.closest('tr.pos-il-row.is-local-pending');
+      if (!btn && !row) return;
+      if (!row) row = btn && btn.closest('tr.pos-il-row.is-local-pending');
+      if (!row || !page.contains(row)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      openLocalLedgerOrder(row);
+    });
+  }
+
   function initPosInvoiceLedgerPage() {
     var page = document.getElementById('pos-invoice-ledger-page');
     if (!page) return;
@@ -1323,6 +1530,17 @@
     bindDateRange(page);
     bindSelection(page);
     bindActions(page);
+    bindLocalLedgerRows(page);
+    overlayPendingLedgerRows(page);
+    var api = global.HbePosOffline;
+    if (api && typeof api.onChange === 'function' && page.getAttribute('data-local-sync-bound') !== '1') {
+      page.setAttribute('data-local-sync-bound', '1');
+      api.onChange(function (msg) {
+        var kind = msg && msg.kind;
+        if (kind && kind !== 'invoice' && kind !== 'floor' && kind !== 'change') return;
+        overlayPendingLedgerRows(page);
+      });
+    }
     if (typeof global.bindPosSettleModal === 'function') {
       global.bindPosSettleModal();
     }

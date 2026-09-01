@@ -129,7 +129,7 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("clearAllVerifiers", body)
         self.assertIn("putCachedHtml", body)
         self.assertIn("findCachedAppShell", body)
-        self.assertIn("offline logout", body)
+        self.assertIn("bindLogoutClearing", body)
         self.assertIn("/home", body)
 
     def test_de_pwa_prunes_app_and_legacy_pos_caches(self):

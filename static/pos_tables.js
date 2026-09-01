@@ -595,11 +595,38 @@
     });
   }
 
+  function mergePendingFloor(payload) {
+    var api = global.HbePosOffline;
+    var base = payload || emptyFloor();
+    if (!api || typeof api.applyPendingToFloor !== 'function') {
+      return Promise.resolve(base);
+    }
+    return api.applyPendingToFloor(base, resolvePosOutlet()).catch(function () {
+      return base;
+    });
+  }
+
+  function finishFloorLoad(payload, opts, done) {
+    opts = opts || {};
+    mergePendingFloor(payload).then(function (merged) {
+      currentFloor = merged;
+      writeFloorSessionSnapshot(merged);
+      writeFloorLocalSnapshot(merged);
+      if (opts.remember) rememberFloorOfflineCatalog(merged);
+      if (typeof done === 'function') done(merged);
+    });
+  }
+
   function loadFloorFromApi(done) {
-    fetch(FLOOR_API, {
+    var url = FLOOR_API + (FLOOR_API.indexOf('?') === -1 ? '?' : '&') + '_ts=' + Date.now();
+    fetch(url, {
       method: 'GET',
       credentials: 'same-origin',
-      headers: apiHeaders()
+      cache: 'no-store',
+      headers: Object.assign({}, apiHeaders(), {
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache'
+      })
     })
       .then(function (res) {
         return res.json().catch(function () {
@@ -617,40 +644,34 @@
           !Array.isArray(data.tables);
         if (!offlineFail) {
           payload = { areas: data.areas, tables: data.tables };
-          currentFloor = payload;
-          writeFloorSessionSnapshot(payload);
-          writeFloorLocalSnapshot(payload);
-          rememberFloorOfflineCatalog(payload);
           paintKotPendingBanner(data.kot_pending);
           paintInvoiceKpis(document.getElementById('pos-tables-page'), data);
-        } else {
-          var fallback = readFloorSessionSnapshot() || readFloorLocalSnapshot();
-          if (fallback && Array.isArray(fallback.tables) && fallback.tables.length) {
-            payload = fallback;
-            currentFloor = payload;
-          } else {
-            payload = emptyFloor();
-            currentFloor = payload;
-            paintKotPendingBanner(emptyKotPending());
-            paintInvoiceKpis(document.getElementById('pos-tables-page'), {
-              sales_count: 0,
-              sales_total: 0,
-              unsettled_count: 0,
-              unsettled_total: 0
-            });
-          }
+          finishFloorLoad(payload, { remember: true }, done);
+          return;
         }
-        if (typeof done === 'function') done(payload);
+        var fallback = readFloorSessionSnapshot() || readFloorLocalSnapshot();
+        if (fallback && Array.isArray(fallback.tables) && fallback.tables.length) {
+          payload = fallback;
+        } else {
+          payload = emptyFloor();
+          paintKotPendingBanner(emptyKotPending());
+          paintInvoiceKpis(document.getElementById('pos-tables-page'), {
+            sales_count: 0,
+            sales_total: 0,
+            unsettled_count: 0,
+            unsettled_total: 0
+          });
+        }
+        finishFloorLoad(payload, { remember: false }, done);
       })
       .catch(function () {
         var fallback = readFloorSessionSnapshot() || readFloorLocalSnapshot() || loadFloorDataCached();
         if (fallback && Array.isArray(fallback.tables) && fallback.tables.length) {
-          currentFloor = fallback;
-          if (typeof done === 'function') done(fallback);
+          finishFloorLoad(fallback, { remember: false }, done);
           return;
         }
         paintKotPendingBanner(emptyKotPending());
-        if (typeof done === 'function') done(emptyFloor());
+        finishFloorLoad(emptyFloor(), { remember: false }, done);
       });
   }
 
@@ -4528,13 +4549,47 @@
     });
   }
 
+
+  function bindLocalOccupancySync(root) {
+    var api = global.HbePosOffline;
+    if (!root || root.getAttribute('data-local-sync-bound') === '1') return;
+    root.setAttribute('data-local-sync-bound', '1');
+    function refreshFromLocal() {
+      var snap = readFloorLocalSnapshot() || readFloorSessionSnapshot() || currentFloor;
+      mergePendingFloor(snap).then(function (merged) {
+        currentFloor = merged;
+        writeFloorSessionSnapshot(merged);
+        writeFloorLocalSnapshot(merged);
+        paintTablesPage(root, merged);
+      });
+    }
+    if (api && typeof api.onChange === 'function') {
+      api.onChange(function (msg) {
+        var kind = msg && msg.kind;
+        if (kind && kind !== 'floor' && kind !== 'invoice' && kind !== 'change') return;
+        refreshFromLocal();
+      });
+    }
+    global.addEventListener('pageshow', refreshFromLocal);
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) refreshFromLocal();
+    });
+  }
+
   function initPosTablesPage() {
     syncPosApiPaths();
     var root = document.getElementById('pos-tables-page');
     if (!root) return;
-    /* Soft-nav: paint cache first, then refresh from SQLite API */
+    /* Soft-nav: paint cache first (plus local POS saves), then refresh from SQLite API */
     var cached = loadFloorDataCached();
     paintTablesPage(root, cached);
+    mergePendingFloor(cached).then(function (merged) {
+      if (!root.isConnected) return;
+      currentFloor = merged;
+      writeFloorSessionSnapshot(merged);
+      writeFloorLocalSnapshot(merged);
+      paintTablesPage(root, merged);
+    });
     paintKotPendingBanner(currentKotPending);
     if (typeof global.initEpListboxes === 'function') {
       global.initEpListboxes();
@@ -4558,6 +4613,7 @@
     loadFloorFromApi(function (data) {
       paintTablesPage(root, data || loadFloorDataCached());
     });
+    bindLocalOccupancySync(root);
     if (root.__posTableAttentionTimer) {
       clearInterval(root.__posTableAttentionTimer);
     }

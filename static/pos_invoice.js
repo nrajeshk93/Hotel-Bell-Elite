@@ -102,6 +102,7 @@
   var menuCatalogInflight = null;
   var customerCache = [];
   var customerCacheQuery = '';
+  var customerCatalog = [];
   var customerSearchTimer = null;
   var GST_RATE = 0.05;
   var CGST_RATE = 0.025;
@@ -643,8 +644,10 @@
         } else if (silent) {
           /* keep quiet for autosave */
         }
+        rememberGuestFromPayload(payload);
         syncFloorOccupancyAfterSave(page, payload, null);
         updateSettleBillButton(page);
+        notifyPosLocalChange('invoice', payload);
         return { ok: true, offline: true, invoice: null, payload: payload };
       });
   }
@@ -683,6 +686,8 @@
             invoice
           );
         }
+        rememberGuestFromPayload(payload, invoice);
+        notifyPosLocalChange('invoice', payload);
         if (localId && api.saveDraft) {
           api.saveDraft(localId, {
             invoiceId: invoice && invoice.id,
@@ -1092,11 +1097,29 @@
       !!(payload && (payload.customerBill || payload.customer_bill)) ||
       !!(invoice && (invoice.customer_bill_sent || invoice.customerBillSent)) ||
       !!state.invoiceGenerated;
+    var guestName =
+      ((payload && (payload.customerName || payload.customer_name)) ||
+        (invoice && (invoice.customer_name || invoice.customerName)) ||
+        '') + '';
+    guestName = String(guestName).trim();
     if (billGenerated) {
       markFloorTableAvailableLocal(table);
     } else {
       markFloorTableOccupiedLocal(table);
+      if (guestName && Array.isArray(floorTablesCache)) {
+        var needle = table.toLowerCase();
+        for (var gi = 0; gi < floorTablesCache.length; gi++) {
+          if (String(floorTablesCache[gi].name || '').trim().toLowerCase() === needle) {
+            floorTablesCache[gi].customerName = guestName;
+            floorTablesCache[gi].customer_name = guestName;
+            break;
+          }
+        }
+      }
     }
+    persistLocalFloorOccupancy(table, billGenerated ? 'available' : 'occupied', {
+      customerName: billGenerated ? '' : guestName
+    });
     if (page && floorTablesCache) {
       applyFloorTablesToUi(page, floorTablesCache);
       setListboxValue(
@@ -1108,6 +1131,48 @@
       );
     }
     refreshFloorTables(page, { preserveTable: table });
+  }
+
+  function persistLocalFloorOccupancy(tableName, status, extra) {
+    extra = extra || {};
+    var api = offlineApi();
+    if (!api) return;
+    if (typeof api.patchFloorOccupancy === 'function') {
+      api.patchFloorOccupancy(tableName, status, extra, resolvePosOutlet()).then(function () {
+        notifyPosLocalChange('floor', { table: tableName, status: status });
+      }).catch(function () {});
+      return;
+    }
+    if (typeof api.persistFloorSnapshot === 'function' && Array.isArray(floorTablesCache)) {
+      api.persistFloorSnapshot({ areas: [], tables: floorTablesCache }, resolvePosOutlet());
+      notifyPosLocalChange('floor', { table: tableName, status: status });
+    }
+  }
+
+  function notifyPosLocalChange(kind, detail) {
+    var api = offlineApi();
+    if (api && typeof api.notifyChange === 'function') {
+      api.notifyChange(kind, detail || {});
+    }
+  }
+
+  function rememberGuestFromPayload(payload, invoice) {
+    var name =
+      (payload && (payload.customerName || payload.customer_name)) ||
+      (invoice && (invoice.customer_name || invoice.customerName)) ||
+      '';
+    var mobile =
+      (payload && (payload.customerMobile || payload.customer_mobile)) ||
+      (invoice && (invoice.customer_mobile || invoice.customerMobile)) ||
+      '';
+    name = String(name || '').trim();
+    mobile = digitsOnly(mobile, 10);
+    if (!name && mobile.length < 2) return;
+    upsertCustomerCatalog({ name: name, first_name: name, mobile: mobile });
+    var api = offlineApi();
+    if (api && typeof api.rememberCustomer === 'function') {
+      api.rememberCustomer({ name: name, mobile: mobile });
+    }
   }
 
   function loadFloorTables(done) {
@@ -1438,21 +1503,53 @@
     return String(q || '').trim().toLowerCase();
   }
 
+  function upsertCustomerCatalog(customer) {
+    if (!customer || typeof customer !== 'object') return;
+    var name = String(customer.name || customer.first_name || '').trim();
+    var mobile = digitsOnly(customer.mobile, 10);
+    if (!name && mobile.length < 2) return;
+    var key = mobile.length >= 2 ? 'm:' + mobile : 'n:' + name.toLowerCase();
+    var i;
+    for (i = 0; i < customerCatalog.length; i++) {
+      var existing = customerCatalog[i];
+      var eMobile = digitsOnly(existing.mobile, 10);
+      var eName = String(existing.name || existing.first_name || '').trim().toLowerCase();
+      var match =
+        (mobile.length >= 2 && eMobile === mobile) ||
+        (!mobile && eName && eName === name.toLowerCase());
+      if (match) {
+        customerCatalog[i] = {
+          id: existing.id || customer.id || key,
+          name: name || existing.name || existing.first_name || '',
+          first_name: name || existing.first_name || existing.name || '',
+          mobile: mobile || eMobile
+        };
+        return;
+      }
+    }
+    customerCatalog.push({
+      id: customer.id || key,
+      name: name,
+      first_name: name,
+      mobile: mobile
+    });
+  }
+
   function searchCustomersLocal(q) {
     var key = customerQueryKey(q);
     if (key.length < MIN_QUERY) return [];
-    if (customerCacheQuery === key) return customerCache.slice();
     var digits = digitsOnly(q, 10);
+    var pool = customerCatalog.length ? customerCatalog : customerCache;
     if (digits.length >= MIN_QUERY) {
-      return customerCache
+      return pool
         .filter(function (c) {
           return String(c.mobile || '').indexOf(digits) === 0;
         })
         .slice(0, 8);
     }
-    return customerCache
+    return pool
       .map(function (c) {
-        return { c: c, score: window.hbeBestSearchScore([c.name], key) };
+        return { c: c, score: window.hbeBestSearchScore([c.name, c.first_name, c.mobile], key) };
       })
       .filter(function (row) { return row.score >= 0; })
       .sort(function (a, b) {
@@ -1465,30 +1562,64 @@
   function fetchCustomers(q, done) {
     var key = customerQueryKey(q);
     if (key.length < MIN_QUERY) {
-      customerCache = [];
       customerCacheQuery = '';
       if (done) done([]);
       return;
     }
-    fetch(CUSTOMERS_API + '?q=' + encodeURIComponent(String(q || '').trim()), {
+    function finish(list) {
+      (list || []).forEach(upsertCustomerCatalog);
+      var merged = searchCustomersLocal(q);
+      customerCache = merged;
+      customerCacheQuery = key;
+      if (done) done(merged.slice());
+    }
+    fetch(CUSTOMERS_API + '?q=' + encodeURIComponent(String(q || '').trim()) + '&_ts=' + Date.now(), {
       credentials: 'same-origin',
-      headers: { Accept: 'application/json' }
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache'
+      }
     })
       .then(function (res) {
         if (!res.ok) throw new Error('customer search failed');
         return res.json();
       })
       .then(function (payload) {
-        var list = (payload && payload.customers) || [];
-        customerCache = Array.isArray(list) ? list : [];
-        customerCacheQuery = key;
-        if (done) done(customerCache.slice());
+        finish((payload && payload.customers) || []);
       })
       .catch(function () {
-        customerCache = [];
-        customerCacheQuery = '';
-        if (done) done([]);
+        var api = offlineApi();
+        if (api && typeof api.searchSavedCustomers === 'function') {
+          api.searchSavedCustomers(q).then(function (local) {
+            finish(local || []);
+          }).catch(function () {
+            finish([]);
+          });
+          return;
+        }
+        finish([]);
       });
+  }
+
+  function warmCustomerCatalog() {
+    var api = offlineApi();
+    if (!api) return;
+    function fromOrders(orders) {
+      (orders || []).forEach(function (order) {
+        var payload = (order && order.payload) || {};
+        rememberGuestFromPayload(payload);
+      });
+    }
+    if (typeof api.listSavedCustomers === 'function') {
+      api.listSavedCustomers().then(function (list) {
+        (list || []).forEach(upsertCustomerCatalog);
+      }).catch(function () {});
+    }
+    if (typeof api.pendingOrders === 'function') {
+      api.pendingOrders().then(fromOrders).catch(function () {});
+    }
   }
 
   /* Back-compat aliases used by older call sites / parallel edits. */
@@ -3562,11 +3693,62 @@
           hydrateFromInvoice(page, data.invoice, { silent: !!opts.silent });
           return;
         }
-        if (typeof opts.notFound === 'function') opts.notFound();
+        return resumeOrderFromLocal(page, name, opts);
       })
       .catch(function () {
-        if (typeof opts.notFound === 'function') opts.notFound();
+        return resumeOrderFromLocal(page, name, opts);
       });
+  }
+
+  function invoiceFromOfflinePayload(payload, extra) {
+    extra = extra || {};
+    payload = payload || {};
+    return {
+      id: extra.invoiceId || payload.invoiceId || null,
+      order_no: payload.orderNo || payload.order_no || '',
+      table_label: payload.table || payload.table_label || '',
+      table: payload.table || payload.table_label || '',
+      customer_name: payload.customerName || payload.customer_name || '',
+      customer_mobile: payload.customerMobile || payload.customer_mobile || '',
+      notes: payload.notes || '',
+      captain: payload.captain || '',
+      order_type: payload.orderType || payload.order_type || 'dine_in',
+      discount_type: payload.discountType || payload.discount_type || 'pct',
+      discount_value: payload.discountValue || payload.discount_value || 0,
+      discount_line_uids: payload.discountLineUids || payload.discount_line_uids || [],
+      discount_reason: payload.discountReason || payload.discount_reason || '',
+      service_type: payload.serviceType || payload.service_type || 'pct',
+      service_value: payload.serviceValue || payload.service_value || 0,
+      tip_amount: payload.tipAmount || payload.tip_amount || 0,
+      coupon_code: payload.couponCode || payload.coupon_code || '',
+      tax_cgst_pct: payload.taxCgstPct || payload.tax_cgst_pct,
+      tax_ugst_pct: payload.taxUgstPct || payload.tax_ugst_pct,
+      lines: payload.lines || [],
+      customer_bill_sent: payload.customerBill || payload.customer_bill || ''
+    };
+  }
+
+  function resumeOrderFromLocal(page, tableName, opts) {
+    opts = opts || {};
+    var api = offlineApi();
+    if (!api || typeof api.findPendingForTable !== 'function') {
+      if (typeof opts.notFound === 'function') opts.notFound();
+      return Promise.resolve(null);
+    }
+    return api.findPendingForTable(tableName, resolvePosOutlet()).then(function (hit) {
+      if (hit && hit.payload) {
+        if (hit.localId) state.localId = hit.localId;
+        hydrateFromInvoice(page, invoiceFromOfflinePayload(hit.payload, hit), {
+          silent: !!opts.silent
+        });
+        return hit;
+      }
+      if (typeof opts.notFound === 'function') opts.notFound();
+      return null;
+    }).catch(function () {
+      if (typeof opts.notFound === 'function') opts.notFound();
+      return null;
+    });
   }
 
   /**
@@ -6181,6 +6363,7 @@
     bindOfflineSyncListeners();
     bindTableOrderSyncListeners();
     updateOfflineBanner();
+    warmCustomerCatalog();
     var offlineApiRef = offlineApi();
     if (offlineApiRef && typeof offlineApiRef.pruneExpiredOfflineData === 'function') {
       offlineApiRef.pruneExpiredOfflineData().then(function (pruned) {
