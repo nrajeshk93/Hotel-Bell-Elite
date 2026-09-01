@@ -472,6 +472,35 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
         self.assertEqual(draft.status_code, 200, draft.get_data(as_text=True))
         self.assertEqual(draft.get_json()["invoice"]["order_no"], "SPC/2228/2026-27")
 
+    def test_merge_duplicate_menu_lines_on_save(self):
+        conn = db_mod.get_db()
+        try:
+            payload = self._payload(
+                "SPC/DRAFT/26-27",
+                lines=[
+                    {"uid": "L1", "menuId": 525, "name": "ROYAL CHALLENGE", "rate": 99, "qty": 2, "kotSentQty": 2},
+                    {"uid": "L2", "menuId": 525, "name": "ROYAL CHALLENGE", "rate": 99, "qty": 12, "kotSentQty": 12},
+                    {"uid": "L3", "menuId": 525, "name": "ROYAL CHALLENGE", "rate": 99, "qty": 2, "kotSentQty": 2},
+                ],
+                totals={
+                    "subtotal": 1584,
+                    "discount": 0,
+                    "gst": 0,
+                    "service": 0,
+                    "tip": 0,
+                    "roundOff": 0,
+                    "total": 1584,
+                },
+            )
+            saved = self.client.post("/point-of-sale/api/invoices", json=payload)
+            self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+            invoice = saved.get_json()["invoice"]
+            royal = [line for line in invoice["lines"] if line["name"] == "ROYAL CHALLENGE"]
+            self.assertEqual(len(royal), 1)
+            self.assertEqual(royal[0]["qty"], 16.0)
+        finally:
+            conn.close()
+
     def test_repair_renumbers_early_spc_series_to_migration_floor(self):
         conn = db_mod.get_db()
         try:

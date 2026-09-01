@@ -192,7 +192,8 @@
 
   function buildItemRows(lines, amountFormatter) {
     // Category/variant (e.g. MAIN COURSE) is for staff on screen only — not on printed bills.
-    return (lines || [])
+    var grouped = groupBillLines(lines);
+    return grouped
       .map(function (line) {
         var qty = Number(line.qty) || 0;
         var rate = Number(line.rate) || 0;
@@ -210,6 +211,56 @@
         );
       })
       .join('');
+  }
+
+  function lineMergeKey(line) {
+    var menuId =
+      line && line.menu_item_id != null
+        ? line.menu_item_id
+        : line && line.menuId != null
+          ? line.menuId
+          : null;
+    var name = String((line && line.name) || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+    var variant = String((line && line.variant) || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+    var rate = Math.round((Number(line && line.rate) || 0) * 100) / 100;
+    return String(menuId != null ? menuId : '') + '|' + name + '|' + variant + '|' + rate;
+  }
+
+  function groupBillLines(lines) {
+    var out = [];
+    var index = {};
+    (lines || []).forEach(function (line) {
+      var key = lineMergeKey(line);
+      if (index[key] !== undefined) {
+        var target = out[index[key]];
+        target.qty = (Number(target.qty) || 0) + (Number(line.qty) || 0);
+        var addTotal =
+          line.line_total != null
+            ? Number(line.line_total) || 0
+            : (Number(line.rate) || 0) * (Number(line.qty) || 0);
+        target.line_total = (Number(target.line_total) || 0) + addTotal;
+      } else {
+        index[key] = out.length;
+        var copy = {
+          name: line.name,
+          variant: line.variant,
+          rate: line.rate,
+          qty: Number(line.qty) || 0,
+          line_total:
+            line.line_total != null
+              ? Number(line.line_total) || 0
+              : (Number(line.rate) || 0) * (Number(line.qty) || 0)
+        };
+        out.push(copy);
+      }
+    });
+    return out;
   }
 
   function buildLegacyCustomerBillHtml(invoice, opts) {

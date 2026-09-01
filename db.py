@@ -1693,6 +1693,7 @@ def ensure_pos_schema(conn):
         )
 
     repair_restaurant_spc_migrated_series_order_nos(conn)
+    repair_duplicate_pos_invoice_lines(conn)
     ensure_customers_schema(conn)
     conn.commit()
 
@@ -4417,7 +4418,7 @@ def _serialize_discount_line_uids(uids):
     return json.dumps(cleaned) if cleaned else ""
 
 
-def _pos_invoice_line_dicts(conn, invoice_id):
+def _pos_invoice_line_dicts(conn, invoice_id, *, merge=True):
     rows = conn.execute(
         """
         SELECT
@@ -4473,6 +4474,8 @@ def _pos_invoice_line_dicts(conn, invoice_id):
                 "outlet": menu_outlet,
             }
         )
+    if merge:
+        lines = _pos_merge_invoice_line_dicts(lines)
     return lines
 
 
@@ -6843,6 +6846,150 @@ def _pos_invoice_line_kitchen_key(menu_item_id, name, variant):
     )
 
 
+def _pos_invoice_line_merge_key(line):
+    """Same menu item + rate → one bill row (qty summed)."""
+    menu_item_id = line.get("menu_item_id")
+    if menu_item_id is None:
+        menu_item_id = line.get("menuId")
+    try:
+        menu_item_id = int(menu_item_id) if menu_item_id not in (None, "") else None
+    except (TypeError, ValueError):
+        menu_item_id = None
+    name = " ".join(str(line.get("name") or "").split()).strip().lower()
+    variant = " ".join(str(line.get("variant") or "").split()).strip().lower()
+    rate = _pos_money(line.get("rate"))
+    return (menu_item_id, name, variant, rate)
+
+
+def _pos_merge_invoice_line_dicts(lines):
+    """Combine duplicate product rows (same menu item, name, variant, rate)."""
+    if not lines:
+        return []
+    merged = []
+    index = {}
+    for line in lines:
+        key = _pos_invoice_line_merge_key(line)
+        if key in index:
+            target = merged[index[key]]
+            target["qty"] = _pos_money(float(target["qty"]) + float(line.get("qty") or 0))
+            target["sent_qty"] = _pos_money(
+                float(target.get("sent_qty") or 0) + float(line.get("sent_qty") or 0)
+            )
+            if float(target["sent_qty"]) > float(target["qty"]):
+                target["sent_qty"] = target["qty"]
+            note_a = str(target.get("notes") or "").strip()
+            note_b = str(line.get("notes") or "").strip()
+            if note_b and note_b not in note_a:
+                combined = " ; ".join(part for part in (note_a, note_b) if part)
+                target["notes"] = combined[:200]
+        else:
+            index[key] = len(merged)
+            merged.append(dict(line))
+    for idx, line in enumerate(merged):
+        line["sort_order"] = idx
+        line["line_total"] = _pos_money(float(line["rate"]) * float(line["qty"]))
+    return merged
+
+
+def _pos_merge_normalized_invoice_lines(lines):
+    """Merge normalized save_pos_invoice line payloads."""
+    if not lines:
+        return []
+    merged = []
+    index = {}
+    for line in lines:
+        key = _pos_invoice_line_merge_key(line)
+        if key in index:
+            target = merged[index[key]]
+            target["qty"] = _pos_money(float(target["qty"]) + float(line.get("qty") or 0))
+            target["sent_qty"] = _pos_money(
+                float(target.get("sent_qty") or 0) + float(line.get("sent_qty") or 0)
+            )
+            if float(target["sent_qty"]) > float(target["qty"]):
+                target["sent_qty"] = target["qty"]
+            note_a = str(target.get("notes") or "").strip()
+            note_b = str(line.get("notes") or "").strip()
+            if note_b and note_b not in note_a:
+                combined = " ; ".join(part for part in (note_a, note_b) if part)
+                target["notes"] = combined[:200]
+        else:
+            index[key] = len(merged)
+            merged.append(dict(line))
+    for idx, line in enumerate(merged):
+        line["sort_order"] = idx
+        line["line_total"] = _pos_money(float(line["rate"]) * float(line["qty"]))
+    return merged
+
+
+def _pos_consolidate_duplicate_invoice_lines_done(conn):
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='pos_invoice_line_merge_repair'"
+    ).fetchone()
+    if not row:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS pos_invoice_line_merge_repair (done INTEGER NOT NULL DEFAULT 0)"
+        )
+        return False
+    done = conn.execute("SELECT done FROM pos_invoice_line_merge_repair LIMIT 1").fetchone()
+    return bool(done and int(done[0] if not isinstance(done, dict) else done["done"]))
+
+
+def repair_duplicate_pos_invoice_lines(conn):
+    """One-shot: merge duplicate menu rows already stored on pos_invoices."""
+    if _pos_consolidate_duplicate_invoice_lines_done(conn):
+        return {"changed": False, "invoices": 0, "lines_removed": 0}
+    invoice_ids = [
+        int(row[0] if not isinstance(row, dict) else row["invoice_id"])
+        for row in conn.execute(
+            "SELECT DISTINCT invoice_id FROM pos_invoice_lines ORDER BY invoice_id"
+        ).fetchall()
+    ]
+    changed = 0
+    lines_removed = 0
+    for invoice_id in invoice_ids:
+        raw_count = conn.execute(
+            "SELECT COUNT(*) FROM pos_invoice_lines WHERE invoice_id = ?",
+            (invoice_id,),
+        ).fetchone()
+        raw_n = int(raw_count[0] if not isinstance(raw_count, dict) else raw_count[0])
+        merged = _pos_merge_invoice_line_dicts(
+            _pos_invoice_line_dicts(conn, invoice_id, merge=False)
+        )
+        if len(merged) >= raw_n:
+            continue
+        conn.execute("DELETE FROM pos_invoice_lines WHERE invoice_id = ?", (invoice_id,))
+        for line in merged:
+            conn.execute(
+                """
+                INSERT INTO pos_invoice_lines (
+                    invoice_id, sort_order, menu_item_id, name, variant, rate, qty,
+                    line_total, sent_qty, notes, line_uid
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    invoice_id,
+                    line["sort_order"],
+                    line["menu_item_id"],
+                    line["name"],
+                    line["variant"],
+                    line["rate"],
+                    line["qty"],
+                    line["line_total"],
+                    line["sent_qty"],
+                    line.get("notes") or "",
+                    line.get("line_uid") or "",
+                ),
+            )
+        changed += 1
+        lines_removed += raw_n - len(merged)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS pos_invoice_line_merge_repair (done INTEGER NOT NULL DEFAULT 0)"
+    )
+    conn.execute("DELETE FROM pos_invoice_line_merge_repair")
+    conn.execute("INSERT INTO pos_invoice_line_merge_repair (done) VALUES (1)")
+    return {"changed": changed > 0, "invoices": changed, "lines_removed": lines_removed}
+
+
 def _enforce_pos_kot_line_protections(
     conn,
     invoice_id,
@@ -7042,6 +7189,7 @@ def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, ac
         )
     if not normalized_lines:
         raise ValueError("Add at least one item before saving.")
+    normalized_lines = _pos_merge_normalized_invoice_lines(normalized_lines)
     if subtotal <= 0:
         subtotal = _pos_money(computed_subtotal)
 

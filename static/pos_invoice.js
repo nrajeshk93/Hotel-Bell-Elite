@@ -3250,13 +3250,64 @@
     });
   }
 
+  function lineMergeKey(line) {
+    var menuId = line && line.menuId != null ? line.menuId : null;
+    var name = String((line && line.name) || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+    var variant = String(lineDisplayVariant(line) || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+    var rate = Math.round((Number(line && line.rate) || 0) * 100) / 100;
+    return String(menuId != null ? menuId : '') + '|' + name + '|' + variant + '|' + rate;
+  }
+
+  function mergeStateLines(lines) {
+    var out = [];
+    var index = {};
+    (lines || []).forEach(function (line) {
+      var key = lineMergeKey(line);
+      if (index[key] !== undefined) {
+        var target = out[index[key]];
+        target.qty = (Number(target.qty) || 0) + (Number(line.qty) || 0);
+        target.sentQty = (Number(target.sentQty) || 0) + (Number(line.sentQty) || 0);
+        if (target.sentQty > target.qty) target.sentQty = target.qty;
+        var noteA = String(target.notes || '').trim();
+        var noteB = String(line.notes || '').trim();
+        if (noteB && noteA.indexOf(noteB) === -1) {
+          target.notes = [noteA, noteB].filter(Boolean).join(' ; ').slice(0, 200);
+        }
+      } else {
+        index[key] = out.length;
+        out.push(line);
+      }
+    });
+    return out;
+  }
+
   function addItem(page, item, qty) {
     if (guardInvoiceLocked()) return;
     if (guardDineInNeedsTable(page)) return;
     var existing = null;
     var i;
+    var mergeKey =
+      String(item.id != null ? item.id : '') +
+      '|' +
+      String(item.name || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase() +
+      '|' +
+      String(item.variant || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase() +
+      '|' +
+      (Math.round((Number(item.rate) || 0) * 100) / 100);
     for (i = 0; i < state.lines.length; i++) {
-      if (state.lines[i].menuId && item.id && state.lines[i].menuId === item.id) {
+      if (lineMergeKey(state.lines[i]) === mergeKey) {
         existing = state.lines[i];
         break;
       }
@@ -3620,6 +3671,7 @@
         notes: String(line.notes || '').trim()
       };
     });
+    state.lines = mergeStateLines(state.lines);
     pruneDiscountLineUids();
 
     syncOrderNoMeta(page);
@@ -5137,7 +5189,7 @@
       customerName: fieldValue('pos-inv-customer-name', page),
       customerMobile: digitsOnly(fieldValue('pos-inv-customer-mobile', page), 10),
       notes: notesEl ? String(notesEl.value || '').trim() : '',
-      lines: state.lines.map(function (line) {
+      lines: mergeStateLines(state.lines).map(function (line) {
         return {
           uid: line.uid,
           menuId: line.menuId,
