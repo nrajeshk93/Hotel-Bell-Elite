@@ -2131,26 +2131,55 @@
       });
   }
 
-  function printInvoice(opts) {
+  function invoicePreviewOpts(root, opts) {
     opts = opts || {};
+    root = root || lastRoot;
+    var stay = lastRoom && lastRoom.stay;
+    return {
+      autoPrint: opts.autoPrint === true,
+      invoiceNumber: String(
+        (root && root.getAttribute('data-invoice-number')) ||
+          invoiceNumber(stay) ||
+          ''
+      ).trim(),
+      invoiceStatus: String(
+        (stay && (stay.invoiceStatus || stay.invoice_status)) || ''
+      ).trim(),
+      cancelReason: String(
+        (stay && (stay.cancelReason || stay.cancel_reason)) || ''
+      ).trim()
+    };
+  }
+
+  function openInvoicePreview(opts) {
+    opts = opts || {};
+    var root = lastRoot;
     if (!lastRoom || !lastRoom.stay) {
       showToast('No active stay to preview.', true);
       return;
     }
-    if (typeof global.openHotelRoomInvoice !== 'function') {
+    var kind = invoiceKindFromPage(root);
+    var previewOpts = invoicePreviewOpts(root, opts);
+    var openFn =
+      kind === 'fb' && typeof global.openFbCombinedTransferInvoice === 'function'
+        ? global.openFbCombinedTransferInvoice
+        : global.openHotelRoomInvoice;
+    if (typeof openFn !== 'function') {
       showToast('Invoice preview is unavailable.', true);
       return;
     }
-    if (!global.openHotelRoomInvoice(lastRoom, { autoPrint: !!opts.autoPrint })) {
-      showToast('Allow pop-ups to view the invoice.', true);
+    if (!openFn(lastRoom, previewOpts)) {
+      showToast('Could not open invoice preview.', true);
       return;
     }
     if (opts.skipAgent) return;
     if (typeof global.HotelPrintAgent === 'object' && global.HotelPrintAgent.print) {
       var html =
-        typeof global.buildHotelRoomInvoiceHtml === 'function'
-          ? global.buildHotelRoomInvoiceHtml(lastRoom, {})
-          : '';
+        kind === 'fb' && typeof global.buildFbCombinedTransferInvoiceHtml === 'function'
+          ? global.buildFbCombinedTransferInvoiceHtml(lastRoom, previewOpts)
+          : typeof global.buildHotelRoomInvoiceHtml === 'function'
+            ? global.buildHotelRoomInvoiceHtml(lastRoom, previewOpts)
+            : '';
       if (html) {
         global.HotelPrintAgent.print({
           printerRole: 'hotel_invoice',
@@ -2160,10 +2189,14 @@
           content: html,
           idempotencyKey:
             'hotel-inv-' +
-            (invoiceNumber(lastRoom.stay) || lastRoom.id || 'preview')
+            (previewOpts.invoiceNumber || invoiceNumber(lastRoom.stay) || lastRoom.id || 'preview')
         }).catch(function () {});
       }
     }
+  }
+
+  function printInvoice(opts) {
+    openInvoicePreview(opts || {});
   }
 
   function bindNotes(root) {
@@ -2179,9 +2212,27 @@
     sync();
   }
 
+  function bindPreviewToolButtons(root) {
+    [
+      { sel: '#hri-tool-print', autoPrint: true, skipAgent: false },
+      { sel: '#hri-tool-pdf', autoPrint: false, skipAgent: true }
+    ].forEach(function (cfg) {
+      var btn = $(cfg.sel, root);
+      if (!btn || btn.getAttribute('data-hri-preview-bound') === '1') return;
+      btn.setAttribute('data-hri-preview-bound', '1');
+      btn.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (btn.disabled) return;
+        openInvoicePreview({ autoPrint: cfg.autoPrint, skipAgent: cfg.skipAgent });
+      });
+    });
+  }
+
   function bindEvents(root) {
-    if (!root || root.__hriBound) return;
-    root.__hriBound = true;
+    if (!root) return;
+    if (root.getAttribute('data-hri-bound') === '1') return;
+    root.setAttribute('data-hri-bound', '1');
 
     root.addEventListener('click', function (event) {
       var back = event.target.closest('[data-hri-back]');
@@ -2202,8 +2253,8 @@
         } else if (action === 'settle-bill') openSettleModal();
         else if (action === 'discount') openDiscountModal({ edit: hasActiveDiscount() });
         else if (action === 'add-custom') openCustomModal(null);
-        else if (action === 'print') printInvoice({ autoPrint: false });
-        else if (action === 'pdf') printInvoice({ autoPrint: false, skipAgent: true });
+        else if (action === 'print') openInvoicePreview({ autoPrint: true });
+        else if (action === 'pdf') openInvoicePreview({ autoPrint: false, skipAgent: true });
         return;
       }
       var editBtn = event.target.closest('[data-hri-line-edit]');
@@ -2349,7 +2400,12 @@
     var root = document.getElementById('hotel-room-invoice-page');
     if (!root) return;
     lastRoot = root;
+    if (root.getAttribute('data-hri-mounted') !== '1') {
+      root.removeAttribute('data-hri-bound');
+      root.setAttribute('data-hri-mounted', '1');
+    }
     bindEvents(root);
+    bindPreviewToolButtons(root);
     bindNotes(root);
     loadRoom(root).then(function () {
       if (root.getAttribute('data-open-settle') === '1') {

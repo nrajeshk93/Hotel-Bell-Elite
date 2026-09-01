@@ -2003,13 +2003,15 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
 .pos-invoice-page.is-invoice-generated .pos-inv-qty button,
 .pos-invoice-page.is-invoice-generated .pos-inv-del,
 .pos-invoice-page.is-invoice-generated .pos-inv-note-btn,
-.pos-invoice-page.is-invoice-generated .pos-inv-tool:not([data-inv-action="print"]):not([data-inv-action="pdf"]),
+.pos-invoice-page.is-invoice-generated .pos-inv-tool:not([data-inv-action="print"]):not([data-inv-action="pdf"]):not([data-hri-action="print"]):not([data-hri-action="pdf"]),
 .pos-invoice-page.is-invoice-generated #pos-inv-more-btn{
   pointer-events:none;
   cursor:not-allowed;
 }
 .pos-invoice-page.is-invoice-generated .pos-inv-tool[data-inv-action="print"],
-.pos-invoice-page.is-invoice-generated .pos-inv-tool[data-inv-action="pdf"]{
+.pos-invoice-page.is-invoice-generated .pos-inv-tool[data-inv-action="pdf"],
+.pos-invoice-page.is-invoice-generated .pos-inv-tool[data-hri-action="print"],
+.pos-invoice-page.is-invoice-generated .pos-inv-tool[data-hri-action="pdf"]{
   pointer-events:auto;
   cursor:pointer;
   opacity:1;

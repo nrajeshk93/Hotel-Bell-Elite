@@ -133,11 +133,14 @@
   margin-bottom:0;
 }
 
-/* POS lock CSS only allows data-inv-action=print; hotel uses data-hri-action. */
-.hotel-room-invoice-page.is-invoice-generated .pos-inv-tool[data-hri-action="print"],
-.hotel-room-invoice-page.is-invoice-generated .pos-inv-tool[data-hri-action="pdf"]{
-  pointer-events:auto;
-  cursor:pointer;
+/* POS lock CSS only allows data-inv-action=print; hotel uses data-hri-action too. */
+.hotel-room-invoice-page.pos-invoice-page.is-invoice-generated .pos-inv-tool[data-hri-action="print"],
+.hotel-room-invoice-page.pos-invoice-page.is-invoice-generated .pos-inv-tool[data-hri-action="pdf"],
+.hotel-room-invoice-page.pos-invoice-page.is-invoice-generated .pos-inv-tool[data-inv-action="print"],
+.hotel-room-invoice-page.pos-invoice-page.is-invoice-generated .pos-inv-tool[data-inv-action="pdf"]{
+  pointer-events:auto !important;
+  cursor:pointer !important;
+  opacity:1 !important;
 }
 
 /* POS lock CSS disables line edit buttons when is-invoice-generated is set. */

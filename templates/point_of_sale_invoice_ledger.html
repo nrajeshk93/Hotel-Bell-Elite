@@ -1,9 +1,12 @@
+{% set de_soft_body_class = 'de-open su-module pos-invoice-ledger-module' %}
+{% set de_soft_page_title = (page_title|default('Invoice Ledger')) ~ ' | ' ~ (pos_label|default('Restaurant')) ~ ' | Hotel Bell Elite' %}
+{% if not is_partial_main %}
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Invoice Ledger | {{ pos_label|default('Restaurant') }} | Hotel Bell Elite</title>
+<title>{{ de_soft_page_title }}</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
@@ -25,8 +28,20 @@
 })();
 </script>
 </head>
-<body class="de-open su-module pos-invoice-ledger-module">
+<body class="{{ de_soft_body_class }}">
+{% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
+{% if is_partial_main %}
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=29">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=55">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice_ledger.css') }}?v=16">
+{% endif %}
 <div class="main-wrapper" id="pos-invoice-ledger-page" data-pos-invoice-ledger data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}" data-settle-selected-url="{{ pos_api_base|default('/point-of-sale') }}/api/invoices/settle-selected" data-pos-outlet="{{ pos_outlet|default('restaurant') }}" data-pos-can-cancel="{{ '1' if can_cancel_invoices else '0' }}" data-pos-can-edit="{{ '1' if can_edit_invoices else '0' }}">
   <header class="se-sales-header su-header" id="se-sales-header">
     <div class="su-header-top">
@@ -402,5 +417,7 @@
 <script src="{{ url_for('static', filename='pos_offline.js') }}?v=6"></script>
 <script src="{{ url_for('static', filename='pos_invoice_ledger.js') }}?v=28"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
 </body>
 </html>
+{% endif %}

@@ -18,7 +18,7 @@
   var CGST_RATE = 0.025;
   var UGST_RATE = 0.025;
   var SGST_RATE = UGST_RATE;
-  var CSS_HREF = '/static/hotel_room_invoice.css?v=16';
+  var CSS_HREF = '/static/hotel_room_invoice.css?v=19';
 
   function absoluteAssetUrl(path) {
     var raw = String(path || '').trim();
@@ -404,12 +404,32 @@
     return parts.join(' ') + ' Only';
   }
 
-  function guestDisplayName(stay) {
-    if (!stay) return 'Guest';
-    var name = String(stay.guestName || '').trim();
+  function guestDisplayName(stay, allowFallback) {
+    if (!stay) return allowFallback === false ? '' : 'Guest';
+    var name = String(stay.guestName || stay.guest_name || '').trim();
     if (name) return name;
+    var composed = [
+      stay.title,
+      stay.firstName || stay.first_name,
+      stay.lastName || stay.last_name
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    if (composed) return composed;
+    return allowFallback === false ? '' : 'Guest';
+  }
+
+  function agencyGuestMetaItemHtml(billTo, stay) {
+    if (!billTo || !billTo.agencyBilling) return '';
+    var guestName = guestDisplayName(stay, false);
+    if (!guestName) return '';
+    var billToName = String(billTo.name || '').trim();
+    if (billToName && guestName.toLowerCase() === billToName.toLowerCase()) return '';
     return (
-      [stay.firstName, stay.lastName].filter(Boolean).join(' ').trim() || 'Guest'
+      '<li><span class="k">Guest Name</span><span class="v">' +
+      escapeHtml(guestName) +
+      '</span></li>'
     );
   }
 
@@ -1025,6 +1045,7 @@
   function invoiceClosingHtml() {
     return (
       '<div class="hri-closing">' +
+      invoiceSignatoryHtml() +
       '<div class="hri-thanks">Thank You &amp; Safe Travels!</div>' +
       '<div class="hri-values-bar"><div class="hri-values">' +
       '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></div>Comfortable Stay</div>' +
@@ -1240,6 +1261,7 @@
       '<div class="hri-meta-row">' +
       '<div><h2 class="hri-title">INVOICE</h2>' +
       '<ul class="hri-meta-list">' +
+      agencyGuestMetaItemHtml(billTo, stay) +
       '<li><span class="k">Invoice No.</span><span class="v">' +
       escapeHtml(invoiceNo) +
       '</span></li>' +
@@ -1316,8 +1338,7 @@
       '<div class="hri-words">Amount in Words: <strong>' +
       escapeHtml(amountInWords(total)) +
       '</strong></div>' +
-      '</section></div>' +
-      invoiceSignatoryHtml();
+      '</section></div>';
 
     return (
       '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
@@ -1429,12 +1450,36 @@
     return true;
   }
 
+  function prefersInAppInvoicePreview() {
+    try {
+      if (
+        global.deFullscreen &&
+        typeof global.deFullscreen.isActive === 'function' &&
+        global.deFullscreen.isActive()
+      ) {
+        return true;
+      }
+      if (
+        global.deFullscreen &&
+        typeof global.deFullscreen.isPreferred === 'function' &&
+        global.deFullscreen.isPreferred()
+      ) {
+        return true;
+      }
+    } catch (err) {}
+    return !!document.getElementById('de-fs-app');
+  }
+
   function openHtmlInPreviewWindow(html, opts) {
     opts = opts || {};
     var autoPrint = opts.autoPrint === true;
     var title = String(opts.title || 'Invoice').trim() || 'Invoice';
 
     function present(finalHtml) {
+      /* window.open exits / hides behind kiosk fullscreen — stay inside #de-fs-app. */
+      if (prefersInAppInvoicePreview()) {
+        return openHtmlPreviewOverlay(finalHtml, title, autoPrint);
+      }
       try {
         var blob = new Blob([finalHtml], { type: 'text/html;charset=utf-8' });
         var url = URL.createObjectURL(blob);
@@ -1700,6 +1745,7 @@
       '<div class="hri-meta-row">' +
       '<div><h2 class="hri-title">TAX INVOICE</h2>' +
       '<ul class="hri-meta-list">' +
+      agencyGuestMetaItemHtml(billTo, stay) +
       '<li><span class="k">Invoice No.</span><span class="v">' +
       escapeHtml(invoiceNo) +
       '</span></li>' +
@@ -1798,8 +1844,7 @@
       '<div class="hri-words">Amount in Words: <strong>' +
       escapeHtml(amountInWords(total)) +
       '</strong></div>' +
-      '</section></div>' +
-      invoiceSignatoryHtml();
+      '</section></div>';
 
     return (
       '<!doctype html><html lang="en"><head><meta charset="utf-8">' +

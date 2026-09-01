@@ -136,6 +136,7 @@ from db import (
     list_pos_invoices,
     pos_invoice_is_ledger_generated,
     auto_settle_zero_payable_pos_invoices,
+    repair_restaurant_spc_migrated_series_order_nos,
     list_pos_kot_pending_summary,
     list_pos_kot_tokens,
     apply_pos_kot_token_reductions,
@@ -12842,8 +12843,14 @@ def point_of_sale_invoice_ledger():
         ensure_pos_schema(conn)
         # Legacy open zero-payable bills (e.g. 100% discount) → Settled.
         repair = auto_settle_zero_payable_pos_invoices(conn, outlet=outlet)
-        if repair.get("changed"):
-            sync_pos_floor_occupancy_from_open_orders(conn, outlet)
+        series_repair = (
+            repair_restaurant_spc_migrated_series_order_nos(conn)
+            if normalize_pos_outlet(outlet) == POS_OUTLET_RESTAURANT
+            else {"changed": False}
+        )
+        if repair.get("changed") or series_repair.get("changed"):
+            if repair.get("changed"):
+                sync_pos_floor_occupancy_from_open_orders(conn, outlet)
             conn.commit()
         invoices = list_pos_invoices(
             conn,

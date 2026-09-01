@@ -465,8 +465,8 @@ _POS_STAY_PREFIX_WITH_SEQ_RE = re.compile(
     r"^(?P<stem>[^/]+)/(?P<seq>\d+)/(?P<fy>\d{4}-\d{2})$",
     re.IGNORECASE,
 )
-POS_DEFAULT_RESTAURANT_INVOICE_PREFIX = "SPC"
-POS_DEFAULT_BAR_INVOICE_PREFIX = "INV"
+POS_DEFAULT_RESTAURANT_INVOICE_PREFIX = "SPC/2226/2026-27"
+POS_DEFAULT_BAR_INVOICE_PREFIX = "INV/1946/2026-27"
 
 
 def _normalize_pos_invoice_prefix(prefix, default):
@@ -820,6 +820,216 @@ def allocate_pos_bar_order_no(conn, order_date=None, nil_tax=False):
             return candidate
         min_seq = seq + 1
     raise ValueError("Unable to allocate a bar invoice number.")
+
+
+# Wrong early mints before migration default (SPC/2226/2026-27) was applied.
+_POS_SPC_EARLY_SERIES_REPAIR_MAX_SEQ = 5
+
+
+def _pos_spc_early_series_repair_done(conn):
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='pos_spc_series_floor_repair'"
+    ).fetchone()
+    if not row:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS pos_spc_series_floor_repair (done INTEGER NOT NULL DEFAULT 0)"
+        )
+        return False
+    done = conn.execute("SELECT done FROM pos_spc_series_floor_repair LIMIT 1").fetchone()
+    return bool(done and int(done[0] if not isinstance(done, dict) else done["done"]))
+
+
+def _mark_pos_spc_early_series_repair_done(conn):
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pos_spc_series_floor_repair (done INTEGER NOT NULL DEFAULT 0)
+        """
+    )
+    conn.execute("DELETE FROM pos_spc_series_floor_repair")
+    conn.execute("INSERT INTO pos_spc_series_floor_repair (done) VALUES (1)")
+
+
+def _patch_json_order_no_refs_inplace(obj, mapping):
+    changed = False
+    if isinstance(obj, dict):
+        for key in ("orderNo", "order_no", "posOrderNo", "pos_order_no"):
+            val = str(obj.get(key) or "").strip()
+            if val and val in mapping:
+                obj[key] = mapping[val]
+                changed = True
+        for key in ("linkedPosOrders", "linked_pos_orders"):
+            items = obj.get(key)
+            if not isinstance(items, list):
+                continue
+            for idx, item in enumerate(items):
+                if isinstance(item, str):
+                    text = item.strip()
+                    if text in mapping:
+                        items[idx] = mapping[text]
+                        changed = True
+                elif isinstance(item, dict):
+                    changed |= _patch_json_order_no_refs_inplace(item, mapping)
+        for value in obj.values():
+            if isinstance(value, (dict, list)):
+                changed |= _patch_json_order_no_refs_inplace(value, mapping)
+    elif isinstance(obj, list):
+        for item in obj:
+            if isinstance(item, (dict, list)):
+                changed |= _patch_json_order_no_refs_inplace(item, mapping)
+    return changed
+
+
+def _patch_json_order_no_refs(blob, mapping):
+    if not blob or not mapping:
+        return blob, False
+    try:
+        data = json.loads(blob)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return blob, False
+    if not isinstance(data, (dict, list)):
+        return blob, False
+    if not _patch_json_order_no_refs_inplace(data, mapping):
+        return blob, False
+    return json.dumps(data, separators=(",", ":")), True
+
+
+def _patch_pos_order_no_refs(conn, mapping):
+    """Update order_no strings embedded in hotel archives and floor snapshots."""
+    if not mapping:
+        return
+    ensure_hotel_room_invoices_schema(conn)
+    rows = conn.execute(
+        "SELECT invoice_number, payload_json FROM hotel_room_invoices"
+    ).fetchall()
+    for row in rows:
+        payload_json = row["payload_json"] if isinstance(row, dict) else row[1]
+        patched, changed = _patch_json_order_no_refs(payload_json, mapping)
+        if changed:
+            inv_no = row["invoice_number"] if isinstance(row, dict) else row[0]
+            conn.execute(
+                "UPDATE hotel_room_invoices SET payload_json = ? WHERE invoice_number = ?",
+                (patched, inv_no),
+            )
+    for outlet in (POS_OUTLET_RESTAURANT, POS_OUTLET_BAR):
+        row = conn.execute(
+            "SELECT payload FROM pos_floor_layout WHERE outlet = ?",
+            (normalize_pos_outlet(outlet),),
+        ).fetchone()
+        if not row:
+            continue
+        payload_json = row["payload"] if isinstance(row, dict) else row[0]
+        patched, changed = _patch_json_order_no_refs(payload_json, mapping)
+        if changed:
+            conn.execute(
+                f"""
+                UPDATE pos_floor_layout
+                SET payload = ?, updated_at = {SQL_NOW}
+                WHERE outlet = ?
+                """,
+                (patched, normalize_pos_outlet(outlet)),
+            )
+
+
+def repair_restaurant_spc_migrated_series_order_nos(conn):
+    """One-shot: SPC/1..5/{FY} → migration floor (default SPC/2226/2026-27).
+
+    Fixes early bills minted before the migration prefix default was applied.
+    Idempotent — runs once per database via pos_spc_series_floor_repair.
+    """
+    if _pos_spc_early_series_repair_done(conn):
+        return {"changed": False, "renumbered": []}
+
+    default_prefix = POS_DEFAULT_RESTAURANT_INVOICE_PREFIX
+    raw_prefix = None
+    row = conn.execute(
+        "SELECT payload FROM pos_restaurant_settings WHERE outlet = ?",
+        (POS_OUTLET_RESTAURANT,),
+    ).fetchone()
+    if row:
+        try:
+            settings = json.loads(
+                (row["payload"] if isinstance(row, dict) else row[0]) or "{}"
+            )
+            if isinstance(settings, dict):
+                values = _pos_settings_panel_values(settings, "invoice")
+                raw_prefix = _pos_settings_text_field(values, "invoice_prefix", legacy_index=0)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            raw_prefix = None
+    _stem, embedded_fy, floor = parse_pos_invoice_prefix_setting(raw_prefix, default_prefix)
+    if not floor or floor < 2:
+        floor = 2226
+    short_fy = indian_fiscal_year_short_label(embedded_fy or indian_fiscal_year_label())
+    full_fy = _hotel_full_fiscal_year_label(short_fy)
+
+    rows = conn.execute(
+        """
+        SELECT id, order_no, saved_at
+        FROM pos_invoices
+        WHERE outlet = ?
+          AND is_active = 1
+          AND upper(order_no) LIKE 'SPC/%'
+        ORDER BY saved_at ASC, id ASC
+        """,
+        (POS_OUTLET_RESTAURANT,),
+    ).fetchall()
+
+    candidates = []
+    for row in rows:
+        order_no = str(row["order_no"] or "").strip()
+        match = _SPC_LEGACY_LONG_FY_ORDER_RE.match(order_no)
+        if not match:
+            continue
+        try:
+            seq = int(match.group(1))
+        except (TypeError, ValueError):
+            continue
+        if indian_fiscal_year_short_label(match.group(2)) != short_fy:
+            continue
+        if 1 <= seq <= _POS_SPC_EARLY_SERIES_REPAIR_MAX_SEQ:
+            candidates.append(row)
+
+    mapping = {}
+    renumbered = []
+    next_seq = floor
+    for row in candidates:
+        inv_id = int(row["id"])
+        old_no = str(row["order_no"] or "").strip()
+        while _pos_order_no_taken(
+            conn,
+            format_pos_invoice_order_no(
+                "SPC", short_fy, next_seq, embedded_fy=embedded_fy
+            ),
+            outlet=POS_OUTLET_RESTAURANT,
+            ignore_invoice_id=inv_id,
+        ):
+            next_seq += 1
+        new_no = format_pos_invoice_order_no(
+            "SPC", short_fy, next_seq, embedded_fy=embedded_fy
+        )
+        mapping[old_no] = new_no
+        renumbered.append({"id": inv_id, "from": old_no, "to": new_no})
+        next_seq += 1
+
+    if not mapping:
+        _mark_pos_spc_early_series_repair_done(conn)
+        return {"changed": False, "renumbered": []}
+
+    # Two-phase rename avoids UNIQUE(order_no) collisions during swap.
+    for item in renumbered:
+        temp_no = f"SPC/__tmp/{item['id']}/{full_fy}"
+        conn.execute(
+            "UPDATE pos_invoices SET order_no = ? WHERE id = ?",
+            (temp_no, item["id"]),
+        )
+    for item in renumbered:
+        conn.execute(
+            "UPDATE pos_invoices SET order_no = ? WHERE id = ?",
+            (item["to"], item["id"]),
+        )
+
+    _patch_pos_order_no_refs(conn, mapping)
+    _mark_pos_spc_early_series_repair_done(conn)
+    return {"changed": True, "renumbered": renumbered}
 
 
 def pos_kot_display_no(order_no, kot_no=""):
@@ -1482,6 +1692,7 @@ def ensure_pos_schema(conn):
             (POS_OUTLET_BAR,),
         )
 
+    repair_restaurant_spc_migrated_series_order_nos(conn)
     ensure_customers_schema(conn)
     conn.commit()
 

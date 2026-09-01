@@ -97,6 +97,7 @@ class SoftNavTruePartialRoutesTest(unittest.TestCase):
         "/hotel/settings",
         "/point-of-sale",
         "/point-of-sale/invoice",
+        "/point-of-sale/invoice-ledger",
         "/point-of-sale/settings",
         "/stores/indent",
         "/accounts/purchase-ledger",
