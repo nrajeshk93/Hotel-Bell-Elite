@@ -329,7 +329,7 @@
                 <td data-sort-value="{{ inv.created_by or '' }}">{{ inv.created_by or '—' }}</td>
                 <td class="pl-col-actions">
                   <div class="act-grp pl-action-btns">
-                    <button type="button" class="act-btn edit pos-il-view-btn" data-tip="View" aria-label="View invoice {{ inv.order_no }}" data-invoice-id="{{ inv.id }}">
+                    <button type="button" class="act-btn edit pos-il-view-btn" data-tip="View" aria-label="View invoice {{ inv.order_no }}" data-invoice-id="{{ inv.id }}" onclick="return window.posIlViewClick && window.posIlViewClick(this)">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                     </button>
                     {% if can_edit %}
@@ -415,7 +415,7 @@
 <script src="{{ url_for('static', filename='pos_printers.js') }}?v=20"></script>
 <script src="{{ url_for('static', filename='pos_settle.js') }}?v=7"></script>
 <script src="{{ url_for('static', filename='pos_offline.js') }}?v=7"></script>
-<script src="{{ url_for('static', filename='pos_invoice_ledger.js') }}?v=29"></script>
+<script src="{{ url_for('static', filename='pos_invoice_ledger.js') }}?v=30"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

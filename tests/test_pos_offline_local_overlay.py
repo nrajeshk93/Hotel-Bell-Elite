@@ -64,6 +64,17 @@ class PosOfflineLocalOverlaySourceTests(unittest.TestCase):
         js = _read("static", "pos_invoice_ledger.js")
         self.assertIn("overlayPendingLedgerRows", js)
         self.assertIn("is-local-pending", js)
+        self.assertIn("__posIlViewDelegated", js)
+        self.assertIn("posIlViewClick", js)
+
+    def test_ledger_view_button_opens_modal_not_pos(self):
+        ledger = _read("templates", "point_of_sale_invoice_ledger.html")
+        self.assertIn("pos-il-view-modal", ledger)
+        self.assertIn("posIlViewClick", ledger)
+        self.assertRegex(
+            ledger,
+            r'pos-il-view-btn[^>]*onclick="return window\.posIlViewClick && window\.posIlViewClick\(this\)"',
+        )
 
     def test_shared_templates_load_overlay_before_page_scripts(self):
         tables = _read("templates", "point_of_sale.html")

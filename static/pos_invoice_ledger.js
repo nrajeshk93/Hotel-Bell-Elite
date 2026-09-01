@@ -998,6 +998,8 @@
     page.addEventListener('click', function (ev) {
       var viewBtn = ev.target.closest('.pos-il-view-btn');
       if (viewBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
         openViewModal(viewBtn.getAttribute('data-invoice-id'));
         return;
       }
@@ -1025,6 +1027,14 @@
         if (voidBtn.disabled) return;
         preserveFullscreenGesture();
         openVoidInvoiceModal(voidBtn);
+        return;
+      }
+
+      if (
+        ev.target.closest(
+          '.pos-il-view-btn, .pos-il-edit-btn, .pos-il-resettle-btn, .pos-il-delete-btn, .pos-il-cancel-btn, .pos-il-local-open-btn, .pos-il-local-discard-btn'
+        )
+      ) {
         return;
       }
 
@@ -1597,6 +1607,12 @@
 
   global.initPosInvoiceLedgerPage = initPosInvoiceLedgerPage;
   global.__posIlPrintViewedBill = printViewedBill;
+  global.__posIlOpenViewModal = openViewModal;
+  global.posIlViewClick = function (btn) {
+    if (!btn) return false;
+    openViewModal(btn.getAttribute('data-invoice-id'));
+    return false;
+  };
   global.posIlEditClick = function (btn) {
     var page = document.getElementById('pos-invoice-ledger-page');
     if (!page || !btn) return false;
@@ -1616,7 +1632,25 @@
     return false;
   };
 
-  /* Soft-nav safe: one document listener always calls the latest print handler. */
+  /* Soft-nav safe: document listeners always call the latest handlers. */
+  if (!global.__posIlViewDelegated) {
+    global.__posIlViewDelegated = true;
+    document.addEventListener(
+      'click',
+      function (ev) {
+        var btn = ev.target && ev.target.closest
+          ? ev.target.closest('.pos-il-view-btn')
+          : null;
+        if (!btn) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (typeof global.__posIlOpenViewModal === 'function') {
+          global.__posIlOpenViewModal(btn.getAttribute('data-invoice-id'));
+        }
+      },
+      true
+    );
+  }
   if (!global.__posIlPrintDelegated) {
     global.__posIlPrintDelegated = true;
     document.addEventListener(
