@@ -105,6 +105,14 @@ html, body {
   width: 100%;
 }
 
+.hri-page-header {
+  display: none;
+}
+
+.hri-meta-print-only {
+  display: none;
+}
+
 .hri-cancelled-watermark{
   position:absolute;
   inset:0;
@@ -696,6 +704,18 @@ html, body {
   html, body {
     background: #fff !important;
     height: auto;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  body.hri-embed,
+  body.hri-embed .hri-print-page,
+  body.hri-embed .hri-page-header,
+  body.hri-embed .hri-sheet {
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
   }
   .hri-toolbar {
     display: none !important;
@@ -706,7 +726,7 @@ html, body {
     min-height: 0;
     margin: 0;
     padding: 0;
-    box-shadow: none;
+    box-shadow: none !important;
     background: #fff;
   }
   .hri-sheet {
@@ -715,11 +735,12 @@ html, body {
     min-height: 0;
     height: auto;
     margin: 0;
-    padding: 0 0 46mm;
-    box-shadow: none;
+    padding: 0 0 34mm;
+    box-shadow: none !important;
   }
   .hri-sheet-body {
     width: 100%;
+    padding-top: 42mm;
   }
   .hri-closing {
     margin-top: 12px;
@@ -731,11 +752,40 @@ html, body {
     position: fixed;
     left: 9mm;
     right: 9mm;
-    bottom: 8mm;
+    bottom: 0;
     z-index: 2;
     margin: 0;
     padding: 0;
     background: #fff;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .hri-page-header {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 9mm;
+    right: 9mm;
+    z-index: 2;
+    background: #fff;
+    box-shadow: none !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .hri-meta-screen-only {
+    display: none !important;
+  }
+  .hri-meta-print-only {
+    display: block;
+  }
+  .hri-doc-masthead .hri-header {
+    display: none !important;
+  }
+  .hri-doc-masthead {
+    padding: 0 !important;
+    border: 0;
+  }
+  .hri-invoice-meta {
     page-break-inside: avoid;
     break-inside: avoid;
   }
@@ -745,12 +795,16 @@ html, body {
   }
   @page {
     size: A4 portrait;
-    margin: 8mm 9mm 42mm;
+    margin: 8mm 9mm 34mm;
   }
 
   .hri-doc {
     page-break-inside: auto;
     width: 100%;
+    margin-top: 12px;
+    border: 1px solid #d8dee8;
+    border-radius: 6px;
+    overflow: hidden;
   }
   .hri-doc thead {
     display: table-header-group;
@@ -838,18 +892,38 @@ html, body {
     font-size: 13px;
   }
   .hri-doc .hri-colhead th {
-    padding: 6px 7px;
-    font-size: 9.5px;
+    padding: 11px 10px;
+    font-size: 10.5px;
+    background: var(--hri-navy) !important;
+    color: #fff !important;
+    border: 1px solid var(--hri-navy);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .hri-doc .hri-colhead th:first-child {
+    border-radius: 6px 0 0 0;
+  }
+  .hri-doc .hri-colhead th:last-child {
+    border-radius: 0 6px 0 0;
   }
   .hri-doc tbody td {
-    padding: 5px 7px;
-    font-size: 11px;
+    padding: 11px 10px;
+    font-size: 12px;
+    border: 1px solid var(--hri-line);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .hri-doc tbody tr:nth-child(even) td {
+    background: var(--hri-row) !important;
+  }
+  .hri-doc tbody tr:last-child td {
+    border-bottom: 1px solid var(--hri-line);
   }
   .hri-desc {
-    line-height: 1.3;
+    line-height: 1.35;
   }
   .hri-desc-sub {
-    font-size: 10px;
+    font-size: 11px;
   }
   .hri-doc-foot {
     padding-top: 8px;

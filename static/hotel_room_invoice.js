@@ -18,7 +18,7 @@
   var CGST_RATE = 0.025;
   var UGST_RATE = 0.025;
   var SGST_RATE = UGST_RATE;
-  var CSS_HREF = '/static/hotel_room_invoice.css?v=20';
+  var CSS_HREF = '/static/hotel_room_invoice.css?v=25';
 
   function absoluteAssetUrl(path) {
     var raw = String(path || '').trim();
@@ -1062,6 +1062,110 @@
     );
   }
 
+  function invoiceBrandHeaderHtml() {
+    return (
+      '<div class="hri-header">' +
+      '<div class="hri-brand">' +
+      '<img class="hri-mark" src="' +
+      escapeHtml(absoluteAssetUrl(HOTEL.markUrl)) +
+      '" alt="Hotel Bell Elite">' +
+      '<div class="hri-brand-copy">' +
+      '<h1 class="hri-brand-name">' +
+      escapeHtml(HOTEL.name) +
+      '</h1>' +
+      '<div class="hri-brand-rule" aria-hidden="true"><span class="hri-brand-rule-ornament"></span></div>' +
+      '<p class="hri-brand-tag">' +
+      escapeHtml(HOTEL.tagline) +
+      '</p></div></div>' +
+      '<div class="hri-contact">' +
+      '<div class="hri-contact-row">' +
+      iconPin() +
+      '<span>' +
+      escapeHtml(HOTEL.address) +
+      '</span></div>' +
+      '<div class="hri-contact-row">' +
+      iconPhone() +
+      '<span>' +
+      escapeHtml(HOTEL.phone) +
+      '</span></div>' +
+      '<div class="hri-contact-row">' +
+      iconMail() +
+      '<span>' +
+      escapeHtml(HOTEL.email) +
+      '</span></div>' +
+      '<div class="hri-contact-row">' +
+      iconWeb() +
+      '<span>' +
+      escapeHtml(HOTEL.website) +
+      '</span></div>' +
+      '<div class="hri-contact-row">' +
+      iconDoc() +
+      '<span><strong>GST:</strong> ' +
+      escapeHtml(HOTEL.gst) +
+      '</span></div>' +
+      '</div></div>'
+    );
+  }
+
+  function invoicePageHeaderHtml() {
+    return '<header class="hri-page-header">' + invoiceBrandHeaderHtml() + '</header>';
+  }
+
+  function invoiceBillToAsideHtml(billTo) {
+    return (
+      '<aside class="hri-billto"><div class="hri-billto-head">' +
+      iconUser() +
+      ' Bill To</div><div class="hri-billto-body">' +
+      '<div class="name">' +
+      escapeHtml(billTo.name) +
+      '</div>' +
+      (billTo.address
+        ? '<div class="muted">' + escapeHtml(billTo.address) + '</div>'
+        : '') +
+      (billTo.gst
+        ? '<div class="muted"><strong>GST:</strong> ' + escapeHtml(billTo.gst) + '</div>'
+        : '') +
+      (billTo.phone
+        ? '<div class="muted">Phone: ' + escapeHtml(billTo.phone) + '</div>'
+        : '') +
+      (billTo.email
+        ? '<div class="muted">Email: ' + escapeHtml(billTo.email) + '</div>'
+        : '') +
+      '</div></aside>'
+    );
+  }
+
+  function invoiceMetaRowInnerHtml(opts) {
+    opts = opts || {};
+    return (
+      '<div><h2 class="hri-title">' +
+      escapeHtml(opts.title || 'INVOICE') +
+      '</h2>' +
+      '<ul class="hri-meta-list">' +
+      (opts.metaListHtml || '') +
+      '</ul></div>' +
+      invoiceBillToAsideHtml(opts.billTo || {})
+    );
+  }
+
+  function invoiceMastheadHtml(opts) {
+    return (
+      invoiceBrandHeaderHtml() +
+      '<div class="hri-meta-row hri-meta-screen-only">' +
+      invoiceMetaRowInnerHtml(opts) +
+      '</div>'
+    );
+  }
+
+  function invoiceMetaPrintOnlyHtml(opts) {
+    return (
+      '<div class="hri-invoice-meta hri-meta-print-only">' +
+      '<div class="hri-meta-row">' +
+      invoiceMetaRowInnerHtml(opts) +
+      '</div></div>'
+    );
+  }
+
   function invoiceClosingHtml() {
     return invoiceSignatoryBlockHtml() + invoicePageFooterHtml();
   }
@@ -1226,50 +1330,7 @@
         '<tr class="hri-pad-row"><td class="center">&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>';
     }
 
-    var mastheadHtml =
-      '<div class="hri-header">' +
-      '<div class="hri-brand">' +
-      '<img class="hri-mark" src="' +
-      escapeHtml(absoluteAssetUrl(HOTEL.markUrl)) +
-      '" alt="Hotel Bell Elite">' +
-      '<div class="hri-brand-copy">' +
-      '<h1 class="hri-brand-name">' +
-      escapeHtml(HOTEL.name) +
-      '</h1>' +
-      '<div class="hri-brand-rule" aria-hidden="true"><span class="hri-brand-rule-ornament"></span></div>' +
-      '<p class="hri-brand-tag">' +
-      escapeHtml(HOTEL.tagline) +
-      '</p></div></div>' +
-      '<div class="hri-contact">' +
-      '<div class="hri-contact-row">' +
-      iconPin() +
-      '<span>' +
-      escapeHtml(HOTEL.address) +
-      '</span></div>' +
-      '<div class="hri-contact-row">' +
-      iconPhone() +
-      '<span>' +
-      escapeHtml(HOTEL.phone) +
-      '</span></div>' +
-      '<div class="hri-contact-row">' +
-      iconMail() +
-      '<span>' +
-      escapeHtml(HOTEL.email) +
-      '</span></div>' +
-      '<div class="hri-contact-row">' +
-      iconWeb() +
-      '<span>' +
-      escapeHtml(HOTEL.website) +
-      '</span></div>' +
-      '<div class="hri-contact-row">' +
-      iconDoc() +
-      '<span><strong>GST:</strong> ' +
-      escapeHtml(HOTEL.gst) +
-      '</span></div>' +
-      '</div></div>' +
-      '<div class="hri-meta-row">' +
-      '<div><h2 class="hri-title">INVOICE</h2>' +
-      '<ul class="hri-meta-list">' +
+    var metaListHtml =
       agencyGuestMetaItemHtml(billTo, stay) +
       '<li><span class="k">Invoice No.</span><span class="v">' +
       escapeHtml(invoiceNo) +
@@ -1295,27 +1356,7 @@
       '</span></li>' +
       '<li><span class="k">Guests</span><span class="v">' +
       escapeHtml(guestsLabel) +
-      '</span></li>' +
-      '</ul></div>' +
-      '<aside class="hri-billto"><div class="hri-billto-head">' +
-      iconUser() +
-      ' Bill To</div><div class="hri-billto-body">' +
-      '<div class="name">' +
-      escapeHtml(billTo.name) +
-      '</div>' +
-      (billTo.address
-        ? '<div class="muted">' + escapeHtml(billTo.address) + '</div>'
-        : '') +
-      (billTo.gst
-        ? '<div class="muted"><strong>GST:</strong> ' + escapeHtml(billTo.gst) + '</div>'
-        : '') +
-      (billTo.phone
-        ? '<div class="muted">Phone: ' + escapeHtml(billTo.phone) + '</div>'
-        : '') +
-      (billTo.email
-        ? '<div class="muted">Email: ' + escapeHtml(billTo.email) + '</div>'
-        : '') +
-      '</div></aside></div>';
+      '</span></li>';
 
     var totalsHtml =
       '<div class="hri-bottom">' +
@@ -1364,13 +1405,15 @@
       '<button type="button" class="hri-print">Print Invoice</button>' +
       '</div>' +
       '<div class="hri-print-page">' +
+      invoicePageHeaderHtml() +
       '<article class="hri-sheet">' +
       cancelled.mark +
       '<div class="hri-sheet-body">' +
+      invoiceMetaPrintOnlyHtml({ title: 'INVOICE', billTo: billTo, metaListHtml: metaListHtml }) +
       '<table class="hri-doc">' +
       '<thead>' +
       '<tr><td colspan="6" class="hri-doc-masthead">' +
-      mastheadHtml +
+      invoiceMastheadHtml({ title: 'INVOICE', billTo: billTo, metaListHtml: metaListHtml }) +
       '</td></tr>' +
       '<tr class="hri-colhead">' +
       '<th class="center hri-col-sl">Sl. No.</th>' +
@@ -1713,50 +1756,7 @@
         '<tr class="hri-pad-row"><td class="center">&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>';
     }
 
-    var mastheadHtml =
-      '<div class="hri-header">' +
-      '<div class="hri-brand">' +
-      '<img class="hri-mark" src="' +
-      escapeHtml(absoluteAssetUrl(HOTEL.markUrl)) +
-      '" alt="Hotel Bell Elite">' +
-      '<div class="hri-brand-copy">' +
-      '<h1 class="hri-brand-name">' +
-      escapeHtml(HOTEL.name) +
-      '</h1>' +
-      '<div class="hri-brand-rule" aria-hidden="true"><span class="hri-brand-rule-ornament"></span></div>' +
-      '<p class="hri-brand-tag">' +
-      escapeHtml(HOTEL.tagline) +
-      '</p></div></div>' +
-      '<div class="hri-contact">' +
-      '<div class="hri-contact-row">' +
-      iconPin() +
-      '<span>' +
-      escapeHtml(HOTEL.address) +
-      '</span></div>' +
-      '<div class="hri-contact-row">' +
-      iconPhone() +
-      '<span>' +
-      escapeHtml(HOTEL.phone) +
-      '</span></div>' +
-      '<div class="hri-contact-row">' +
-      iconMail() +
-      '<span>' +
-      escapeHtml(HOTEL.email) +
-      '</span></div>' +
-      '<div class="hri-contact-row">' +
-      iconWeb() +
-      '<span>' +
-      escapeHtml(HOTEL.website) +
-      '</span></div>' +
-      '<div class="hri-contact-row">' +
-      iconDoc() +
-      '<span><strong>GST:</strong> ' +
-      escapeHtml(HOTEL.gst) +
-      '</span></div>' +
-      '</div></div>' +
-      '<div class="hri-meta-row">' +
-      '<div><h2 class="hri-title">TAX INVOICE</h2>' +
-      '<ul class="hri-meta-list">' +
+    var metaListHtml =
       agencyGuestMetaItemHtml(billTo, stay) +
       '<li><span class="k">Invoice No.</span><span class="v">' +
       escapeHtml(invoiceNo) +
@@ -1787,27 +1787,7 @@
       '<li><span class="k">Guests</span><span class="v">' +
       escapeHtml(guestsLabel) +
       '</span></li>' +
-      '<li><span class="k">Bill Type</span><span class="v">F&amp;B Room Transfers</span></li>' +
-      '</ul></div>' +
-      '<aside class="hri-billto"><div class="hri-billto-head">' +
-      iconUser() +
-      ' Bill To</div><div class="hri-billto-body">' +
-      '<div class="name">' +
-      escapeHtml(billTo.name) +
-      '</div>' +
-      (billTo.address
-        ? '<div class="muted">' + escapeHtml(billTo.address) + '</div>'
-        : '') +
-      (billTo.gst
-        ? '<div class="muted"><strong>GST:</strong> ' + escapeHtml(billTo.gst) + '</div>'
-        : '') +
-      (billTo.phone
-        ? '<div class="muted">Phone: ' + escapeHtml(billTo.phone) + '</div>'
-        : '') +
-      (billTo.email
-        ? '<div class="muted">Email: ' + escapeHtml(billTo.email) + '</div>'
-        : '') +
-      '</div></aside></div>';
+      '<li><span class="k">Bill Type</span><span class="v">F&amp;B Room Transfers</span></li>';
 
     var vatPctLabel = '';
     lines.forEach(function (row) {
@@ -1873,13 +1853,23 @@
       '<button type="button" class="hri-print">Print Invoice</button>' +
       '</div>' +
       '<div class="hri-print-page">' +
+      invoicePageHeaderHtml() +
       '<article class="hri-sheet">' +
       cancelled.mark +
       '<div class="hri-sheet-body">' +
+      invoiceMetaPrintOnlyHtml({
+        title: 'TAX INVOICE',
+        billTo: billTo,
+        metaListHtml: metaListHtml,
+      }) +
       '<table class="hri-doc">' +
       '<thead>' +
       '<tr><td colspan="6" class="hri-doc-masthead">' +
-      mastheadHtml +
+      invoiceMastheadHtml({
+        title: 'TAX INVOICE',
+        billTo: billTo,
+        metaListHtml: metaListHtml,
+      }) +
       '</td></tr>' +
       '<tr class="hri-colhead">' +
       '<th class="center hri-col-sl">Sl. No.</th>' +

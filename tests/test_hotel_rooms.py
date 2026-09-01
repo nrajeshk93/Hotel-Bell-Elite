@@ -5907,9 +5907,37 @@ class HotelRoomInvoicePrintFooterTests(unittest.TestCase):
             css = fh.read()
         self.assertIn("hri-print-page", js)
         self.assertIn("hri-page-footer", js)
+        self.assertIn("hri-page-header", js)
         self.assertIn("invoicePageFooterHtml", js)
+        self.assertIn("invoicePageHeaderHtml", js)
+        self.assertIn("invoiceMastheadHtml", js)
+        self.assertIn("invoiceMetaPrintOnlyHtml", js)
+        self.assertIn("hri-meta-print-only", js)
+        self.assertIn("hri-meta-screen-only", js)
         self.assertIn("position: fixed", css)
         self.assertIn(".hri-page-footer", css)
+        self.assertIn(".hri-page-header", css)
+        self.assertIn(".hri-meta-print-only", css)
+        self.assertIn(".hri-meta-screen-only", css)
+
+    def test_print_css_overrides_embed_preview_for_single_page(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        css_path = os.path.join(root, "static", "hotel_room_invoice.css")
+        with open(css_path, encoding="utf-8") as fh:
+            css = fh.read()
+        print_start = css.find("@media print")
+        self.assertGreater(print_start, -1)
+        print_css = css[print_start:]
+        self.assertIn("body.hri-embed .hri-sheet", print_css)
+        self.assertIn("body.hri-embed .hri-page-header", print_css)
+        self.assertIn(".hri-meta-print-only", print_css)
+        self.assertIn("padding-top: 42mm", print_css)
+        self.assertIn("min-height: 0 !important", print_css)
+        self.assertIn("box-shadow: none !important", print_css)
+        self.assertIn("top: 0", print_css)
+        self.assertIn("bottom: 0", print_css)
+        self.assertIn("margin: 8mm 9mm 34mm", print_css)
+        self.assertNotIn("break-after: avoid", print_css)
 
 
 if __name__ == "__main__":
