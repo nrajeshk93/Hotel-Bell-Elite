@@ -61,6 +61,18 @@ html, body {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
   align-content: stretch;
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--hri-ink);
+}
+
+.hri-print-page {
+  display: flex;
+  flex-direction: column;
   width: 210mm;
   min-height: 297mm;
   margin: 18px auto 32px;
@@ -83,6 +95,13 @@ html, body {
   align-self: end;
   margin-top: 0;
   padding-top: 16px;
+  width: 100%;
+}
+
+.hri-page-footer {
+  flex: 0 0 auto;
+  margin-top: auto;
+  padding-top: 12px;
   width: 100%;
 }
 
@@ -681,27 +700,42 @@ html, body {
   .hri-toolbar {
     display: none !important;
   }
-  .hri-sheet {
-    display: flex;
-    flex-direction: column;
+  .hri-print-page {
+    display: block;
     width: auto;
-    /* Pin closing footer to page bottom without expanding body row across pages. */
-    min-height: calc(297mm - 16mm);
-    height: auto;
+    min-height: 0;
     margin: 0;
     padding: 0;
     box-shadow: none;
+    background: #fff;
+  }
+  .hri-sheet {
+    display: block;
+    width: auto;
+    min-height: 0;
+    height: auto;
+    margin: 0;
+    padding: 0 0 46mm;
+    box-shadow: none;
   }
   .hri-sheet-body {
-    flex: 0 0 auto;
-    min-height: 0;
     width: 100%;
   }
   .hri-closing {
-    flex: 0 0 auto;
-    align-self: stretch;
-    margin-top: auto;
-    padding-top: 8px;
+    margin-top: 12px;
+    padding-top: 0;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .hri-page-footer {
+    position: fixed;
+    left: 9mm;
+    right: 9mm;
+    bottom: 8mm;
+    z-index: 2;
+    margin: 0;
+    padding: 0;
+    background: #fff;
     page-break-inside: avoid;
     break-inside: avoid;
   }
@@ -711,7 +745,7 @@ html, body {
   }
   @page {
     size: A4 portrait;
-    margin: 8mm 9mm;
+    margin: 8mm 9mm 42mm;
   }
 
   .hri-doc {
@@ -737,7 +771,8 @@ html, body {
   .hri-thanks,
   .hri-values,
   .hri-values-bar,
-  .hri-sign {
+  .hri-sign,
+  .hri-page-footer {
     page-break-inside: avoid;
     break-inside: avoid;
   }

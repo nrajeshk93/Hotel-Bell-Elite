@@ -5896,5 +5896,21 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertFalse(rooms["room-202"].get("mergeGroupId"))
 
 
+class HotelRoomInvoicePrintFooterTests(unittest.TestCase):
+    def test_invoice_html_uses_fixed_print_page_footer(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        js_path = os.path.join(root, "static", "hotel_room_invoice.js")
+        css_path = os.path.join(root, "static", "hotel_room_invoice.css")
+        with open(js_path, encoding="utf-8") as fh:
+            js = fh.read()
+        with open(css_path, encoding="utf-8") as fh:
+            css = fh.read()
+        self.assertIn("hri-print-page", js)
+        self.assertIn("hri-page-footer", js)
+        self.assertIn("invoicePageFooterHtml", js)
+        self.assertIn("position: fixed", css)
+        self.assertIn(".hri-page-footer", css)
+
+
 if __name__ == "__main__":
     unittest.main()
