@@ -1450,8 +1450,44 @@
       '<button type="button" class="act-btn edit pos-il-local-open-btn" data-tip="Open" aria-label="Open offline invoice ' +
       escapeHtml(orderNo) + '">' +
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' +
+      '</button>' +
+      '<button type="button" class="act-btn delete pos-il-local-discard-btn" data-tip="Discard" aria-label="Discard offline invoice ' +
+      escapeHtml(orderNo) + '">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>' +
       '</button></div></td>';
     return tr;
+  }
+
+  function discardLocalLedgerOrder(row) {
+    if (!row) return;
+    var api = global.HbePosOffline;
+    if (!api || typeof api.discardPending !== 'function') return;
+    var localId = String(row.getAttribute('data-local-id') || '').trim();
+    var orderNo = String(row.getAttribute('data-order-no') || '').trim();
+    if (!localId && !orderNo) return;
+    var label = orderNo || localId;
+    if (
+      !global.confirm(
+        'Discard unsynced invoice ' + label + ' from this device?\n\nIt was never saved to the server.'
+      )
+    ) {
+      return;
+    }
+    api
+      .discardPending({ localId: localId, orderNo: orderNo })
+      .then(function (summary) {
+        if (!summary || !summary.removed) {
+          toast('Offline invoice not found on this device.');
+          return;
+        }
+        row.remove();
+        var page = document.getElementById('pos-invoice-ledger-page');
+        if (page) updateVisibleCount(page);
+        toast('Discarded unsynced invoice ' + label + '.');
+      })
+      .catch(function () {
+        toast('Could not discard offline invoice.');
+      });
   }
 
   function openLocalLedgerOrder(row) {
@@ -1508,6 +1544,15 @@
     if (!page || page.getAttribute('data-local-ledger-bound') === '1') return;
     page.setAttribute('data-local-ledger-bound', '1');
     page.addEventListener('click', function (event) {
+      var discardBtn = event.target.closest('.pos-il-local-discard-btn');
+      if (discardBtn) {
+        var discardRow = discardBtn.closest('tr.pos-il-row.is-local-pending');
+        if (!discardRow || !page.contains(discardRow)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        discardLocalLedgerOrder(discardRow);
+        return;
+      }
       var btn = event.target.closest('.pos-il-local-open-btn');
       var row = event.target.closest('tr.pos-il-row.is-local-pending');
       if (!btn && !row) return;

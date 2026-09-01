@@ -298,6 +298,75 @@
     });
   }
 
+  function pendingEntryMatches(row, payload, localId, orderNo) {
+    if (localId && String((row && row.localId) || '').trim() === localId) return true;
+    if (!orderNo) return false;
+    var on = String((payload && (payload.orderNo || payload.order_no)) || '')
+      .trim()
+      .toLowerCase();
+    return on === orderNo;
+  }
+
+  /** Remove unsynced draft/outbox rows by localId and/or orderNo. */
+  function discardPending(opts) {
+    opts = opts || {};
+    var localId = String(opts.localId || '').trim();
+    var orderNo = String(opts.orderNo || '')
+      .trim()
+      .toLowerCase();
+    if (!localId && !orderNo) {
+      return Promise.resolve({ drafts: 0, outbox: 0, removed: 0 });
+    }
+    return Promise.all([
+      withStore(STORE_DRAFTS, 'readwrite', function (store) {
+        return idbReq(store.getAll()).then(function (rows) {
+          var removed = 0;
+          var ops = [];
+          (rows || []).forEach(function (row) {
+            if (!pendingEntryMatches(row, row && row.payload, localId, orderNo)) return;
+            removed += 1;
+            ops.push(idbReq(store.delete(row.localId)));
+          });
+          return Promise.all(ops).then(function () {
+            return removed;
+          });
+        });
+      }).catch(function () {
+        return 0;
+      }),
+      withStore(STORE_OUTBOX, 'readwrite', function (store) {
+        return idbReq(store.getAll()).then(function (rows) {
+          var removed = 0;
+          var ops = [];
+          (rows || []).forEach(function (row) {
+            if (!pendingEntryMatches(row, row && row.payload, localId, orderNo)) return;
+            removed += 1;
+            ops.push(idbReq(store.delete(row.id)));
+          });
+          return Promise.all(ops).then(function () {
+            return removed;
+          });
+        });
+      }).catch(function () {
+        return 0;
+      })
+    ]).then(function (counts) {
+      var summary = {
+        drafts: counts[0] || 0,
+        outbox: counts[1] || 0,
+        removed: (counts[0] || 0) + (counts[1] || 0)
+      };
+      if (summary.removed) {
+        notifyChange('invoice', {
+          discarded: true,
+          localId: localId,
+          orderNo: orderNo
+        });
+      }
+      return summary;
+    });
+  }
+
   function updateOutboxError(id, attempts, lastError) {
     return withStore(STORE_OUTBOX, 'readwrite', function (store) {
       return idbReq(store.get(id)).then(function (row) {
@@ -899,6 +968,7 @@
     listDrafts: listDrafts,
     enqueueOutbox: enqueueOutbox,
     listOutbox: listOutbox,
+    discardPending: discardPending,
     flushOutbox: flushOutbox,
     pruneExpiredOfflineData: pruneExpiredOfflineData,
     MAX_OFFLINE_AGE_MS: MAX_OFFLINE_AGE_MS,
