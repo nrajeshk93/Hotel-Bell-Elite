@@ -3065,6 +3065,9 @@
     if(typeof window.initMenuSalesReportPage === 'function'){
       window.initMenuSalesReportPage();
     }
+    if(typeof window.initUnitInsightsReportPage === 'function'){
+      window.initUnitInsightsReportPage();
+    }
     if(typeof window.initCustomerInsightsReportPage === 'function'){
       window.initCustomerInsightsReportPage();
     }

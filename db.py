@@ -277,8 +277,16 @@ def indian_fiscal_year_bounds(value=None):
 
 
 def is_restaurant_spc_order_no(order_no, fiscal_year=None):
-    """True when order_no is SPC/{yy-yy}/{n} (optionally matching a specific FY)."""
-    match = _SPC_FY_ORDER_RE.match(str(order_no or "").strip())
+    """True when order_no is SPC/{n}/{YYYY-YY} (or historical SPC/{yy-yy}/{n})."""
+    text = str(order_no or "").strip()
+    match = _SPC_LEGACY_LONG_FY_ORDER_RE.match(text)
+    if match:
+        if fiscal_year and indian_fiscal_year_short_label(match.group(2)) != indian_fiscal_year_short_label(
+            fiscal_year
+        ):
+            return False
+        return True
+    match = _SPC_FY_ORDER_RE.match(text)
     if not match:
         return False
     if fiscal_year and match.group(1) != indian_fiscal_year_short_label(fiscal_year):
@@ -287,8 +295,16 @@ def is_restaurant_spc_order_no(order_no, fiscal_year=None):
 
 
 def is_restaurant_spc_nill_order_no(order_no, fiscal_year=None):
-    """True when order_no is SPC/{yy-yy}/Nill/{n} (optionally matching a specific FY)."""
-    match = _SPC_NILL_FY_ORDER_RE.match(str(order_no or "").strip())
+    """True when order_no is SPC/Nill/{n}/{YYYY-YY} (or historical SPC/{yy-yy}/Nill/{n})."""
+    text = str(order_no or "").strip()
+    match = re.match(r"^SPC/Nill/(\d+)/(\d{4}-\d{2})$", text, re.IGNORECASE)
+    if match:
+        if fiscal_year and indian_fiscal_year_short_label(match.group(2)) != indian_fiscal_year_short_label(
+            fiscal_year
+        ):
+            return False
+        return True
+    match = _SPC_NILL_FY_ORDER_RE.match(text)
     if not match:
         return False
     if fiscal_year and match.group(1) != indian_fiscal_year_short_label(fiscal_year):
@@ -297,8 +313,16 @@ def is_restaurant_spc_nill_order_no(order_no, fiscal_year=None):
 
 
 def is_bar_inv_order_no(order_no, fiscal_year=None):
-    """True when order_no is INV/{yy-yy}/{n} (optionally matching a specific FY)."""
-    match = _INV_FY_ORDER_RE.match(str(order_no or "").strip())
+    """True when order_no is INV/{n}/{YYYY-YY} (or historical INV/{yy-yy}/{n})."""
+    text = str(order_no or "").strip()
+    match = _INV_LEGACY_LONG_FY_ORDER_RE.match(text)
+    if match:
+        if fiscal_year and indian_fiscal_year_short_label(match.group(2)) != indian_fiscal_year_short_label(
+            fiscal_year
+        ):
+            return False
+        return True
+    match = _INV_FY_ORDER_RE.match(text)
     if not match:
         return False
     if fiscal_year and match.group(1) != indian_fiscal_year_short_label(fiscal_year):
@@ -307,8 +331,16 @@ def is_bar_inv_order_no(order_no, fiscal_year=None):
 
 
 def is_bar_inv_nill_order_no(order_no, fiscal_year=None):
-    """True when order_no is INV/{yy-yy}/Nill/{n} (optionally matching a specific FY)."""
-    match = _INV_NILL_FY_ORDER_RE.match(str(order_no or "").strip())
+    """True when order_no is INV/Nill/{n}/{YYYY-YY} (or historical INV/{yy-yy}/Nill/{n})."""
+    text = str(order_no or "").strip()
+    match = re.match(r"^INV/Nill/(\d+)/(\d{4}-\d{2})$", text, re.IGNORECASE)
+    if match:
+        if fiscal_year and indian_fiscal_year_short_label(match.group(2)) != indian_fiscal_year_short_label(
+            fiscal_year
+        ):
+            return False
+        return True
+    match = _INV_NILL_FY_ORDER_RE.match(text)
     if not match:
         return False
     if fiscal_year and match.group(1) != indian_fiscal_year_short_label(fiscal_year):
@@ -343,10 +375,9 @@ def is_provisional_pos_order_no(order_no, outlet=None):
     # Offline-local drafts (ORD-L-…) become SPC|INV/{yy-yy}/{n} on Generate Invoice.
     if upper.startswith("ORD-L-"):
         return True
-    # Offline drafts: PREFIX/{token}/{fy}; numeric PREFIX/{yy-yy}/{n} is final.
-    # PREFIX/{yy-yy}/Nill/{n} is the nil-tax official series.
-    # Also treat legacy PREFIX/{n}/{YYYY-YY} client drafts / wrong series as provisional
-    # so they are re-minted into the new PREFIX/{yy-yy}/{n} format.
+    # Offline drafts: PREFIX/{token}/{fy}; numeric PREFIX/{n}/{YYYY-YY} is final.
+    # PREFIX/Nill/{n}/{YYYY-YY} is the nil-tax official series.
+    # Historical PREFIX/{yy-yy}/{n} remains official via is_*_order_no helpers.
     if (
         upper.startswith("SPC/")
         and not is_restaurant_spc_order_no(text)
@@ -356,7 +387,6 @@ def is_provisional_pos_order_no(order_no, outlet=None):
             return bool(
                 re.match(r"^SPC/[^/]+/\d{2}-\d{2}$", text, re.IGNORECASE)
                 or re.match(r"^SPC/[^/]+/\d{4}-\d{2}$", text, re.IGNORECASE)
-                or _SPC_LEGACY_LONG_FY_ORDER_RE.match(text)
                 or _SPC_LEGACY_ORDER_RE.match(text)
             )
     if (
@@ -368,14 +398,13 @@ def is_provisional_pos_order_no(order_no, outlet=None):
             return bool(
                 re.match(r"^INV/[^/]+/\d{2}-\d{2}$", text, re.IGNORECASE)
                 or re.match(r"^INV/[^/]+/\d{4}-\d{2}$", text, re.IGNORECASE)
-                or _INV_LEGACY_LONG_FY_ORDER_RE.match(text)
                 or _INV_LEGACY_ORDER_RE.match(text)
             )
     return False
 
 
 def _pos_is_official_order_no(order_no, outlet=None):
-    """True when order_no is a final SPC|INV/{yy-yy}/[{Nill}/]{n} series number."""
+    """True when order_no is a final SPC|INV stay-series (or historical short-FY) number."""
     text = str(order_no or "").strip()
     if not text:
         return False
@@ -431,6 +460,11 @@ _POS_INVOICE_PREFIX_FY_ONLY_RE = re.compile(
     r"^(?P<stem>.+?)/(?P<fy>\d{2}-\d{2})$",
     re.IGNORECASE,
 )
+# Migration series: SPC/2226/2026-27 or INV/1946/2026-27
+_POS_STAY_PREFIX_WITH_SEQ_RE = re.compile(
+    r"^(?P<stem>[^/]+)/(?P<seq>\d+)/(?P<fy>\d{4}-\d{2})$",
+    re.IGNORECASE,
+)
 POS_DEFAULT_RESTAURANT_INVOICE_PREFIX = "SPC"
 POS_DEFAULT_BAR_INVOICE_PREFIX = "INV"
 
@@ -441,6 +475,13 @@ def _normalize_pos_invoice_prefix(prefix, default):
     while text.endswith("/"):
         text = text[:-1].rstrip()
     return text or str(default or "").strip() or "SPC"
+
+
+def _pos_invoice_brand(stem, default="SPC"):
+    """First path segment (SPC / INV) used in PREFIX/{n}/{YYYY-YY}."""
+    text = _normalize_pos_invoice_prefix(stem, default)
+    brand = text.split("/", 1)[0].strip().upper()
+    return brand or str(default or "SPC").strip().upper() or "SPC"
 
 
 def _pos_settings_text_field(values, named_key, legacy_index=None):
@@ -462,11 +503,20 @@ def parse_pos_invoice_prefix_setting(raw, default="SPC"):
 
     Accepts:
       SPC
+      SPC/2226/2026-27  → stem SPC, floor 2226 (migration series)
       SPC/26-27/
-      SPC/26-27/726   → stem SPC/26-27, floor 726
+      SPC/26-27/726     → stem SPC/26-27, floor 726 (legacy short-FY settings)
     """
     default = _normalize_pos_invoice_prefix(default, "SPC")
     text = _normalize_pos_invoice_prefix(raw, default)
+    match = _POS_STAY_PREFIX_WITH_SEQ_RE.match(text)
+    if match:
+        stem = _normalize_pos_invoice_prefix(match.group("stem"), default)
+        try:
+            floor = int(match.group("seq"))
+        except (TypeError, ValueError):
+            floor = None
+        return stem, indian_fiscal_year_short_label(match.group("fy")), floor
     match = _POS_INVOICE_PREFIX_WITH_SEQ_RE.match(text)
     if match:
         stem = _normalize_pos_invoice_prefix(
@@ -519,38 +569,44 @@ def pos_invoice_prefix_brand(conn, outlet=POS_OUTLET_RESTAURANT):
 
 
 def _pos_invoice_fy_order_re(stem, embedded_fy=None):
-    """Compile matcher for PREFIX/{yy-yy}/{n} or PREFIX_WITH_FY/{n}."""
-    stem = _normalize_pos_invoice_prefix(stem, "SPC")
-    escaped = re.escape(stem)
-    if embedded_fy:
-        return re.compile(rf"^{escaped}/(\d+)$", re.IGNORECASE), 1, None
-    return re.compile(rf"^{escaped}/(\d{{2}}-\d{{2}})/(\d+)$", re.IGNORECASE), 1, 2
+    """Compile matcher for PREFIX/{n}/{YYYY-YY} (seq group 1, fy group 2)."""
+    brand = _pos_invoice_brand(stem, "SPC")
+    escaped = re.escape(brand)
+    return (
+        re.compile(
+            rf"^{escaped}/(\d+)/(\d{{4}}-\d{{2}}|\d{{2}}-\d{{2}})$",
+            re.IGNORECASE,
+        ),
+        2,
+        1,
+    )
 
 
 def _pos_invoice_nill_order_re(stem, embedded_fy=None):
-    """Compile matcher for PREFIX/{yy-yy}/Nill/{n} or PREFIX_WITH_FY/Nill/{n}."""
-    stem = _normalize_pos_invoice_prefix(stem, "SPC")
-    escaped = re.escape(stem)
-    if embedded_fy:
-        return re.compile(rf"^{escaped}/Nill/(\d+)$", re.IGNORECASE), 1, None
-    return re.compile(rf"^{escaped}/(\d{{2}}-\d{{2}})/Nill/(\d+)$", re.IGNORECASE), 1, 2
+    """Compile matcher for PREFIX/Nill/{n}/{YYYY-YY} (seq group 1, fy group 2)."""
+    brand = _pos_invoice_brand(stem, "SPC")
+    escaped = re.escape(brand)
+    return (
+        re.compile(
+            rf"^{escaped}/Nill/(\d+)/(\d{{4}}-\d{{2}}|\d{{2}}-\d{{2}})$",
+            re.IGNORECASE,
+        ),
+        2,
+        1,
+    )
 
 
 def format_pos_invoice_order_no(stem, short_fy, seq, *, nil_tax=False, embedded_fy=None):
-    """Build official POS order number from settings stem + FY + sequence."""
-    stem = _normalize_pos_invoice_prefix(stem, "SPC")
+    """Build official POS order number as PREFIX/{n}/{YYYY-YY} (or …/Nill/…)."""
+    brand = _pos_invoice_brand(stem, "SPC")
     try:
         seq_n = int(seq)
     except (TypeError, ValueError):
         seq_n = 0
-    fy = str(embedded_fy or short_fy or "").strip() or indian_fiscal_year_short_label()
-    if embedded_fy:
-        if nil_tax:
-            return f"{stem}/Nill/{seq_n}"
-        return f"{stem}/{seq_n}"
+    full_fy = _hotel_full_fiscal_year_label(embedded_fy or short_fy)
     if nil_tax:
-        return f"{stem}/{fy}/Nill/{seq_n}"
-    return f"{stem}/{fy}/{seq_n}"
+        return f"{brand}/Nill/{seq_n}/{full_fy}"
+    return f"{brand}/{seq_n}/{full_fy}"
 
 
 def _next_prefixed_invoice_seq(
@@ -566,16 +622,14 @@ def _next_prefixed_invoice_seq(
     seq_group=2,
     min_seq=1,
 ):
-    """Next numeric sequence for PREFIX/{yy-yy}/{n} within an outlet + FY.
+    """Next numeric sequence for PREFIX/{n}/{YYYY-YY} within an outlet + FY.
 
-    Only the new PREFIX/{yy-yy}/{n} series is counted. Legacy PREFIX/{n}/{YYYY-YY}
-    numbers must not advance this series (otherwise seq jumps to 100000+).
-    Returns the smallest unused positive integer so the series can start at 1
-    even if a bad high number was minted earlier.
-    When min_seq is set (from settings like SPC/26-27/726), allocation starts there.
+    Only the stay series PREFIX/{n}/{YYYY-YY} is counted. Historical
+    PREFIX/{yy-yy}/{n} numbers do not advance this series.
+    When min_seq is set (from settings like SPC/2226/2026-27), allocation starts there.
     """
     short_fy = indian_fiscal_year_short_label(fiscal_year)
-    prefix = str(prefix or "").strip().upper()
+    brand = _pos_invoice_brand(prefix, "SPC")
     try:
         floor = max(1, int(min_seq or 1))
     except (TypeError, ValueError):
@@ -588,7 +642,7 @@ def _next_prefixed_invoice_seq(
         WHERE outlet = ?
           AND upper(order_no) LIKE ?
         """,
-        (normalize_pos_outlet(outlet), f"{prefix}/%"),
+        (normalize_pos_outlet(outlet), f"{brand}/%"),
     ).fetchall()
     for row in rows:
         order_no = str(row["order_no"] or "").strip()
@@ -597,10 +651,9 @@ def _next_prefixed_invoice_seq(
             continue
         try:
             if seq_group is None:
-                # Embedded-FY form: PREFIX/yy-yy/{n} → only one capture group.
                 used.add(int(match.group(fy_group)))
             else:
-                if match.group(fy_group) != short_fy:
+                if indian_fiscal_year_short_label(match.group(fy_group)) != short_fy:
                     continue
                 used.add(int(match.group(seq_group)))
         except (TypeError, ValueError, IndexError):
@@ -712,22 +765,27 @@ def next_bar_nill_invoice_seq(conn, fiscal_year, prefix=None, min_seq=1, embedde
 
 
 def allocate_pos_restaurant_order_no(conn, order_date=None, nil_tax=False):
-    """Allocate settings-driven PREFIX/{yy-yy}/{n} (or …/Nill/{n}) for Restaurant."""
+    """Allocate settings-driven PREFIX/{n}/{YYYY-YY} (or …/Nill/…) for Restaurant."""
     stem, embedded_fy, floor = pos_invoice_prefix_parts(conn, POS_OUTLET_RESTAURANT)
-    fy = indian_fiscal_year_label(order_date)
-    short_fy = embedded_fy or indian_fiscal_year_short_label(fy)
+    full_fy = (
+        _hotel_full_fiscal_year_label(embedded_fy)
+        if embedded_fy
+        else indian_fiscal_year_label(order_date)
+    )
+    short_fy = indian_fiscal_year_short_label(full_fy)
+    brand = _pos_invoice_brand(stem, POS_DEFAULT_RESTAURANT_INVOICE_PREFIX)
     min_seq = floor or 1
     for _ in range(10000):
         if nil_tax:
             seq = next_restaurant_nill_invoice_seq(
-                conn, fy, prefix=stem, min_seq=min_seq, embedded_fy=embedded_fy
+                conn, full_fy, prefix=brand, min_seq=min_seq, embedded_fy=embedded_fy
             )
         else:
             seq = next_restaurant_invoice_seq(
-                conn, fy, prefix=stem, min_seq=min_seq, embedded_fy=embedded_fy
+                conn, full_fy, prefix=brand, min_seq=min_seq, embedded_fy=embedded_fy
             )
         candidate = format_pos_invoice_order_no(
-            stem, short_fy, seq, nil_tax=nil_tax, embedded_fy=embedded_fy
+            brand, short_fy, seq, nil_tax=nil_tax, embedded_fy=embedded_fy
         )
         if not _pos_order_no_taken(conn, candidate, outlet=POS_OUTLET_RESTAURANT):
             return candidate
@@ -736,22 +794,27 @@ def allocate_pos_restaurant_order_no(conn, order_date=None, nil_tax=False):
 
 
 def allocate_pos_bar_order_no(conn, order_date=None, nil_tax=False):
-    """Allocate settings-driven PREFIX/{yy-yy}/{n} (or …/Nill/{n}) for Bar."""
+    """Allocate settings-driven PREFIX/{n}/{YYYY-YY} (or …/Nill/…) for Bar."""
     stem, embedded_fy, floor = pos_invoice_prefix_parts(conn, POS_OUTLET_BAR)
-    fy = indian_fiscal_year_label(order_date)
-    short_fy = embedded_fy or indian_fiscal_year_short_label(fy)
+    full_fy = (
+        _hotel_full_fiscal_year_label(embedded_fy)
+        if embedded_fy
+        else indian_fiscal_year_label(order_date)
+    )
+    short_fy = indian_fiscal_year_short_label(full_fy)
+    brand = _pos_invoice_brand(stem, POS_DEFAULT_BAR_INVOICE_PREFIX)
     min_seq = floor or 1
     for _ in range(10000):
         if nil_tax:
             seq = next_bar_nill_invoice_seq(
-                conn, fy, prefix=stem, min_seq=min_seq, embedded_fy=embedded_fy
+                conn, full_fy, prefix=brand, min_seq=min_seq, embedded_fy=embedded_fy
             )
         else:
             seq = next_bar_invoice_seq(
-                conn, fy, prefix=stem, min_seq=min_seq, embedded_fy=embedded_fy
+                conn, full_fy, prefix=brand, min_seq=min_seq, embedded_fy=embedded_fy
             )
         candidate = format_pos_invoice_order_no(
-            stem, short_fy, seq, nil_tax=nil_tax, embedded_fy=embedded_fy
+            brand, short_fy, seq, nil_tax=nil_tax, embedded_fy=embedded_fy
         )
         if not _pos_order_no_taken(conn, candidate, outlet=POS_OUTLET_BAR):
             return candidate
@@ -7714,6 +7777,146 @@ def pos_menu_sales_kpis(rows, conn=None, *, date_from=None, date_to=None, outlet
     }
 
 
+def list_pos_unit_insights_raw(
+    conn,
+    *,
+    date_from=None,
+    date_to=None,
+    outlet=None,
+    settlement=None,
+):
+    """Fetch invoice line × recipe rows for Unit Insight aggregation."""
+    ensure_pos_schema(conn)
+    ensure_stores_schema(conn)
+    clauses, params = _pos_menu_sales_invoice_clauses(
+        date_from=date_from,
+        date_to=date_to,
+        outlet=outlet,
+        settlement=settlement,
+        category_id=None,
+    )
+    clauses.append("l.menu_item_id IS NOT NULL")
+    clauses.append("r.product_id IS NOT NULL")
+    where = " AND ".join(clauses)
+    rows = conn.execute(
+        f"""
+        SELECT
+            p.id AS product_id,
+            p.name AS product_name,
+            p.default_unit AS default_unit,
+            l.qty AS line_qty,
+            r.qty AS recipe_qty,
+            r.unit AS recipe_unit
+        FROM pos_invoice_lines l
+        JOIN pos_invoices i ON i.id = l.invoice_id
+        JOIN pos_menu_recipe_lines r ON r.menu_item_id = l.menu_item_id
+        JOIN store_products p ON p.id = r.product_id AND p.is_active = 1
+        WHERE {where}
+        """,
+        params,
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def aggregate_pos_unit_insights(raw_rows):
+    """Sum recipe-based ingredient usage by store product."""
+    totals = {}
+    for row in list(raw_rows or []):
+        try:
+            product_id = int(row.get("product_id") or 0)
+        except (TypeError, ValueError):
+            continue
+        if product_id <= 0:
+            continue
+        try:
+            line_qty = float(row.get("line_qty") or 0)
+        except (TypeError, ValueError):
+            line_qty = 0.0
+        if line_qty <= 0:
+            continue
+        default_unit = str(row.get("default_unit") or "").strip() or "pcs"
+        per_portion = _qty_in_product_units(
+            row.get("recipe_qty"),
+            row.get("recipe_unit"),
+            default_unit,
+        )
+        if per_portion is None:
+            continue
+        need = per_portion * line_qty
+        if need <= 0:
+            continue
+        if product_id not in totals:
+            totals[product_id] = {
+                "product_id": product_id,
+                "product_name": str(row.get("product_name") or "").strip() or "Product",
+                "default_unit": default_unit,
+                "units_sold": 0.0,
+            }
+        totals[product_id]["units_sold"] += need
+
+    results = []
+    for item in totals.values():
+        qty = float(item["units_sold"] or 0)
+        unit = str(item.get("default_unit") or "").strip() or "pcs"
+        qty_display = _menu_sales_qty_display(qty)
+        results.append(
+            {
+                **item,
+                "units_sold": qty,
+                "units_sold_qty": qty_display,
+                "units_sold_display": f"{qty_display} {unit}".strip(),
+            }
+        )
+    results.sort(
+        key=lambda row: (
+            str(row.get("product_name") or "").casefold(),
+            int(row.get("product_id") or 0),
+        )
+    )
+    return results
+
+
+def list_pos_unit_insights(
+    conn,
+    *,
+    date_from=None,
+    date_to=None,
+    outlet=None,
+    settlement=None,
+):
+    """Ingredient-wise units sold from POS invoices × menu recipes."""
+    raw_rows = list_pos_unit_insights_raw(
+        conn,
+        date_from=date_from,
+        date_to=date_to,
+        outlet=outlet,
+        settlement=settlement,
+    )
+    return aggregate_pos_unit_insights(raw_rows)
+
+
+def pos_unit_insights_kpis(rows):
+    """KPIs for Unit Insight — product count and per-unit subtotals."""
+    item_rows = list(rows or [])
+    unit_totals = {}
+    for row in item_rows:
+        unit = str(row.get("default_unit") or "").strip() or "pcs"
+        unit_totals[unit] = unit_totals.get(unit, 0.0) + float(row.get("units_sold") or 0)
+    unit_subtotals = []
+    for unit in sorted(unit_totals.keys(), key=str.casefold):
+        qty = unit_totals[unit]
+        unit_subtotals.append(
+            {
+                "unit": unit,
+                "qty": _menu_sales_qty_display(qty),
+            }
+        )
+    return {
+        "product_count": len(item_rows),
+        "unit_subtotals": unit_subtotals,
+    }
+
+
 def _customer_insights_empty_row(mobile, name=""):
     return {
         "mobile": mobile,
@@ -10535,24 +10738,100 @@ def _normalize_hotel_invoice_prefix(prefix, default=HOTEL_DEFAULT_INVOICE_PREFIX
     return text or str(default or HOTEL_DEFAULT_INVOICE_PREFIX)
 
 
-def _hotel_settings_invoice_prefix_value(conn, key, default):
-    """Read a text prefix from Hotel Settings → Invoice panel."""
+_HOTEL_INVOICE_PREFIX_WITH_SEQ_RE = re.compile(
+    r"^(?P<stem>.+?)/(?P<fy>\d{2}-\d{2})/(?P<seq>\d+)$",
+    re.IGNORECASE,
+)
+_HOTEL_INVOICE_PREFIX_FY_ONLY_RE = re.compile(
+    r"^(?P<stem>.+?)/(?P<fy>\d{2}-\d{2})$",
+    re.IGNORECASE,
+)
+# Legacy / migration series: HBE/559/2026-27
+_HOTEL_STAY_PREFIX_WITH_SEQ_RE = re.compile(
+    r"^(?P<stem>[^/]+)/(?P<seq>\d+)/(?P<fy>\d{4}-\d{2})$",
+    re.IGNORECASE,
+)
+_HOTEL_STAY_INVOICE_RE = re.compile(
+    r"^(?P<stem>[^/]+)/(?P<seq>\d+)/(?P<fy>\d{4}-\d{2}|\d{2}-\d{2})$",
+    re.IGNORECASE,
+)
+
+
+def _hotel_full_fiscal_year_label(value=None):
+    """Normalize to full Indian FY label YYYY-YY (e.g. 2026-27)."""
+    text = str(value or "").strip()
+    if re.match(r"^\d{4}-\d{2}$", text):
+        return text
+    if re.match(r"^\d{2}-\d{2}$", text):
+        start, end = text.split("-", 1)
+        return f"20{start}-{end}"
+    return indian_fiscal_year_label(value)
+
+
+def parse_hotel_invoice_prefix_setting(raw, default=HOTEL_DEFAULT_INVOICE_PREFIX):
+    """Parse Hotel Invoice Prefix into (stem, embedded_fy|None, next_seq_floor|None).
+
+    Accepts:
+      HBE
+      HBE/559/2026-27   → stem HBE, floor 559 (migration series)
+      HBE/26-27/
+      HBE/26-27/559     → stem HBE/26-27, floor 559 (legacy short-FY settings)
+    """
+    default = _normalize_hotel_invoice_prefix(default, HOTEL_DEFAULT_INVOICE_PREFIX)
+    text = _normalize_hotel_invoice_prefix(raw, default)
+    match = _HOTEL_STAY_PREFIX_WITH_SEQ_RE.match(text)
+    if match:
+        stem = _normalize_hotel_invoice_prefix(match.group("stem"), default)
+        try:
+            floor = int(match.group("seq"))
+        except (TypeError, ValueError):
+            floor = None
+        short_fy = indian_fiscal_year_short_label(match.group("fy"))
+        return stem, short_fy, floor
+    match = _HOTEL_INVOICE_PREFIX_WITH_SEQ_RE.match(text)
+    if match:
+        stem = _normalize_hotel_invoice_prefix(
+            f"{match.group('stem')}/{match.group('fy')}", default
+        )
+        try:
+            floor = int(match.group("seq"))
+        except (TypeError, ValueError):
+            floor = None
+        return stem, match.group("fy"), floor
+    match = _HOTEL_INVOICE_PREFIX_FY_ONLY_RE.match(text)
+    if match:
+        return text, match.group("fy"), None
+    return text, None, None
+
+
+def _hotel_settings_invoice_prefix_raw(conn, key):
+    """Raw text from Hotel Settings → Invoice panel (may include FY/floor)."""
     settings = get_hotel_settings(conn)
     values = _pos_settings_panel_values(settings, "invoice")
     field = values.get(key) if isinstance(values, dict) else None
-    raw = None
     if isinstance(field, dict):
-        raw = field.get("value")
-    elif field is not None:
-        raw = field
+        return field.get("value")
+    if field is not None:
+        return field
+    return None
+
+
+def _hotel_settings_invoice_prefix_value(conn, key, default):
+    """Read a text prefix from Hotel Settings → Invoice panel."""
+    raw = _hotel_settings_invoice_prefix_raw(conn, key)
     return _normalize_hotel_invoice_prefix(raw, default)
+
+
+def hotel_room_invoice_prefix_parts(conn):
+    """Return (stem, embedded_fy, next_seq_floor) for hotel room invoices."""
+    raw = _hotel_settings_invoice_prefix_raw(conn, "invoice_prefix")
+    return parse_hotel_invoice_prefix_setting(raw, HOTEL_DEFAULT_INVOICE_PREFIX)
 
 
 def hotel_room_invoice_prefix(conn):
     """Invoice series stem from Hotel Settings → Invoice → Hotel Invoice Prefix."""
-    return _hotel_settings_invoice_prefix_value(
-        conn, "invoice_prefix", HOTEL_DEFAULT_INVOICE_PREFIX
-    )
+    stem, _fy, _floor = hotel_room_invoice_prefix_parts(conn)
+    return stem
 
 
 def hotel_fb_invoice_prefix(conn):
@@ -10578,10 +10857,29 @@ def _hotel_invoice_prefix_embedded_fy(prefix, default=HOTEL_DEFAULT_INVOICE_PREF
     return match.group(1)
 
 
+def _hotel_stay_invoice_brand(prefix, default=HOTEL_DEFAULT_INVOICE_PREFIX):
+    """Brand segment used in HBE/{n}/{YYYY-YY} (first path piece)."""
+    stem = _normalize_hotel_invoice_prefix(prefix, default)
+    return (stem.split("/", 1)[0] or default).strip() or default
+
+
+def format_hotel_stay_invoice_number(
+    prefix, full_fy, seq, default=HOTEL_DEFAULT_INVOICE_PREFIX
+):
+    """Build hotel stay invoice as PREFIX/{seq}/{YYYY-YY} (e.g. HBE/559/2026-27)."""
+    brand = _hotel_stay_invoice_brand(prefix, default)
+    try:
+        seq_n = int(seq)
+    except (TypeError, ValueError):
+        seq_n = 0
+    fy = _hotel_full_fiscal_year_label(full_fy)
+    return f"{brand}/{seq_n}/{fy}"
+
+
 def format_hotel_room_invoice_number(
     prefix, short_fy, seq, default=HOTEL_DEFAULT_INVOICE_PREFIX
 ):
-    """Build invoice number from settings prefix + FY + zero-padded seq."""
+    """Build F&B/RT-style invoice number: prefix + short FY + zero-padded seq."""
     stem = _normalize_hotel_invoice_prefix(prefix, default)
     try:
         seq_n = int(seq)
@@ -10602,6 +10900,20 @@ def _hotel_room_invoice_seq_from_number(
     if not number:
         return None
     stem = _normalize_hotel_invoice_prefix(prefix, default)
+    fy_short = indian_fiscal_year_short_label(short_fy)
+    fy_full = _hotel_full_fiscal_year_label(short_fy)
+
+    # Hotel stay / migration series: HBE/559/2026-27
+    brand = _hotel_stay_invoice_brand(stem, default)
+    stay_match = _HOTEL_STAY_INVOICE_RE.match(number)
+    if stay_match and stay_match.group("stem").upper() == brand.upper():
+        num_fy_short = indian_fiscal_year_short_label(stay_match.group("fy"))
+        if num_fy_short.lower() == fy_short.lower():
+            try:
+                return int(stay_match.group("seq"))
+            except (TypeError, ValueError):
+                return None
+
     embedded = _hotel_invoice_prefix_embedded_fy(stem, default)
     if embedded:
         pattern = re.compile(
@@ -10611,8 +10923,7 @@ def _hotel_room_invoice_seq_from_number(
         match = pattern.match(number)
         if not match:
             return None
-        # Only count against the FY encoded in the prefix when it matches the active FY.
-        if embedded.lower() != str(short_fy or "").strip().lower():
+        if embedded.lower() != fy_short.lower():
             return None
         try:
             return int(match.group(1))
@@ -10625,7 +10936,7 @@ def _hotel_room_invoice_seq_from_number(
     match = pattern.match(number)
     if not match:
         return None
-    if match.group(1).lower() != str(short_fy or "").strip().lower():
+    if match.group(1).lower() != fy_short.lower():
         return None
     try:
         return int(match.group(2))
@@ -10634,7 +10945,7 @@ def _hotel_room_invoice_seq_from_number(
 
 
 def _hotel_hbe_fy_seq_from_number(invoice_number, short_fy):
-    """Return the integer sequence from HBE/{yy-yy}/{n}, else None."""
+    """Return the integer sequence from HBE stay or short-FY series, else None."""
     return _hotel_room_invoice_seq_from_number(
         invoice_number, HOTEL_DEFAULT_INVOICE_PREFIX, short_fy
     )
@@ -10646,26 +10957,35 @@ def _max_hotel_room_invoice_seq(
     """Highest seq already used for this prefix + FY on ledger rows or live stays."""
     stem = _normalize_hotel_invoice_prefix(prefix, default)
     fy = str(short_fy or "").strip()
+    brand = _hotel_stay_invoice_brand(stem, default)
     embedded = _hotel_invoice_prefix_embedded_fy(stem, default)
+    # Stay series HBE/{n}/{fy} plus prior short-FY series HBE/{fy}/{n}
+    likes = [f"{brand}/%"]
     if embedded:
-        like = f"{stem}/%"
+        likes.append(f"{stem}/%")
     else:
-        like = f"{stem}/{fy}/%"
+        likes.append(f"{stem}/{fy}/%")
     used_max = 0
-    rows = conn.execute(
-        """
-        SELECT invoice_number
-        FROM hotel_room_invoices
-        WHERE upper(invoice_number) LIKE upper(?)
-        """,
-        (like,),
-    ).fetchall()
-    for row in rows:
-        seq = _hotel_room_invoice_seq_from_number(
-            row["invoice_number"], stem, fy, default=default
-        )
-        if seq and seq > used_max:
-            used_max = seq
+    seen = set()
+    for like in likes:
+        rows = conn.execute(
+            """
+            SELECT invoice_number
+            FROM hotel_room_invoices
+            WHERE upper(invoice_number) LIKE upper(?)
+            """,
+            (like,),
+        ).fetchall()
+        for row in rows:
+            number = row["invoice_number"]
+            if number in seen:
+                continue
+            seen.add(number)
+            seq = _hotel_room_invoice_seq_from_number(
+                number, stem, fy, default=default
+            )
+            if seq and seq > used_max:
+                used_max = seq
     try:
         rooms = get_hotel_rooms_layout(conn).get("rooms") or []
     except Exception:
@@ -10747,34 +11067,48 @@ def _bump_named_invoice_seq(conn, table, fiscal_year, scanned):
     return int(row["last_seq"] or 1) if row else scanned_n + 1
 
 
-def next_hotel_room_invoice_seq(conn, fiscal_year, prefix=None):
-    """Next sequence for the active hotel invoice prefix + Indian fiscal year."""
+def next_hotel_room_invoice_seq(conn, fiscal_year, prefix=None, min_seq=1):
+    """Next sequence for the active hotel invoice prefix + Indian fiscal year.
+
+    When min_seq is set (from settings like HBE/559/2026-27), allocation starts there.
+    """
     ensure_hotel_rooms_schema(conn)
     _sqlite_begin_immediate(conn)
-    stem = (
-        _normalize_hotel_invoice_prefix(prefix)
-        if prefix is not None
-        else hotel_room_invoice_prefix(conn)
-    )
+    if prefix is None:
+        stem, embedded_fy, floor = hotel_room_invoice_prefix_parts(conn)
+    else:
+        stem, embedded_fy, floor = parse_hotel_invoice_prefix_setting(
+            prefix, HOTEL_DEFAULT_INVOICE_PREFIX
+        )
+    if min_seq == 1 and floor:
+        min_seq = floor
+    try:
+        floor_n = max(1, int(min_seq or 1))
+    except (TypeError, ValueError):
+        floor_n = 1
     fy = str(fiscal_year or "").strip()
     if not fy:
         fy = indian_fiscal_year_label()
-    short_fy = _hotel_invoice_prefix_embedded_fy(stem) or indian_fiscal_year_short_label(
-        fy
-    )
-    scanned = _max_hotel_room_invoice_seq(conn, stem, short_fy)
+    short_fy = embedded_fy or indian_fiscal_year_short_label(fy)
+    brand = _hotel_stay_invoice_brand(stem)
+    scanned = max(_max_hotel_room_invoice_seq(conn, brand, short_fy), floor_n - 1)
     return _bump_named_invoice_seq(conn, "hotel_room_invoice_seq", short_fy, scanned)
 
 
 def allocate_hotel_room_invoice_number(conn, when=None):
-    """Allocate {prefix}/{yy-yy}/{n} (or series-root/{n}) for a room stay invoice."""
-    prefix = hotel_room_invoice_prefix(conn)
-    fy = indian_fiscal_year_label(when)
-    short_fy = _hotel_invoice_prefix_embedded_fy(prefix) or indian_fiscal_year_short_label(
-        fy
+    """Allocate hotel stay invoice as HBE/{n}/{YYYY-YY} (e.g. HBE/559/2026-27)."""
+    stem, embedded_fy, floor = hotel_room_invoice_prefix_parts(conn)
+    full_fy = (
+        _hotel_full_fiscal_year_label(embedded_fy)
+        if embedded_fy
+        else indian_fiscal_year_label(when)
     )
-    seq = next_hotel_room_invoice_seq(conn, fy, prefix=prefix)
-    return format_hotel_room_invoice_number(prefix, short_fy, seq)
+    short_fy = indian_fiscal_year_short_label(full_fy)
+    brand = _hotel_stay_invoice_brand(stem)
+    seq = next_hotel_room_invoice_seq(
+        conn, full_fy, prefix=brand, min_seq=floor or 1
+    )
+    return format_hotel_stay_invoice_number(brand, full_fy, seq)
 
 
 def _hotel_fbe_fy_seq_from_number(invoice_number, short_fy, prefix=None):

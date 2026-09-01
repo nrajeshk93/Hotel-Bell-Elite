@@ -242,6 +242,7 @@ class WorkspaceAccessTests(unittest.TestCase):
                 "KOT",
                 "Sales - Restaurant & Bar",
                 "Menu Insights",
+                "Unit Insight",
                 "Customer Insights",
                 "GST",
             ],
@@ -467,6 +468,10 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(
             get_endpoint_reports_submodule("sales_report_restaurant"),
             "restaurant_sales",
+        )
+        self.assertEqual(
+            get_endpoint_reports_submodule("sales_report_unit_insights"),
+            "unit_insights",
         )
 
     def test_submodule_grants_parent_dashboard_access(self):

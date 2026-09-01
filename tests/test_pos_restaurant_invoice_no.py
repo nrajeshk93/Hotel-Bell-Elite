@@ -1,4 +1,4 @@
-"""Restaurant POS invoice numbers: SPC/{yy-yy}/{n}."""
+"""Restaurant POS invoice numbers: SPC/{n}/{YYYY-YY}."""
 
 import os
 import tempfile
@@ -122,7 +122,7 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
         )
         self.assertEqual(bill.status_code, 200, bill.get_data(as_text=True))
         body = bill.get_json()
-        self.assertEqual(body["invoice"]["order_no"], "SPC/26-27/1")
+        self.assertEqual(body["invoice"]["order_no"], "SPC/1/2026-27")
         self.assertTrue(body["invoice"].get("customer_bill_sent"))
 
     def test_offline_draft_is_replaced_with_sequence(self):
@@ -132,16 +132,17 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
         body = res.get_json()
-        self.assertEqual(body["invoice"]["order_no"], "SPC/26-27/1")
+        self.assertEqual(body["invoice"]["order_no"], "SPC/1/2026-27")
 
-    def test_legacy_long_fy_draft_is_replaced(self):
+    def test_legacy_long_fy_number_is_kept(self):
+        """SPC/{n}/{YYYY-YY} is the official stay series and is not reminted."""
         res = self.client.post(
             "/point-of-sale/api/invoices",
             json=self._payload("SPC/105868/2026-27", customerBill=True),
         )
         self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
         body = res.get_json()
-        self.assertEqual(body["invoice"]["order_no"], "SPC/26-27/1")
+        self.assertEqual(body["invoice"]["order_no"], "SPC/105868/2026-27")
 
     def test_sequences_increment_within_fy(self):
         first = self.client.post(
@@ -152,10 +153,11 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
             "/point-of-sale/api/invoices",
             json=self._payload("SPC/CCCCCC/26-27", customerBill=True),
         ).get_json()["invoice"]["order_no"]
-        self.assertEqual(first, "SPC/26-27/1")
-        self.assertEqual(second, "SPC/26-27/2")
+        self.assertEqual(first, "SPC/1/2026-27")
+        self.assertEqual(second, "SPC/2/2026-27")
 
-    def test_legacy_long_fy_does_not_inflate_new_series(self):
+    def test_stay_series_continues_after_existing_long_fy(self):
+        """Existing stay numbers are reserved; allocation fills the next free slot from 1."""
         conn = db_mod.get_db()
         try:
             conn.execute(
@@ -175,7 +177,47 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
             "/point-of-sale/api/invoices",
             json=self._payload("SPC/AAAAAA/26-27", customerBill=True),
         ).get_json()["invoice"]["order_no"]
-        self.assertEqual(allocated, "SPC/26-27/1")
+        # Gap-fill from 1; high migrated numbers do not force the next seq upward.
+        self.assertEqual(allocated, "SPC/1/2026-27")
+
+    def test_floor_prefix_starts_after_last_migrated_bill(self):
+        """Prefix SPC/2226/2026-27 continues after migrated last bill SPC/2225/2026-27."""
+        conn = db_mod.get_db()
+        try:
+            db_mod.save_pos_restaurant_settings(
+                conn,
+                {
+                    "panels": {
+                        "invoice": {
+                            "values": {
+                                "invoice_prefix": {
+                                    "kind": "text",
+                                    "value": "SPC/2226/2026-27",
+                                }
+                            }
+                        }
+                    }
+                },
+                outlet="restaurant",
+            )
+            conn.execute(
+                """INSERT INTO pos_invoices
+                   (order_no, order_date, order_type, table_label, customer_name, customer_mobile,
+                    captain, status, outlet, subtotal, discount_amount, gst_amount, service_amount,
+                    tip, round_off, grand_total, saved_at, is_active)
+                   VALUES ('SPC/2225/2026-27', '2026-07-28', 'takeaway', '', 'Migrated', '',
+                           '', 'closed', 'restaurant', 50, 0, 0, 0, 0, 0, 50,
+                           '2026-07-28 12:00:00', 1)"""
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        allocated = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("SPC/AAAAAA/26-27", customerBill=True),
+        ).get_json()["invoice"]["order_no"]
+        self.assertEqual(allocated, "SPC/2226/2026-27")
 
     def test_new_series_fills_from_one_despite_high_outlier(self):
         conn = db_mod.get_db()
@@ -197,7 +239,7 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
             "/point-of-sale/api/invoices",
             json=self._payload("SPC/BBBBBB/26-27", customerBill=True),
         ).get_json()["invoice"]["order_no"]
-        self.assertEqual(allocated, "SPC/26-27/1")
+        self.assertEqual(allocated, "SPC/1/2026-27")
 
     def test_resume_keeps_spc_number(self):
         save = self.client.post(
@@ -247,7 +289,7 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
         body = res.get_json()
-        self.assertEqual(body["invoice"]["order_no"], "SPC/26-27/Nill/1")
+        self.assertEqual(body["invoice"]["order_no"], "SPC/Nill/1/2026-27")
         self.assertTrue(body["invoice"].get("customer_bill_sent"))
 
     def test_nill_series_independent_of_taxable(self):
@@ -281,14 +323,15 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
                 totals=nill_totals,
             ),
         ).get_json()["invoice"]["order_no"]
-        self.assertEqual(taxed, "SPC/26-27/1")
-        self.assertEqual(nill, "SPC/26-27/Nill/1")
-        self.assertEqual(nill2, "SPC/26-27/Nill/2")
+        self.assertEqual(taxed, "SPC/1/2026-27")
+        self.assertEqual(nill, "SPC/Nill/1/2026-27")
+        self.assertEqual(nill2, "SPC/Nill/2/2026-27")
 
     def test_nill_order_no_is_final(self):
+        self.assertTrue(db_mod.is_restaurant_spc_nill_order_no("SPC/Nill/1/2026-27"))
         self.assertTrue(db_mod.is_restaurant_spc_nill_order_no("SPC/26-27/Nill/1"))
-        self.assertFalse(db_mod.is_restaurant_spc_order_no("SPC/26-27/Nill/1"))
-        self.assertFalse(db_mod.is_provisional_pos_order_no("SPC/26-27/Nill/1"))
+        self.assertFalse(db_mod.is_restaurant_spc_order_no("SPC/Nill/1/2026-27"))
+        self.assertFalse(db_mod.is_provisional_pos_order_no("SPC/Nill/1/2026-27"))
         self.assertTrue(db_mod.pos_invoice_is_nil_tax(0, 0))
         self.assertTrue(db_mod.pos_invoice_is_nil_tax(0.004, 0))
         self.assertFalse(db_mod.pos_invoice_is_nil_tax(5, 0))
@@ -302,7 +345,7 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
                    (order_no, order_date, order_type, table_label, customer_name, customer_mobile,
                     captain, status, outlet, subtotal, discount_amount, gst_amount, service_amount,
                     tip, round_off, grand_total, saved_at, customer_bill_sent, is_active)
-                   VALUES ('SPC/26-27/710', '2026-07-29', 'takeaway', '', 'Guest', '',
+                   VALUES ('SPC/710/2026-27', '2026-07-29', 'takeaway', '', 'Guest', '',
                            '', 'open', 'restaurant', 50, 0, 5, 0, 0, 0, 55,
                            '2026-07-29 12:00:00', 1, 0)"""
             )
@@ -312,7 +355,7 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
 
         blocked = self.client.post(
             "/point-of-sale/api/invoices",
-            json=self._payload("SPC/26-27/710", customerBill=True),
+            json=self._payload("SPC/710/2026-27", customerBill=True),
         )
         self.assertEqual(blocked.status_code, 400, blocked.get_data(as_text=True))
         self.assertIn("reserved", blocked.get_json()["error"].lower())
@@ -344,10 +387,10 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
     def test_settings_invoice_prefix_drives_allocation(self):
         conn = db_mod.get_db()
         try:
-            short_fy = db_mod.indian_fiscal_year_short_label()
+            fy = db_mod.indian_fiscal_year_label()
             # Default SPC series
             first = db_mod.allocate_pos_restaurant_order_no(conn)
-            self.assertEqual(first, f"SPC/{short_fy}/1")
+            self.assertEqual(first, f"SPC/1/{fy}")
 
             db_mod.save_pos_restaurant_settings(
                 conn,
@@ -357,7 +400,7 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
                             "values": {
                                 "invoice_prefix": {
                                     "kind": "text",
-                                    "value": "SPC/26-27/726",
+                                    "value": "SPC/2226/2026-27",
                                 }
                             }
                         }
@@ -365,13 +408,13 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
                 },
                 outlet="restaurant",
             )
-            stem, fy, floor = db_mod.pos_invoice_prefix_parts(conn, "restaurant")
-            self.assertEqual(stem, "SPC/26-27")
-            self.assertEqual(fy, "26-27")
-            self.assertEqual(floor, 726)
+            stem, short_fy, floor = db_mod.pos_invoice_prefix_parts(conn, "restaurant")
+            self.assertEqual(stem, "SPC")
+            self.assertEqual(short_fy, "26-27")
+            self.assertEqual(floor, 2226)
 
             minted = db_mod.allocate_pos_restaurant_order_no(conn)
-            self.assertEqual(minted, "SPC/26-27/726")
+            self.assertEqual(minted, "SPC/2226/2026-27")
             # Persist so the next allocation advances past the floor.
             conn.execute(
                 """INSERT INTO pos_invoices
@@ -384,7 +427,7 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
                 (minted,),
             )
             minted2 = db_mod.allocate_pos_restaurant_order_no(conn)
-            self.assertEqual(minted2, "SPC/26-27/727")
+            self.assertEqual(minted2, "SPC/2227/2026-27")
             conn.execute(
                 """INSERT INTO pos_invoices
                    (order_no, order_date, order_type, table_label, customer_name, customer_mobile,
@@ -405,7 +448,7 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
             json=self._payload("SPC/ZZZZ01/26-27", customerBill=True),
         )
         self.assertEqual(draft.status_code, 200, draft.get_data(as_text=True))
-        self.assertEqual(draft.get_json()["invoice"]["order_no"], "SPC/26-27/728")
+        self.assertEqual(draft.get_json()["invoice"]["order_no"], "SPC/2228/2026-27")
 
     def test_generate_remints_when_settings_series_changes(self):
         """Changing Prefix mid-draft forces a new series on Generate Invoice."""
@@ -437,4 +480,4 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
             json=self._payload("SPC/26-27/727", customerBill=True),
         )
         self.assertEqual(bill.status_code, 200, bill.get_data(as_text=True))
-        self.assertEqual(bill.get_json()["invoice"]["order_no"], "SPC/27-28/1")
+        self.assertEqual(bill.get_json()["invoice"]["order_no"], "SPC/1/2027-28")

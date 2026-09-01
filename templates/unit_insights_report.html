@@ -1,0 +1,270 @@
+{% set de_soft_body_class = 'de-open su-module sales-report-module unit-insights-report-module' %}
+{% set de_soft_page_title = page_title ~ ' | Reports | Hotel Bell Elite' %}
+{% if not is_partial_main %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>{{ page_title }} | Reports | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=29">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=55">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=56">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=19">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module sales-report-module unit-insights-report-module">
+{% endif %}
+{% include 'partials/de_workspace_shell_open.html' %}
+{% if is_partial_main %}
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=29">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=56">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=19">
+{% endif %}
+
+<div class="main-wrapper" id="unit-insights-report-page"
+     data-unit-insights-report
+     data-report-kind="units">
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          {% include 'partials/su_page_back.html' with context %}
+          <button class="sb-pin-btn de-sb-pin-btn de-sidebar-pin-btn" type="button" onclick="toggleDeSidebarExpandedPin()" title="Pin sidebar expanded" aria-label="Pin sidebar expanded" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <h1>{{ page_title }}</h1>
+          </div>
+        </div>
+      </div>
+      <div class="su-header-tools">
+        <a class="btn btn-primary" href="{{ sales_report_export_url }}" download="{{ sales_report_export_filename }}">Export Excel</a>
+      </div>
+    </div>
+    <div class="se-sales-header-card">
+      <div class="se-sales-header-filters">
+        <form id="uir-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="Unit insight filters"
+              data-clear-url="{{ sales_report_clear_url }}">
+          {% if preserve_from_hub %}
+          <input type="hidden" name="from_hub" value="reports">
+          {% endif %}
+          <input type="hidden" id="uir-date-from" name="date_from" value="{{ date_from }}">
+          <input type="hidden" id="uir-date-to" name="date_to" value="{{ date_to }}">
+
+          <div class="se-filter-chip se-filter-chip--search pl-search-chip pl-header-field-listbox pl-header-field" id="uir-search-chip">
+            <label class="se-filter-chip-label" for="uir-search">Search</label>
+            <div class="se-filter-chip-control">
+              <input type="search" id="uir-search" class="pl-search-input pl-header-search" value="" placeholder="Product name…" autocomplete="off" aria-label="Search products">
+            </div>
+          </div>
+
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-change="uirOutletChanged" id="uir-outlet-listbox">
+            <span class="se-filter-chip-label" id="uir-outlet-label">Outlet</span>
+            <div class="se-filter-chip-control">
+              <input type="hidden" id="uir-outlet" name="outlet" value="{{ selected_outlet }}">
+              <button type="button" class="se-filter-chip-trigger" id="uir-outlet-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="uir-outlet-list" aria-labelledby="uir-outlet-label uir-outlet-value">
+                <span class="se-filter-chip-value" id="uir-outlet-value">{{ selected_outlet_label }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="uir-outlet-list" role="listbox" aria-labelledby="uir-outlet-label" hidden>
+              <button type="button" class="se-filter-listbox-option{% if selected_outlet == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-label="All outlets" aria-selected="{{ 'true' if selected_outlet == 'all' else 'false' }}">All outlets</button>
+              <button type="button" class="se-filter-listbox-option{% if selected_outlet == 'restaurant' %} is-selected{% endif %}" role="option" data-value="restaurant" data-label="Restaurant" aria-selected="{{ 'true' if selected_outlet == 'restaurant' else 'false' }}">Restaurant</button>
+              <button type="button" class="se-filter-listbox-option{% if selected_outlet == 'bar' %} is-selected{% endif %}" role="option" data-value="bar" data-label="Bar" aria-selected="{{ 'true' if selected_outlet == 'bar' else 'false' }}">Bar</button>
+            </div>
+          </div>
+
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-change="uirStatusChanged" id="uir-status-listbox">
+            <span class="se-filter-chip-label" id="uir-status-label">Status</span>
+            <div class="se-filter-chip-control">
+              <input type="hidden" id="uir-status" name="status" value="{{ selected_status }}">
+              <button type="button" class="se-filter-chip-trigger" id="uir-status-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="uir-status-list" aria-labelledby="uir-status-label uir-status-value">
+                <span class="se-filter-chip-value" id="uir-status-value">{{ selected_status_label }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="uir-status-list" role="listbox" aria-labelledby="uir-status-label" hidden>
+              <button type="button" class="se-filter-listbox-option{% if selected_status == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-label="All statuses" aria-selected="{{ 'true' if selected_status == 'all' else 'false' }}">All statuses</button>
+              <button type="button" class="se-filter-listbox-option{% if selected_status == 'unsettled' %} is-selected{% endif %}" role="option" data-value="unsettled" data-label="Un Settled" aria-selected="{{ 'true' if selected_status == 'unsettled' else 'false' }}">Un Settled</button>
+              <button type="button" class="se-filter-listbox-option{% if selected_status == 'settled' %} is-selected{% endif %}" role="option" data-value="settled" data-label="Settled" aria-selected="{{ 'true' if selected_status == 'settled' else 'false' }}">Settled</button>
+            </div>
+          </div>
+
+          <div class="se-filter-chip-date-host pl-date-range-host pl-header-field" id="uir-date-range-host">
+            <span class="se-filter-chip-label" id="uir-date-range-label">Date</span>
+            <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range pl-header-field-listbox ep-form-listbox{% if active_date_filter %} is-filtered{% endif %}">
+              <div class="se-filter-chip-control">
+                <div class="an-range-wrap an-range-wrap--sales" id="uir-date-range-wrap" data-max-date="{{ today_iso }}">
+                  <button type="button" class="an-range-trigger se-filter-chip-trigger" id="uir-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="uir-date-range-panel" aria-labelledby="uir-date-range-label uir-date-range-display">
+                    <span class="an-range-trigger-label">
+                      <span id="uir-date-range-display">{% if active_date_filter %}{{ date_from|report_date }} – {{ date_to|report_date }}{% else %}Select date…{% endif %}</span>
+                    </span>
+                  </button>
+                  <div class="an-range-backdrop" id="uir-date-range-backdrop" aria-hidden="true"></div>
+                  <div class="an-range-panel" id="uir-date-range-panel" role="dialog" aria-labelledby="uir-date-range-panel-title" hidden>
+                    <div class="an-range-panel-inner">
+                      <div class="an-range-panel-h" id="uir-date-range-panel-title">Date range</div>
+                      <p class="an-range-hint">Click a start date, then an end date. Use arrows to change months.</p>
+                      <div class="an-cal-dual">
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <button type="button" class="an-cal-nav-btn" id="uir-cal-prev" aria-label="Previous months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                            </button>
+                            <h4 class="an-cal-month-title" id="uir-cal-title0">—</h4>
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="uir-cal-grid0"></div>
+                        </div>
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                            <h4 class="an-cal-month-title" id="uir-cal-title1">—</h4>
+                            <button type="button" class="an-cal-nav-btn" id="uir-cal-next" aria-label="Next months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                            </button>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="uir-cal-grid1"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="an-range-actions">
+                      <button type="button" class="btn" id="uir-date-range-clear">Clear</button>
+                      <button type="button" class="btn btn-primary" id="uir-date-range-apply">Apply</button>
+                    </div>
+                  </div>
+                </div>
+                <span class="se-filter-chip-chev" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </header>
+
+  <section class="content se-content">
+    <div class="pl-summary-row" aria-label="Unit insight summary">
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Products">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Products</div>
+            <div class="pl-summary-value" id="uir-kpi-products">{{ kpis.product_count }}</div>
+            <div class="pl-summary-meta">Ingredients with usage</div>
+          </div>
+        </div>
+      </article>
+      {% if kpis.unit_subtotals %}
+      <article class="card pl-summary-card hbe-kpi-card uir-unit-subtotals-card" aria-label="Units sold by type">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Units sold</div>
+            <div class="uir-unit-subtotals">
+              {% for sub in kpis.unit_subtotals %}
+              <span class="uir-unit-subtotal">{{ sub.qty }} {{ sub.unit }}</span>{% if not loop.last %}<span class="uir-unit-subtotal-sep">·</span>{% endif %}
+              {% endfor %}
+            </div>
+            <div class="pl-summary-meta">Totals by unit type</div>
+          </div>
+        </div>
+      </article>
+      {% endif %}
+    </div>
+
+    <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel" aria-label="Unit Insight report">
+      <div class="card-hdr">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 3h15"/><path d="M6 3v7.2L3.4 19a2 2 0 0 0 1.9 2.6h13.4a2 2 0 0 0 1.9-2.6L18 10.2V3"/><path d="M6.8 14h10.4"/></svg>
+          <div class="uir-report-heading">
+            <span>Unit Insight</span>
+            {% if report_date_range_label %}
+            <div class="uir-report-dates">{{ report_date_range_label }}</div>
+            {% endif %}
+          </div>
+        </div>
+        <span class="pl-count" id="uir-entry-count">{{ rows|length }} product{{ '' if rows|length == 1 else 's' }}</span>
+      </div>
+      <div class="card-body pl-card-body--flush">
+        <div class="pl-table-wrap" tabindex="0" aria-label="Unit Insight report, scroll for more">
+          <table class="pl-table" id="uir-table" aria-label="Unit Insight entries">
+            <colgroup>
+              <col class="uir-col-product">
+              <col class="uir-col-units">
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="pl-sortable uir-col-product" data-sort="product" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Product Name</th>
+                <th class="pl-sortable uir-col-units" data-sort="units" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Units sold</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in rows %}
+              <tr class="uir-row pl-expense-row"
+                  data-sort-row
+                  data-search="{{ (row.product_name or '')|lower }}">
+                <td class="uir-col-product" data-sort-value="{{ row.product_name or '' }}">
+                  <div class="pl-name">{{ row.product_name or '—' }}</div>
+                </td>
+                <td class="uir-col-units" data-sort-value="{{ row.units_sold }}">{{ row.units_sold_display }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if not rows %}
+        <div class="pl-empty">No ingredient usage matches these filters.</div>
+        {% endif %}
+      </div>
+    </article>
+  </section>
+</div>
+
+<script src="{{ url_for('static', filename='format_inr.js') }}"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
+<script src="{{ url_for('static', filename='unit_insights_report.js') }}?v=2"></script>
+{% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
+</body>
+</html>
+{% endif %}

@@ -140,6 +140,7 @@ from db import (
     list_pos_kot_tokens,
     apply_pos_kot_token_reductions,
     list_pos_menu_sales,
+    list_pos_unit_insights,
     group_pos_menu_sales_by_category,
     list_customer_insights,
     list_pos_today_invoices,
@@ -152,6 +153,7 @@ from db import (
     POS_MENU_MARGIN_MODERATE_PCT,
     pos_invoice_kpis,
     pos_menu_sales_kpis,
+    pos_unit_insights_kpis,
     customer_insights_kpis,
     pos_today_sales_summary,
     save_customer_record,
@@ -6439,6 +6441,7 @@ def reports():
         "kot",
         "restaurant_sales",
         "menu_sales",
+        "unit_insights",
         "customer_insights",
         "gst_hotel",
         "gst_fnb",
@@ -8949,6 +8952,204 @@ def sales_report_menu_export():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     # Avoid browsers reusing a previous unstyled download of the same name.
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
+def _unit_insights_filters(args):
+    """Parse Unit Insight GET filters (page + export)."""
+    base = _sales_report_filters(args)
+    outlet = (args.get("outlet") or "all").strip().lower()
+    if outlet not in ("all", POS_OUTLET_RESTAURANT, POS_OUTLET_BAR):
+        outlet = "all"
+    base["selected_outlet"] = outlet
+    return base
+
+
+def _unit_insights_export_filename(filters):
+    return report_export_filename("Unit Insight", filters=filters)
+
+
+def _unit_insights_load(filters):
+    date_from = (
+        filters["date_from"].isoformat()
+        if filters["date_filter_active"] and filters["date_from"]
+        else None
+    )
+    date_to = (
+        filters["date_to"].isoformat()
+        if filters["date_filter_active"] and filters["date_to"]
+        else None
+    )
+    status = filters["selected_status"]
+    settlement = None if status == "all" else status
+    query_from = date_from or "2000-01-01"
+    query_to = date_to or filters["today"].isoformat()
+    outlet = filters["selected_outlet"]
+
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        ensure_stores_schema(conn)
+        rows = list_pos_unit_insights(
+            conn,
+            date_from=query_from,
+            date_to=query_to,
+            outlet=None if outlet == "all" else outlet,
+            settlement=settlement,
+        )
+        kpis = pos_unit_insights_kpis(rows)
+        return rows, kpis
+    finally:
+        conn.close()
+
+
+def _unit_insights_filter_kwargs(filters, *, include_dates=True, include_from_hub=True):
+    kwargs = {}
+    if filters["selected_status"] != "all":
+        kwargs["status"] = filters["selected_status"]
+    if filters["selected_outlet"] != "all":
+        kwargs["outlet"] = filters["selected_outlet"]
+    if include_dates and filters["date_filter_active"]:
+        if filters["date_from"]:
+            kwargs["date_from"] = filters["date_from"].isoformat()
+        if filters["date_to"]:
+            kwargs["date_to"] = filters["date_to"].isoformat()
+    from_hub = (request.args.get("from_hub") or "").strip().lower()
+    if include_from_hub and from_hub == "reports":
+        kwargs["from_hub"] = "reports"
+    return kwargs
+
+
+@app.route("/reports/sales/units", endpoint="sales_report_unit_insights")
+def sales_report_unit_insights():
+    """Unit Insight — ingredient-wise units sold from menu recipes."""
+    filters = _unit_insights_filters(request.args)
+    rows, kpis = _unit_insights_load(filters)
+    status_labels = _sales_report_status_labels()
+    outlet_labels = _menu_sales_outlet_labels()
+
+    clear_kwargs = _unit_insights_filter_kwargs(
+        filters, include_dates=False, include_from_hub=True
+    )
+    export_kwargs = _unit_insights_filter_kwargs(
+        filters, include_dates=True, include_from_hub=True
+    )
+    filter_kwargs = {"from_hub": "reports"}
+    clear_kwargs.setdefault("from_hub", "reports")
+    export_kwargs.setdefault("from_hub", "reports")
+
+    return render_template(
+        "unit_insights_report.html",
+        de_nav_section="report",
+        de_nav_report_view="sales",
+        page_title="Unit Insight",
+        rows=rows,
+        kpis=kpis,
+        report_date_range_label=_menu_sales_date_range_label(filters),
+        today_iso=filters["today"].isoformat(),
+        date_from=filters["date_from"].isoformat()
+        if filters["date_filter_active"] and filters["date_from"]
+        else "",
+        date_to=filters["date_to"].isoformat()
+        if filters["date_filter_active"] and filters["date_to"]
+        else "",
+        active_date_filter=filters["date_filter_active"],
+        selected_status=filters["selected_status"],
+        selected_status_label=status_labels.get(
+            filters["selected_status"], "All statuses"
+        ),
+        selected_outlet=filters["selected_outlet"],
+        selected_outlet_label=outlet_labels.get(
+            filters["selected_outlet"], "All outlets"
+        ),
+        filter_form_action=url_for("sales_report_unit_insights", **filter_kwargs),
+        sales_report_clear_url=url_for("sales_report_unit_insights", **clear_kwargs),
+        sales_report_export_url=url_for(
+            "sales_report_unit_insights_export", **export_kwargs
+        ),
+        sales_report_export_filename=_unit_insights_export_filename(filters),
+        preserve_from_hub=True,
+        back_href=url_for("reports"),
+        back_label="Back to Reports",
+    )
+
+
+def _write_unit_insights_excel_sheet(ws, *, date_label, rows):
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    header_fill = PatternFill(
+        fill_type="solid",
+        start_color="FF315A78",
+        end_color="FF315A78",
+    )
+    title_font = Font(bold=True, size=14, color="FFFFFFFF")
+    header_font = Font(bold=True, size=11, color="FFFFFFFF")
+    body_font = Font(size=11, color="FF000000")
+    thin = Side(style="thin", color="FF000000")
+    grid = Border(left=thin, right=thin, top=thin, bottom=thin)
+    left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    right = Alignment(horizontal="right", vertical="center", wrap_text=True)
+
+    headers = ("Product Name", "Units sold")
+    ws["A1"] = "Hotel Bell Elite — Unit Insight"
+    ws["A2"] = date_label or "All dates"
+    for col, title in enumerate(headers, start=1):
+        cell = ws.cell(row=3, column=col, value=title)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.border = grid
+        cell.alignment = left if col == 1 else right
+
+    row_idx = 4
+    for item in rows or []:
+        ws.cell(row=row_idx, column=1, value=(item.get("product_name") or "").strip() or "Product")
+        ws.cell(row=row_idx, column=2, value=item.get("units_sold_display") or "")
+        for col in (1, 2):
+            cell = ws.cell(row=row_idx, column=col)
+            cell.font = body_font
+            cell.border = grid
+            cell.alignment = left if col == 1 else right
+        row_idx += 1
+
+    ws["A1"].font = title_font
+    ws["A2"].font = body_font
+    for col in (1, 2):
+        max_len = len(headers[col - 1]) + 2
+        for r in range(4, row_idx):
+            value = ws.cell(row=r, column=col).value
+            if value is not None:
+                max_len = max(max_len, min(len(str(value)) + 2, 42))
+        ws.column_dimensions[get_column_letter(col)].width = max_len
+
+
+@app.route("/reports/sales/units/export", endpoint="sales_report_unit_insights_export")
+def sales_report_unit_insights_export():
+    """Excel export for Unit Insight report."""
+    from openpyxl import Workbook
+    from io import BytesIO
+
+    filters = _unit_insights_filters(request.args)
+    rows, _kpis = _unit_insights_load(filters)
+    date_label = _menu_sales_date_range_label(filters)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Unit Insight"
+    _write_unit_insights_excel_sheet(ws, date_label=date_label, rows=rows)
+
+    fname = _unit_insights_export_filename(filters)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    response = send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     return response

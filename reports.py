@@ -353,6 +353,17 @@ REPORT_DEFINITIONS = [
         "downloadable": True,
     },
     {
+        "id": "unit_insights",
+        "name": "Unit Insight",
+        "description": "Ingredient-wise units sold from menu recipes based on invoice quantities.",
+        "icon": "invoice",
+        "icon_tone": "cyan",
+        "category": "sales",
+        "view_route": "sales_report_unit_insights",
+        "download_route": "sales_report_unit_insights_export",
+        "downloadable": True,
+    },
+    {
         "id": "customer_insights",
         "name": "Customer Insights",
         "description": "Per-customer spend and top ordered item across Hotel, Restaurant, and Bar.",

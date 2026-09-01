@@ -260,8 +260,9 @@
             <div class="pos-set-fields">
               <label class="pos-set-field">
                 <span>Prefix</span>
-                <input type="text" data-pos-set-field data-pos-set-key="invoice_prefix" id="pos-invoice-prefix" placeholder="{{ 'INV' if (pos_outlet|default('restaurant')) == 'bar' else 'SPC' }}" autocomplete="off">
+                <input type="text" data-pos-set-field data-pos-set-key="invoice_prefix" id="pos-invoice-prefix" placeholder="{{ 'INV/1946/2026-27' if (pos_outlet|default('restaurant')) == 'bar' else 'SPC/2226/2026-27' }}" autocomplete="off">
               </label>
+              <p class="pos-set-hint" id="pos-invoice-prefix-hint">Format is <code>{{ 'INV/1946/2026-27' if (pos_outlet|default('restaurant')) == 'bar' else 'SPC/2226/2026-27' }}</code>. Set the next number in Prefix to continue after your last bill.</p>
             </div>
           </article>
         </div>

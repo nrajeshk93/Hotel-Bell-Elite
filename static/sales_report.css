@@ -315,6 +315,66 @@ body.sales-report-module #msr-table tfoot tr.msr-grand-total td{
   border-top:2px solid var(--border, #d1d5db);
 }
 
+/* Unit Insight — product name + units sold. */
+body.sales-report-module #uir-table{
+  table-layout:fixed;
+  width:100%;
+  min-width:640px;
+}
+body.sales-report-module #uir-table col.uir-col-product{width:68%;}
+body.sales-report-module #uir-table col.uir-col-units{width:32%;}
+body.sales-report-module #uir-table th,
+body.sales-report-module #uir-table td{
+  padding:12px 12px;
+  vertical-align:middle;
+}
+body.sales-report-module #uir-table th.pl-sortable{
+  position:relative;
+}
+body.sales-report-module #uir-table .uir-col-product .pl-name{
+  font-weight:600;
+}
+body.sales-report-module #uir-table th.uir-col-units,
+body.sales-report-module #uir-table td.uir-col-units{
+  text-align:right;
+  white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+body.sales-report-module #unit-insights-report-page .uir-report-heading{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+body.sales-report-module #unit-insights-report-page .uir-report-dates{
+  font-size:12px;
+  font-weight:500;
+  color:var(--txt2, #64748B);
+}
+body.sales-report-module #unit-insights-report-page .uir-unit-subtotals{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  align-items:center;
+  font-size:18px;
+  font-weight:700;
+  color:var(--txt, #0F172A);
+}
+body.sales-report-module #unit-insights-report-page .uir-unit-subtotal-sep{
+  color:var(--txt3, #94A3B8);
+  font-weight:500;
+}
+body.sales-report-module #uir-filter-form .pl-date-range-host.pl-header-field,
+body.sales-report-module #uir-filter-form .se-filter-chip-date-host.pl-header-field,
+body.sales-report-module #uir-filter-form .se-filter-chip-date-host:has(.se-filter-chip--date-range){
+  flex:0 0 auto;
+  width:max-content;
+  min-width:0;
+  max-width:100%;
+  z-index:30;
+  margin-left:0;
+  overflow:visible;
+}
+
 /* Customer Insights — text left, orders centered, money right-aligned. */
 body.sales-report-module #cir-table{
   table-layout:fixed;

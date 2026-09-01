@@ -369,9 +369,9 @@ class HotelSettingsTests(unittest.TestCase):
             fy = db_mod.indian_fiscal_year_label()
             short_fy = db_mod.indian_fiscal_year_short_label(fy)
 
-            # Default stem HBE → HBE/{fy}/00001
+            # Default stem HBE → HBE/{n}/{YYYY-YY}
             first = db_mod.allocate_hotel_room_invoice_number(conn)
-            self.assertEqual(first, f"HBE/{short_fy}/00001")
+            self.assertEqual(first, f"HBE/1/{fy}")
 
             # Custom stem
             db_mod.save_hotel_settings(
@@ -387,9 +387,9 @@ class HotelSettingsTests(unittest.TestCase):
                 },
             )
             bella = db_mod.allocate_hotel_room_invoice_number(conn)
-            self.assertEqual(bella, f"BELLA/{short_fy}/00002")
+            self.assertEqual(bella, f"BELLA/2/{fy}")
 
-            # Full series including FY (trailing slash OK)
+            # Full series including FY floor (trailing slash OK on short-FY form)
             db_mod.save_hotel_settings(
                 conn,
                 {
@@ -406,25 +406,25 @@ class HotelSettingsTests(unittest.TestCase):
                 },
             )
             series = db_mod.allocate_hotel_room_invoice_number(conn)
-            self.assertEqual(series, f"HBE/{short_fy}/00003")
+            self.assertEqual(series, f"HBE/3/{fy}")
             series2 = db_mod.allocate_hotel_room_invoice_number(conn)
-            self.assertEqual(series2, f"HBE/{short_fy}/00004")
+            self.assertEqual(series2, f"HBE/4/{fy}")
 
-            # Changing prefix does not rewrite prior numbers; format helper stays pure
+            # Changing prefix does not rewrite prior numbers; format helpers stay pure
             self.assertEqual(
-                db_mod.format_hotel_room_invoice_number("HBE", short_fy, 1),
-                f"HBE/{short_fy}/00001",
+                db_mod.format_hotel_stay_invoice_number("HBE", fy, 1),
+                f"HBE/1/{fy}",
             )
             self.assertEqual(
-                db_mod.format_hotel_room_invoice_number(f"HBE/{short_fy}/", short_fy, 9),
-                f"HBE/{short_fy}/00009",
+                db_mod.format_hotel_room_invoice_number("FBE", short_fy, 9),
+                f"FBE/{short_fy}/00009",
             )
             conn.commit()
         finally:
             conn.close()
 
     def test_hotel_invoice_prefix_embedded_fy_overrides_calendar_fy(self):
-        """Prefix HBE/27-28/ must mint that series even when calendar FY is 26-27."""
+        """Prefix HBE/27-28/ must mint that FY series even when calendar FY differs."""
         conn = db_mod.get_db()
         try:
             calendar_fy = db_mod.indian_fiscal_year_short_label()
@@ -447,10 +447,11 @@ class HotelSettingsTests(unittest.TestCase):
             self.assertEqual(db_mod.hotel_room_invoice_prefix(conn), "HBE/27-28")
             minted = db_mod.allocate_hotel_room_invoice_number(conn)
             self.assertTrue(
-                minted.startswith("HBE/27-28/"),
-                f"expected HBE/27-28/… got {minted} (calendar FY {calendar_fy})",
+                minted.endswith("/2027-28"),
+                f"expected …/2027-28 got {minted} (calendar FY {calendar_fy})",
             )
-            self.assertFalse(minted.startswith(f"HBE/{calendar_fy}/"))
+            self.assertTrue(minted.startswith("HBE/"))
+            self.assertFalse(minted.endswith(f"/{db_mod.indian_fiscal_year_label()}"))
             conn.commit()
         finally:
             conn.close()
@@ -462,9 +463,43 @@ class HotelSettingsTests(unittest.TestCase):
         self.assertIn('data-hotel-set-key="invoice_prefix"', html)
         self.assertIn('data-hotel-set-key="fb_invoice_prefix"', html)
         self.assertNotIn('data-hotel-set-key="room_transfer_prefix"', html)
-        self.assertNotIn("hotel-invoice-prefix-hint", html)
+        self.assertIn("hotel-invoice-prefix-hint", html)
+        self.assertIn("HBE/559/2026-27", html)
         self.assertIn("Food &amp; Beverage Room Transfer", html)
         self.assertNotIn("<h3>Room Transfer</h3>", html)
+
+    def test_hotel_invoice_prefix_floor_starts_allocation_at_559(self):
+        """Prefix HBE/559/2026-27 allocates HBE/559/2026-27 when no higher invoice exists."""
+        conn = db_mod.get_db()
+        try:
+            fy = db_mod.indian_fiscal_year_label()
+            db_mod.save_hotel_settings(
+                conn,
+                {
+                    "panels": {
+                        "invoice": {
+                            "values": {
+                                "invoice_prefix": {
+                                    "kind": "text",
+                                    "value": f"HBE/559/{fy}",
+                                },
+                            }
+                        }
+                    }
+                },
+            )
+            stem, short_fy, floor = db_mod.hotel_room_invoice_prefix_parts(conn)
+            self.assertEqual(stem, "HBE")
+            self.assertEqual(short_fy, db_mod.indian_fiscal_year_short_label(fy))
+            self.assertEqual(floor, 559)
+            self.assertEqual(db_mod.hotel_room_invoice_prefix(conn), "HBE")
+            minted = db_mod.allocate_hotel_room_invoice_number(conn)
+            self.assertEqual(minted, f"HBE/559/{fy}")
+            minted2 = db_mod.allocate_hotel_room_invoice_number(conn)
+            self.assertEqual(minted2, f"HBE/560/{fy}")
+            conn.commit()
+        finally:
+            conn.close()
 
     def test_fb_and_room_transfer_prefixes_drive_allocation(self):
         conn = db_mod.get_db()
@@ -608,11 +643,11 @@ class HotelSettingsTests(unittest.TestCase):
         self.assertIn("BEGIN IMMEDIATE", helper)
         self.assertIn("MAX(last_seq", bump.replace(" ", ""))
 
-        short_fy = db_mod.indian_fiscal_year_short_label()
+        fy = db_mod.indian_fiscal_year_label()
         conn = db_mod.get_db()
         try:
             first = db_mod.allocate_hotel_room_invoice_number(conn)
-            self.assertEqual(first, f"HBE/{short_fy}/00001")
+            self.assertEqual(first, f"HBE/1/{fy}")
             conn.commit()
         finally:
             conn.close()
@@ -637,7 +672,10 @@ class HotelSettingsTests(unittest.TestCase):
             t.join(timeout=15)
         self.assertFalse(errors, errors)
         self.assertEqual(len(set(numbers)), 2, numbers)
-        self.assertTrue(all(n.startswith(f"HBE/{short_fy}/") for n in numbers), numbers)
+        self.assertTrue(
+            all(n.startswith("HBE/") and n.endswith(f"/{fy}") for n in numbers),
+            numbers,
+        )
 
 
 if __name__ == "__main__":

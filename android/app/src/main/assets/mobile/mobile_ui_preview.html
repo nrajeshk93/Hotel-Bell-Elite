@@ -6057,6 +6057,358 @@
       box-shadow: 0 6px 14px rgba(15, 23, 42, .04);
     }
 
+    /* —— Hotel Invoice Ledger restyle (Cash Ledger chrome; BLUE theme; scoped) —— */
+    [data-panel="hotel-invoice-ledger"] {
+      --accent: #1877F2;
+      --ap-accent: #1877F2;
+      --accent-soft: #E8F1FE;
+    }
+    [data-panel="hotel-invoice-ledger"] .ap-head h2 {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.035em;
+      line-height: 1.15;
+      color: #1A202C;
+    }
+    [data-panel="hotel-invoice-ledger"] #cash-ledger-status,
+    [data-panel="hotel-invoice-ledger"] .md-status {
+      margin: 0;
+      font-size: 12px;
+      font-weight: 500;
+      color: #64748B;
+      display: block;
+    }
+    [data-panel="hotel-invoice-ledger"] .ap-head {
+      display: block;
+      margin: 0 0 8px;
+    }
+    [data-panel="hotel-invoice-ledger"] .cash-ledger-filters,
+    [data-panel="hotel-invoice-ledger"] #cash-ledger-location-row {
+      position: relative;
+      z-index: 5;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 10px;
+      max-width: 100%;
+    }
+    [data-panel="hotel-invoice-ledger"] .ap-date-filter {
+      position: relative;
+      z-index: 8;
+      margin: 0;
+      width: auto;
+      flex: 0 1 auto;
+      min-width: 0;
+    }
+    [data-panel="hotel-invoice-ledger"] .ap-date-chip {
+      display: block;
+    }
+    [data-panel="hotel-invoice-ledger"] .ap-date-chip-label {
+      display: none;
+    }
+    [data-panel="hotel-invoice-ledger"] #cash-ledger-date-trigger,
+    [data-panel="hotel-invoice-ledger"] .ap-date-chip-trigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 0;
+      width: auto;
+      max-width: 210px;
+      min-height: 32px;
+      height: 32px;
+      padding: 0 12px;
+      border: 1px solid #E2E8F0;
+      border-radius: 20px;
+      background: #fff;
+      box-shadow: none;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: #1A202C;
+      cursor: pointer;
+    }
+    [data-panel="hotel-invoice-ledger"] .ap-date-chip.is-open .ap-date-chip-trigger,
+    [data-panel="hotel-invoice-ledger"] .ap-date-chip.is-filtered .ap-date-chip-trigger,
+    [data-panel="hotel-invoice-ledger"] .ap-date-chip.is-open #cash-ledger-date-trigger,
+    [data-panel="hotel-invoice-ledger"] .ap-date-chip.is-filtered #cash-ledger-date-trigger {
+      border-color: #1877F2;
+      box-shadow: 0 0 0 3px #E8F1FE;
+      background: #fff;
+    }
+    [data-panel="hotel-invoice-ledger"] .ap-date-chip-value {
+      flex: 0 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    [data-panel="hotel-invoice-ledger"] .ap-date-chip {
+      position: relative;
+      overflow: visible;
+      z-index: 12;
+    }
+    [data-panel="hotel-invoice-ledger"] .cash-ledger-filters,
+    [data-panel="hotel-invoice-ledger"] #cash-ledger-location-row {
+      overflow: visible;
+    }
+    [data-panel="hotel-invoice-ledger"] .ap-date-chip-panel {
+      position: absolute;
+      left: auto;
+      right: 0;
+      top: calc(100% + 6px);
+      width: min(320px, 100%);
+      min-width: 0;
+      max-width: min(320px, 100%);
+      z-index: 80;
+      box-sizing: border-box;
+    }
+    [data-panel="hotel-invoice-ledger"] #cash-ledger-location-row {
+      position: relative;
+      z-index: 5;
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 10px;
+    }
+    [data-panel="hotel-invoice-ledger"] .cash-outlet-trigger {
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-width: 148px;
+      max-width: 100%;
+      min-height: 32px;
+      height: 32px;
+      padding: 0 12px 0 14px;
+      border: 1px solid #E2E8F0;
+      border-radius: 20px;
+      background: #fff;
+      box-shadow: none;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: #1A202C;
+      cursor: pointer;
+    }
+    [data-panel="hotel-invoice-ledger"] #cash-ledger-location-row.is-open .cash-outlet-trigger,
+    [data-panel="hotel-invoice-ledger"] .cash-outlet-trigger[aria-expanded="true"] {
+      border-color: #1877F2;
+      box-shadow: 0 0 0 3px #E8F1FE;
+      background: #fff;
+    }
+    [data-panel="hotel-invoice-ledger"] .cash-outlet-trigger svg {
+      width: 14px;
+      height: 14px;
+      stroke: #1877F2;
+      fill: none;
+      stroke-width: 1.8;
+      flex-shrink: 0;
+    }
+    [data-panel="hotel-invoice-ledger"] .cash-outlet-menu {
+      position: absolute;
+      left: auto;
+      right: 0;
+      top: calc(100% + 6px);
+      min-width: 0;
+      max-width: calc(100vw - 24px);
+      background: #fff;
+      border: 1px solid #E2E8F0;
+      border-radius: 16px;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, .12);
+      padding: 6px;
+      z-index: 20;
+    }
+    [data-panel="hotel-invoice-ledger"] .cash-outlet-menu[hidden] { display: none !important; }
+    [data-panel="hotel-invoice-ledger"] .cash-outlet-menu .chip,
+    [data-panel="hotel-invoice-ledger"] [data-cash-location] {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      height: 36px;
+      min-height: 36px;
+      padding: 0 12px;
+      border: 0;
+      border-radius: 12px;
+      background: transparent;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      color: #1A202C;
+      text-align: left;
+      cursor: pointer;
+    }
+    [data-panel="hotel-invoice-ledger"] [data-cash-location].is-active {
+      background: #E8F1FE;
+      color: #1877F2;
+    }
+    [data-panel="hotel-invoice-ledger"] .ap-kpi-grid,
+    [data-panel="hotel-invoice-ledger"] .ap-kpi-grid--cash {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 0 0 12px;
+    }
+    [data-panel="hotel-invoice-ledger"] .ap-kpi-grid--cash .ap-kpi:last-child {
+      grid-column: auto;
+    }
+    [data-panel="hotel-invoice-ledger"] .ap-kpi-grid--cash .ap-kpi:first-child {
+      grid-column: 1 / -1;
+    }
+    [data-panel="hotel-invoice-ledger"] .ap-kpi {
+      position: relative;
+      overflow: hidden;
+      background: #fff;
+      border: 1px solid #E2E8F0;
+      border-radius: 12px;
+      padding: 10px 12px;
+      box-shadow: none;
+      min-height: 0;
+      display: block;
+      text-align: center;
+    }
+    [data-panel="hotel-invoice-ledger"] .ap-kpi::before { content: none; }
+    [data-panel="hotel-invoice-ledger"] .md-kpi-wave { display: none; }
+    [data-panel="hotel-invoice-ledger"] .ap-kpi b {
+      display: block;
+      font-size: 16px;
+      font-weight: 800;
+      color: #0F172A;
+    }
+    [data-panel="hotel-invoice-ledger"] .ap-kpi:first-child b {
+      font-size: 18px;
+    }
+    [data-panel="hotel-invoice-ledger"] .ap-kpi span {
+      color: #64748B;
+      font-size: 12px;
+    }
+    [data-panel="hotel-invoice-ledger"] .ap-card {
+      border-radius: 20px;
+      border: 1px solid #EEF1F4;
+      box-shadow: 0 6px 14px rgba(15, 23, 42, .04);
+    }
+
+    [data-panel="hotel-invoice-ledger"] .cash-ledger-filters,
+    [data-panel="hotel-invoice-ledger"] .hil-filters {
+      flex-wrap: wrap;
+      max-width: 100%;
+    }
+    [data-panel="hotel-invoice-ledger"] .hil-dd {
+      position: relative;
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: 100%;
+    }
+    [data-panel="hotel-invoice-ledger"] .hil-dd.is-open {
+      z-index: 50;
+    }
+    [data-panel="hotel-invoice-ledger"] .hil-dd .cash-outlet-trigger {
+      min-width: 0;
+      max-width: 180px;
+    }
+    [data-panel="hotel-invoice-ledger"] #hil-invoice-label,
+    [data-panel="hotel-invoice-ledger"] #hil-status-label,
+    [data-panel="hotel-invoice-ledger"] #hil-agency-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    [data-panel="hotel-invoice-ledger"] .hil-dd .cash-outlet-menu {
+      position: absolute;
+      left: 0;
+      right: auto;
+      top: calc(100% + 6px);
+      min-width: 0;
+      width: max-content;
+      max-width: min(280px, 100%);
+      max-height: min(280px, 70vh);
+      overflow-x: hidden;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      z-index: 80;
+      box-sizing: border-box;
+    }
+    [data-panel="hotel-invoice-ledger"] #hil-agency-menu {
+      left: auto;
+      right: 0;
+      min-width: 0;
+      width: min(280px, 100%);
+      max-width: min(280px, 100%);
+    }
+    [data-panel="hotel-invoice-ledger"] #hil-agency-options {
+      max-height: 220px;
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    [data-panel="hotel-invoice-ledger"] .hil-dd .cash-outlet-menu .chip,
+    [data-panel="hotel-invoice-ledger"] [data-hil-agency] {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      display: block;
+    }
+    [data-panel="hotel-invoice-ledger"] .hil-agency-search-wrap {
+      position: relative;
+      margin: 0 0 6px;
+    }
+    [data-panel="hotel-invoice-ledger"] #hil-agency-search {
+      width: 100%;
+      height: 36px;
+      padding: 0 12px 0 34px;
+      border: 1px solid #E2E8F0;
+      border-radius: 12px;
+      background: #F8FAFC;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      color: #1A202C;
+      outline: none;
+    }
+    [data-panel="hotel-invoice-ledger"] #hil-agency-search:focus {
+      border-color: #1877F2;
+      background: #fff;
+      box-shadow: 0 0 0 3px #E8F1FE;
+    }
+    [data-panel="hotel-invoice-ledger"] .hil-agency-search-wrap svg {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      width: 16px;
+      height: 16px;
+      transform: translateY(-50%);
+      stroke: #64748B;
+      fill: none;
+      stroke-width: 2;
+      pointer-events: none;
+    }
+    [data-panel="hotel-invoice-ledger"] .cash-outlet-menu .chip.is-active,
+    [data-panel="hotel-invoice-ledger"] [data-hil-invoice].is-active,
+    [data-panel="hotel-invoice-ledger"] [data-hil-status].is-active,
+    [data-panel="hotel-invoice-ledger"] [data-hil-agency].is-active {
+      background: #E8F1FE;
+      color: #1877F2;
+    }
+    [data-panel="hotel-invoice-ledger"] .ap-kpi {
+      cursor: pointer;
+    }
+    [data-panel="hotel-invoice-ledger"] .ap-kpi.is-active {
+      outline: 2px solid var(--accent, #1877F2);
+      border-color: #1877F2;
+      background: #E8F1FE;
+    }
+    [data-panel="hotel-invoice-ledger"] .hil-search {
+      margin: 0 0 12px;
+    }
+
     /* —— Indent Approval restyle (Approvals chrome; scoped) —— */
     [data-panel="indent-approvals"] {
       --accent: #1877F2;
@@ -6967,6 +7319,15 @@
                   <span class="home-module-copy"><strong>KOT</strong></span>
                 </button>
               </div>
+              <div class="home-module-group" data-access-group="hotel_invoice_ledger">Hotel</div>
+              <div class="home-module-grid cols-2" data-access-group="hotel_invoice_ledger">
+                <button type="button" class="home-module" data-go="hotel-invoice-ledger" data-screen="hotel-invoice-ledger" data-access="hotel_invoice_ledger" data-accent="blue">
+                  <span class="home-module-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.6 18.8V10.6A1.8 1.8 0 0 1 5.4 8.8h13.2a1.8 1.8 0 0 1 1.8 1.8v8.2" stroke="#1877F2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.6 13.4h16.8M3.6 18.8h16.8" stroke="#1877F2" stroke-width="1.8" stroke-linecap="round"/><path d="M6.2 8.8V6.5A1.6 1.6 0 0 1 7.8 4.9h3.4A1.6 1.6 0 0 1 12.8 6.5v2.3" stroke="#1877F2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </span>
+                  <span class="home-module-copy"><strong>Invoice Ledger</strong></span>
+                </button>
+              </div>
               <div class="home-module-group" data-access-group="payroll_employee,payroll_attendance,payroll_credit,payroll_tips">Employee Payroll</div>
               <div class="home-module-grid cols-2" data-access-group="payroll_employee,payroll_attendance,payroll_credit,payroll_tips">
                 <button type="button" class="home-module" data-go="payroll-employee" data-screen="payroll-employee" data-access="payroll_employee" data-accent="teal">
@@ -7866,6 +8227,102 @@
             </div>
           </div>
 
+          <div data-panel="hotel-invoice-ledger" class="panel panel-approvals" hidden>
+            <div class="ap-list-view">
+              <div class="ap-head">
+                <h2>Invoice Ledger</h2>
+                <div class="ap-gold-rule" aria-hidden="true"></div>
+                <p class="md-status" id="hotel-invoice-ledger-status">Loading invoices…</p>
+              </div>
+              <div class="md-filter-row cash-ledger-filters hil-filters" id="hil-filter-row">
+                <div class="cash-outlet-dd hil-dd" id="hil-invoice-row">
+                  <button type="button" class="cash-outlet-trigger" id="hil-invoice-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="hil-invoice-menu" aria-label="Invoice type">
+                    <span id="hil-invoice-label">All</span>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                  </button>
+                  <div class="cash-outlet-menu" id="hil-invoice-menu" role="listbox" hidden>
+                    <button type="button" class="chip is-active" data-hil-invoice="all" role="option" aria-selected="true">All</button>
+                    <button type="button" class="chip" data-hil-invoice="hotel" role="option" aria-selected="false">Hotel</button>
+                    <button type="button" class="chip" data-hil-invoice="fb_transfer" role="option" aria-selected="false">F&amp;B Transfers</button>
+                  </div>
+                </div>
+                <div class="cash-outlet-dd hil-dd" id="hil-status-row">
+                  <button type="button" class="cash-outlet-trigger" id="hil-status-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="hil-status-menu" aria-label="Status">
+                    <span id="hil-status-label">All statuses</span>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                  </button>
+                  <div class="cash-outlet-menu" id="hil-status-menu" role="listbox" hidden>
+                    <button type="button" class="chip is-active" data-hil-status="all" role="option" aria-selected="true">All statuses</button>
+                    <button type="button" class="chip" data-hil-status="open" role="option" aria-selected="false">Un Settled</button>
+                    <button type="button" class="chip" data-hil-status="settled" role="option" aria-selected="false">Settled</button>
+                    <button type="button" class="chip" data-hil-status="cancelled" role="option" aria-selected="false">Cancelled</button>
+                  </div>
+                </div>
+                <div class="cash-outlet-dd hil-dd" id="hil-agency-row">
+                  <button type="button" class="cash-outlet-trigger" id="hil-agency-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="hil-agency-menu" aria-label="Agency">
+                    <span id="hil-agency-label">All agencies</span>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                  </button>
+                  <div class="cash-outlet-menu" id="hil-agency-menu" role="listbox" hidden>
+                    <div class="hil-agency-search-wrap">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-3.5-3.5"/></svg>
+                      <input id="hil-agency-search" type="search" placeholder="Search agency…" autocomplete="off" />
+                    </div>
+                    <div id="hil-agency-options">
+                      <button type="button" class="chip is-active" data-hil-agency="all" data-hil-agency-name="All agencies" role="option" aria-selected="true">All agencies</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="ap-date-filter" data-ledger-dates="hotel-invoice-ledger">
+                  <div class="ap-date-chip" id="hotel-invoice-ledger-date-chip">
+                    <div class="ap-date-chip-label">Date</div>
+                    <button type="button" class="ap-date-chip-trigger" id="hotel-invoice-ledger-date-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="hotel-invoice-ledger-date-panel" aria-label="Date range">
+                      <span class="ap-date-chip-value is-placeholder" id="hotel-invoice-ledger-date-display">Select date…</span>
+                    </button>
+                    <div class="ap-date-chip-panel" id="hotel-invoice-ledger-date-panel" role="dialog" aria-label="Date range" hidden>
+                      <div class="md-date-header">
+                        <div class="md-date-label ap-date-chip-panel-h">Select date</div>
+                        <div class="md-date-headline-row">
+                          <div class="md-date-headline" id="hotel-invoice-ledger-date-headline">Select date</div>
+                          <button type="button" class="md-date-edit" aria-label="Edit date" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+                        </div>
+                      </div>
+                      <div class="ap-cal-body">
+                        <div class="ap-cal-hdr">
+                          <div class="ap-cal-month">
+                            <h4 class="ap-cal-title" id="hotel-invoice-ledger-cal-title">—</h4>
+                            <svg class="ap-cal-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                          </div>
+                          <div class="ap-cal-nav-group">
+                            <button type="button" class="ap-cal-nav" data-ledger-cal-nav="hotel-invoice-ledger" data-dir="-1" aria-label="Previous month"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+                            <button type="button" class="ap-cal-nav" data-ledger-cal-nav="hotel-invoice-ledger" data-dir="1" aria-label="Next month"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>
+                          </div>
+                        </div>
+                        <div class="ap-cal-dow" aria-hidden="true"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
+                        <div class="ap-cal-grid" id="hotel-invoice-ledger-cal-grid"></div>
+                      </div>
+                      <div class="ap-date-chip-foot">
+                        <button type="button" class="ap-date-chip-clear" data-ledger-date-clear="hotel-invoice-ledger">Clear</button>
+                        <div class="md-date-actions">
+                          <button type="button" class="md-date-cancel" data-md-date-cancel="hotel-invoice-ledger">Cancel</button>
+                          <button type="button" class="md-date-ok" id="hotel-invoice-ledger-date-ok" data-md-date-ok="hotel-invoice-ledger">OK</button>
+                        </div>
+                      </div>
+                    </div>
+                    <input type="hidden" id="hotel-invoice-ledger-date-from" value="" />
+                    <input type="hidden" id="hotel-invoice-ledger-date-to" value="" />
+                  </div>
+                </div>
+              </div>
+              <div class="pos-search hil-search">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-3.5-3.5"/></svg>
+                <input id="hil-search" type="search" placeholder="Search invoice, guest, agency, room…" autocomplete="off" />
+              </div>
+              <div class="ap-kpi-grid" id="hil-kpis" aria-label="Invoice ledger totals"></div>
+              <div id="hil-list"></div>
+            </div>
+          </div>
+
                     <div data-panel="payroll-employee" class="panel panel-payroll panel-payroll-employee" hidden>
             <div class="ap-list-view" id="pay-emp-list-view">
             <div class="ap-head">
@@ -8210,6 +8667,8 @@
             <div class="nav-group" data-access-group="pos_bar,kot_bar">BAR</div>
             <button class="nav-item" data-screen="pos-bar" data-access="pos_bar" id="nav-pos-bar"><span class="bullet">●</span>POS<svg class="nav-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg></button>
             <button class="nav-item" data-screen="kot-bar" data-access="kot_bar" id="nav-kot-bar"><span class="bullet">●</span>KOT<svg class="nav-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg></button>
+            <div class="nav-group" data-access-group="hotel_invoice_ledger">HOTEL</div>
+            <button class="nav-item" data-screen="hotel-invoice-ledger" data-access="hotel_invoice_ledger" id="nav-hotel-invoice-ledger"><span class="bullet">●</span>Invoice Ledger<svg class="nav-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg></button>
             <div class="nav-group" data-access-group="approvals,purchase_ledger,cash_ledger">ACCOUNTS</div>
             <button class="nav-item" data-screen="approvals" data-access="approvals" id="nav-approvals"><span class="bullet">●</span>Approvals<svg class="nav-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg></button>
             <button class="nav-item" data-screen="ledger" data-access="purchase_ledger" id="nav-ledger"><span class="bullet">●</span>Purchase &amp; Expense<svg class="nav-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg></button>
@@ -8251,6 +8710,7 @@
       store: 'store',
       'stock-audit': 'stock_audit',
       'cash-ledger': 'cash_ledger',
+      'hotel-invoice-ledger': 'hotel_invoice_ledger',
       'payroll-employee': 'payroll_employee',
       'payroll-attendance': 'payroll_attendance',
       'payroll-credit': 'payroll_credit',
@@ -13681,6 +14141,7 @@
     const ledgerState = {
       ledger: { tab: 'all', rows: [], totals: null, dateFrom: '', dateTo: '', cleared: false, calMonth: null, pickStart: null, draftFrom: '', draftTo: '' },
       'cash-ledger': { location: 'All', rows: [], totals: null, dateFrom: '', dateTo: '', cleared: false, calMonth: null, pickStart: null, draftFrom: '', draftTo: '' },
+      'hotel-invoice-ledger': { invoice: 'all', status: 'all', agency: 'all', agencyName: '', q: '', rows: [], kpis: null, agencies: [], dateFrom: '', dateTo: '', cleared: false, calMonth: null, pickStart: null, draftFrom: '', draftTo: '' },
       'pay-tip': { dateFrom: '', dateTo: '', cleared: false, calMonth: null, pickStart: null, draftFrom: '', draftTo: '' },
       approvals: { dateFrom: '', dateTo: '', cleared: false, calMonth: null, pickStart: null, draftFrom: '', draftTo: '', supplierId: '', supplierName: '', supplierQuery: '' },
       dashboard: { location: 'All', dateFrom: '', dateTo: '', cleared: false, calMonth: null, pickStart: null, draftFrom: '', draftTo: '' },
@@ -13857,12 +14318,15 @@
       if (exceptScreen !== 'att' && typeof closeAttDatePanel === 'function') closeAttDatePanel();
       if (typeof closeCrDatePanels === 'function') closeCrDatePanels();
       if (typeof closeTipEntryPanel === 'function') closeTipEntryPanel();
-      ['ledger', 'cash-ledger', 'pay-tip', 'approvals', 'dashboard'].forEach((screen) => {
+      ['ledger', 'cash-ledger', 'hotel-invoice-ledger', 'pay-tip', 'approvals', 'dashboard'].forEach((screen) => {
         if (exceptScreen && screen === exceptScreen) return;
         const dom = ledgerDom(screen);
         if (dom.chip) dom.chip.classList.remove('is-open');
         if (dom.trigger) dom.trigger.setAttribute('aria-expanded', 'false');
-        if (dom.panel) dom.panel.hidden = true;
+        if (dom.panel) {
+          dom.panel.hidden = true;
+          if (screen === 'hotel-invoice-ledger' && typeof hilClearMenuPos === 'function') hilClearMenuPos(dom.panel);
+        }
       });
     }
 
@@ -13877,6 +14341,7 @@
       if (dom.trigger) dom.trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
       dom.panel.hidden = !open;
       if (open) {
+        if (screen === 'hotel-invoice-ledger' && typeof hilCloseMenus === 'function') hilCloseMenus();
         state.pickStart = null;
         state.draftFrom = state.dateFrom || '';
         state.draftTo = state.dateTo || '';
@@ -13885,6 +14350,12 @@
         state.calMonth = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
         updateMdRangeHeadline(screen);
         renderLedgerCalendar(screen);
+        if (screen === 'hotel-invoice-ledger' && typeof hilPlaceMenu === 'function') {
+          hilPlaceMenu(dom.trigger, dom.panel, 320);
+          requestAnimationFrame(() => hilPlaceMenu(dom.trigger, dom.panel, 320));
+        }
+      } else if (screen === 'hotel-invoice-ledger' && typeof hilClearMenuPos === 'function') {
+        hilClearMenuPos(dom.panel);
       }
     }
 
@@ -13960,6 +14431,7 @@
       syncLedgerDateInputs(screen);
       closeAllLedgerDatePanels();
       if (screen === 'cash-ledger') loadCashLedgerScreen();
+      else if (screen === 'hotel-invoice-ledger') loadHotelInvoiceLedgerScreen();
       else if (screen === 'pay-tip') loadPayrollTips();
       else if (screen === 'approvals') loadApprovals(approvalsView);
       else if (screen === 'ledger') loadLedgerScreen(screen);
@@ -14383,7 +14855,7 @@
         setLedgerTab(screen, tab);
       });
     });
-    ['ledger', 'cash-ledger', 'pay-tip', 'dashboard'].forEach((screen) => {
+    ['ledger', 'cash-ledger', 'hotel-invoice-ledger', 'pay-tip', 'dashboard'].forEach((screen) => {
       const trig = ledgerDom(screen).trigger;
       trig?.addEventListener('click', (event) => {
         event.preventDefault();
@@ -14473,6 +14945,463 @@
     });
 
 
+
+    /* —— Hotel Invoice Ledger (web /hotel/invoice-ledger) —— */
+    const HIL_INVOICE_LABELS = { all: 'All', hotel: 'Hotel', fb_transfer: 'F&B Transfers' };
+    const HIL_STATUS_LABELS = { all: 'All statuses', open: 'Un Settled', settled: 'Settled', cancelled: 'Cancelled' };
+
+    function hilState() {
+      return ledgerState['hotel-invoice-ledger'] || (ledgerState['hotel-invoice-ledger'] = {
+        invoice: 'all', status: 'all', agency: 'all', agencyName: '', q: '',
+        rows: [], kpis: null, agencies: [], dateFrom: '', dateTo: '',
+        cleared: false, calMonth: null, pickStart: null, draftFrom: '', draftTo: ''
+      });
+    }
+
+    function hilClearMenuPos(menu) {
+      if (!menu || !menu.style) return;
+      menu.style.position = '';
+      menu.style.left = '';
+      menu.style.right = '';
+      menu.style.top = '';
+      menu.style.bottom = '';
+      menu.style.width = '';
+      menu.style.maxWidth = '';
+      menu.style.minWidth = '';
+    }
+
+    function hilClampBox() {
+      const phone = document.getElementById('phone') || document.querySelector('.phone');
+      if (phone) return phone.getBoundingClientRect();
+      const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+      const vh = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+      return { left: 0, top: 0, right: vw, bottom: vh, width: vw, height: vh };
+    }
+
+    function hilPlaceMenu(trigger, menu, maxWHint) {
+      if (!trigger || !menu) return;
+      const pad = 8;
+      const gap = 6;
+      const box = hilClampBox();
+      const cap = Number(maxWHint) > 0 ? Number(maxWHint) : 280;
+      const maxW = Math.min(cap, Math.max(140, box.width - pad * 2));
+      menu.style.position = 'fixed';
+      menu.style.right = 'auto';
+      menu.style.bottom = 'auto';
+      menu.style.minWidth = '0';
+      menu.style.width = 'max-content';
+      menu.style.maxWidth = maxW + 'px';
+      menu.style.left = box.left + pad + 'px';
+      menu.style.top = box.top + pad + 'px';
+      const rect = trigger.getBoundingClientRect();
+      const natural = Math.ceil(menu.getBoundingClientRect().width) || maxW;
+      const width = Math.min(Math.max(natural, Math.min(rect.width, maxW), 140), maxW);
+      menu.style.width = width + 'px';
+      menu.style.maxWidth = width + 'px';
+      const mh = menu.offsetHeight || 200;
+      let left = rect.left;
+      if (left + width > box.right - pad) left = rect.right - width;
+      if (left < box.left + pad) left = box.left + pad;
+      if (left + width > box.right - pad) left = Math.max(box.left + pad, box.right - pad - width);
+      let top = rect.bottom + gap;
+      if (top + mh > box.bottom - pad) {
+        const above = rect.top - gap - mh;
+        top = above >= box.top + pad ? above : Math.max(box.top + pad, box.bottom - pad - mh);
+      }
+      menu.style.left = left + 'px';
+      menu.style.top = top + 'px';
+      menu.style.zIndex = '80';
+    }
+
+    function hilCloseDatePanel() {
+      const dom = typeof ledgerDom === 'function' ? ledgerDom('hotel-invoice-ledger') : null;
+      if (!dom) return;
+      if (dom.chip) dom.chip.classList.remove('is-open');
+      if (dom.trigger) dom.trigger.setAttribute('aria-expanded', 'false');
+      if (dom.panel) {
+        dom.panel.hidden = true;
+        hilClearMenuPos(dom.panel);
+      }
+    }
+
+    function hilCloseMenus(exceptId) {
+      ['hil-invoice', 'hil-status', 'hil-agency'].forEach((key) => {
+        if (exceptId && key === exceptId) return;
+        const row = document.getElementById(key + '-row');
+        const trigger = document.getElementById(key + '-trigger');
+        const menu = document.getElementById(key + '-menu');
+        if (menu) {
+          menu.hidden = true;
+          hilClearMenuPos(menu);
+        }
+        if (trigger) {
+          trigger.setAttribute('aria-expanded', 'false');
+          trigger.classList.remove('is-open');
+        }
+        if (row) row.classList.remove('is-open');
+      });
+    }
+
+    function bindHilDropdown(key, { keepOpenOnMenu, onOpen } = {}) {
+      const row = document.getElementById(key + '-row');
+      const trigger = document.getElementById(key + '-trigger');
+      const menu = document.getElementById(key + '-menu');
+      if (!row || !trigger || !menu) return;
+      const place = () => hilPlaceMenu(trigger, menu);
+      trigger.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const open = menu.hidden;
+        hilCloseMenus(open ? key : '');
+        if (open) hilCloseDatePanel();
+        menu.hidden = !open;
+        trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+        trigger.classList.toggle('is-open', open);
+        row.classList.toggle('is-open', open);
+        if (open) {
+          place();
+          if (typeof onOpen === 'function') onOpen();
+          requestAnimationFrame(place);
+        } else {
+          hilClearMenuPos(menu);
+        }
+      });
+      if (keepOpenOnMenu) menu.addEventListener('click', (ev) => ev.stopPropagation());
+      document.addEventListener('click', () => {
+        if (menu.hidden) return;
+        menu.hidden = true;
+        hilClearMenuPos(menu);
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.classList.remove('is-open');
+        row.classList.remove('is-open');
+      });
+      window.addEventListener('resize', () => { if (!menu.hidden) place(); });
+      window.addEventListener('scroll', () => { if (!menu.hidden) place(); }, true);
+    }
+
+    function syncHilInvoiceChrome() {
+      const st = hilState();
+      const invoice = st.invoice || 'all';
+      document.querySelectorAll('[data-hil-invoice]').forEach((btn) => {
+        const on = btn.getAttribute('data-hil-invoice') === invoice;
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      const label = document.getElementById('hil-invoice-label');
+      if (label) label.textContent = HIL_INVOICE_LABELS[invoice] || 'All';
+      hilCloseMenus();
+    }
+
+    function setHilInvoice(invoice) {
+      const st = hilState();
+      const next = (invoice === 'hotel' || invoice === 'fb_transfer') ? invoice : 'all';
+      if (st.invoice === next) { hilCloseMenus(); return; }
+      st.invoice = next;
+      syncHilInvoiceChrome();
+      loadHotelInvoiceLedgerScreen();
+    }
+
+    function syncHilStatusChrome() {
+      const st = hilState();
+      const status = st.status || 'all';
+      document.querySelectorAll('[data-hil-status]').forEach((btn) => {
+        const on = btn.getAttribute('data-hil-status') === status;
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      const label = document.getElementById('hil-status-label');
+      if (label) label.textContent = HIL_STATUS_LABELS[status] || 'All statuses';
+      hilCloseMenus();
+    }
+
+    function setHilStatus(status) {
+      const st = hilState();
+      const next = (status === 'open' || status === 'settled' || status === 'cancelled') ? status : 'all';
+      if (st.status === next) { hilCloseMenus(); return; }
+      st.status = next;
+      syncHilStatusChrome();
+      loadHotelInvoiceLedgerScreen();
+    }
+
+    function filterHilAgencyOptions() {
+      const wrap = document.getElementById('hil-agency-options');
+      const search = document.getElementById('hil-agency-search');
+      if (!wrap) return;
+      const q = String(search && search.value || '').trim();
+      Array.from(wrap.querySelectorAll('[data-hil-agency]')).forEach((btn) => {
+        const id = String(btn.getAttribute('data-hil-agency') || '');
+        const name = String(btn.getAttribute('data-hil-agency-name') || btn.textContent || '');
+        const isAll = id === 'all' || name.trim().toLowerCase() === 'all agencies';
+        if (!q || isAll) {
+          btn.hidden = false;
+          return;
+        }
+        btn.hidden = hbeBestSearchScore([name], q) < 0;
+      });
+    }
+
+    function rebuildHilAgencyMenu() {
+      const wrap = document.getElementById('hil-agency-options');
+      if (!wrap) return;
+      const st = hilState();
+      const selected = String(st.agency || 'all');
+      const selectedName = String(st.agencyName || '').trim();
+      const agencies = Array.isArray(st.agencies) ? st.agencies : [];
+      const allOn = !selected || selected.toLowerCase() === 'all';
+      let html = '<button type="button" class="chip' + (allOn ? ' is-active' : '') +
+        '" data-hil-agency="all" data-hil-agency-name="All agencies" role="option" aria-selected="' +
+        (allOn ? 'true' : 'false') + '">All agencies</button>';
+      agencies.forEach((ag) => {
+        const id = String((ag && (ag.id != null ? ag.id : ag.name)) || '').trim();
+        const name = String((ag && ag.name) || id).trim();
+        if (!id || !name) return;
+        const on = !allOn && (id === selected || name.toLowerCase() === selected.toLowerCase() ||
+          (!!selectedName && name.toLowerCase() === selectedName.toLowerCase()));
+        html += '<button type="button" class="chip' + (on ? ' is-active' : '') +
+          '" data-hil-agency="' + escapeHtml(id) +
+          '" data-hil-agency-name="' + escapeHtml(name) +
+          '" role="option" aria-selected="' + (on ? 'true' : 'false') + '">' +
+          escapeHtml(name) + '</button>';
+      });
+      wrap.innerHTML = html;
+      filterHilAgencyOptions();
+    }
+
+    function syncHilAgencyChrome() {
+      const st = hilState();
+      const agency = String(st.agency || 'all');
+      const allOn = !agency || agency.toLowerCase() === 'all';
+      const name = allOn ? 'All agencies' : (st.agencyName || agency);
+      const label = document.getElementById('hil-agency-label');
+      if (label) label.textContent = name;
+      const row = document.getElementById('hil-agency-row');
+      if (row) row.classList.toggle('is-filtered', !allOn);
+      document.querySelectorAll('[data-hil-agency]').forEach((btn) => {
+        const id = String(btn.getAttribute('data-hil-agency') || '');
+        const on = allOn ? id === 'all' : (id === agency || String(btn.getAttribute('data-hil-agency-name') || '') === agency);
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      hilCloseMenus();
+    }
+
+    function setHilAgency(id, name) {
+      const st = hilState();
+      const nextId = String(id || 'all').trim() || 'all';
+      const allOn = nextId.toLowerCase() === 'all';
+      st.agency = allOn ? 'all' : nextId;
+      st.agencyName = allOn ? '' : (name || nextId);
+      const search = document.getElementById('hil-agency-search');
+      if (search) search.value = '';
+      rebuildHilAgencyMenu();
+      syncHilAgencyChrome();
+      loadHotelInvoiceLedgerScreen();
+    }
+
+    function hilStatusLabel(status) {
+      const s = String(status || '').toLowerCase();
+      if (s === 'settled') return 'Settled';
+      if (s === 'cancelled') return 'Cancelled';
+      return 'Un Settled';
+    }
+
+    function hilSourceLabel(source) {
+      const s = String(source || '').toLowerCase();
+      if (s === 'fb_combined_transfer' || s === 'fb_transfer' || s === 'fb_combined') return 'F&B';
+      if (s === 'hotel' || !s) return 'Hotel';
+      return '';
+    }
+
+    function hilStatusPillClass(status) {
+      const s = String(status || '').toLowerCase();
+      if (s === 'settled') return 'ap-pill ap-pill--cleared';
+      if (s === 'cancelled') return 'ap-pill ap-pill--pending';
+      return 'ap-pill ap-pill--outstanding';
+    }
+
+    function renderHilKpis(kpis) {
+      const el = document.getElementById('hil-kpis');
+      if (!el) return;
+      const k = kpis || {};
+      const st = hilState();
+      const status = st.status || 'all';
+      const card = (key, label, value, active) =>
+        '<button type="button" class="ap-kpi' + (active ? ' is-active' : '') + '" data-hil-kpi="' + key + '"><b>' +
+        value + '</b><span>' + label + '</span></button>';
+      el.innerHTML =
+        card('all', 'Total billed · ' + (k.total || 0), formatInrWhole(k.amount_sum), status === 'all') +
+        card('open', 'Outstanding', formatInrWhole(k.outstanding), status === 'open') +
+        card('settled', 'Settled', String(k.settled || 0), status === 'settled') +
+        card('open', 'Un Settled', String(k.open || 0), status === 'open');
+    }
+
+    function hilVisibleRows() {
+      const st = hilState();
+      const rows = Array.isArray(st.rows) ? st.rows.slice() : [];
+      const q = String(st.q || '').trim();
+      if (!q) return rows;
+      const ranked = rows.map((row) => ({
+        row: row,
+        score: hbeBestSearchScore([
+          row.invoice_number,
+          row.guest_name,
+          row.agency_name,
+          row.room_number,
+          row.booking_number
+        ], q)
+      })).filter((entry) => entry.score >= 0);
+      ranked.sort((a, b) => b.score - a.score);
+      return ranked.map((entry) => entry.row);
+    }
+
+    function renderHilList() {
+      const st = hilState();
+      const list = document.getElementById('hil-list');
+      const statusEl = document.getElementById('hotel-invoice-ledger-status');
+      if (!list) return;
+      const rows = hilVisibleRows();
+      const rangeLabel = (st.dateFrom || st.dateTo)
+        ? ((st.dateFrom || '…') + ' → ' + (st.dateTo || '…'))
+        : 'All dates';
+      const invoiceLabel = HIL_INVOICE_LABELS[st.invoice] || 'All';
+      if (statusEl) {
+        statusEl.textContent = rows.length
+          ? (rows.length + ' invoices · ' + invoiceLabel + ' · ' + rangeLabel)
+          : ('No invoices · ' + invoiceLabel + ' · ' + rangeLabel);
+      }
+      renderHilKpis(st.kpis);
+      if (!rows.length) {
+        list.innerHTML =
+          '<div class="ap-card"><div class="ap-card-code">No invoices</div><div class="ap-card-meta">Try another filter</div></div>' +
+          '<div class="ap-end"><strong>End of list</strong>Try another filter</div>';
+        return;
+      }
+      list.innerHTML = rows.map((row) => {
+        const metaBits = [row.guest_name, row.room_number ? ('Rm ' + row.room_number) : '', row.agency_name]
+          .map((v) => String(v || '').trim()).filter(Boolean);
+        const sourceLabel = hilSourceLabel(row.source);
+        const invDate = String(row.invoice_generated_at || '').slice(0, 10);
+        const stayBits = [];
+        if (row.check_in_date) stayBits.push('In ' + String(row.check_in_date).slice(0, 10));
+        if (row.check_out_date) stayBits.push('Out ' + String(row.check_out_date).slice(0, 10));
+        return (
+          '<article class="ap-card">' +
+            '<div class="ap-card-top">' +
+              '<div class="ap-card-code">' + escapeHtml(row.invoice_number || '—') + '</div>' +
+              '<div class="ap-card-amt">' + formatInr(row.estimated_total) + '</div>' +
+            '</div>' +
+            (metaBits.length ? '<div class="ap-card-meta">' + escapeHtml(metaBits.join(' · ')) + '</div>' : '') +
+            '<div class="ap-card-pills">' +
+              '<span class="' + hilStatusPillClass(row.status) + '">' + escapeHtml(hilStatusLabel(row.status)) + '</span>' +
+              (row.payment_mode_label ? '<span class="ap-pill ap-pill--cleared">' + escapeHtml(row.payment_mode_label) + '</span>' : '') +
+              (sourceLabel ? '<span class="ap-pill ap-pill--cat">' + escapeHtml(sourceLabel) + '</span>' : '') +
+            '</div>' +
+            '<div class="ap-card-foot">' +
+              '<div class="ap-card-date">' +
+                '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 3v4"/><path d="M16 3v4"/></svg>' +
+                escapeHtml(invDate || '—') +
+                (stayBits.length ? ' · ' + escapeHtml(stayBits.join(' · ')) : '') +
+              '</div>' +
+            '</div>' +
+          '</article>'
+        );
+      }).join('') + '<div class="ap-end"><strong>End of list</strong>' + rows.length + ' shown</div>';
+    }
+
+    async function loadHotelInvoiceLedgerScreen({ soft, silent } = {}) {
+      const st = hilState();
+      ensureLedgerDefaultDates('hotel-invoice-ledger');
+      const statusEl = document.getElementById('hotel-invoice-ledger-status');
+      if (!silent && statusEl) statusEl.textContent = 'Loading invoices…';
+      try {
+        const params = new URLSearchParams();
+        params.set('q', st.q || '');
+        params.set('status', st.status || 'all');
+        params.set('invoice', st.invoice || 'all');
+        params.set('agency', st.agency || 'all');
+        params.set('_', String(Date.now()));
+        if (st.cleared) {
+          params.set('clear', '1');
+        } else {
+          if (st.dateFrom) params.set('date_from', st.dateFrom);
+          if (st.dateTo) params.set('date_to', st.dateTo);
+        }
+        const res = await previewFetch('/preview-api/hotel/invoice-ledger?' + params.toString(), { cache: 'no-store' });
+        const data = await res.json();
+        if (!data || !data.ok) throw new Error((data && data.error) || 'Load failed');
+        st.rows = data.rows || [];
+        st.kpis = data.kpis || null;
+        st.agencies = data.agencies || [];
+        if (data.date_filter_active) {
+          st.dateFrom = data.date_from || st.dateFrom;
+          st.dateTo = data.date_to || st.dateTo;
+          st.cleared = false;
+        } else if (st.cleared) {
+          st.dateFrom = '';
+          st.dateTo = '';
+        }
+        if (data.selected_status) st.status = data.selected_status;
+        if (data.selected_invoice) st.invoice = data.selected_invoice;
+        if (data.selected_agency) st.agency = data.selected_agency;
+        rebuildHilAgencyMenu();
+        syncHilInvoiceChrome();
+        syncHilStatusChrome();
+        syncHilAgencyChrome();
+        syncLedgerDateInputs('hotel-invoice-ledger');
+        renderHilList();
+      } catch (err) {
+        if (isPreviewAbort(err)) return;
+        if (statusEl) statusEl.textContent = 'Failed to load · ' + (err && err.message ? err.message : err);
+      }
+    }
+
+    document.querySelectorAll('[data-hil-invoice]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        setHilInvoice(btn.getAttribute('data-hil-invoice') || 'all');
+      });
+    });
+    document.querySelectorAll('[data-hil-status]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        setHilStatus(btn.getAttribute('data-hil-status') || 'all');
+      });
+    });
+    bindHilDropdown('hil-invoice');
+    bindHilDropdown('hil-status');
+    bindHilDropdown('hil-agency', {
+      keepOpenOnMenu: true,
+      onOpen: () => {
+        const search = document.getElementById('hil-agency-search');
+        if (!search) return;
+        requestAnimationFrame(() => {
+          try { search.focus({ preventScroll: true }); } catch (err) { search.focus(); }
+          if (search.select) search.select();
+        });
+      }
+    });
+    document.getElementById('hil-agency-options')?.addEventListener('click', (ev) => {
+      const btn = ev.target && ev.target.closest && ev.target.closest('[data-hil-agency]');
+      if (!btn) return;
+      ev.preventDefault();
+      setHilAgency(btn.getAttribute('data-hil-agency') || 'all', btn.getAttribute('data-hil-agency-name') || '');
+    });
+    document.getElementById('hil-agency-search')?.addEventListener('input', () => {
+      filterHilAgencyOptions();
+    });
+    document.getElementById('hil-kpis')?.addEventListener('click', (ev) => {
+      const card = ev.target && ev.target.closest && ev.target.closest('[data-hil-kpi]');
+      if (!card) return;
+      setHilStatus(card.getAttribute('data-hil-kpi') || 'all');
+    });
+    (function bindHilSearch() {
+      const input = document.getElementById('hil-search');
+      if (!input) return;
+      let timer = 0;
+      input.addEventListener('input', () => {
+        const st = hilState();
+        st.q = String(input.value || '');
+        clearTimeout(timer);
+        timer = setTimeout(() => { loadHotelInvoiceLedgerScreen({ silent: true }); }, 250);
+      });
+    })();
 
     /* —— Store (web /stores/stock on-hand; read-only) —— */
     const storeState = {
@@ -16556,6 +17485,9 @@
       }
       if (screen === 'cash-ledger') {
         if (!isBack) loadCashLedgerScreen();
+      }
+      if (screen === 'hotel-invoice-ledger') {
+        if (!isBack) loadHotelInvoiceLedgerScreen();
       }
       if (screen === 'store') {
         if (!isBack) loadStore();

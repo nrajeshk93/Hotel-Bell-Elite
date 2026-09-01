@@ -2038,6 +2038,125 @@ def fetch_cash_ledger(
     }
 
 
+def fetch_hotel_invoice_ledger(
+    q="",
+    status="all",
+    invoice="all",
+    agency="all",
+    date_from="",
+    date_to="",
+    *,
+    default_fy=True,
+) -> dict[str, Any]:
+    """Hotel invoice ledger rows + KPIs (same source as web Invoice Ledger)."""
+    from datetime import date as _date
+
+    from app import (
+        _filter_hotel_invoice_rows_by_agency,
+        _hotel_invoice_ledger_agency_options,
+    )
+    from db import (
+        ensure_hotel_rooms_schema,
+        hotel_room_invoice_kpis,
+        list_hotel_room_invoices,
+    )
+
+    selected_status = str(status or "all").strip().lower()
+    if selected_status not in ("all", "open", "settled", "cancelled"):
+        selected_status = "all"
+    status_filter = "" if selected_status == "all" else selected_status
+
+    selected_invoice = str(invoice or "all").strip().lower()
+    if selected_invoice not in ("all", "hotel", "fb_transfer"):
+        selected_invoice = "all"
+    invoice_source = "hotel_ledger" if selected_invoice == "all" else selected_invoice
+
+    selected_agency = str(agency or "all").strip()
+    if not selected_agency:
+        selected_agency = "all"
+
+    q_text = str(q or "").strip()
+
+    today = _date.today()
+    parsed_from = _parse_iso_date(date_from)
+    parsed_to = _parse_iso_date(date_to)
+    date_filter_active = bool(parsed_from or parsed_to)
+    if not date_filter_active and default_fy:
+        parsed_from = _indian_fy_start(today)
+        parsed_to = today
+        date_filter_active = True
+    if parsed_from and parsed_to and parsed_from > parsed_to:
+        parsed_from, parsed_to = parsed_to, parsed_from
+    if date_filter_active:
+        if not parsed_from:
+            parsed_from = _date(2000, 1, 1)
+        if not parsed_to:
+            parsed_to = today
+
+    with _connect() as conn:
+        try:
+            ensure_hotel_rooms_schema(conn)
+        except Exception:
+            pass
+        rows = list_hotel_room_invoices(
+            conn,
+            q=q_text,
+            status=status_filter,
+            source=invoice_source,
+            date_from=parsed_from.isoformat() if date_filter_active and parsed_from else None,
+            date_to=parsed_to.isoformat() if date_filter_active and parsed_to else None,
+            limit=500,
+        )
+        agencies = _hotel_invoice_ledger_agency_options(rows, selected_agency)
+        rows = _filter_hotel_invoice_rows_by_agency(rows, selected_agency)
+        kpis = hotel_room_invoice_kpis(rows)
+
+    slim_rows = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        slim_rows.append(
+            {
+                "invoice_number": str(row.get("invoice_number") or ""),
+                "invoice_generated_at": str(row.get("invoice_generated_at") or ""),
+                "room_number": str(row.get("room_number") or ""),
+                "guest_name": str(row.get("guest_name") or ""),
+                "agency_name": str(row.get("agency_name") or ""),
+                "check_in_date": str(row.get("check_in_date") or ""),
+                "check_out_date": str(row.get("check_out_date") or ""),
+                "estimated_total": _money(row.get("estimated_total")),
+                "balance_amount": _money(row.get("balance_amount")),
+                "status": str(row.get("status") or ""),
+                "payment_mode_label": str(row.get("payment_mode_label") or ""),
+                "source": str(row.get("source") or ""),
+                "created_by": str(row.get("created_by") or ""),
+                "booking_number": str(row.get("booking_number") or ""),
+                "room_type_label": str(row.get("room_type_label") or ""),
+            }
+        )
+
+    kpis_out = {
+        "total": int((kpis or {}).get("total") or 0),
+        "open": int((kpis or {}).get("open") or 0),
+        "settled": int((kpis or {}).get("settled") or 0),
+        "outstanding": _money((kpis or {}).get("outstanding")),
+        "amount_sum": _money((kpis or {}).get("amount_sum")),
+    }
+    return {
+        "ok": True,
+        "rows": slim_rows,
+        "kpis": kpis_out,
+        "agencies": agencies,
+        "date_from": parsed_from.isoformat() if parsed_from and date_filter_active else "",
+        "date_to": parsed_to.isoformat() if parsed_to and date_filter_active else "",
+        "date_filter_active": bool(date_filter_active),
+        "selected_status": selected_status,
+        "selected_invoice": selected_invoice,
+        "selected_agency": selected_agency,
+        "q": q_text,
+        "total": len(slim_rows),
+    }
+
 
 def fetch_store_stock(outlet: str = "both", place: str = "warehouse") -> dict[str, Any]:
     """Current on-hand stock (same logic as web /stores/stock report)."""
@@ -2369,6 +2488,33 @@ class PreviewHandler(SimpleHTTPRequestHandler):
             try:
                 payload = fetch_cash_ledger(
                     location=location,
+                    date_from="" if clear_dates else date_from,
+                    date_to="" if clear_dates else date_to,
+                    default_fy=(not clear_dates and not date_from and not date_to),
+                )
+                self._send_json(200, payload)
+            except Exception as exc:  # noqa: BLE001
+                self._send_json(500, {"ok": False, "error": str(exc), "flask_base": FLASK_BASE})
+            return
+        if parsed.path in ("/preview-api/hotel/invoice-ledger", "/api/hotel/invoice-ledger"):
+            denied = _require_preview_access("hotel_invoice_ledger")
+            if denied:
+                self._send_json(403, denied)
+                return
+            qs = parse_qs(parsed.query or "")
+            q = (qs.get("q") or [""])[0]
+            status = (qs.get("status") or ["all"])[0]
+            invoice = (qs.get("invoice") or ["all"])[0]
+            agency = (qs.get("agency") or ["all"])[0]
+            date_from = (qs.get("date_from") or [""])[0].strip()
+            date_to = (qs.get("date_to") or [""])[0].strip()
+            clear_dates = (qs.get("clear") or ["0"])[0].strip().lower() in ("1", "true", "yes")
+            try:
+                payload = fetch_hotel_invoice_ledger(
+                    q=q,
+                    status=status,
+                    invoice=invoice,
+                    agency=agency,
                     date_from="" if clear_dates else date_from,
                     date_to="" if clear_dates else date_to,
                     default_fy=(not clear_dates and not date_from and not date_to),

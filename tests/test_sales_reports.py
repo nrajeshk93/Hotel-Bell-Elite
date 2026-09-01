@@ -124,6 +124,7 @@ class SalesReportsTests(unittest.TestCase):
                 "manager_insight",
                 "restaurant_sales",
                 "menu_sales",
+                "unit_insights",
                 "customer_insights",
             ],
         )
@@ -132,7 +133,8 @@ class SalesReportsTests(unittest.TestCase):
         self.assertEqual(sales[2]["view_route"], "sales_report_manager_insight")
         self.assertEqual(sales[3]["view_route"], "sales_report_restaurant")
         self.assertEqual(sales[4]["view_route"], "sales_report_menu")
-        self.assertEqual(sales[5]["view_route"], "sales_report_customer_insights")
+        self.assertEqual(sales[5]["view_route"], "sales_report_unit_insights")
+        self.assertEqual(sales[6]["view_route"], "sales_report_customer_insights")
 
         restaurant = [r for r in REPORT_DEFINITIONS if r.get("category") == "restaurant"]
         self.assertEqual([r["id"] for r in restaurant], ["menu_margin", "meal_plan", "kot"])
@@ -147,7 +149,7 @@ class SalesReportsTests(unittest.TestCase):
             (s for s in payload["report_sections"] if s["key"] == "sales"), None
         )
         self.assertIsNotNone(sales_section)
-        self.assertEqual(sales_section["count"], 6)
+        self.assertEqual(sales_section["count"], 7)
         names = [r["name"] for r in sales_section["reports"]]
         self.assertEqual(
             names,
@@ -157,6 +159,7 @@ class SalesReportsTests(unittest.TestCase):
                 "Manager Insight",
                 "Sales - Restaurant & Bar",
                 "Menu Insights",
+                "Unit Insight",
                 "Customer Insights",
             ],
         )
@@ -186,6 +189,7 @@ class SalesReportsTests(unittest.TestCase):
         self.assertNotIn("Bar Sales", html)
         self.assertNotIn('data-report-id="bar_sales"', html)
         self.assertIn("Menu Insights", html)
+        self.assertIn("Unit Insight", html)
         self.assertIn("Customer Insights", html)
         self.assertIn('data-report-category="sales"', html)
         self.assertIn("/reports/sales/hotel", html)
@@ -196,6 +200,7 @@ class SalesReportsTests(unittest.TestCase):
         self.assertIn("/reports/sales/restaurant", html)
         self.assertNotIn("/reports/sales/bar\"", html)
         self.assertIn("/reports/sales/menu", html)
+        self.assertIn("/reports/sales/units", html)
         self.assertIn("/reports/sales/customer-insights", html)
 
     def test_report_export_filename_matches_menu_sales_style(self):

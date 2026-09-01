@@ -9,10 +9,10 @@
   gap:8px;
 }
 
-body.su-module .se-sales-header-filters:has(:is(#purchase-ledger-filter-form, #employee-master-filter-form)){
+body.su-module .se-sales-header-filters:has(:is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form)){
   justify-content:stretch;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form).sr-topbar-filters{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form).sr-topbar-filters{
   display:flex;
   flex-wrap:wrap;
   align-items:flex-end;
@@ -27,11 +27,11 @@ body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form).s
 }
 
 /* One control height for Type / Search / Supplier / Category / Payment / Date */
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form){
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form){
   --pl-filter-control-h:44px;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-kind-filter-tabs.cp-view-tabs,
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .se-filter-chip-control{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-kind-filter-tabs.cp-view-tabs,
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .se-filter-chip-control{
   box-sizing:border-box;
   height:var(--pl-filter-control-h);
   min-height:var(--pl-filter-control-h);
@@ -39,13 +39,13 @@ body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .
   border-radius:8px;
   overflow:hidden;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-kind-filter-tabs.cp-view-tabs{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-kind-filter-tabs.cp-view-tabs{
   border-radius:8px;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .se-filter-chip-trigger,
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-search-input,
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .an-range-wrap,
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .an-range-trigger{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .se-filter-chip-trigger,
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-search-input,
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .an-range-wrap,
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .an-range-trigger{
   box-sizing:border-box;
   height:100%;
   min-height:0;
@@ -54,7 +54,7 @@ body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .
   padding-top:0;
   padding-bottom:0;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .an-range-wrap{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .an-range-wrap{
   display:flex;
   align-items:stretch;
   width:max-content;
@@ -62,13 +62,13 @@ body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .
 }
 
 /* Expense ledger header filters — match Add menu field listbox design */
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-kind-filter-host{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-kind-filter-host{
   position:relative;
   flex:0 0 auto;
   min-width:0;
   margin-right:0;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-kind-filter-host > .se-filter-chip-label{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-kind-filter-host > .se-filter-chip-label{
   display:block;
   margin-bottom:5px;
   font-size:11px;
@@ -78,7 +78,7 @@ body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .
   letter-spacing:.4px;
   text-align:left;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-kind-filter-tabs.cp-view-tabs{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-kind-filter-tabs.cp-view-tabs{
   display:inline-flex;
   align-items:center;
   gap:4px;
@@ -91,7 +91,7 @@ body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .
   border:1px solid var(--border,#E2E8F0);
   border-radius:8px;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-kind-filter-tabs .pl-kind-filter-tab{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-kind-filter-tabs .pl-kind-filter-tab{
   display:inline-flex;
   align-items:center;
   justify-content:center;
@@ -106,16 +106,16 @@ body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .
   white-space:nowrap;
   text-decoration:none;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-kind-filter-tabs .pl-kind-filter-tab:hover{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-kind-filter-tabs .pl-kind-filter-tab:hover{
   color:#0F172A;
   background:rgba(255,255,255,.65);
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-kind-filter-tabs .pl-kind-filter-tab.is-active{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-kind-filter-tabs .pl-kind-filter-tab.is-active{
   background:#fff;
   color:#2563EB;
   box-shadow:0 1px 2px rgba(15,23,42,.08);
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field .se-filter-chip-label{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field .se-filter-chip-label{
   display:block;
   margin-bottom:5px;
   font-size:11px;
@@ -125,7 +125,7 @@ body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .
   letter-spacing:.4px;
   text-align:left;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox .se-filter-chip-control{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox .se-filter-chip-control{
   width:100%;
   height:var(--pl-filter-control-h);
   min-height:var(--pl-filter-control-h);
@@ -137,7 +137,7 @@ body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .
   align-items:center;
   overflow:hidden;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox .se-filter-chip-trigger{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox .se-filter-chip-trigger{
   flex:1 1 auto;
   min-width:0;
   width:100%;
@@ -154,13 +154,13 @@ body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .
   text-align:left;
   cursor:pointer;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox .se-filter-chip-value{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox .se-filter-chip-value{
   display:block;
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox .se-filter-chip-chev{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox .se-filter-chip-chev{
   flex-shrink:0;
   display:flex;
   align-items:center;
@@ -169,39 +169,39 @@ body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .
   align-self:stretch;
   color:#94A3B8;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox.is-open{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox.is-open{
   z-index:80;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox.is-open .se-filter-chip-control,
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox .se-filter-chip-control:focus-within,
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-search-chip.pl-header-field-listbox.is-active .se-filter-chip-control{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox.is-open .se-filter-chip-control,
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox .se-filter-chip-control:focus-within,
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-search-chip.pl-header-field-listbox.is-active .se-filter-chip-control{
   border-color:#93C5FD !important;
   box-shadow:0 0 0 3px rgba(37,99,235,.12);
   background:#fff !important;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox.is-open .se-filter-chip-chev{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox.is-open .se-filter-chip-chev{
   color:#2563EB;
   transform:rotate(180deg);
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox .se-filter-listbox{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox .se-filter-listbox{
   padding:6px;
   border:1px solid #E5E7EB;
   border-radius:10px;
   box-shadow:0 8px 24px rgba(15,23,42,.1);
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox .se-filter-listbox-option{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox .se-filter-listbox-option{
   padding:10px 12px;
   border-radius:8px;
   font-size:13px;
   font-weight:500;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox .se-filter-listbox-option.is-selected{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox .se-filter-listbox-option.is-selected{
   background:rgba(37,99,235,.08);
   color:#2563EB;
   font-weight:600;
 }
 
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-search-chip{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-search-chip{
   position:relative;
   flex:1 1 180px;
   width:auto;
@@ -209,8 +209,8 @@ body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .
   max-width:none;
   z-index:20;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-search-chip .pl-header-search,
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-search-chip .pl-search-input{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-search-chip .pl-header-search,
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-search-chip .pl-search-input{
   flex:1 1 auto;
   min-width:0;
   width:100%;
@@ -228,39 +228,39 @@ body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .
   appearance:none;
   -webkit-appearance:none;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-search-input::-webkit-search-cancel-button{-webkit-appearance:none}
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-search-input::placeholder{color:#94A3B8;font-weight:500}
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-search-input::-webkit-search-cancel-button{-webkit-appearance:none}
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-search-input::placeholder{color:#94A3B8;font-weight:500}
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){
   flex:1 1 150px;
   width:auto;
   min-width:140px;
   max-width:200px;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) #purchase-ledger-supplier-listbox.pl-header-field-listbox{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) #purchase-ledger-supplier-listbox.pl-header-field-listbox{
   flex:1 1 260px;
   min-width:220px;
   max-width:none;
 }
 /* Compact chips — short labels; free space for supplier + date */
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) #purchase-ledger-payment-listbox.pl-header-field-listbox,
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) #purchase-ledger-category-listbox.pl-header-field-listbox{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) #purchase-ledger-payment-listbox.pl-header-field-listbox,
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) #purchase-ledger-category-listbox.pl-header-field-listbox{
   flex:0 1 auto;
   width:max-content;
   min-width:0;
   max-width:150px;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) #purchase-ledger-payment-listbox .se-filter-chip-trigger,
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) #purchase-ledger-category-listbox .se-filter-chip-trigger{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) #purchase-ledger-payment-listbox .se-filter-chip-trigger,
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) #purchase-ledger-category-listbox .se-filter-chip-trigger{
   padding:0 2px 0 10px;
   min-width:0;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) #purchase-ledger-payment-listbox .se-filter-chip-chev,
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) #purchase-ledger-category-listbox .se-filter-chip-chev{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) #purchase-ledger-payment-listbox .se-filter-chip-chev,
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) #purchase-ledger-category-listbox .se-filter-chip-chev{
   width:28px;
   min-width:28px;
   flex:0 0 28px;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip) .se-filter-chip-value{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip) .se-filter-chip-value{
   overflow:hidden;
   text-overflow:ellipsis;
 }
@@ -289,7 +289,7 @@ body.su-module .pl-date-range-host.pl-header-field .se-filter-chip--date-range .
   max-height:var(--pl-filter-control-h);
 }
 body.su-module .pl-date-range-host.pl-header-field .an-range-trigger,
-body.su-module #purchase-ledger-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger{
+body.su-module :is(#purchase-ledger-page, #unit-insights-report-page) .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger{
   min-width:0;
   width:max-content;
   max-width:100%;
@@ -307,24 +307,24 @@ body.su-module .pl-date-range-host.pl-header-field .se-filter-chip.is-filtered .
   background:#fff !important;
 }
 @media (max-width:1100px){
-  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-search-chip{
+  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-search-chip{
     flex:1 1 150px;
     min-width:140px;
     max-width:none;
   }
-  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){
+  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){
     flex:1 1 140px;
     width:auto;
     min-width:130px;
     max-width:180px;
   }
-  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) #purchase-ledger-supplier-listbox.pl-header-field-listbox{
+  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) #purchase-ledger-supplier-listbox.pl-header-field-listbox{
     flex:1 1 240px;
     min-width:200px;
     max-width:none;
   }
-  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) #purchase-ledger-payment-listbox.pl-header-field-listbox,
-  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) #purchase-ledger-category-listbox.pl-header-field-listbox{
+  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) #purchase-ledger-payment-listbox.pl-header-field-listbox,
+  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) #purchase-ledger-category-listbox.pl-header-field-listbox{
     flex:0 1 auto;
     width:max-content;
     min-width:0;
@@ -332,32 +332,32 @@ body.su-module .pl-date-range-host.pl-header-field .se-filter-chip.is-filtered .
   }
 }
 @media (max-width:900px){
-  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form).sr-topbar-filters{
+  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form).sr-topbar-filters{
     flex-wrap:wrap;
     justify-content:flex-start;
   }
-  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-kind-filter-host{
+  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-kind-filter-host{
     flex:0 0 auto;
     min-width:0;
     margin-right:0;
   }
-  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-search-chip{
+  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-search-chip{
     flex:1 1 160px;
     min-width:140px;
     max-width:none;
   }
-  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){
+  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){
     flex:1 1 150px;
     min-width:140px;
     max-width:none;
   }
-  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) #purchase-ledger-supplier-listbox.pl-header-field-listbox{
+  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) #purchase-ledger-supplier-listbox.pl-header-field-listbox{
     flex:1 1 240px;
     min-width:200px;
     max-width:none;
   }
-  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) #purchase-ledger-payment-listbox.pl-header-field-listbox,
-  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) #purchase-ledger-category-listbox.pl-header-field-listbox{
+  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) #purchase-ledger-payment-listbox.pl-header-field-listbox,
+  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) #purchase-ledger-category-listbox.pl-header-field-listbox{
     flex:0 1 auto;
     width:max-content;
     min-width:0;
@@ -370,33 +370,33 @@ body.su-module .pl-date-range-host.pl-header-field .se-filter-chip.is-filtered .
     max-width:100%;
   }
   body.su-module .pl-date-range-host.pl-header-field .an-range-trigger,
-  body.su-module #purchase-ledger-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger{
+  body.su-module :is(#purchase-ledger-page, #unit-insights-report-page) .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger{
     min-width:0;
     width:max-content;
     max-width:100%;
   }
 }
 @media (max-width:720px){
-  body.su-module .se-sales-header-filters:has(:is(#purchase-ledger-filter-form, #employee-master-filter-form)),
-  body.su-module .se-sales-header-filters:has(:is(#purchase-ledger-filter-form, #employee-master-filter-form)) .sr-topbar-filters,
-  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form).sr-topbar-filters{
+  body.su-module .se-sales-header-filters:has(:is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form)),
+  body.su-module .se-sales-header-filters:has(:is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form)) .sr-topbar-filters,
+  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form).sr-topbar-filters{
     flex-direction:row;
     flex-wrap:wrap;
     align-items:flex-end;
     width:100%;
   }
-  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .se-filter-chip-date-host,
-  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-date-range-host.pl-header-field{
+  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .se-filter-chip-date-host,
+  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-date-range-host.pl-header-field{
     flex:0 0 auto;
     width:max-content;
     min-width:0;
     max-width:100%;
   }
-  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-kind-filter-host{
+  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-kind-filter-host{
     flex:1 1 100%;
     max-width:none;
   }
-  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-search-chip{
+  body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-search-chip{
     flex:1 1 160px;
     min-width:140px;
     max-width:none;
@@ -422,19 +422,19 @@ body.su-module .pl-date-input{
 }
 body.su-module .pl-date-input::-webkit-calendar-picker-indicator{cursor:pointer}
 /* Supplier combobox — type-to-search in the chip (same as Purchase Verification) */
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox.ep-combobox-listbox .se-filter-chip-control{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox.ep-combobox-listbox .se-filter-chip-control{
   background:#fff !important;
   gap:0;
   padding:0;
   overflow:hidden;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox.ep-combobox-listbox.is-open .se-filter-chip-control,
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox.ep-combobox-listbox .se-filter-chip-control:focus-within{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox.ep-combobox-listbox.is-open .se-filter-chip-control,
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox.ep-combobox-listbox .se-filter-chip-control:focus-within{
   border-color:#93C5FD !important;
   box-shadow:0 0 0 3px rgba(37,99,235,.12);
   background:#fff !important;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox.ep-combobox-listbox input.se-filter-chip-combobox{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox.ep-combobox-listbox input.se-filter-chip-combobox{
   flex:1 1 auto;
   min-width:0;
   width:100%;
@@ -447,32 +447,32 @@ body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .
   text-overflow:ellipsis;
   white-space:nowrap;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox.ep-combobox-listbox input.se-filter-chip-combobox:focus{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox.ep-combobox-listbox input.se-filter-chip-combobox:focus{
   text-overflow:clip;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox.ep-combobox-listbox input.se-filter-chip-combobox::placeholder{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox.ep-combobox-listbox input.se-filter-chip-combobox::placeholder{
   color:#94A3B8;
   font-weight:500;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .pl-header-field-listbox.ep-combobox-listbox .se-filter-chip-chev{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .pl-header-field-listbox.ep-combobox-listbox .se-filter-chip-chev{
   flex:0 0 34px;
   width:34px;
   min-width:34px;
   align-self:stretch;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) #purchase-ledger-supplier-listbox.is-open{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) #purchase-ledger-supplier-listbox.is-open{
   z-index:100;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) #purchase-ledger-supplier-listbox .se-filter-listbox{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) #purchase-ledger-supplier-listbox .se-filter-listbox{
   z-index:100;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .se-filter-chip-chev,
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) .an-range-chev{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .se-filter-chip-chev,
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) .an-range-chev{
   display:none !important;
 }
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) input.se-filter-chip-combobox::-webkit-search-decoration,
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) input.se-filter-chip-combobox::-webkit-search-results-button,
-body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form) input.se-filter-chip-combobox::-webkit-search-results-decoration{
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) input.se-filter-chip-combobox::-webkit-search-decoration,
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) input.se-filter-chip-combobox::-webkit-search-results-button,
+body.su-module :is(#purchase-ledger-filter-form, #employee-master-filter-form, #uir-filter-form) input.se-filter-chip-combobox::-webkit-search-results-decoration{
   display:none;
   -webkit-appearance:none;
 }

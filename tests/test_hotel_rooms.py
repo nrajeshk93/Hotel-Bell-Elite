@@ -1812,8 +1812,8 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertTrue(body.get("minted"))
         self.assertTrue(stay["invoiceGenerated"])
         inv_no = str(stay["invoiceNumber"])
-        short_fy = db_mod.indian_fiscal_year_short_label()
-        self.assertEqual(inv_no, f"HBE/{short_fy}/00001")
+        fy = db_mod.indian_fiscal_year_label()
+        self.assertEqual(inv_no, f"HBE/1/{fy}")
         self.assertEqual(stay["checkInAdvancePaid"], 1000)
         self.assertEqual(len(stay["payments"]), 1)
         self.assertEqual(stay["payments"][0]["amount"], 1500)
@@ -1833,7 +1833,7 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(unchanged["invoiceNumber"], stay["invoiceNumber"])
 
     def test_generate_invoice_continues_hbe_short_fy_series(self):
-        short_fy = db_mod.indian_fiscal_year_short_label()
+        fy = db_mod.indian_fiscal_year_label()
         conn = db_mod.get_db()
         try:
             db_mod.ensure_hotel_rooms_schema(conn)
@@ -1843,7 +1843,7 @@ class HotelRoomsTests(unittest.TestCase):
                     invoice_number, guest_name, estimated_total, balance_amount, status
                 ) VALUES (?, 'Seed', 1000, 1000, 'open')
                 """,
-                (f"HBE/{short_fy}/00219",),
+                (f"HBE/219/{fy}",),
             )
             conn.commit()
         finally:
@@ -1851,11 +1851,11 @@ class HotelRoomsTests(unittest.TestCase):
 
         self._checkin_with_charges("room-101", advance=0)
         room = self._generate_stay_invoice("room-101")
-        self.assertEqual(room["stay"]["invoiceNumber"], f"HBE/{short_fy}/00220")
+        self.assertEqual(room["stay"]["invoiceNumber"], f"HBE/220/{fy}")
 
         self._checkin_with_charges("room-102", advance=0)
         room_b = self._generate_stay_invoice("room-102")
-        self.assertEqual(room_b["stay"]["invoiceNumber"], f"HBE/{short_fy}/00221")
+        self.assertEqual(room_b["stay"]["invoiceNumber"], f"HBE/221/{fy}")
 
     def test_set_discount_updates_balance_and_locks_after_generate(self):
         room = self._checkin_with_charges()

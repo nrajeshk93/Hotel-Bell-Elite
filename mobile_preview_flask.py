@@ -532,6 +532,35 @@ def preview_cash_ledger_route():
         return _json({"ok": False, "error": str(exc), "flask_base": ps.FLASK_BASE}, 500)
 
 
+@bp.route("/preview-api/hotel/invoice-ledger", methods=["GET"])
+def preview_hotel_invoice_ledger_route():
+    denied = _deny("hotel_invoice_ledger")
+    if denied:
+        return _json(denied, 403)
+    ps = _preview_serve()
+    qs = parse_qs(request.query_string.decode("utf-8"))
+    q = (qs.get("q") or [""])[0]
+    status = (qs.get("status") or ["all"])[0]
+    invoice = (qs.get("invoice") or ["all"])[0]
+    agency = (qs.get("agency") or ["all"])[0]
+    date_from = (qs.get("date_from") or [""])[0].strip()
+    date_to = (qs.get("date_to") or [""])[0].strip()
+    clear_dates = (qs.get("clear") or ["0"])[0].strip().lower() in ("1", "true", "yes")
+    try:
+        payload = ps.fetch_hotel_invoice_ledger(
+            q=q,
+            status=status,
+            invoice=invoice,
+            agency=agency,
+            date_from="" if clear_dates else date_from,
+            date_to="" if clear_dates else date_to,
+            default_fy=(not clear_dates and not date_from and not date_to),
+        )
+        return _json(payload)
+    except Exception as exc:  # noqa: BLE001
+        return _json({"ok": False, "error": str(exc), "flask_base": ps.FLASK_BASE}, 500)
+
+
 @bp.route("/preview-api/approvals/expense/<int:expense_id>", methods=["GET"])
 def preview_expense_detail_route(expense_id: int):
     denied = _deny("approvals")

@@ -91,6 +91,7 @@ _REPORTS_SUBMODULES = (
     {"key": "kot", "label": "KOT"},
     {"key": "restaurant_sales", "label": "Sales - Restaurant & Bar"},
     {"key": "menu_sales", "label": "Menu Insights"},
+    {"key": "unit_insights", "label": "Unit Insight"},
     {"key": "customer_insights", "label": "Customer Insights"},
     {
         "key": "gst",
@@ -669,6 +670,10 @@ _REPORTS_ENDPOINT_GROUPS = {
     "menu_sales": {
         "sales_report_menu",
         "sales_report_menu_export",
+    },
+    "unit_insights": {
+        "sales_report_unit_insights",
+        "sales_report_unit_insights_export",
     },
     "customer_insights": {
         "sales_report_customer_insights",
@@ -1921,6 +1926,7 @@ def mobile_module_access(user):
             "approvals": False,
             "purchase_ledger": False,
             "cash_ledger": False,
+            "hotel_invoice_ledger": False,
             "store": False,
             "stock_audit": False,
             "payroll_employee": False,
@@ -1949,6 +1955,7 @@ def mobile_module_access(user):
         "approvals": user_can_access_accounts_submodule(user, "purchase_verification"),
         "purchase_ledger": user_can_access_accounts_submodule(user, "purchase_ledger"),
         "cash_ledger": user_can_access_accounts_submodule(user, "cash_ledger"),
+        "hotel_invoice_ledger": user_can_access_hotel_rooms_submodule(user, "invoice_ledger"),
         "store": user_can_access_stores_submodule(user, "stock"),
         "stock_audit": user_can_access_stores_submodule(user, "stock_audit"),
         "payroll_employee": user_can_access_payroll_submodule(user, "employee"),

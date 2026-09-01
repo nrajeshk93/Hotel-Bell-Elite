@@ -1,4 +1,4 @@
-"""Bar POS invoice numbers: INV/{yy-yy}/{n}."""
+"""Bar POS invoice numbers: INV/{n}/{YYYY-YY}."""
 
 import os
 import tempfile
@@ -92,7 +92,7 @@ class PosBarInvoiceNoTests(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
         body = res.get_json()
-        self.assertEqual(body["invoice"]["order_no"], "INV/26-27/1")
+        self.assertEqual(body["invoice"]["order_no"], "INV/1/2026-27")
 
     def test_sequences_increment_within_fy(self):
         first = self.client.post(
@@ -103,8 +103,8 @@ class PosBarInvoiceNoTests(unittest.TestCase):
             "/bar-point-of-sale/api/invoices",
             json=self._payload("INV/CCCCCC/26-27", customerBill=True),
         ).get_json()["invoice"]["order_no"]
-        self.assertEqual(first, "INV/26-27/1")
-        self.assertEqual(second, "INV/26-27/2")
+        self.assertEqual(first, "INV/1/2026-27")
+        self.assertEqual(second, "INV/2/2026-27")
 
     def test_bar_and_restaurant_sequences_are_independent(self):
         bar = self.client.post(
@@ -115,8 +115,8 @@ class PosBarInvoiceNoTests(unittest.TestCase):
             "/point-of-sale/api/invoices",
             json=self._payload("SPC/ZZZZZZ/26-27", customerBill=True),
         ).get_json()["invoice"]["order_no"]
-        self.assertEqual(bar, "INV/26-27/1")
-        self.assertEqual(rest, "SPC/26-27/1")
+        self.assertEqual(bar, "INV/1/2026-27")
+        self.assertEqual(rest, "SPC/1/2026-27")
 
     def test_nil_tax_generate_uses_nill_series(self):
         res = self.client.post(
@@ -138,7 +138,7 @@ class PosBarInvoiceNoTests(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
         body = res.get_json()
-        self.assertEqual(body["invoice"]["order_no"], "INV/26-27/Nill/1")
+        self.assertEqual(body["invoice"]["order_no"], "INV/Nill/1/2026-27")
         self.assertEqual(body["invoice"]["outlet"], "bar")
         self.assertTrue(body["invoice"].get("customer_bill_sent"))
 
@@ -173,11 +173,12 @@ class PosBarInvoiceNoTests(unittest.TestCase):
                 totals=nill_totals,
             ),
         ).get_json()["invoice"]["order_no"]
-        self.assertEqual(taxed, "INV/26-27/1")
-        self.assertEqual(nill, "INV/26-27/Nill/1")
-        self.assertEqual(nill2, "INV/26-27/Nill/2")
+        self.assertEqual(taxed, "INV/1/2026-27")
+        self.assertEqual(nill, "INV/Nill/1/2026-27")
+        self.assertEqual(nill2, "INV/Nill/2/2026-27")
 
     def test_nill_order_no_is_final(self):
+        self.assertTrue(db_mod.is_bar_inv_nill_order_no("INV/Nill/1/2026-27"))
         self.assertTrue(db_mod.is_bar_inv_nill_order_no("INV/26-27/Nill/1"))
-        self.assertFalse(db_mod.is_bar_inv_order_no("INV/26-27/Nill/1"))
-        self.assertFalse(db_mod.is_provisional_pos_order_no("INV/26-27/Nill/1"))
+        self.assertFalse(db_mod.is_bar_inv_order_no("INV/Nill/1/2026-27"))
+        self.assertFalse(db_mod.is_provisional_pos_order_no("INV/Nill/1/2026-27"))
