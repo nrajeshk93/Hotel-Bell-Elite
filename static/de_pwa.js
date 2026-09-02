@@ -148,11 +148,17 @@
           (reg && reg.active) ||
           null;
         return askCacheVersion(worker).then(function (local) {
-          if (local && remote && local !== remote && reg && reg.update) {
-            try {
-              reg.update();
-            } catch (e2) {}
-          }
+          if (!local || !remote || local === remote) return;
+          try {
+            if (reg && reg.update) reg.update();
+          } catch (e2) {}
+          var path = (window.location && window.location.pathname) || '';
+          if (path === '/' || path === '/login') return;
+          if (window.__hbeSwReloaded) return;
+          window.__hbeSwReloaded = true;
+          try {
+            window.location.reload();
+          } catch (e3) {}
         });
       })
       .catch(function () {});
@@ -197,6 +203,7 @@
         document.addEventListener('visibilitychange', onVisible);
         window.addEventListener('focus', onVisible);
         window.addEventListener('pageshow', onVisible);
+        window.setInterval(onVisible, 15000);
       })
       .catch(function () {
         /* Ignore — HTTPS / localhost required; silent in unsupported hosts. */

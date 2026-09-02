@@ -337,6 +337,7 @@ from seo_privacy import register_seo_privacy
 from asset_digest import (
     apply_no_store_cdn,
     cache_version,
+    current_static_hash,
     render_service_worker,
     rewrite_html_static_urls,
 )
@@ -1873,7 +1874,8 @@ def _sales_expense_total(conn, company, location, sales_date):
     row = conn.execute(
         "SELECT COALESCE(SUM(amount), 0) AS total FROM sales_update_expenses "
         "WHERE company=? AND location=? AND sales_date=?"
-        + _SALES_ENTRY_EXPENSE_KIND_SQL,
+        + _SALES_ENTRY_EXPENSE_KIND_SQL
+        + " AND cancelled_at IS NULL",
         (company, location, sales_date, *_SALES_ENTRY_EXPENSE_KIND_PARAMS),
     ).fetchone()
     return round_half_up(row["total"] if row else 0, 2)
@@ -2238,9 +2240,19 @@ def _parse_purchase_ledger_kind(value):
     return PURCHASE_LEDGER_FILTER_ALL, None
 
 
-def _next_expense_code(conn, company, entry_kind=None):
-    company = (company or DEFAULT_COMPANY).strip() or DEFAULT_COMPANY
-    kind = _normalize_ledger_entry_kind(entry_kind)
+def _ensure_sales_update_expense_code_seq(conn):
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS sales_update_expense_code_seq (
+               company  TEXT    NOT NULL,
+               kind     TEXT    NOT NULL,
+               last_num INTEGER NOT NULL DEFAULT 0,
+               PRIMARY KEY (company, kind)
+           )"""
+    )
+
+
+def _max_expense_code_num(conn, company, kind):
+    """Max parsed expense_code number for company+kind, including cancelled rows."""
     token = "PU" if kind == LEDGER_ENTRY_KIND_PURCHASE else "EX"
     prefix = f"{company}-{token}-"
     rows = conn.execute(
@@ -2257,7 +2269,45 @@ def _next_expense_code(conn, company, entry_kind=None):
             max_num = max(max_num, int(code[len(prefix):]))
         except (TypeError, ValueError):
             continue
-    return f"{prefix}{max_num + 1}"
+    return max_num
+
+
+def _next_expense_code(conn, company, entry_kind=None):
+    """Mint the next HBE-PU-n / HBE-EX-n from the monotonic seq table."""
+    company = (company or DEFAULT_COMPANY).strip() or DEFAULT_COMPANY
+    kind = _normalize_ledger_entry_kind(entry_kind)
+    seq_kind = (
+        LEDGER_ENTRY_KIND_PURCHASE
+        if kind == LEDGER_ENTRY_KIND_PURCHASE
+        else LEDGER_ENTRY_KIND_EXPENSE
+    )
+    token = "PU" if seq_kind == LEDGER_ENTRY_KIND_PURCHASE else "EX"
+    _ensure_sales_update_expense_code_seq(conn)
+    row = conn.execute(
+        """SELECT last_num FROM sales_update_expense_code_seq
+           WHERE company = ? AND kind = ?""",
+        (company, seq_kind),
+    ).fetchone()
+    if row is None:
+        scanned = _max_expense_code_num(conn, company, seq_kind)
+        conn.execute(
+            """INSERT INTO sales_update_expense_code_seq (company, kind, last_num)
+               VALUES (?, ?, ?)""",
+            (company, seq_kind, scanned),
+        )
+    conn.execute(
+        """UPDATE sales_update_expense_code_seq
+           SET last_num = last_num + 1
+           WHERE company = ? AND kind = ?""",
+        (company, seq_kind),
+    )
+    row = conn.execute(
+        """SELECT last_num FROM sales_update_expense_code_seq
+           WHERE company = ? AND kind = ?""",
+        (company, seq_kind),
+    ).fetchone()
+    n = int(row["last_num"] or 1) if row else 1
+    return f"{company}-{token}-{n}"
 
 
 def _sales_expense_entries(conn, company, location, sales_date):
@@ -2269,6 +2319,7 @@ def _sales_expense_entries(conn, company, location, sales_date):
            WHERE e.company=? AND e.location=? AND e.sales_date=?"""
         + _SALES_ENTRY_EXPENSE_KIND_SQL.replace("entry_kind", "e.entry_kind")
         + """
+              AND e.cancelled_at IS NULL
            ORDER BY e.created_at, e.id""",
         (company, location, sales_date, *_SALES_ENTRY_EXPENSE_KIND_PARAMS),
     ).fetchall()
@@ -2397,6 +2448,7 @@ CREDIT_SETTLEMENT_STATUS_LABELS = {
     "outstanding": "Outstanding",
     "partial": "Partial",
     "cleared": "Cleared",
+    "cancelled": "Cancelled",
 }
 
 CREDIT_PAYMENT_METHOD_CASH = EXPENSE_PAYMENT_CASH
@@ -2927,6 +2979,7 @@ def _normalize_credit_payment_view(value):
 def _purchase_ledger_entries(conn, date_from, date_to, supplier_id=None, company=None, category=None, payment_type=None, entry_kind=None):
     sql = """SELECT e.id, e.expense_code, e.sales_date, e.company, e.description, e.amount, e.payment_type,
                     e.transaction_id, e.category, e.invoice_number, e.supplier_id, e.entry_kind,
+                    e.created_at, e.cancelled_at, e.cancelled_by,
                     s.name AS supplier_name, s.gst AS supplier_gst,
                     COALESCE((
                         SELECT SUM(a.amount) FROM credit_payment_allocations a WHERE a.expense_id = e.id
@@ -2967,9 +3020,12 @@ def _purchase_ledger_entries(conn, date_from, date_to, supplier_id=None, company
         item["display_payment_type"] = _purchase_ledger_display_payment_type(
             item["payment_type"], item["amount"], item["paid_amount"], clearance_method
         )
-        item["settlement_status"] = _credit_settlement_status(
-            item["payment_type"], item["amount"], item["paid_amount"]
-        )
+        if item.get("cancelled_at"):
+            item["settlement_status"] = "cancelled"
+        else:
+            item["settlement_status"] = _credit_settlement_status(
+                item["payment_type"], item["amount"], item["paid_amount"]
+            )
         entries.append(item)
     purchase_labels = _expense_category_labels(conn, module=LEDGER_MODULE_PURCHASE)
     expense_labels = _expense_category_labels(conn, module=LEDGER_MODULE_EXPENSE)
@@ -2995,7 +3051,8 @@ def _outstanding_credit_expenses(conn, date_from=None, date_to=None, supplier_id
                     ), 0) AS verified_amount
              FROM sales_update_expenses e
              LEFT JOIN suppliers s ON s.id = e.supplier_id
-             WHERE e.location = ? AND e.payment_type = ?"""
+             WHERE e.location = ? AND e.payment_type = ?
+               AND e.cancelled_at IS NULL"""
     params = [OUTLET_HOTEL, EXPENSE_PAYMENT_CREDIT]
     if date_from:
         sql += " AND e.sales_date >= ?"
@@ -3111,7 +3168,8 @@ def _pending_purchase_verifications(conn, date_from=None, date_to=None, supplier
                     ), 0) AS paid_amount
              FROM sales_update_expenses e
              LEFT JOIN suppliers s ON s.id = e.supplier_id
-             WHERE e.location = ?"""
+             WHERE e.location = ?
+               AND e.cancelled_at IS NULL"""
     params = [OUTLET_HOTEL]
     if date_from:
         sql += " AND e.sales_date >= ?"
@@ -4233,7 +4291,8 @@ def _duplicate_expense_invoice(conn, supplier_id, invoice_number, exclude_expens
         return None
     sql = """SELECT id, expense_code FROM sales_update_expenses
              WHERE supplier_id = ? AND LOWER(TRIM(invoice_number)) = LOWER(?)
-               AND TRIM(invoice_number) != ''"""
+               AND TRIM(invoice_number) != ''
+               AND cancelled_at IS NULL"""
     params = [supplier_id, invoice_number]
     exclude_ids = []
     if exclude_expense_id is not None:
@@ -4699,7 +4758,7 @@ def _aggregate_sales_kpis(conn, date_from, date_to, company=None, location=None,
             vals, row["location"], difference_mode
         )
 
-    expense_sql = "SELECT COALESCE(SUM(amount), 0) AS total FROM sales_update_expenses WHERE sales_date >= ? AND sales_date <= ?"
+    expense_sql = "SELECT COALESCE(SUM(amount), 0) AS total FROM sales_update_expenses WHERE sales_date >= ? AND sales_date <= ? AND cancelled_at IS NULL"
     expense_params = [date_from.isoformat(), date_to.isoformat()]
     if company:
         expense_sql += " AND company = ?"
@@ -4830,7 +4889,7 @@ INVOICE_KPI_DATE_TO = date(2026, 5, 4)
 def _invoice_sales_expense_total(conn, date_from, date_to, company=None, location=None):
     expense_sql = (
         "SELECT COALESCE(SUM(amount), 0) AS total FROM sales_update_expenses "
-        "WHERE sales_date >= ? AND sales_date <= ?"
+        "WHERE sales_date >= ? AND sales_date <= ? AND cancelled_at IS NULL"
     )
     expense_params = [date_from.isoformat(), date_to.isoformat()]
     if company:
@@ -5011,11 +5070,19 @@ SALES_ENTRY_LOCK_MESSAGE = (
 )
 PURCHASE_LEDGER_EDIT_DAYS_SUPER_ADMIN = 30
 PURCHASE_LEDGER_EDIT_DAYS_ADMIN = 7
+PURCHASE_LEDGER_EDIT_HOURS = 4
 PURCHASE_LEDGER_EDIT_WINDOW_MESSAGE = (
     "This purchase is outside your edit window and can no longer be changed."
 )
 PURCHASE_LEDGER_CREDIT_SETTLED_EDIT_MESSAGE = (
     "Only outstanding credit purchases can be edited after payment has been applied."
+)
+PURCHASE_LEDGER_CANCEL_FORBIDDEN_MESSAGE = (
+    "Only a Super Administrator can cancel this."
+)
+PURCHASE_LEDGER_ALREADY_CANCELLED_MESSAGE = "This entry is already cancelled."
+PURCHASE_LEDGER_CANCELLED_EDIT_MESSAGE = (
+    "This entry has been cancelled and cannot be edited."
 )
 
 
@@ -5081,8 +5148,49 @@ def _parse_purchase_ledger_entry_date(sales_date):
         return None
 
 
-def _purchase_ledger_entry_in_edit_window(user, sales_date):
-    """True when sales_date is within the role-based purchase edit window."""
+def _parse_purchase_ledger_created_at(created_at):
+    """Parse sales_update_expenses.created_at as a naive local datetime."""
+    if isinstance(created_at, datetime):
+        return created_at.replace(tzinfo=None)
+    text = str(created_at or "").strip()
+    if not text:
+        return None
+    if len(text) >= 19:
+        try:
+            return datetime.strptime(text[:19], "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            try:
+                return datetime.strptime(text[:19], "%Y-%m-%dT%H:%M:%S")
+            except ValueError:
+                pass
+    try:
+        d = date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+    return datetime(d.year, d.month, d.day)
+
+
+def _purchase_ledger_entry_is_cancelled(entry):
+    if not entry:
+        return False
+    if entry.get("cancelled_at"):
+        return True
+    return str(entry.get("settlement_status") or "").strip().lower() == "cancelled"
+
+
+def _purchase_ledger_created_at_in_window(created_at):
+    """True when created_at is within PURCHASE_LEDGER_EDIT_HOURS (all roles)."""
+    created = _parse_purchase_ledger_created_at(created_at)
+    if created is None:
+        return False
+    age = datetime.now() - created
+    if age.total_seconds() < 0:
+        return True
+    return age < timedelta(hours=PURCHASE_LEDGER_EDIT_HOURS)
+
+
+def _purchase_ledger_sales_date_in_day_window(user, sales_date):
+    """True when sales_date is within 7 days (staff) or 30 days (Super Admin)."""
     entry_date = _parse_purchase_ledger_entry_date(sales_date)
     if entry_date is None:
         return False
@@ -5092,43 +5200,54 @@ def _purchase_ledger_entry_in_edit_window(user, sales_date):
     return age_days < _purchase_ledger_edit_window_days(user)
 
 
-def _purchase_ledger_entry_can_edit(user, entry):
-    """True when the user may edit a purchase ledger row (window + settlement)."""
+def _purchase_ledger_entry_in_action_window(user, entry):
+    """True inside 4 hours of created_at, or inside the 7/30-day bill-date window."""
     if not entry:
         return False
-    if not _purchase_ledger_entry_in_edit_window(user, entry.get("sales_date")):
+    if _purchase_ledger_created_at_in_window(entry.get("created_at")):
+        return True
+    return _purchase_ledger_sales_date_in_day_window(user, entry.get("sales_date"))
+
+
+def _purchase_ledger_entry_in_edit_window(user, created_at=None, sales_date=None, entry=None):
+    """True when the purchase may still be edited or cancelled."""
+    if entry is None:
+        entry = {"created_at": created_at, "sales_date": sales_date}
+    return _purchase_ledger_entry_in_action_window(user, entry)
+
+
+def _purchase_ledger_entry_can_edit(user, entry):
+    """True when a ledger user may edit (not cancelled; cleared OK)."""
+    if not entry:
         return False
-    settlement = entry.get("settlement_status")
-    if settlement is None:
-        payment_type = entry.get("payment_type")
-        amount = entry.get("amount")
-        paid_total = entry.get("paid_amount", 0)
-        settlement = _credit_settlement_status(payment_type, amount, paid_total)
-    # Non-credit rows are treated as cleared by settlement helper; still editable.
-    payment_type = _normalize_expense_payment_type(entry.get("payment_type"))
-    if payment_type == EXPENSE_PAYMENT_CREDIT and settlement in ("partial", "cleared"):
+    if _purchase_ledger_entry_is_cancelled(entry):
         return False
-    return True
+    return _purchase_ledger_entry_in_action_window(user, entry)
+
+
+def _purchase_ledger_entry_can_cancel(user, entry):
+    """True when Super Admin may cancel (not already cancelled)."""
+    if not entry or not user or not user.get("is_admin"):
+        return False
+    if _purchase_ledger_entry_is_cancelled(entry):
+        return False
+    return _purchase_ledger_entry_in_action_window(user, entry)
 
 
 def _purchase_ledger_edit_guard_error(user, entry, *, new_sales_date=None):
     """Return an error message when edit is blocked, else None."""
     if not entry:
         return "Purchase not found."
-    payment_type = _normalize_expense_payment_type(entry.get("payment_type"))
-    settlement = entry.get("settlement_status")
-    if settlement is None:
-        settlement = _credit_settlement_status(
-            payment_type, entry.get("amount"), entry.get("paid_amount", 0)
-        )
-    if payment_type == EXPENSE_PAYMENT_CREDIT and settlement in ("partial", "cleared"):
-        return PURCHASE_LEDGER_CREDIT_SETTLED_EDIT_MESSAGE
-    if not _purchase_ledger_entry_in_edit_window(user, entry.get("sales_date")):
+    if _purchase_ledger_entry_is_cancelled(entry):
+        return PURCHASE_LEDGER_CANCELLED_EDIT_MESSAGE
+    if not _purchase_ledger_entry_in_action_window(user, entry):
         return PURCHASE_LEDGER_EDIT_WINDOW_MESSAGE
     if new_sales_date is not None and str(new_sales_date).strip() != str(
         entry.get("sales_date") or ""
     ).strip():
-        if not _purchase_ledger_entry_in_edit_window(user, new_sales_date):
+        probe = dict(entry)
+        probe["sales_date"] = new_sales_date
+        if not _purchase_ledger_entry_in_action_window(user, probe):
             return PURCHASE_LEDGER_EDIT_WINDOW_MESSAGE
     return None
 
@@ -5279,10 +5398,19 @@ def _static_asset_cache(response):
     ):
         return response
     existing = (response.headers.get("Cache-Control") or "").lower()
-    if "no-store" in existing or "no-cache" in existing:
+    if "no-store" in existing:
         return response
-    # Hashed `?v=` URLs are immutable; 7 days is safe and CDN-friendly.
-    response.headers.setdefault("Cache-Control", "public, max-age=604800")
+    name = path[len("/static/") :]
+    requested_hash = (request.args.get("v") or "").strip()
+    live_hash = current_static_hash(name, app.static_folder) or ""
+    # Only the current content hash is immutable. A stale ?v= (or none) must
+    # not pin old CSS/JS in Chrome or Cloudflare — that is why incognito
+    # showed new code while a normal tab kept the previous layout.
+    if requested_hash and live_hash and requested_hash == live_hash:
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        response.headers["CDN-Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+    apply_no_store_cdn(response)
     return response
 
 
@@ -5839,7 +5967,8 @@ def _dashboard_kpi_spark_series(conn, date_from, date_to, company=None, location
 
     expense_sql = """SELECT sales_date, COALESCE(SUM(amount), 0) AS total
                      FROM sales_update_expenses
-                     WHERE sales_date >= ? AND sales_date <= ?"""
+                     WHERE sales_date >= ? AND sales_date <= ?
+                       AND cancelled_at IS NULL"""
     expense_params = [spark_from.isoformat(), spark_to.isoformat()]
     if company:
         expense_sql += " AND company = ?"
@@ -14516,6 +14645,7 @@ def _cash_ledger_expense_rows(conn, company, date_from, date_to, location=None):
             WHERE e.company = ?
               AND e.location IN ({placeholders})
               AND e.payment_type = ?
+              AND e.cancelled_at IS NULL
               AND e.sales_date >= ? AND e.sales_date <= ?
             ORDER BY e.sales_date, e.id""",
         (
@@ -14915,12 +15045,13 @@ def _cash_ledger_available_as_of(conn, company, as_of_date, *, exclude_expense_i
             exclude_id = None
         if exclude_id:
             row = conn.execute(
-                """SELECT amount, payment_type, sales_date
+                """SELECT amount, payment_type, sales_date, cancelled_at
                    FROM sales_update_expenses WHERE id = ? AND company = ?""",
                 (exclude_id, company),
             ).fetchone()
             if (
                 row
+                and not row["cancelled_at"]
                 and _normalize_expense_payment_type(row["payment_type"]) == EXPENSE_PAYMENT_CASH
                 and (row["sales_date"] or "") <= as_of.isoformat()
             ):
@@ -15060,26 +15191,31 @@ def purchase_ledger():
 
     for entry in entries:
         entry["can_edit"] = _purchase_ledger_entry_can_edit(user, entry)
+        entry["can_cancel"] = _purchase_ledger_entry_can_cancel(user, entry)
 
-    total_amount = round_half_up(sum(entry["amount"] for entry in entries), 2)
-    purchase_kind_entries = [
+    active_entries = [
         entry for entry in entries
+        if (entry.get("settlement_status") or "") != "cancelled"
+    ]
+    total_amount = round_half_up(sum(entry["amount"] for entry in active_entries), 2)
+    purchase_kind_entries = [
+        entry for entry in active_entries
         if entry.get("entry_kind") == LEDGER_ENTRY_KIND_PURCHASE
     ]
     expense_kind_entries = [
-        entry for entry in entries
+        entry for entry in active_entries
         if entry.get("entry_kind") != LEDGER_ENTRY_KIND_PURCHASE
     ]
     outstanding_entries = [
-        entry for entry in entries
+        entry for entry in active_entries
         if entry.get("settlement_status") in ("outstanding", "partial")
     ]
     cleared_entries = [
-        entry for entry in entries
+        entry for entry in active_entries
         if entry.get("settlement_status") == "cleared"
     ]
     cash_entries = [
-        entry for entry in entries
+        entry for entry in active_entries
         if entry.get("display_payment_type") == EXPENSE_PAYMENT_CASH
     ]
     purchase_kind_total = round_half_up(sum(entry["amount"] for entry in purchase_kind_entries), 2)
@@ -15240,12 +15376,16 @@ def export_purchase_ledger_report():
         except (TypeError, ValueError):
             return value
 
-    purchase_entries = [
+    active_entries = [
         entry for entry in entries
+        if (entry.get("settlement_status") or "") != "cancelled"
+    ]
+    purchase_entries = [
+        entry for entry in active_entries
         if entry.get("entry_kind") == LEDGER_ENTRY_KIND_PURCHASE
     ]
     expense_entries = [
-        entry for entry in entries
+        entry for entry in active_entries
         if entry.get("entry_kind") != LEDGER_ENTRY_KIND_PURCHASE
     ]
     purchase_total = round_half_up(sum(e.get("amount") or 0 for e in purchase_entries), 2)
@@ -15254,7 +15394,7 @@ def export_purchase_ledger_report():
 
     pay_totals = {}
     pay_order = []
-    for entry in entries:
+    for entry in active_entries:
         key = entry.get("display_payment_type") or entry.get("payment_type") or ""
         label = PURCHASE_LEDGER_PAYMENT_LABELS.get(key, key) or "Other"
         if label not in pay_totals:
@@ -15576,7 +15716,7 @@ def purchase_ledger_add():
 
 
 def _update_purchase_ledger_expense(conn, user, data):
-    """Update a hotel purchase within the role edit window (not settled credit)."""
+    """Update a hotel purchase within the 4-hour created_at window."""
     expense_id = data.get("id") or data.get("expense_id")
     try:
         expense_id = int(expense_id)
@@ -15585,7 +15725,8 @@ def _update_purchase_ledger_expense(conn, user, data):
 
     existing = conn.execute(
         """SELECT id, company, location, sales_date, description, amount, payment_type,
-                  transaction_id, supplier_id, category, invoice_number, expense_code, entry_kind
+                  transaction_id, supplier_id, category, invoice_number, expense_code, entry_kind,
+                  created_at, cancelled_at, cancelled_by
            FROM sales_update_expenses WHERE id = ?""",
         (expense_id,),
     ).fetchone()
@@ -15714,6 +15855,7 @@ def purchase_ledger_edit():
                     in (
                         PURCHASE_LEDGER_EDIT_WINDOW_MESSAGE,
                         PURCHASE_LEDGER_CREDIT_SETTLED_EDIT_MESSAGE,
+                        PURCHASE_LEDGER_CANCELLED_EDIT_MESSAGE,
                     )
                 )
                 else 400
@@ -15728,7 +15870,7 @@ def purchase_ledger_edit():
 
 
 def _delete_purchase_ledger_expense(conn, user, data):
-    """Delete a hotel purchase only when it is still outstanding credit."""
+    """Cancel a hotel purchase (status change; row and expense_code are kept)."""
     expense_id = data.get("id") or data.get("expense_id")
     try:
         expense_id = int(expense_id)
@@ -15736,7 +15878,8 @@ def _delete_purchase_ledger_expense(conn, user, data):
         return None, "Purchase not found."
 
     existing = conn.execute(
-        """SELECT id, company, location, sales_date, amount, payment_type, expense_code
+        """SELECT id, company, location, sales_date, amount, payment_type, expense_code,
+                  created_at, cancelled_at, cancelled_by
            FROM sales_update_expenses WHERE id = ?""",
         (expense_id,),
     ).fetchone()
@@ -15744,19 +15887,16 @@ def _delete_purchase_ledger_expense(conn, user, data):
         return None, "Purchase not found."
     existing = dict(existing)
     if existing.get("location") != OUTLET_HOTEL:
-        return None, "Only hotel purchases can be deleted here."
-
-    paid_total = _credit_expense_paid_total(conn, expense_id)
-    status = _credit_settlement_status(
-        existing.get("payment_type"), existing.get("amount"), paid_total
-    )
-    if status != "outstanding":
-        return None, "Only outstanding credit purchases can be deleted."
+        return None, "Only hotel purchases can be cancelled here."
+    if existing.get("cancelled_at"):
+        return None, PURCHASE_LEDGER_ALREADY_CANCELLED_MESSAGE
+    if not user or not user.get("is_admin"):
+        return None, PURCHASE_LEDGER_CANCEL_FORBIDDEN_MESSAGE
+    if not _purchase_ledger_entry_in_action_window(user, existing):
+        return None, PURCHASE_LEDGER_EDIT_WINDOW_MESSAGE
 
     company = existing.get("company") or DEFAULT_COMPANY
     sales_date = existing.get("sales_date") or ""
-    if not _purchase_ledger_entry_in_edit_window(user, sales_date):
-        return None, PURCHASE_LEDGER_EDIT_WINDOW_MESSAGE
     lock_error = _check_sales_date_lock(user, company, OUTLET_HOTEL, sales_date)
     if lock_error:
         return None, lock_error
@@ -15789,13 +15929,16 @@ def _delete_purchase_ledger_expense(conn, user, data):
             (expense_id,),
         )
     conn.execute(
-        "DELETE FROM sales_update_expenses WHERE id = ? AND location = ?",
-        (expense_id, OUTLET_HOTEL),
+        f"""UPDATE sales_update_expenses
+           SET cancelled_at = {SQL_NOW}, cancelled_by = ?, updated_at = {SQL_NOW}
+           WHERE id = ? AND location = ?""",
+        ((user or {}).get("id"), expense_id, OUTLET_HOTEL),
     )
     return {
         "expense_id": expense_id,
         "expense_code": existing.get("expense_code") or "",
         "sales_date": sales_date,
+        "settlement_status": "cancelled",
     }, None
 
 
@@ -15807,13 +15950,34 @@ def purchase_ledger_delete():
     try:
         result, error = _delete_purchase_ledger_expense(conn, user, data)
         if error:
-            status = 403 if "Cannot save" in error or "already saved" in error else 400
+            status = (
+                403
+                if (
+                    "Cannot save" in error
+                    or "already saved" in error
+                    or error
+                    in (
+                        PURCHASE_LEDGER_EDIT_WINDOW_MESSAGE,
+                        PURCHASE_LEDGER_CANCEL_FORBIDDEN_MESSAGE,
+                    )
+                )
+                else 400
+            )
             if "not found" in error.lower():
                 status = 404
             return jsonify({"ok": False, "error": error}), status
         conn.commit()
     finally:
         conn.close()
+    code = (result or {}).get("expense_code") or (result or {}).get("expense_id")
+    activity_audit.set_activity_audit(
+        f"Cancelled purchase {code} (purchase ledger)",
+        {
+            "expense_id": (result or {}).get("expense_id"),
+            "expense_code": (result or {}).get("expense_code"),
+        },
+        entity_id=code,
+    )
     return jsonify({"ok": True, **result})
 
 

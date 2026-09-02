@@ -202,6 +202,82 @@ class ActivityLogTests(unittest.TestCase):
         self.assertEqual(logs[0]["action"], "login")
         self.assertGreaterEqual(pages, 1)
 
+    def test_delete_summary_includes_json_unique_id(self):
+        with self.app.test_request_context(
+            "/accounts/purchase-ledger/delete",
+            method="POST",
+            json={"expense_code": "HBE-PU-126", "expense_id": 99},
+        ):
+            meta = {"action": "delete", "entity_type": "purchase"}
+            summary = activity_audit.default_activity_summary(
+                "purchase_ledger_delete", meta
+            )
+            entity_id = activity_audit.activity_entity_id_from_request()
+        self.assertEqual(entity_id, "HBE-PU-126")
+        self.assertIn("HBE-PU-126", summary)
+        self.assertIn("Delete", summary)
+
+    def test_search_finds_id_and_who_deleted(self):
+        conn = db_mod.get_db()
+        try:
+            activity_audit.record_activity_log(
+                "delete",
+                "accounts",
+                "Cancelled purchase HBE-PU-126 (purchase ledger)",
+                conn=conn,
+                user_id=self.admin_id,
+                username="admin_rajeshkumar",
+                entity_id="HBE-PU-126",
+                commit=True,
+            )
+            logs, total, _pages, _users = activity_audit.fetch_activity_logs(
+                conn, {"q": "HBE-PU-126"}, 1
+            )
+        finally:
+            conn.close()
+        self.assertEqual(total, 1)
+        self.assertEqual(logs[0]["username"], "admin_rajeshkumar")
+        self.assertIn("HBE-PU-126", logs[0]["summary"])
+
+    def test_activity_log_purges_rows_older_than_60_days(self):
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                """
+                INSERT INTO activity_log (
+                    user_id, username, action, module, entity_type, entity_id,
+                    summary, details_json, endpoint, method, path, ip_address,
+                    status_code, created_at
+                ) VALUES (?, ?, 'delete', 'accounts', 'purchase', 'HBE-PU-1',
+                          'old', '', '', 'POST', '/', '', 200,
+                          datetime('now', 'localtime', '-61 days'))
+                """,
+                (self.admin_id, "admin"),
+            )
+            conn.execute(
+                """
+                INSERT INTO activity_log (
+                    user_id, username, action, module, entity_type, entity_id,
+                    summary, details_json, endpoint, method, path, ip_address,
+                    status_code, created_at
+                ) VALUES (?, ?, 'delete', 'accounts', 'purchase', 'HBE-PU-2',
+                          'fresh', '', '', 'POST', '/', '', 200,
+                          datetime('now', 'localtime', '-3 days'))
+                """,
+                (self.admin_id, "admin"),
+            )
+            conn.commit()
+            deleted = activity_audit.purge_old_activity_logs(conn, commit=True)
+            rows = conn.execute(
+                "SELECT entity_id FROM activity_log WHERE action='delete' ORDER BY entity_id"
+            ).fetchall()
+        finally:
+            conn.close()
+        self.assertGreaterEqual(deleted, 1)
+        ids = [row["entity_id"] for row in rows]
+        self.assertNotIn("HBE-PU-1", ids)
+        self.assertIn("HBE-PU-2", ids)
+
 
 if __name__ == "__main__":
     unittest.main()

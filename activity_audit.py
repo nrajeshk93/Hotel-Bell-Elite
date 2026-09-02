@@ -27,6 +27,7 @@ from workspace_access import (
 logger = logging.getLogger(__name__)
 
 ACTIVITY_LOG_PAGE_SIZE = 50
+ACTIVITY_LOG_RETENTION_DAYS = 60
 
 ACTIVITY_LOG_ACTIONS = (
     "login",
@@ -270,6 +271,25 @@ def client_ip_from_request(req=None) -> str:
     return forwarded or (req.remote_addr or "")
 
 
+def purge_old_activity_logs(conn, *, days: int = ACTIVITY_LOG_RETENTION_DAYS, commit: bool = False) -> int:
+    """Drop activity_log rows older than ``days``. Returns rows deleted."""
+    try:
+        keep_days = max(1, int(days))
+    except (TypeError, ValueError):
+        keep_days = ACTIVITY_LOG_RETENTION_DAYS
+    cur = conn.execute(
+        """
+        DELETE FROM activity_log
+         WHERE datetime(created_at) < datetime('now', 'localtime', ?)
+        """,
+        (f"-{keep_days} days",),
+    )
+    deleted = int(cur.rowcount or 0)
+    if commit and deleted:
+        conn.commit()
+    return deleted
+
+
 def record_activity_log(
     action: str,
     module: str,
@@ -326,6 +346,7 @@ def record_activity_log(
         )
         if commit:
             conn.commit()
+        purge_old_activity_logs(conn, commit=commit)
     except Exception:
         logger.exception("Failed to write activity log")
     finally:
@@ -336,35 +357,84 @@ def record_activity_log(
                 pass
 
 
-def set_activity_audit(summary: str, details: Any = None) -> None:
+def set_activity_audit(summary: str, details: Any = None, entity_id: Any = None) -> None:
     g.audit_summary = (summary or "")[:500]
     if details is not None:
         g.audit_details = details
+    if entity_id is not None:
+        g.audit_entity_id = entity_id
+
+
+_ACTIVITY_CODE_KEYS = (
+    "expense_code",
+    "order_no",
+    "pos_order_no",
+    "invoice_no",
+    "invoice_number",
+    "reservation_no",
+    "emp_code",
+    "employee_code",
+    "code",
+)
+_ACTIVITY_ID_KEYS = (
+    "expense_id",
+    "invoice_id",
+    "emp_id",
+    "credit_id",
+    "user_id",
+    "role_id",
+    "item_id",
+    "category_id",
+    "room_id",
+    "payment_id",
+    "transfer_id",
+    "row_id",
+    "pending_bill_id",
+    "ticket_id",
+    "id",
+)
+
+
+def _request_activity_payload(req=None) -> dict:
+    req = req or request
+    payload: dict[str, Any] = {}
+    if req.view_args:
+        payload.update(req.view_args)
+    try:
+        if req.args:
+            payload.update(req.args.to_dict(flat=True))
+    except Exception:
+        pass
+    try:
+        if req.form:
+            payload.update(req.form.to_dict(flat=True))
+    except Exception:
+        pass
+    try:
+        data = req.get_json(silent=True)
+    except Exception:
+        data = None
+    if isinstance(data, dict):
+        payload.update(data)
+    return payload
+
+
+def _first_payload_value(payload: dict, keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        if key not in payload:
+            continue
+        value = payload.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return None
 
 
 def activity_entity_id_from_request(req=None) -> Any:
-    req = req or request
-    if not req.view_args:
-        return None
-    for key in (
-        "emp_id",
-        "credit_id",
-        "user_id",
-        "role_id",
-        "invoice_id",
-        "item_id",
-        "category_id",
-        "room_id",
-        "payment_id",
-        "transfer_id",
-        "row_id",
-        "expense_id",
-        "pending_bill_id",
-        "ticket_id",
-    ):
-        if key in req.view_args:
-            return req.view_args[key]
-    return None
+    payload = _request_activity_payload(req)
+    return _first_payload_value(payload, _ACTIVITY_CODE_KEYS + _ACTIVITY_ID_KEYS)
 
 
 def default_activity_summary(endpoint: str, meta: dict[str, str]) -> str:
@@ -373,7 +443,7 @@ def default_activity_summary(endpoint: str, meta: dict[str, str]) -> str:
     entity_id = activity_entity_id_from_request()
     label = normalize_endpoint(endpoint).replace("_", " ") or endpoint.replace("_", " ")
     if entity_id is not None:
-        return f"{action.title()} {entity} #{entity_id} ({label})"
+        return f"{action.title()} {entity} {entity_id} ({label})"
     return f"{action.title()} {entity} ({label})"
 
 
@@ -445,6 +515,7 @@ def parse_activity_log_page(raw_page) -> int:
 
 
 def fetch_activity_logs(conn, filters: dict, page: int, page_size: int = ACTIVITY_LOG_PAGE_SIZE):
+    purge_old_activity_logs(conn, commit=True)
     where = ["1=1"]
     params: list[Any] = []
     date_from = (filters.get("date_from") or "").strip()
@@ -473,8 +544,11 @@ def fetch_activity_logs(conn, filters: dict, page: int, page_size: int = ACTIVIT
         where.append("module = ?")
         params.append(module)
     if search:
-        where.append("summary LIKE ?")
-        params.append(f"%{search}%")
+        where.append(
+            "(summary LIKE ? OR IFNULL(username, '') LIKE ? OR IFNULL(entity_id, '') LIKE ?)"
+        )
+        needle = f"%{search}%"
+        params.extend([needle, needle, needle])
 
     where_sql = " AND ".join(where)
     offset = (page - 1) * page_size
@@ -523,7 +597,10 @@ def register_after_request(app, get_current_user_fn) -> None:
             if not meta:
                 return response
             user = get_current_user_fn()
+            entity_id = getattr(g, "audit_entity_id", None) or activity_entity_id_from_request()
             summary = getattr(g, "audit_summary", None) or default_activity_summary(endpoint, meta)
+            if entity_id is not None and str(entity_id) not in (summary or ""):
+                summary = f"{summary} {entity_id}".strip()
             details = getattr(g, "audit_details", None)
             record_activity_log(
                 meta["action"],
@@ -532,7 +609,7 @@ def register_after_request(app, get_current_user_fn) -> None:
                 user_id=user.get("id") if user else None,
                 username=user.get("username") if user else "",
                 entity_type=meta.get("entity_type", ""),
-                entity_id=activity_entity_id_from_request(),
+                entity_id=entity_id,
                 details=details,
                 endpoint=endpoint,
                 method=request.method,

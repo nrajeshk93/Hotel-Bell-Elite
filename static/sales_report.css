@@ -315,48 +315,133 @@ body.sales-report-module #msr-table tfoot tr.msr-grand-total td{
   border-top:2px solid var(--border, #d1d5db);
 }
 
-/* Unit Insight — units sold sits next to the product, not the far right. */
-body.sales-report-module #uir-table{
-  table-layout:auto;
-  width:auto;
-  max-width:100%;
+/* Unit Insight — compact two-column card matching the redesign mockup. */
+#unit-insights-report-page .uir-card-hdr{
+  align-items:flex-start;
+  padding:16px 20px 14px;
+}
+#unit-insights-report-page .uir-card-title{
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
   min-width:0;
 }
-body.sales-report-module #uir-table col.uir-col-product{width:auto;}
-body.sales-report-module #uir-table col.uir-col-units{width:1%;}
-body.sales-report-module #uir-table th,
-body.sales-report-module #uir-table td{
+#unit-insights-report-page .uir-title-icon{
+  width:36px;
+  height:36px;
+  border-radius:10px;
+  background:#E8F1FF;
+  color:#2563EB;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  flex:0 0 auto;
+}
+#unit-insights-report-page .uir-title-icon svg,
+#unit-insights-report-page .uir-card-title .uir-title-icon svg{
+  width:18px;
+  height:18px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+#unit-insights-report-page .uir-report-heading{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:0;
+}
+#unit-insights-report-page .uir-report-name{
+  font-size:16px;
+  font-weight:800;
+  color:#0F172A;
+  letter-spacing:-0.2px;
+  line-height:1.2;
+}
+#unit-insights-report-page .uir-report-dates{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-size:12px;
+  font-weight:500;
+  color:#64748B;
+}
+#unit-insights-report-page .uir-report-dates svg{
+  width:14px;
+  height:14px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  flex:0 0 auto;
+}
+#unit-insights-report-page .uir-count-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  margin-left:auto;
+  padding:6px 12px;
+  border-radius:999px;
+  background:#E8F1FF;
+  color:#1D4ED8;
+  font-size:12px;
+  font-weight:700;
+  line-height:1.2;
+  white-space:nowrap;
+}
+#unit-insights-report-page .uir-count-pill svg{
+  width:14px;
+  height:14px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+#unit-insights-report-page .pl-table-wrap{
+  display:block;
+  overflow-x:auto;
+}
+body.su-module #unit-insights-report-page #uir-table.pl-table{
+  width:100% !important;
+  min-width:0;
+  max-width:none;
+  margin:0;
+  table-layout:fixed;
+}
+#unit-insights-report-page #uir-table col.uir-col-product,
+#unit-insights-report-page #uir-table col.uir-col-units{
+  width:50%;
+}
+#unit-insights-report-page #uir-table th,
+#unit-insights-report-page #uir-table td{
   padding:12px 12px;
   vertical-align:middle;
 }
-body.sales-report-module #uir-table th.pl-sortable{
+#unit-insights-report-page #uir-table th.pl-sortable{
   position:relative;
 }
-body.sales-report-module #uir-table .uir-col-product .pl-name{
-  font-weight:600;
+#unit-insights-report-page #uir-table th.uir-col-product,
+#unit-insights-report-page #uir-table td.uir-col-product{
+  text-align:left !important;
 }
-body.sales-report-module #uir-table th.uir-col-product,
-body.sales-report-module #uir-table td.uir-col-product{
-  text-align:left;
-  padding-right:28px;
-}
-body.sales-report-module #uir-table th.uir-col-units,
-body.sales-report-module #uir-table td.uir-col-units{
-  text-align:left;
+#unit-insights-report-page #uir-table th.uir-col-units,
+#unit-insights-report-page #uir-table td.uir-col-units{
+  text-align:center !important;
+  border-left:1px solid #E5E7EB;
   white-space:nowrap;
-  width:1%;
   font-variant-numeric:tabular-nums;
   font-weight:700;
 }
-body.sales-report-module #unit-insights-report-page .uir-report-heading{
-  display:flex;
-  flex-direction:column;
-  gap:2px;
-}
-body.sales-report-module #unit-insights-report-page .uir-report-dates{
-  font-size:12px;
-  font-weight:500;
-  color:var(--txt2, #64748B);
+#unit-insights-report-page #uir-table .uir-col-product .pl-name{
+  font-weight:700;
+  text-align:left;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 body.sales-report-module #unit-insights-report-page .uir-unit-kpi-card .pl-summary-value{
   font-variant-numeric:tabular-nums;

@@ -38,7 +38,9 @@ def _memory_conn():
             category TEXT NOT NULL DEFAULT '',
             entry_kind TEXT NOT NULL DEFAULT 'expense',
             created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            cancelled_at TEXT,
+            cancelled_by INTEGER
         );
         CREATE TABLE credit_payments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

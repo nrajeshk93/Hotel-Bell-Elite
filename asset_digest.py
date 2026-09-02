@@ -1,9 +1,10 @@
 """Content-hash digest for Hotel Bell Elite static assets.
 
-Hashes live in memory for the process lifetime (gunicorn workers rebuild on
-deploy restart). HTML responses get `?v=<hash>` so Cloudflare's 7-day static
-cache cannot pin an old file. CACHE_VERSION is derived from those hashes plus
-the service-worker script, so any UI change installs a new worker.
+HTML responses get `?v=<content-hash>` so Cloudflare cannot pin an old file.
+The in-memory digest rebuilds when static files or templates change on disk
+(no gunicorn restart required). CACHE_VERSION includes those hashes, the
+service-worker script, and a source fingerprint, so any UI change installs a
+new worker. Stale `?v=` URLs are served no-store.
 """
 
 from __future__ import annotations
@@ -16,6 +17,20 @@ import threading
 
 _LOCK = threading.Lock()
 _DIGEST = None  # type: dict | None
+_FINGERPRINT = None  # type: str | None
+
+# Python/templates/static mtimes. Skip vendor and phone-app trees.
+_SKIP_DIRS = {
+    ".git",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "android",
+    "mobile_kivy",
+    "tests",
+    "scripts",
+}
 
 HASH_LEN = 10
 CACHE_PREFIX = "hbe-app-"
@@ -86,7 +101,48 @@ def _file_digest(path):
     return h.hexdigest()[:HASH_LEN]
 
 
-def _build(root):
+def _feed_tree(stamp, root, *, exts, extra_names=(), skip_dirs=None):
+    if not root or not os.path.isdir(root):
+        return
+    extra = set(extra_names or ())
+    skip = {".git", "node_modules", "__pycache__"}
+    if skip_dirs:
+        skip.update(skip_dirs)
+    for dirpath, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in skip]
+        for fn in files:
+            if not fn.endswith(exts) and fn not in extra:
+                continue
+            path = os.path.join(dirpath, fn)
+            try:
+                st = os.stat(path)
+            except OSError:
+                continue
+            rel = os.path.relpath(path, root).replace("\\", "/")
+            stamp.update(rel.encode("utf-8"))
+            stamp.update(b":")
+            stamp.update(str(int(getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9)))).encode("ascii"))
+            stamp.update(b":")
+            stamp.update(str(st.st_size).encode("ascii"))
+            stamp.update(b"\n")
+
+
+def _source_fingerprint(static_dir):
+    """mtime/size of static, templates, and Python. Any code change busts the digest."""
+    stamp = hashlib.sha256()
+    _feed_tree(stamp, static_dir, exts=_HASH_EXTS, extra_names=PRECACHE_STATIC)
+    project = os.path.dirname(os.path.abspath(__file__))
+    _feed_tree(stamp, os.path.join(project, "templates"), exts=(".html",))
+    _feed_tree(
+        stamp,
+        project,
+        exts=(".py",),
+        skip_dirs=_SKIP_DIRS,
+    )
+    return stamp.hexdigest()
+
+
+def _build(root, fingerprint=""):
     hashes = {}
     for dirpath, dirs, files in os.walk(root):
         dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "__pycache__")]
@@ -144,6 +200,9 @@ def _build(root):
         pass
     stamp = hashlib.sha256()
     stamp.update(sw_logic)
+    stamp.update(b"fp:")
+    stamp.update((fingerprint or "").encode("utf-8"))
+    stamp.update(b"\n")
     for key in sorted(hashes):
         stamp.update(key.encode("utf-8"))
         stamp.update(b":")
@@ -165,19 +224,22 @@ def _build(root):
 
 
 def get_digest(root=None):
-    global _DIGEST
+    global _DIGEST, _FINGERPRINT
     root = static_root(root)
+    fingerprint = _source_fingerprint(root)
     with _LOCK:
-        if _DIGEST is None:
-            _DIGEST = _build(root)
+        if _DIGEST is None or _FINGERPRINT != fingerprint:
+            _DIGEST = _build(root, fingerprint)
+            _FINGERPRINT = fingerprint
         return _DIGEST
 
 
 def reset_digest():
     """Tests / debug reloader."""
-    global _DIGEST
+    global _DIGEST, _FINGERPRINT
     with _LOCK:
         _DIGEST = None
+        _FINGERPRINT = None
 
 
 def cache_version(root=None):
@@ -190,6 +252,14 @@ def hashed_static_url(filename, root=None):
     if name.startswith("static/"):
         name = name[7:]
     return d["hashed_url"].get(name, "/static/%s" % name)
+
+
+def current_static_hash(filename, root=None):
+    """Content hash for a static relative path, or None if unknown."""
+    name = str(filename or "").lstrip("/")
+    if name.startswith("static/"):
+        name = name[7:]
+    return get_digest(root)["hashes"].get(name)
 
 
 def rewrite_html_static_urls(text, root=None):

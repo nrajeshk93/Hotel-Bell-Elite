@@ -45,7 +45,9 @@ def _memory_conn():
             category TEXT NOT NULL DEFAULT '',
             invoice_number TEXT NOT NULL DEFAULT '',
             supplier_id INTEGER,
-            entry_kind TEXT NOT NULL DEFAULT 'expense'
+            entry_kind TEXT NOT NULL DEFAULT 'expense',
+            cancelled_at TEXT,
+            cancelled_by INTEGER
         );
         CREATE TABLE cash_ledger_loads (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,7 +88,9 @@ def _memory_conn():
             total_amount REAL NOT NULL DEFAULT 0,
             notes TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            cancelled_at TEXT,
+            cancelled_by INTEGER
         );
         CREATE TABLE room_transfer_payment_allocations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

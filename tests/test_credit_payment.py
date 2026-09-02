@@ -39,7 +39,9 @@ def _memory_conn():
             category TEXT NOT NULL DEFAULT '',
             entry_kind TEXT NOT NULL DEFAULT 'expense',
             created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            cancelled_at TEXT,
+            cancelled_by INTEGER
         );
         CREATE TABLE credit_payments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -446,7 +448,7 @@ class CreditPaymentValidationTests(unittest.TestCase):
         self.assertEqual(row["sales_date"], recent)
         self.assertEqual(row["invoice_number"], "INV-EDIT-1")
 
-    def test_reject_edit_for_cleared_purchase(self):
+    def test_allow_edit_for_cleared_purchase_inside_window(self):
         recent = date.today().isoformat()
         self.conn.execute(
             "UPDATE sales_update_expenses SET sales_date = ? WHERE id = ?",
@@ -471,15 +473,16 @@ class CreditPaymentValidationTests(unittest.TestCase):
             {
                 "expense_id": self.expense_a1,
                 "date": recent,
-                "description": "Should fail",
+                "description": "Cleared still editable",
                 "amount": 50,
                 "payment_type": "credit",
                 "category": "grocery",
                 "supplier_id": self.supplier_a,
+                "invoice_number": "INV-CLEARED-EDIT",
             },
         )
-        self.assertIsNone(result)
-        self.assertEqual(error, app_module.PURCHASE_LEDGER_CREDIT_SETTLED_EDIT_MESSAGE)
+        self.assertIsNone(error)
+        self.assertEqual(result["expense_id"], self.expense_a1)
 
     def test_delete_outstanding_purchase_from_ledger(self):
         recent = date.today().isoformat()
@@ -488,6 +491,10 @@ class CreditPaymentValidationTests(unittest.TestCase):
             (recent, self.expense_a2),
         )
         self.conn.commit()
+        before = self.conn.execute(
+            "SELECT expense_code FROM sales_update_expenses WHERE id = ?",
+            (self.expense_a2,),
+        ).fetchone()
         result, error = app_module._delete_purchase_ledger_expense(
             self.conn,
             {"is_admin": True},
@@ -495,20 +502,27 @@ class CreditPaymentValidationTests(unittest.TestCase):
         )
         self.assertIsNone(error)
         self.assertEqual(result["expense_id"], self.expense_a2)
-        gone = self.conn.execute(
-            "SELECT id FROM sales_update_expenses WHERE id = ?",
+        row = self.conn.execute(
+            "SELECT id, expense_code, cancelled_at FROM sales_update_expenses WHERE id = ?",
             (self.expense_a2,),
         ).fetchone()
-        self.assertIsNone(gone)
+        self.assertIsNotNone(row)
+        self.assertEqual(row["expense_code"], before["expense_code"])
+        self.assertTrue(row["cancelled_at"])
 
-    def test_reject_delete_for_cleared_purchase(self):
+    def test_cancel_cleared_cash_purchase_inside_window(self):
         result, error = app_module._delete_purchase_ledger_expense(
             self.conn,
             {"is_admin": True},
             {"expense_id": self.expense_cash},
         )
-        self.assertIsNone(result)
-        self.assertIn("outstanding", (error or "").lower())
+        self.assertIsNone(error)
+        row = self.conn.execute(
+            "SELECT cancelled_at, expense_code FROM sales_update_expenses WHERE id = ?",
+            (self.expense_cash,),
+        ).fetchone()
+        self.assertIsNotNone(row)
+        self.assertTrue(row["cancelled_at"])
 
     def test_reject_duplicate_supplier_invoice(self):
         self.conn.execute(

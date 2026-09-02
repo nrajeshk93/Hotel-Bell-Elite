@@ -620,6 +620,11 @@ body.su-module .pl-kind-pill--expense{
   background:#FFFBEB;
   border:1px solid rgba(217,119,6,.22);
 }
+body.su-module .cp-status-pill--cancelled{
+  background:#FEF2F2;
+  color:#991B1B;
+  border:1px solid rgba(153,27,27,.18);
+}
 body.su-module #pl-add-purchase-modal .staff-credit-actions,
 body.su-module #pl-add-supplier-modal .staff-credit-actions{
   display:flex;

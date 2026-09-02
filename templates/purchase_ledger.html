@@ -13,7 +13,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=13">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=56">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=57">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=58">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=30">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=3">
@@ -34,7 +34,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=13">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=29">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=57">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=58">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=30">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=3">
@@ -339,8 +339,9 @@
                 </td>
                 <td class="pl-col-amount pl-amount" data-amount="{{ entry.amount }}" data-sort-value="{{ entry.amount }}">{{ entry.amount }}</td>
                 <td class="pl-col-actions">
-                  {% if entry.can_edit %}
+                  {% if entry.can_edit or entry.can_cancel %}
                   <div class="act-grp pl-action-btns">
+                    {% if entry.can_edit %}
                     <button
                       type="button"
                       class="act-btn edit pl-edit-btn"
@@ -361,12 +362,13 @@
                     >
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                     </button>
-                    {% if entry.settlement_status == 'outstanding' %}
+                    {% endif %}
+                    {% if entry.can_cancel %}
                     <button
                       type="button"
                       class="act-btn del pl-delete-btn"
-                      data-tip="Delete"
-                      aria-label="Delete purchase"
+                      data-tip="Cancel"
+                      aria-label="Cancel entry"
                       data-expense-id="{{ entry.id }}"
                       data-expense-code="{{ entry.expense_code or entry.id }}"
                       data-date="{{ entry.sales_date }}"

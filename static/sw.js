@@ -135,8 +135,8 @@ function isAppCachedStatic(url) {
   if (url.pathname.indexOf('/static/pos_') === 0) return true;
   var key = url.pathname + (url.search || '');
   if (PRECACHE.indexOf(key) !== -1 || PRECACHE.indexOf(url.pathname) !== -1) return true;
-  /* Runtime network-first for page CSS/JS — keeps offline soft-nav usable. */
-  if (/\.(css|js)$/i.test(url.pathname)) return true;
+  /* Only POS + precache shells. Report/ledger CSS/JS follow content hashes
+     in the document — intercepting every .css/.js pinned stale layouts. */
   if (/\.(png|ico|webp|svg|jpe?g)$/i.test(url.pathname) && url.pathname.indexOf('/static/') === 0) {
     return true;
   }
@@ -520,7 +520,7 @@ function networkFirstStatic(req) {
     pathKey = u.pathname + (u.search || '');
   } catch (e) {}
 
-  return fetch(req, { cache: 'no-cache' })
+  return fetch(req, { cache: 'no-store', credentials: 'same-origin' })
     .then(function (res) {
       /* Stylesheet requests are often mode=no-cors (opaque, !ok). Still cache
          a CORS re-fetch by URL so offline document.write shells stay styled. */
@@ -533,7 +533,7 @@ function networkFirstStatic(req) {
         return res;
       }
       if (res && res.type === 'opaque' && pathKey) {
-        fetch(pathKey, { credentials: 'same-origin', cache: 'no-cache' })
+        fetch(pathKey, { credentials: 'same-origin', cache: 'no-store' })
           .then(function (corsRes) {
             if (!corsRes || !corsRes.ok) return;
             caches.open(CACHE_VERSION).then(function (cache) {

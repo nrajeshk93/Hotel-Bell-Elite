@@ -22625,7 +22625,9 @@ def init_db():
             expense_code    TEXT    NOT NULL DEFAULT '',
             entry_kind      TEXT    NOT NULL DEFAULT 'expense',
             created_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
-            updated_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+            updated_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            cancelled_at    TEXT,
+            cancelled_by    INTEGER
         )
     """)
     existing_expense_cols = {
@@ -22661,6 +22663,59 @@ def init_db():
         # Historical rows were treated as expenses; new purchases opt in explicitly.
         cursor.execute(
             "ALTER TABLE sales_update_expenses ADD COLUMN entry_kind TEXT NOT NULL DEFAULT 'expense'"
+        )
+    if "cancelled_at" not in existing_expense_cols:
+        cursor.execute("ALTER TABLE sales_update_expenses ADD COLUMN cancelled_at TEXT")
+    if "cancelled_by" not in existing_expense_cols:
+        cursor.execute("ALTER TABLE sales_update_expenses ADD COLUMN cancelled_by INTEGER")
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sales_update_expense_code_seq (
+            company  TEXT    NOT NULL,
+            kind     TEXT    NOT NULL,
+            last_num INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (company, kind)
+        )
+    """)
+    code_rows = cursor.execute(
+        """SELECT company, expense_code, entry_kind
+           FROM sales_update_expenses
+           WHERE expense_code IS NOT NULL AND TRIM(expense_code) != ''"""
+    ).fetchall()
+    max_by_key = {}
+    for row in code_rows:
+        company = (row["company"] or "HBE").strip() or "HBE"
+        code = (row["expense_code"] or "").strip()
+        entry_kind = (row["entry_kind"] or "").strip().lower()
+        kind = None
+        num = None
+        for token, token_kind in (("PU", "purchase"), ("EX", "expense")):
+            prefix = f"{company}-{token}-"
+            if code.startswith(prefix):
+                kind = token_kind
+                try:
+                    num = int(code[len(prefix):])
+                except (TypeError, ValueError):
+                    num = None
+                break
+        if kind is None:
+            kind = "purchase" if entry_kind == "purchase" else "expense"
+            tail = code.rsplit("-", 1)[-1]
+            try:
+                num = int(tail)
+            except (TypeError, ValueError):
+                continue
+        if num is None:
+            continue
+        key = (company, kind)
+        if num > max_by_key.get(key, 0):
+            max_by_key[key] = num
+    for (company, kind), last_num in max_by_key.items():
+        cursor.execute(
+            """INSERT INTO sales_update_expense_code_seq (company, kind, last_num)
+               VALUES (?, ?, ?)
+               ON CONFLICT(company, kind) DO UPDATE SET
+                 last_num = MAX(last_num, excluded.last_num)""",
+            (company, kind, last_num),
         )
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_sales_update_expenses_kind

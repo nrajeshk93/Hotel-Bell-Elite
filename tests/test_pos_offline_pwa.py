@@ -45,6 +45,8 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("isWorkspaceHtml", body)
         self.assertIn("partial", body)
         self.assertIn("networkFirstStatic", body)
+        self.assertIn("Only POS + precache shells", body)
+        self.assertNotIn("Runtime network-first for page CSS/JS", body)
         self.assertIn("networkOnlyFloor", body)
         self.assertIn("Occupancy may be slightly stale offline", body)
         self.assertIn("networkFirstHtml", body)
@@ -157,6 +159,7 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("updateViaCache", body)
         self.assertIn("hbe-build.json", body)
         self.assertIn("bindReloadOnUpdate", body)
+        self.assertIn("setInterval(onVisible, 15000)", body)
         self.assertNotIn("navigator.onLine === false", body)
 
     def test_pos_offline_has_seven_day_prune(self):
@@ -278,6 +281,79 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertNotIn("'/home'", precache)
         self.assertNotIn("/point-of-sale/invoice", precache)
 
+
+class AssetDigestFreshnessTests(unittest.TestCase):
+    def tearDown(self):
+        import asset_digest
+
+        asset_digest.reset_digest()
+
+    def test_digest_rebuilds_when_static_file_changes(self):
+        import shutil
+        import tempfile
+
+        import asset_digest
+
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root, True)
+        probe = os.path.join(root, "probe.css")
+        with open(probe, "w", encoding="utf-8") as fh:
+            fh.write("body{color:red}")
+        asset_digest.reset_digest()
+        first = asset_digest.get_digest(root)
+        hash_a = first["hashes"]["probe.css"]
+        version_a = first["version"]
+        with open(probe, "w", encoding="utf-8") as fh:
+            fh.write("body{color:blue}")
+        second = asset_digest.get_digest(root)
+        self.assertNotEqual(hash_a, second["hashes"]["probe.css"])
+        self.assertNotEqual(version_a, second["version"])
+
+    def test_current_content_hash_is_immutable_stale_hash_is_not(self):
+        import asset_digest
+        import app as app_mod
+
+        asset_digest.reset_digest()
+        live = asset_digest.current_static_hash("sales_report.css", app_mod.app.static_folder)
+        self.assertTrue(live)
+
+        client = app_mod.app.test_client()
+        fresh = client.get("/static/sales_report.css?v=%s" % live)
+        self.assertEqual(fresh.status_code, 200)
+        cc = (fresh.headers.get("Cache-Control") or "").lower()
+        self.assertIn("immutable", cc)
+        self.assertIn("max-age=31536000", cc)
+        fresh.close()
+
+        stale = client.get("/static/sales_report.css?v=stalehash")
+        self.assertEqual(stale.status_code, 200)
+        stale_cc = (stale.headers.get("Cache-Control") or "").lower()
+        self.assertIn("no-store", stale_cc)
+        self.assertEqual(stale.headers.get("CDN-Cache-Control"), "no-store")
+        stale.close()
+
+    def test_python_change_busts_cache_version(self):
+        import asset_digest
+
+        project = os.path.dirname(os.path.abspath(asset_digest.__file__))
+        probe = os.path.join(project, "_hbe_cache_probe.py")
+        asset_digest.reset_digest()
+        before = asset_digest.cache_version(os.path.join(project, "static"))
+        with open(probe, "w", encoding="utf-8") as fh:
+            fh.write("# probe\n")
+        self.addCleanup(lambda: os.path.exists(probe) and os.unlink(probe))
+        asset_digest.reset_digest()
+        after = asset_digest.cache_version(os.path.join(project, "static"))
+        self.assertNotEqual(before, after)
+
+    def test_service_worker_static_fetch_bypasses_http_cache(self):
+        import app as app_mod
+
+        resp = app_mod.app.test_client().get("/sw.js")
+        body = resp.get_data(as_text=True)
+        resp.close()
+        self.assertIn("cache: 'no-store'", body)
+        self.assertNotIn("cache: 'no-cache'", body)
 
 
 if __name__ == "__main__":

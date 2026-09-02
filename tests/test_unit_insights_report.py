@@ -371,6 +371,9 @@ class UnitInsightsReportRouteTests(unittest.TestCase):
         self.assertIn("Product Name", html)
         self.assertIn("Units sold", html)
         self.assertIn("unit-insights-report-page", html)
+        self.assertIn("uir-table--compact", html)
+        self.assertIn("uir-title-icon", html)
+        self.assertIn("uir-count-pill", html)
 
     def test_export_returns_xlsx(self):
         res = self.client.get("/reports/sales/units/export?from_hub=reports")

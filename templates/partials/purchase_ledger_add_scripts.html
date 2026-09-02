@@ -359,9 +359,10 @@
     var expenseId = btn.getAttribute('data-expense-id') || '';
     var expenseCode = btn.getAttribute('data-expense-code') || expenseId;
     if (!expenseId) return;
+    var confirmMsg = 'Cancel ' + expenseCode + '? The ID is kept, status becomes Cancelled, and this number cannot be reused.';
     var ok = typeof window.deConfirm === 'function'
-      ? await window.deConfirm('Delete purchase ' + expenseCode + '? This cannot be undone.')
-      : window.confirm('Delete purchase ' + expenseCode + '? This cannot be undone.');
+      ? await window.deConfirm(confirmMsg)
+      : window.confirm(confirmMsg);
     if (!ok) return;
     btn.disabled = true;
     try {
@@ -371,11 +372,11 @@
         body: JSON.stringify({ expense_id: expenseId })
       });
       var data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Could not delete purchase.');
+      if (!data.ok) throw new Error(data.error || 'Could not cancel this entry.');
       if (typeof window.deSoftRefresh === 'function') window.deSoftRefresh();
       else window.location.reload();
     } catch (err) {
-      window.alert(err.message || 'Could not delete purchase.');
+      window.alert(err.message || 'Could not cancel this entry.');
       btn.disabled = false;
     }
   }

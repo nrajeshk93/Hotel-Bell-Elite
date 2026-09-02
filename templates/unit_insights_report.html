@@ -17,7 +17,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=3">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=20">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=25">
 <script>
 (function(){
   try{
@@ -38,7 +38,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=3">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=20">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=25">
 {% endif %}
 
 <div class="main-wrapper" id="unit-insights-report-page"
@@ -207,22 +207,30 @@
       {% endfor %}
     </div>
 
-    <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel" aria-label="Unit Insight report">
-      <div class="card-hdr">
-        <div class="card-title">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 3h15"/><path d="M6 3v7.2L3.4 19a2 2 0 0 0 1.9 2.6h13.4a2 2 0 0 0 1.9-2.6L18 10.2V3"/><path d="M6.8 14h10.4"/></svg>
+    <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel uir-panel" aria-label="Unit Insight report">
+      <div class="card-hdr uir-card-hdr">
+        <div class="card-title uir-card-title">
+          <span class="uir-title-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4.5 3h15"/><path d="M6 3v7.2L3.4 19a2 2 0 0 0 1.9 2.6h13.4a2 2 0 0 0 1.9-2.6L18 10.2V3"/><path d="M6.8 14h10.4"/></svg>
+          </span>
           <div class="uir-report-heading">
-            <span>Unit Insight</span>
+            <span class="uir-report-name">Unit Insight</span>
             {% if report_date_range_label %}
-            <div class="uir-report-dates">{{ report_date_range_label }}</div>
+            <div class="uir-report-dates">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 3v4"/><path d="M16 3v4"/></svg>
+              <span>{{ report_date_range_label }}</span>
+            </div>
             {% endif %}
           </div>
         </div>
-        <span class="pl-count" id="uir-entry-count">{{ rows|length }} product{{ '' if rows|length == 1 else 's' }}</span>
+        <span class="uir-count-pill">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          <span id="uir-entry-count">{{ rows|length }} product{{ '' if rows|length == 1 else 's' }}</span>
+        </span>
       </div>
       <div class="card-body pl-card-body--flush">
         <div class="pl-table-wrap" tabindex="0" aria-label="Unit Insight report, scroll for more">
-          <table class="pl-table" id="uir-table" aria-label="Unit Insight entries">
+          <table class="pl-table uir-table--compact" id="uir-table" aria-label="Unit Insight entries">
             <colgroup>
               <col class="uir-col-product">
               <col class="uir-col-units">
