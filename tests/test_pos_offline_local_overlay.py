@@ -1,7 +1,10 @@
 """POS local-store overlay: restaurant + bar share the same tables/ledger/guest path."""
 
+import json
 import os
 import re
+import shutil
+import subprocess
 import tempfile
 import unittest
 
@@ -36,6 +39,8 @@ class PosOfflineLocalOverlaySourceTests(unittest.TestCase):
             "rememberCustomer",
             "searchSavedCustomers",
             "applyPendingToFloor",
+            "orderHasServerInvoiceId",
+            "applyUnsyncedOrdersToFloorTables",
             "listDrafts",
             "notifyChange",
             "hbe-pos-local",
@@ -51,6 +56,42 @@ class PosOfflineLocalOverlaySourceTests(unittest.TestCase):
         self.assertIn("mergePendingFloor", js)
         self.assertIn("bindLocalOccupancySync", js)
         self.assertIn("cache: 'no-store'", js)
+        self.assertIn("floorLoadGen", js)
+        self.assertIn("nextFloorLoadGen", js)
+        self.assertIn("cacheGen !== floorLoadGen", js)
+        self.assertIn("gen !== floorLoadGen", js)
+
+    def test_tables_cache_merge_does_not_persist_stale_occupancy(self):
+        js = _read("static", "pos_tables.js")
+        init = js[js.find("function initPosTablesPage") : js.find("global.posTablesStatusChanged")]
+        self.assertIn("function initPosTablesPage", init)
+        merge_block = init[init.find("mergePendingFloor") : init.find("paintKotPendingBanner")]
+        self.assertIn("cacheGen !== floorLoadGen", merge_block)
+        self.assertNotIn("writeFloorLocalSnapshot", merge_block)
+        self.assertNotIn("writeFloorSessionSnapshot", merge_block)
+        self.assertIn("loadFloorFromApi", init)
+
+    def test_visibility_refetches_floor_when_online(self):
+        js = _read("static", "pos_tables.js")
+        bind = js[js.find("function bindLocalOccupancySync") : js.find("function initPosTablesPage")]
+        self.assertIn("loadFloorFromApi", bind)
+        self.assertIn("isNavigatorOnline", bind)
+        self.assertIn("onPageVisible", bind)
+        self.assertIn("pageshow", bind)
+        self.assertIn("currentFloor || readFloorSessionSnapshot()", bind)
+        refresh_local = bind[
+            bind.find("function refreshFromLocal") : bind.find("function refreshOccupancyFromServer")
+        ]
+        self.assertNotIn("writeFloorLocalSnapshot", refresh_local)
+        self.assertNotIn("writeFloorSessionSnapshot", refresh_local)
+
+    def test_apply_pending_skips_synced_drafts_in_source(self):
+        js = _read("static", "pos_offline.js")
+        fn = js[
+            js.find("function applyUnsyncedOrdersToFloorTables") : js.find("function applyPendingToFloor")
+        ]
+        self.assertIn("orderHasServerInvoiceId(order)", fn)
+        self.assertIn("customerBill", fn)
 
     def test_invoice_remembers_guest_and_resumes_local(self):
         js = _read("static", "pos_invoice.js")
@@ -101,6 +142,92 @@ class PosOfflineLocalOverlaySourceTests(unittest.TestCase):
             )
 
 
+class PosOccupancyOverlayBehaviorTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.node = shutil.which("node")
+
+    def _run_overlay(self, tables, orders, want="restaurant"):
+        if not self.node:
+            self.skipTest("node is not available")
+        helper = os.path.join(ROOT, "tests", "run_pos_occupancy_overlay.js")
+        js_path = os.path.join(ROOT, "static", "pos_offline.js")
+        payload = json.dumps({"tables": tables, "orders": orders, "want": want})
+        proc = subprocess.run(
+            [self.node, helper, js_path, payload],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            check=False,
+        )
+        if proc.returncode != 0:
+            self.fail("node overlay helper failed: %s\n%s" % (proc.stderr, proc.stdout))
+        return json.loads(proc.stdout)
+
+    def test_synced_draft_does_not_occupy_available_table(self):
+        tables = [
+            {"name": "Table 2", "status": "available", "customerName": ""},
+            {"name": "Table 1", "status": "available", "customerName": ""},
+        ]
+        orders = [
+            {
+                "invoiceId": 4412,
+                "payload": {
+                    "table": "Table 2",
+                    "customerName": "Rajesh",
+                    "orderType": "dine_in",
+                    "outlet": "restaurant",
+                    "lines": [{"name": "Tea"}],
+                },
+            }
+        ]
+        out = self._run_overlay(tables, orders)
+        t2 = [t for t in out if t["name"] == "Table 2"][0]
+        self.assertEqual(t2["status"], "available")
+        self.assertEqual(t2.get("customerName") or "", "")
+
+    def test_unsynced_outbox_still_occupies_table(self):
+        tables = [
+            {"name": "Table 2", "status": "available", "customerName": ""},
+        ]
+        orders = [
+            {
+                "invoiceId": None,
+                "payload": {
+                    "table": "Table 2",
+                    "customerName": "Rajesh",
+                    "orderType": "dine_in",
+                    "outlet": "restaurant",
+                    "lines": [{"name": "Tea"}],
+                },
+            }
+        ]
+        out = self._run_overlay(tables, orders)
+        t2 = out[0]
+        self.assertEqual(t2["status"], "occupied")
+        self.assertEqual(t2["customerName"], "Rajesh")
+
+    def test_unsynced_customer_bill_frees_occupied_table(self):
+        tables = [
+            {"name": "Table 2", "status": "occupied", "customerName": "Rajesh"},
+        ]
+        orders = [
+            {
+                "payload": {
+                    "table": "Table 2",
+                    "customerName": "Rajesh",
+                    "orderType": "dine_in",
+                    "outlet": "restaurant",
+                    "customerBill": True,
+                    "lines": [{"name": "Tea"}],
+                },
+            }
+        ]
+        out = self._run_overlay(tables, orders)
+        self.assertEqual(out[0]["status"], "available")
+        self.assertEqual(out[0].get("customerName") or "", "")
+
+
 class PosOfflineLocalOverlayPageTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
@@ -119,7 +246,7 @@ class PosOfflineLocalOverlayPageTests(unittest.TestCase):
             "/login",
             data={"username": "admin", "password": "admin"},
             follow_redirects=False,
-        )
+            )
         self.assertIn(login.status_code, (302, 303))
 
     def tearDown(self):

@@ -96,6 +96,7 @@
   };
   var floorSaveTimer = null;
   var currentFloor = null;
+  var floorLoadGen = 0;
   var currentKotPending = { pending_table_count: 0, pending_item_count: 0, tables: [] };
 
   function $(sel, root) {
@@ -595,6 +596,11 @@
     });
   }
 
+  function nextFloorLoadGen() {
+    floorLoadGen += 1;
+    return floorLoadGen;
+  }
+
   function mergePendingFloor(payload) {
     var api = global.HbePosOffline;
     var base = payload || emptyFloor();
@@ -608,16 +614,21 @@
 
   function finishFloorLoad(payload, opts, done) {
     opts = opts || {};
+    var gen = opts.gen != null ? opts.gen : floorLoadGen;
     mergePendingFloor(payload).then(function (merged) {
+      if (gen !== floorLoadGen) return;
       currentFloor = merged;
-      writeFloorSessionSnapshot(merged);
-      writeFloorLocalSnapshot(merged);
+      if (opts.writeSnapshot !== false) {
+        writeFloorSessionSnapshot(merged);
+        writeFloorLocalSnapshot(merged);
+      }
       if (opts.remember) rememberFloorOfflineCatalog(merged);
       if (typeof done === 'function') done(merged);
     });
   }
 
   function loadFloorFromApi(done) {
+    var gen = nextFloorLoadGen();
     var url = FLOOR_API + (FLOOR_API.indexOf('?') === -1 ? '?' : '&') + '_ts=' + Date.now();
     fetch(url, {
       method: 'GET',
@@ -629,11 +640,13 @@
       })
     })
       .then(function (res) {
+        if (gen !== floorLoadGen) return null;
         return res.json().catch(function () {
           return null;
         });
       })
       .then(function (data) {
+        if (gen !== floorLoadGen) return;
         clearLegacyFloor();
         var payload;
         var offlineFail =
@@ -646,7 +659,7 @@
           payload = { areas: data.areas, tables: data.tables };
           paintKotPendingBanner(data.kot_pending);
           paintInvoiceKpis(document.getElementById('pos-tables-page'), data);
-          finishFloorLoad(payload, { remember: true }, done);
+          finishFloorLoad(payload, { remember: true, gen: gen }, done);
           return;
         }
         var fallback = readFloorSessionSnapshot() || readFloorLocalSnapshot();
@@ -662,16 +675,17 @@
             unsettled_total: 0
           });
         }
-        finishFloorLoad(payload, { remember: false }, done);
+        finishFloorLoad(payload, { remember: false, gen: gen, writeSnapshot: false }, done);
       })
       .catch(function () {
+        if (gen !== floorLoadGen) return;
         var fallback = readFloorSessionSnapshot() || readFloorLocalSnapshot() || loadFloorDataCached();
         if (fallback && Array.isArray(fallback.tables) && fallback.tables.length) {
-          finishFloorLoad(fallback, { remember: false }, done);
+          finishFloorLoad(fallback, { remember: false, gen: gen, writeSnapshot: false }, done);
           return;
         }
         paintKotPendingBanner(emptyKotPending());
-        finishFloorLoad(emptyFloor(), { remember: false }, done);
+        finishFloorLoad(emptyFloor(), { remember: false, gen: gen, writeSnapshot: false }, done);
       });
   }
 
@@ -4550,18 +4564,36 @@
   }
 
 
+  function isNavigatorOnline() {
+    var api = global.HbePosOffline;
+    if (api && typeof api.isOnline === 'function') return api.isOnline();
+    return !(typeof navigator !== 'undefined' && navigator.onLine === false);
+  }
+
   function bindLocalOccupancySync(root) {
     var api = global.HbePosOffline;
     if (!root || root.getAttribute('data-local-sync-bound') === '1') return;
     root.setAttribute('data-local-sync-bound', '1');
     function refreshFromLocal() {
-      var snap = readFloorLocalSnapshot() || readFloorSessionSnapshot() || currentFloor;
+      var snap = currentFloor || readFloorSessionSnapshot() || readFloorLocalSnapshot();
       mergePendingFloor(snap).then(function (merged) {
+        if (!root.isConnected) return;
         currentFloor = merged;
-        writeFloorSessionSnapshot(merged);
-        writeFloorLocalSnapshot(merged);
         paintTablesPage(root, merged);
       });
+    }
+    function refreshOccupancyFromServer() {
+      loadFloorFromApi(function (data) {
+        if (!root.isConnected) return;
+        paintTablesPage(root, data || currentFloor || loadFloorDataCached());
+      });
+    }
+    function onPageVisible() {
+      if (isNavigatorOnline()) {
+        refreshOccupancyFromServer();
+        return;
+      }
+      refreshFromLocal();
     }
     if (api && typeof api.onChange === 'function') {
       api.onChange(function (msg) {
@@ -4570,9 +4602,9 @@
         refreshFromLocal();
       });
     }
-    global.addEventListener('pageshow', refreshFromLocal);
+    global.addEventListener('pageshow', onPageVisible);
     document.addEventListener('visibilitychange', function () {
-      if (!document.hidden) refreshFromLocal();
+      if (!document.hidden) onPageVisible();
     });
   }
 
@@ -4580,14 +4612,15 @@
     syncPosApiPaths();
     var root = document.getElementById('pos-tables-page');
     if (!root) return;
-    /* Soft-nav: paint cache first (plus local POS saves), then refresh from SQLite API */
+    /* Soft-nav: paint cache first for speed, then refresh from SQLite API.
+       Do not persist the cached merge — a later API Available must win. */
     var cached = loadFloorDataCached();
     paintTablesPage(root, cached);
+    var cacheGen = floorLoadGen;
     mergePendingFloor(cached).then(function (merged) {
       if (!root.isConnected) return;
+      if (cacheGen !== floorLoadGen) return;
       currentFloor = merged;
-      writeFloorSessionSnapshot(merged);
-      writeFloorLocalSnapshot(merged);
       paintTablesPage(root, merged);
     });
     paintKotPendingBanner(currentKotPending);

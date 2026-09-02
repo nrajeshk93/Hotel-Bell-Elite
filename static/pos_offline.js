@@ -750,55 +750,77 @@
     });
   }
 
-  function applyPendingToFloor(floor, outlet) {
-    var areas = (floor && Array.isArray(floor.areas) && floor.areas) || [];
-    var tables = ((floor && floor.tables) || []).map(function (t) {
+  /** True when a local draft/outbox row already has a server invoice id. */
+  function orderHasServerInvoiceId(order) {
+    if (!order || typeof order !== "object") return false;
+    var payload = order.payload || {};
+    var id = order.invoiceId || payload.invoiceId || payload.invoice_id;
+    return String(id || "").trim() !== "";
+  }
+
+  /**
+   * Overlay occupancy from UNSYNCED local bills only.
+   * Leftover drafts with invoiceId must not keep a table Occupied after
+   * the server has freed it. customerBill still frees the table.
+   */
+  function applyUnsyncedOrdersToFloorTables(tables, orders, want) {
+    tables = (tables || []).map(function (t) {
       return Object.assign({}, t);
     });
-    var want = normalizeOutlet(outlet) || currentOutlet() || "restaurant";
-    return pendingOrders().then(function (orders) {
-      var byTable = {};
-      orders.forEach(function (order) {
-        var payload = order.payload || {};
-        var ot = String(payload.orderType || payload.order_type || "dine_in").toLowerCase();
-        if (ot !== "dine_in") return;
-        var table = String(payload.table || payload.table_label || "").trim();
-        if (!table) return;
-        var out = normalizeOutlet(payload.outlet || payload.posOutlet) || want;
-        if (out !== want) return;
-        var key = table.toLowerCase();
-        if (!byTable[key] || order._stamp >= byTable[key]._stamp) {
-          byTable[key] = order;
+    var byTable = {};
+    (orders || []).forEach(function (order) {
+      var payload = order.payload || {};
+      var ot = String(payload.orderType || payload.order_type || "dine_in").toLowerCase();
+      if (ot !== "dine_in") return;
+      if (orderHasServerInvoiceId(order)) return;
+      var table = String(payload.table || payload.table_label || "").trim();
+      if (!table) return;
+      var out = normalizeOutlet(payload.outlet || payload.posOutlet) || want;
+      if (out !== want) return;
+      var key = table.toLowerCase();
+      if (!byTable[key] || order._stamp >= byTable[key]._stamp) {
+        byTable[key] = order;
+      }
+    });
+    Object.keys(byTable).forEach(function (key) {
+      var order = byTable[key];
+      var payload = order.payload || {};
+      var bill = !!(payload.customerBill || payload.customer_bill);
+      var guest = String(payload.customerName || payload.customer_name || "").trim();
+      tables.forEach(function (t) {
+        if (String(t.name || "").trim().toLowerCase() !== key) return;
+        var st = String(t.status || "").trim().toLowerCase();
+        if (st === "inactive" || st === "blocked") return;
+        if (bill) {
+          if (st === "occupied") {
+            t.status = "available";
+            t.customerName = "";
+            t.customer_name = "";
+          }
+          return;
+        }
+        t.status = "occupied";
+        if (guest) {
+          t.customerName = guest;
+          t.customer_name = guest;
+        }
+        if (!t.occupiedSince && !t.occupied_since) {
+          t.occupiedSince = payload.savedAt || order.createdAt || new Date().toISOString();
         }
       });
-      Object.keys(byTable).forEach(function (key) {
-        var order = byTable[key];
-        var payload = order.payload || {};
-        var bill = !!(payload.customerBill || payload.customer_bill);
-        var guest = String(payload.customerName || payload.customer_name || "").trim();
-        tables.forEach(function (t) {
-          if (String(t.name || "").trim().toLowerCase() !== key) return;
-          var st = String(t.status || "").trim().toLowerCase();
-          if (st === "inactive" || st === "blocked") return;
-          if (bill) {
-            if (st === "occupied") {
-              t.status = "available";
-              t.customerName = "";
-              t.customer_name = "";
-            }
-            return;
-          }
-          t.status = "occupied";
-          if (guest) {
-            t.customerName = guest;
-            t.customer_name = guest;
-          }
-          if (!t.occupiedSince && !t.occupied_since) {
-            t.occupiedSince = payload.savedAt || order.createdAt || new Date().toISOString();
-          }
-        });
-      });
-      return { areas: areas, tables: tables };
+    });
+    return tables;
+  }
+
+  function applyPendingToFloor(floor, outlet) {
+    var areas = (floor && Array.isArray(floor.areas) && floor.areas) || [];
+    var tables = (floor && floor.tables) || [];
+    var want = normalizeOutlet(outlet) || currentOutlet() || "restaurant";
+    return pendingOrders().then(function (orders) {
+      return {
+        areas: areas,
+        tables: applyUnsyncedOrdersToFloorTables(tables, orders, want)
+      };
     });
   }
 
@@ -981,6 +1003,8 @@
     pendingOrders: pendingOrders,
     findPendingForTable: findPendingForTable,
     applyPendingToFloor: applyPendingToFloor,
+    orderHasServerInvoiceId: orderHasServerInvoiceId,
+    applyUnsyncedOrdersToFloorTables: applyUnsyncedOrdersToFloorTables,
     patchFloorOccupancy: patchFloorOccupancy,
     rememberCustomer: rememberCustomer,
     listSavedCustomers: listSavedCustomers,
