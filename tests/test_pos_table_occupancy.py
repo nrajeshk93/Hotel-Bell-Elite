@@ -736,7 +736,72 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(inv["invoice"]["source"], "pos_room_transfer")
         self.assertAlmostEqual(float(inv["invoice"]["balance_amount"]), total, places=2)
 
+    def test_room_transfer_settle_takes_sequential_spc_series(self):
+        """Room transfer settle remints draft hex so Invoice Ledger can list it."""
+        today = date.today()
+        check_in = today.isoformat()
+        check_out = (today + timedelta(days=1)).isoformat()
+        checkin = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Asha",
+                    "lastName": "Nair",
+                    "mobile": "9000000001",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "roomRate": 2000,
+                    "nights": 1,
+                    "advancePaid": 0,
+                },
+            },
+        )
+        self.assertEqual(checkin.status_code, 200, checkin.get_data(as_text=True))
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("SPC/4886C9/26-27", "T1", kot_send=True),
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        invoice = saved.get_json()["invoice"]
+        self.assertTrue(
+            db_mod.is_provisional_pos_order_no(invoice["order_no"], "restaurant")
+        )
+        total = float(invoice["grand_total"])
+        settle = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice['id']}/settle",
+            json={
+                "payment_splits": [
+                    {"payment_method": "room_transfer", "amount": total},
+                ],
+                "hotel_room_id": "room-101",
+            },
+        )
+        self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
+        body = settle.get_json()["invoice"]
+        order_no = body["order_no"]
+        self.assertNotEqual(order_no, "SPC/4886C9/26-27")
+        self.assertRegex(order_no, r"^SPC/\d+/\d{4}-\d{2}$")
+        charge = body.get("folio_charge") or {}
+        self.assertEqual(charge.get("orderNo"), order_no)
+        self.assertIn(order_no, charge.get("label") or "")
+        self.assertNotIn("4886C9", charge.get("label") or "")
+        room = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]
+        folio = room["stay"]["folioCharges"]
+        self.assertEqual(folio[0]["orderNo"], order_no)
+        conn = db_mod.get_db()
+        try:
+            ledger = db_mod.list_pos_invoices(conn, generated_only=True)
+        finally:
+            conn.close()
+        self.assertTrue(any(r["id"] == invoice["id"] and r["order_no"] == order_no for r in ledger))
+        pos_ledger = self.client.get("/point-of-sale/invoice-ledger")
+        self.assertEqual(pos_ledger.status_code, 200)
+        self.assertIn(order_no, pos_ledger.get_data(as_text=True))
+        self.assertNotIn("SPC/4886C9/26-27", pos_ledger.get_data(as_text=True))
+
     def test_settle_bill_rejects_credit_mode(self):
+
         saved = self.client.post(
             "/point-of-sale/api/invoices",
             json=self._payload("ORD-2607-Settle-05b", "T1", kot_send=True),

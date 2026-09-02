@@ -579,3 +579,35 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
         )
         self.assertEqual(bill.status_code, 200, bill.get_data(as_text=True))
         self.assertEqual(bill.get_json()["invoice"]["order_no"], "SPC/1/2027-28")
+
+    def test_settle_remints_provisional_hex(self):
+        """Cash settle must take SPC/{n}/{YYYY-YY}, not keep the draft hex."""
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("SPC/4886C9/26-27"),
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        invoice = saved.get_json()["invoice"]
+        self.assertTrue(
+            db_mod.is_provisional_pos_order_no(invoice["order_no"], "restaurant")
+        )
+        total = float(invoice["grand_total"])
+        settle = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice['id']}/settle",
+            json={
+                "payment_splits": [
+                    {"payment_method": "cash", "amount": total},
+                ],
+            },
+        )
+        self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
+        order_no = settle.get_json()["invoice"]["order_no"]
+        self.assertNotEqual(order_no, "SPC/4886C9/26-27")
+        self.assertTrue(db_mod.is_restaurant_spc_order_no(order_no))
+        self.assertFalse(db_mod.is_provisional_pos_order_no(order_no, "restaurant"))
+        conn = db_mod.get_db()
+        try:
+            ledger = db_mod.list_pos_invoices(conn, generated_only=True)
+        finally:
+            conn.close()
+        self.assertTrue(any(r["id"] == invoice["id"] for r in ledger))

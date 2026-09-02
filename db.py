@@ -366,7 +366,7 @@ def pos_invoice_is_nil_tax(gst_amount, vat_amount):
 
 
 def is_provisional_pos_order_no(order_no, outlet=None):
-    """Client placeholders replaced only when Generate Invoice (customerBill) runs."""
+    """Client placeholders replaced on Generate Invoice or Settle (incl. room transfer)."""
     text = str(order_no or "").strip()
     if not text:
         return True
@@ -826,6 +826,66 @@ def allocate_pos_bar_order_no(conn, order_date=None, nil_tax=False):
 _POS_SPC_EARLY_SERIES_REPAIR_MAX_SEQ = 5
 
 
+
+def ensure_official_pos_order_no(conn, invoice_id):
+    """Mint sequential PREFIX/{n}/{YYYY-YY} when the row still has a draft hex.
+
+    Generate Invoice already remints. Settle (cash, card, room transfer) must
+    do the same so closed bills appear on Invoice Ledger with a real series.
+    """
+    ensure_pos_schema(conn)
+    try:
+        invoice_id = int(invoice_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid invoice id.") from exc
+    row = conn.execute(
+        """
+        SELECT id, order_no, outlet, order_date, gst_amount, vat_amount
+        FROM pos_invoices
+        WHERE id = ? AND is_active = 1
+        """,
+        (invoice_id,),
+    ).fetchone()
+    if not row:
+        raise ValueError("Invoice not found.")
+    outlet = normalize_pos_outlet(row["outlet"] if "outlet" in row.keys() else None)
+    order_no = str(row["order_no"] or "").strip()
+    if outlet not in (POS_OUTLET_RESTAURANT, POS_OUTLET_BAR):
+        return order_no
+    if order_no and not is_provisional_pos_order_no(order_no, outlet):
+        return order_no
+    gst_amount = 0.0
+    vat_amount = 0.0
+    if "gst_amount" in row.keys():
+        try:
+            gst_amount = float(row["gst_amount"] or 0)
+        except (TypeError, ValueError):
+            gst_amount = 0.0
+    if "vat_amount" in row.keys():
+        try:
+            vat_amount = float(row["vat_amount"] or 0)
+        except (TypeError, ValueError):
+            vat_amount = 0.0
+    nil_tax = pos_invoice_is_nil_tax(gst_amount, vat_amount)
+    order_date = row["order_date"] if "order_date" in row.keys() else None
+    if outlet == POS_OUTLET_BAR:
+        new_no = allocate_pos_bar_order_no(conn, order_date, nil_tax=nil_tax)
+    else:
+        new_no = allocate_pos_restaurant_order_no(conn, order_date, nil_tax=nil_tax)
+    conn.execute(
+        f"""
+        UPDATE pos_invoices
+        SET order_no = ?,
+            updated_at = {SQL_NOW}
+        WHERE id = ?
+        """,
+        (new_no, invoice_id),
+    )
+    if order_no and order_no != new_no:
+        _patch_pos_order_no_refs(conn, {order_no: new_no})
+    return new_no
+
+
 def _pos_spc_early_series_repair_done(conn):
     row = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='pos_spc_series_floor_repair'"
@@ -856,6 +916,17 @@ def _patch_json_order_no_refs_inplace(obj, mapping):
             val = str(obj.get(key) or "").strip()
             if val and val in mapping:
                 obj[key] = mapping[val]
+                changed = True
+        for key in ("label", "note"):
+            val = str(obj.get(key) or "")
+            if not val:
+                continue
+            nxt = val
+            for old, new in mapping.items():
+                if old and old in nxt:
+                    nxt = nxt.replace(old, new)
+            if nxt != val:
+                obj[key] = nxt
                 changed = True
         for key in ("linkedPosOrders", "linked_pos_orders"):
             items = obj.get(key)
@@ -909,6 +980,21 @@ def _patch_pos_order_no_refs(conn, mapping):
             conn.execute(
                 "UPDATE hotel_room_invoices SET payload_json = ? WHERE invoice_number = ?",
                 (patched, inv_no),
+            )
+    layout = conn.execute(
+        "SELECT payload FROM hotel_rooms_layout WHERE id = 1"
+    ).fetchone()
+    if layout:
+        payload_json = layout["payload"] if isinstance(layout, dict) else layout[0]
+        patched, changed = _patch_json_order_no_refs(payload_json, mapping)
+        if changed:
+            conn.execute(
+                f"""
+                UPDATE hotel_rooms_layout
+                SET payload = ?, updated_at = {SQL_NOW}
+                WHERE id = 1
+                """,
+                (patched,),
             )
     for outlet in (POS_OUTLET_RESTAURANT, POS_OUTLET_BAR):
         row = conn.execute(
@@ -6277,6 +6363,10 @@ def settle_pos_invoice(
             _retire_pos_room_transfer_invoice(
                 conn, order_no, reason="Settlement edited same day"
             )
+
+    # Room transfer / cash settle must take a sequential series number, not
+    # keep the draft PREFIX/{hex}/{fy} that Generate Invoice would have replaced.
+    order_no = ensure_official_pos_order_no(conn, invoice_id)
 
     # Replace any prior draft / settlement payments.
     conn.execute("DELETE FROM pos_invoice_payments WHERE invoice_id = ?", (invoice_id,))
