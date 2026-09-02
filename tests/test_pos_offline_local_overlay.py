@@ -100,6 +100,19 @@ class PosOfflineLocalOverlaySourceTests(unittest.TestCase):
         self.assertIn("invoiceFromOfflinePayload", js)
         self.assertIn("warmCustomerCatalog", js)
 
+    def test_voided_local_order_nos_are_purged(self):
+        js = _read("static", "pos_offline.js")
+        self.assertIn("spc/3a4e1a/26-27", js)
+        self.assertIn("spc/72503b/26-27", js)
+        self.assertIn("isVoidedLocalOrder", js)
+        self.assertIn("purgeVoidedLocalOrders", js)
+        self.assertIn("hbe_pos_void_order_nos", js)
+        consider = js[js.find("function consider") : js.find("pair[1]")]
+        self.assertIn("isVoidedLocalOrder", consider)
+        ledger = _read("static", "pos_invoice_ledger.js")
+        self.assertIn("isVoidedLocalOrder", ledger)
+        self.assertIn("orderHasServerInvoiceId", ledger)
+
     def test_ledger_overlays_pending_rows(self):
         js = _read("static", "pos_invoice_ledger.js")
         self.assertIn("overlayPendingLedgerRows", js)

@@ -13,9 +13,73 @@
   var CATALOG_KEY = 'snapshot';
   /* Offline drafts/outbox are not kept forever (plan: finite window). */
   var MAX_OFFLINE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+  /* Local-only order numbers Rajesh asked to drop; they were never on the server. */
+  var VOID_LOCAL_ORDER_NOS = ['spc/3a4e1a/26-27', 'spc/72503b/26-27'];
+  var VOID_ORDER_STORAGE_KEY = 'hbe_pos_void_order_nos';
+  var voidPurgeStarted = false;
 
   var dbPromise = null;
   var flushInflight = null;
+
+  function normalizeOrderNo(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+
+  function readVoidedOrderNos() {
+    var set = {};
+    VOID_LOCAL_ORDER_NOS.forEach(function (n) {
+      set[n] = true;
+    });
+    try {
+      var raw = global.localStorage && global.localStorage.getItem(VOID_ORDER_STORAGE_KEY);
+      var extra = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(extra)) {
+        extra.forEach(function (n) {
+          var key = normalizeOrderNo(n);
+          if (key) set[key] = true;
+        });
+      }
+    } catch (err) {}
+    return set;
+  }
+
+  function rememberVoidedOrderNo(orderNo) {
+    var key = normalizeOrderNo(orderNo);
+    if (!key) return;
+    try {
+      var raw = global.localStorage && global.localStorage.getItem(VOID_ORDER_STORAGE_KEY);
+      var extra = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(extra)) extra = [];
+      if (extra.indexOf(key) === -1) {
+        extra.push(key);
+        global.localStorage.setItem(VOID_ORDER_STORAGE_KEY, JSON.stringify(extra));
+      }
+    } catch (err) {}
+  }
+
+  function isVoidedLocalOrder(orderNo) {
+    var key = normalizeOrderNo(orderNo);
+    if (!key) return false;
+    return !!readVoidedOrderNos()[key];
+  }
+
+  function purgeVoidedLocalOrders() {
+    if (voidPurgeStarted) {
+      return Promise.resolve({ removed: 0 });
+    }
+    voidPurgeStarted = true;
+    var nos = Object.keys(readVoidedOrderNos());
+    if (!nos.length) return Promise.resolve({ removed: 0 });
+    return nos.reduce(function (chain, orderNo) {
+      return chain.then(function (sum) {
+        return discardPending({ orderNo: orderNo }).then(function (summary) {
+          rememberVoidedOrderNo(orderNo);
+          sum.removed += (summary && summary.removed) || 0;
+          return sum;
+        });
+      });
+    }, Promise.resolve({ removed: 0 }));
+  }
 
   function openDb() {
     if (dbPromise) return dbPromise;
@@ -356,6 +420,7 @@
         outbox: counts[1] || 0,
         removed: (counts[0] || 0) + (counts[1] || 0)
       };
+      if (orderNo) rememberVoidedOrderNo(orderNo);
       if (summary.removed) {
         notifyChange('invoice', {
           discarded: true,
@@ -692,10 +757,12 @@
   }
 
   function pendingOrders() {
+    purgeVoidedLocalOrders();
     return Promise.all([listOutbox(), listDrafts()]).then(function (pair) {
       var byId = {};
       function consider(localId, payload, row, invoiceId) {
         if (!payload || typeof payload !== "object") return;
+        if (isVoidedLocalOrder(payload.orderNo || payload.order_no)) return;
         var lines = payload.lines;
         if (!Array.isArray(lines) || !lines.length) return;
         var id = String(localId || (row && row.localId) || "").trim();
@@ -991,6 +1058,9 @@
     enqueueOutbox: enqueueOutbox,
     listOutbox: listOutbox,
     discardPending: discardPending,
+    isVoidedLocalOrder: isVoidedLocalOrder,
+    purgeVoidedLocalOrders: purgeVoidedLocalOrders,
+    VOID_LOCAL_ORDER_NOS: VOID_LOCAL_ORDER_NOS,
     flushOutbox: flushOutbox,
     pruneExpiredOfflineData: pruneExpiredOfflineData,
     MAX_OFFLINE_AGE_MS: MAX_OFFLINE_AGE_MS,

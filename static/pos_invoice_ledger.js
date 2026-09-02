@@ -1537,6 +1537,8 @@
         if (!pendingMatchesOutlet(payload, outlet)) return;
         var orderNo = String(payload.orderNo || payload.order_no || '').trim().toLowerCase();
         if (orderNo && existing[orderNo]) return;
+        if (api && typeof api.isVoidedLocalOrder === 'function' && api.isVoidedLocalOrder(orderNo)) return;
+        if (api && typeof api.orderHasServerInvoiceId === 'function' && api.orderHasServerInvoiceId(order)) return;
         var row = buildLocalLedgerRow(order, tenderCount);
         tbody.insertBefore(row, tbody.firstChild);
         added += 1;
