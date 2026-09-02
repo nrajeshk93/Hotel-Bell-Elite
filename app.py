@@ -37,6 +37,20 @@ import activity_audit
 import csrf_protect
 from secret_key import get_secret_key
 from mailer import app_base_url, send_account_unlock_email, smtp_configured
+from ledger_categories import (
+    CATEGORY_MASTER_MODULES,
+    LEDGER_MODULE_EXPENSE,
+    LEDGER_MODULE_PURCHASE,
+    SOURCE_LEDGER,
+    SOURCE_POS,
+    encode_category_master_id,
+    ensure_expense_category_modules,
+    get_ledger_category,
+    list_ledger_categories,
+    parse_category_master_id,
+    save_ledger_category,
+    soft_delete_ledger_category,
+)
 from db import (
     SQL_NOW,
     POS_INVOICE_ORDER_TYPES,
@@ -320,6 +334,12 @@ from stores import register_stores
 from communication_hub import register_communication_hub
 from back_office_receipt import register_back_office_receipt
 from seo_privacy import register_seo_privacy
+from asset_digest import (
+    apply_no_store_cdn,
+    cache_version,
+    render_service_worker,
+    rewrite_html_static_urls,
+)
 from gst_hotel import register_gst_hotel
 from gst_fnb import register_gst_fnb
 from main_dashboard_data import (
@@ -553,22 +573,44 @@ def _slugify_expense_category_key(name):
     return value[:80]
 
 
-def _expense_category_choices(conn=None):
-    """Builtin + custom expense categories for dropdowns."""
-    items = list(EXPENSE_CATEGORIES)
-    seen = {key for key, _label in items}
+def _ensure_ledger_category_seed(conn):
+    if conn is None:
+        return
+    ensure_expense_category_modules(conn, builtin_categories=EXPENSE_CATEGORIES)
+
+
+def _expense_category_choices(conn=None, module=None):
+    """Builtin + custom categories. Pass module='purchase' or 'expense' to isolate lists."""
+    from ledger_categories import ledger_category_choices, normalize_ledger_module
+
+    wanted = normalize_ledger_module(module) if module else ""
     if conn is not None:
+        try:
+            _ensure_ledger_category_seed(conn)
+        except Exception:
+            pass
+        if wanted:
+            try:
+                items = ledger_category_choices(conn, wanted)
+            except Exception:
+                items = []
+            if items:
+                return _sorted_label_choices(items)
+            return list(EXPENSE_CATEGORIES)
         try:
             rows = conn.execute(
                 """
-                SELECT category_key, name
+                SELECT category_key, name, module
                 FROM expense_categories
                 WHERE is_active = 1
-                ORDER BY sort_order, lower(name), id
+                ORDER BY CASE module WHEN 'expense' THEN 0 ELSE 1 END,
+                         sort_order, lower(name), id
                 """
             ).fetchall()
         except Exception:
             rows = []
+        items = list(EXPENSE_CATEGORIES)
+        seen = {key for key, _label in items}
         for row in rows:
             key = (row["category_key"] or "").strip()
             label = (row["name"] or "").strip()
@@ -576,11 +618,12 @@ def _expense_category_choices(conn=None):
                 continue
             items.append((key, label))
             seen.add(key)
-    return _sorted_label_choices(items)
+        return _sorted_label_choices(items)
+    return list(EXPENSE_CATEGORIES)
 
 
-def _expense_category_labels(conn=None):
-    return dict(_expense_category_choices(conn))
+def _expense_category_labels(conn=None, module=None):
+    return dict(_expense_category_choices(conn, module=module))
 
 HOTEL_IMPORT_FIELD_KEYS = ("total_sales", "cash", "card", "upi", "room_credit", "bor")
 ROOM_TRANSFER_PAYMENT_STATUSES = _sorted_label_choices((
@@ -815,6 +858,7 @@ def enforce_access():
     if (
         endpoint == "service_worker"
         or request.path == "/sw.js"
+        or request.path == "/hbe-build.json"
         or request.path == "/robots.txt"
         or request.path == "/sitemap.xml"
         or request.path.startswith("/static/")
@@ -2927,6 +2971,15 @@ def _purchase_ledger_entries(conn, date_from, date_to, supplier_id=None, company
             item["payment_type"], item["amount"], item["paid_amount"]
         )
         entries.append(item)
+    purchase_labels = _expense_category_labels(conn, module=LEDGER_MODULE_PURCHASE)
+    expense_labels = _expense_category_labels(conn, module=LEDGER_MODULE_EXPENSE)
+    union_labels = dict(purchase_labels)
+    union_labels.update(expense_labels)
+    for item in entries:
+        kind = item.get("entry_kind")
+        labels = purchase_labels if kind == LEDGER_ENTRY_KIND_PURCHASE else expense_labels
+        key = item.get("category") or ""
+        item["category_label"] = labels.get(key) or union_labels.get(key) or key
     return entries
 
 
@@ -5153,15 +5206,19 @@ def favicon():
 
 @app.route("/sw.js")
 def service_worker():
-    """Serve the POS offline service worker at root so scope can be '/'."""
-    response = send_from_directory(
-        app.static_folder,
-        "sw.js",
-        mimetype="application/javascript",
-        max_age=0,
-    )
+    """Serve the app-shell service worker at root so scope can be '/'."""
+    body = render_service_worker(app.static_folder)
+    response = app.response_class(body, mimetype="application/javascript")
     response.headers["Service-Worker-Allowed"] = "/"
-    response.headers["Cache-Control"] = "no-cache"
+    apply_no_store_cdn(response)
+    return response
+
+
+@app.route("/hbe-build.json")
+def hbe_build():
+    """Tiny no-store build id so a long-lived tab can notice a deploy."""
+    response = jsonify({"cacheVersion": cache_version(app.static_folder)})
+    apply_no_store_cdn(response)
     return response
 
 
@@ -5219,7 +5276,26 @@ def _static_asset_cache(response):
     existing = (response.headers.get("Cache-Control") or "").lower()
     if "no-store" in existing or "no-cache" in existing:
         return response
+    # Hashed `?v=` URLs are immutable; 7 days is safe and CDN-friendly.
     response.headers.setdefault("Cache-Control", "public, max-age=604800")
+    return response
+
+
+@app.after_request
+def _hash_static_urls_in_html(response):
+    """Point HTML at content-hashed /static URLs so deploys cannot stick."""
+    if response.direct_passthrough:
+        return response
+    content_type = (response.content_type or "").lower()
+    if "text/html" not in content_type:
+        return response
+    try:
+        body = response.get_data(as_text=True)
+    except Exception:
+        return response
+    new_body, changed = rewrite_html_static_urls(body, app.static_folder)
+    if changed:
+        response.set_data(new_body)
     return response
 
 
@@ -6157,8 +6233,12 @@ def _category_master_page_render(template, **kwargs):
 
 
 def _category_master_form_payload(source=None, *, category_id=""):
+    from ledger_categories import normalize_category_master_module
+
     source = source or {}
-    outlet = normalize_pos_outlet(source.get("outlet") or POS_OUTLET_RESTAURANT)
+    module = normalize_category_master_module(
+        source.get("module") or source.get("outlet") or POS_OUTLET_RESTAURANT
+    )
     visible_raw = source.get("is_visible")
     if isinstance(visible_raw, bool):
         is_visible = visible_raw
@@ -6169,14 +6249,76 @@ def _category_master_form_payload(source=None, *, category_id=""):
     return {
         "id": category_id or "",
         "name": " ".join(str(source.get("name") or "").split()).strip(),
-        "outlet": outlet,
+        "module": module,
+        "outlet": module if module in (POS_OUTLET_RESTAURANT, POS_OUTLET_BAR) else POS_OUTLET_RESTAURANT,
         "is_visible": is_visible,
     }
 
 
+def _list_category_master_rows(conn):
+    _ensure_ledger_category_seed(conn)
+    rows = []
+    for category in list_pos_menu_categories(
+        conn, outlets=[POS_OUTLET_RESTAURANT, POS_OUTLET_BAR]
+    ):
+        module = category.get("outlet") or POS_OUTLET_RESTAURANT
+        rows.append({
+            "id": encode_category_master_id(SOURCE_POS, category["id"]),
+            "raw_id": category["id"],
+            "source": SOURCE_POS,
+            "name": category.get("name") or "",
+            "module": module,
+            "module_label": "Bar" if module == POS_OUTLET_BAR else "Restaurant",
+            "outlet": module,
+            "is_visible": bool(category.get("is_visible", True)),
+            "item_count": int(category.get("item_count") or 0),
+            "show_visible": True,
+        })
+    for category in list_ledger_categories(conn):
+        module = category.get("module")
+        rows.append({
+            "id": encode_category_master_id(SOURCE_LEDGER, category["id"]),
+            "raw_id": category["id"],
+            "source": SOURCE_LEDGER,
+            "name": category.get("name") or "",
+            "module": module,
+            "module_label": category.get("module_label") or module,
+            "outlet": module,
+            "is_visible": True,
+            "item_count": int(category.get("item_count") or 0),
+            "show_visible": False,
+        })
+    rows.sort(key=lambda row: (
+        list(dict(CATEGORY_MASTER_MODULES).keys()).index(row["module"])
+        if row["module"] in dict(CATEGORY_MASTER_MODULES) else 99,
+        (row["name"] or "").casefold(),
+        str(row["id"]),
+    ))
+    return rows
+
+
+def _pos_menu_category_item_count(conn, category_id):
+    try:
+        raw_id = int(category_id)
+    except (TypeError, ValueError):
+        return 0
+    row = conn.execute(
+        """
+        SELECT COALESCE(SUM(CASE WHEN i.is_active = 1 THEN 1 ELSE 0 END), 0) AS item_count
+        FROM pos_menu_categories c
+        LEFT JOIN pos_menu_items i ON i.category_id = c.id AND i.outlet = c.outlet
+        WHERE c.id = ? AND c.is_active = 1
+        """,
+        (raw_id,),
+    ).fetchone()
+    if not row:
+        return 0
+    return int(row["item_count"] if row["item_count"] is not None else 0)
+
+
 @app.route("/masters/categories", endpoint="category_master")
 def category_master():
-    """POS menu Category Master — list and manage Restaurant/Bar categories."""
+    """Category Master — Restaurant, Bar, Purchase, and Expense lists."""
     user = get_current_user()
     if not user_can_access_category_master(user):
         return _permission_denied_response("You do not have access to Category Master.")
@@ -6188,9 +6330,7 @@ def category_master():
     conn = get_db()
     try:
         ensure_pos_schema(conn)
-        categories = list_pos_menu_categories(
-            conn, outlets=[POS_OUTLET_RESTAURANT, POS_OUTLET_BAR]
-        )
+        categories = _list_category_master_rows(conn)
         selected = None
         if selected_id:
             selected = next((c for c in categories if str(c["id"]) == selected_id), None)
@@ -6202,7 +6342,8 @@ def category_master():
         form = {
             "id": selected["id"],
             "name": selected.get("name") or "",
-            "outlet": selected.get("outlet") or POS_OUTLET_RESTAURANT,
+            "module": selected.get("module") or POS_OUTLET_RESTAURANT,
+            "outlet": selected.get("module") or POS_OUTLET_RESTAURANT,
             "is_visible": bool(selected.get("is_visible", True)),
         }
     else:
@@ -6225,6 +6366,7 @@ def category_master():
         form_focus=form_focus or bool(selected),
         show_form=form_focus or bool(selected),
         embed_mode=is_embed_request(),
+        module_opts=CATEGORY_MASTER_MODULES,
     )
 
 
@@ -6235,46 +6377,80 @@ def save_category_master():
         return _permission_denied_response("You do not have access to Category Master.")
 
     category_id_raw = (request.form.get("category_id") or "").strip()
-    try:
-        category_id = int(category_id_raw) if category_id_raw else None
-    except (TypeError, ValueError):
-        category_id = None
-    payload = _category_master_form_payload(request.form, category_id=category_id or "")
+    source, raw_id = parse_category_master_id(category_id_raw) if category_id_raw else (None, None)
+    payload = _category_master_form_payload(request.form, category_id=category_id_raw)
     embed = is_embed_request() or str(request.form.get("embed") or request.args.get("embed") or "") == "1"
+
+    def _save_error(conn, message):
+        categories = _list_category_master_rows(conn)
+        form = dict(payload)
+        form["id"] = category_id_raw
+        return _category_master_page_render(
+            "partials/master_embed/category.html" if embed else "category_master.html",
+            categories=categories,
+            form=form,
+            errors=[message],
+            success_message="",
+            form_focus=True,
+            show_form=True,
+            embed_mode=embed,
+            module_opts=CATEGORY_MASTER_MODULES,
+        ), 400
 
     conn = get_db()
     try:
         ensure_pos_schema(conn)
+        _ensure_ledger_category_seed(conn)
         try:
-            save_pos_menu_category(
-                conn,
-                category_id=category_id,
-                name=payload["name"],
-                is_visible=payload["is_visible"],
-                outlet=payload["outlet"],
-            )
+            if raw_id:
+                if source == SOURCE_POS:
+                    existing = conn.execute(
+                        "SELECT id, outlet FROM pos_menu_categories WHERE id = ? AND is_active = 1",
+                        (raw_id,),
+                    ).fetchone()
+                    if not existing:
+                        raise ValueError("Category not found.")
+                    save_pos_menu_category(
+                        conn,
+                        category_id=raw_id,
+                        name=payload["name"],
+                        is_visible=True,
+                        outlet=existing["outlet"],
+                    )
+                elif source == SOURCE_LEDGER:
+                    save_ledger_category(
+                        conn,
+                        category_id=raw_id,
+                        name=payload["name"],
+                    )
+                else:
+                    raise ValueError("Category not found.")
+            else:
+                module = payload["module"]
+                if module in (POS_OUTLET_RESTAURANT, POS_OUTLET_BAR):
+                    save_pos_menu_category(
+                        conn,
+                        category_id=None,
+                        name=payload["name"],
+                        is_visible=True,
+                        outlet=module,
+                    )
+                elif module in (LEDGER_MODULE_PURCHASE, LEDGER_MODULE_EXPENSE):
+                    save_ledger_category(
+                        conn,
+                        name=payload["name"],
+                        module=module,
+                    )
+                else:
+                    raise ValueError("Select a module.")
             conn.commit()
         except ValueError as exc:
             conn.rollback()
-            categories = list_pos_menu_categories(
-                conn, outlets=[POS_OUTLET_RESTAURANT, POS_OUTLET_BAR]
-            )
-            form = dict(payload)
-            form["id"] = category_id or ""
-            return _category_master_page_render(
-                "partials/master_embed/category.html" if embed else "category_master.html",
-                categories=categories,
-                form=form,
-                errors=[str(exc)],
-                success_message="",
-                form_focus=True,
-                show_form=True,
-                embed_mode=embed,
-            ), 400
+            return _save_error(conn, str(exc))
     finally:
         conn.close()
 
-    redirect_kwargs = {"saved": "updated" if category_id else "created"}
+    redirect_kwargs = {"saved": "updated" if raw_id else "created"}
     if embed:
         redirect_kwargs["embed"] = 1
     return redirect(url_for("category_master", **redirect_kwargs))
@@ -6292,23 +6468,31 @@ def delete_category_master():
     if embed:
         redirect_kwargs["embed"] = 1
 
-    try:
-        category_id = int(category_id_raw)
-    except (TypeError, ValueError):
+    source, raw_id = parse_category_master_id(category_id_raw)
+    if not raw_id:
         _queue_auth_notice("Category not found.")
         return redirect(url_for("category_master", **redirect_kwargs))
 
     conn = get_db()
     try:
         ensure_pos_schema(conn)
+        _ensure_ledger_category_seed(conn)
         try:
-            soft_delete_pos_menu_category(conn, category_id)
+            if source == SOURCE_POS:
+                item_count = _pos_menu_category_item_count(conn, raw_id)
+                if item_count > 0:
+                    raise ValueError("This category still has menu items. Remove or move them first.")
+                soft_delete_pos_menu_category(conn, raw_id)
+            elif source == SOURCE_LEDGER:
+                soft_delete_ledger_category(conn, raw_id)
+            else:
+                raise ValueError("Category not found.")
             conn.commit()
-        except ValueError:
+        except ValueError as exc:
             conn.rollback()
-            _queue_auth_notice("Category not found.")
+            _queue_auth_notice(str(exc) or "Category not found.")
             fail_kwargs = dict(redirect_kwargs)
-            fail_kwargs["category_id"] = category_id
+            fail_kwargs["category_id"] = category_id_raw
             return redirect(url_for("category_master", **fail_kwargs))
     finally:
         conn.close()
@@ -14804,6 +14988,8 @@ def purchase_ledger():
     conn = get_db()
     expense_categories = EXPENSE_CATEGORIES
     expense_category_labels = EXPENSE_CATEGORY_LABELS
+    purchase_add_categories = list(EXPENSE_CATEGORIES)
+    expense_add_categories = list(EXPENSE_CATEGORIES)
     try:
         if selected_payment != PURCHASE_LEDGER_FILTER_ALL and selected_payment not in EXPENSE_PAYMENT_LABELS:
             selected_payment = PURCHASE_LEDGER_FILTER_ALL
@@ -14812,6 +14998,8 @@ def purchase_ledger():
             selected_kind = PURCHASE_LEDGER_FILTER_ALL
             entry_kind = None
         expense_category_labels = _expense_category_labels(conn)
+        purchase_add_categories = _expense_category_choices(conn, module=LEDGER_MODULE_PURCHASE)
+        expense_add_categories = _expense_category_choices(conn, module=LEDGER_MODULE_EXPENSE)
 
         # Categories first (ignore selected category so unused master keys drop out).
         if selected_category != PURCHASE_LEDGER_FILTER_ALL and not _normalize_expense_category(selected_category):
@@ -14971,6 +15159,8 @@ def purchase_ledger():
         ledger_entry_kind_labels=LEDGER_ENTRY_KIND_LABELS,
         expense_categories=expense_categories,
         expense_category_labels=expense_category_labels,
+        purchase_add_categories=purchase_add_categories,
+        expense_add_categories=expense_add_categories,
         credit_settlement_status_labels=CREDIT_SETTLEMENT_STATUS_LABELS,
         purchase_add_url=url_for("purchase_ledger_add"),
         purchase_edit_url=url_for("purchase_ledger_edit"),
@@ -16664,6 +16854,7 @@ def _render_sales_update_hotel(user, **page_opts):
     if selected_location not in HOTEL_LOCATIONS:
         selected_location = OUTLET_HOTEL
 
+    hotel_expense_categories = list(EXPENSE_CATEGORIES)
     conn = get_db()
     try:
         entry_date = _parse_sales_date(selected_date)
@@ -16692,6 +16883,7 @@ def _render_sales_update_hotel(user, **page_opts):
         tip_employees = _active_employees_for_tips(conn)
         credit_employees = _active_employees_for_credit(conn)
         available_cash = _cash_ledger_available_as_of(conn, selected_company, entry_date)
+        hotel_expense_categories = _expense_category_choices(conn, module=LEDGER_MODULE_EXPENSE)
     finally:
         conn.close()
 
@@ -16715,7 +16907,7 @@ def _render_sales_update_hotel(user, **page_opts):
         hotel_sales_entry_fields=HOTEL_SALES_ENTRY_FIELDS,
         hotel_manual_sales_entry_keys=HOTEL_MANUAL_SALES_ENTRY_KEYS,
         expense_payment_types=EXPENSE_PAYMENT_TYPES,
-        expense_categories=EXPENSE_CATEGORIES,
+        expense_categories=hotel_expense_categories,
         suppliers=suppliers,
         tip_employees=tip_employees,
         credit_employees=credit_employees,

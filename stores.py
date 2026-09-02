@@ -2260,48 +2260,54 @@ def _ensure_expense_category(conn, category_key: str, category_label: str) -> tu
     label = (category_label or "").strip() or key.replace("_", " ").title()
     if not key:
         return "", ""
-    for builtin_key, builtin_label in app_module.EXPENSE_CATEGORIES:
-        if builtin_key == key or builtin_label.casefold() == label.casefold():
-            return builtin_key, builtin_label
     if not re.fullmatch(r"[a-z][a-z0-9_]{0,79}", key):
         key = app_module._slugify_expense_category_key(label) or key
     if not key or not re.fullmatch(r"[a-z][a-z0-9_]{0,79}", key):
         return "", ""
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS expense_categories (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            category_key  TEXT    NOT NULL UNIQUE,
-            name          TEXT    NOT NULL COLLATE NOCASE,
-            sort_order    INTEGER NOT NULL DEFAULT 0,
-            is_active     INTEGER NOT NULL DEFAULT 1,
-            created_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
-        )
-    """)
+    from ledger_categories import (
+        LEDGER_MODULE_EXPENSE,
+        ensure_expense_category_modules,
+    )
+    ensure_expense_category_modules(conn, builtin_categories=app_module.EXPENSE_CATEGORIES)
     by_key = conn.execute(
-        "SELECT category_key, name, is_active FROM expense_categories WHERE category_key = ?",
-        (key,),
+        """
+        SELECT category_key, name, is_active FROM expense_categories
+        WHERE module = ? AND category_key = ?
+        """,
+        (LEDGER_MODULE_EXPENSE, key),
     ).fetchone()
     by_name = conn.execute(
-        "SELECT category_key, name, is_active FROM expense_categories WHERE lower(name) = lower(?)",
-        (label,),
+        """
+        SELECT category_key, name, is_active FROM expense_categories
+        WHERE module = ? AND lower(name) = lower(?)
+        """,
+        (LEDGER_MODULE_EXPENSE, label),
     ).fetchone()
     existing = by_name or by_key
     if existing:
         if int(existing["is_active"] or 0) != 1:
             conn.execute(
-                "UPDATE expense_categories SET is_active = 1, name = ? WHERE category_key = ?",
-                (label, existing["category_key"]),
+                """
+                UPDATE expense_categories
+                SET is_active = 1, name = ?
+                WHERE module = ? AND category_key = ?
+                """,
+                (label, LEDGER_MODULE_EXPENSE, existing["category_key"]),
             )
         return existing["category_key"], existing["name"] if int(existing["is_active"] or 0) == 1 else label
     max_sort = conn.execute(
-        "SELECT COALESCE(MAX(sort_order), 0) AS m FROM expense_categories"
+        """
+        SELECT COALESCE(MAX(sort_order), 0) AS m FROM expense_categories
+        WHERE module = ?
+        """,
+        (LEDGER_MODULE_EXPENSE,),
     ).fetchone()["m"]
     conn.execute(
         """
-        INSERT INTO expense_categories (category_key, name, sort_order, is_active)
-        VALUES (?, ?, ?, 1)
+        INSERT INTO expense_categories (category_key, name, module, sort_order, is_active)
+        VALUES (?, ?, ?, ?, 1)
         """,
-        (key, label, int(max_sort) + 10),
+        (key, label, LEDGER_MODULE_EXPENSE, int(max_sort) + 10),
     )
     return key, label
 
@@ -2326,7 +2332,7 @@ def _sync_product_categories_into_expense_categories(conn) -> list[tuple[str, st
         if key not in dict(app_module.EXPENSE_CATEGORIES):
             label = (row["name"] or "").strip() or label
         _ensure_expense_category(conn, key, label)
-    return app_module._expense_category_choices(conn)
+    return app_module._expense_category_choices(conn, module='expense')
 
 
 def _pick_expense_category_from_product_categories(
@@ -7300,7 +7306,7 @@ def stores_purchase_requests():
         available_cash = app_module._cash_ledger_available_as_of(
             conn, app_module.DEFAULT_COMPANY, today
         )
-        expense_categories = app_module._expense_category_choices(conn)
+        expense_categories = app_module._expense_category_choices(conn, module='expense')
         expense_categories = _sync_product_categories_into_expense_categories(conn)
         conn.commit()
 
@@ -7506,30 +7512,32 @@ def stores_save_expense_category():
     try:
         ensure_stores_schema(conn)
         # Schema for expense_categories lives in init_db path; ensure via pragma/create.
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS expense_categories (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                category_key  TEXT    NOT NULL UNIQUE,
-                name          TEXT    NOT NULL COLLATE NOCASE,
-                sort_order    INTEGER NOT NULL DEFAULT 0,
-                is_active     INTEGER NOT NULL DEFAULT 1,
-                created_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
-            )
-        """)
+        from ledger_categories import LEDGER_MODULE_EXPENSE, ensure_expense_category_modules
+        ensure_expense_category_modules(conn, builtin_categories=app_module.EXPENSE_CATEGORIES)
         by_key = conn.execute(
-            "SELECT category_key, name, is_active FROM expense_categories WHERE category_key = ?",
-            (key,),
+            """
+            SELECT category_key, name, is_active FROM expense_categories
+            WHERE module = ? AND category_key = ?
+            """,
+            (LEDGER_MODULE_EXPENSE, key),
         ).fetchone()
         by_name = conn.execute(
-            "SELECT category_key, name, is_active FROM expense_categories WHERE lower(name) = lower(?)",
-            (name,),
+            """
+            SELECT category_key, name, is_active FROM expense_categories
+            WHERE module = ? AND lower(name) = lower(?)
+            """,
+            (LEDGER_MODULE_EXPENSE, name),
         ).fetchone()
         existing = by_name or by_key
         if existing:
             if int(existing["is_active"] or 0) != 1:
                 conn.execute(
-                    "UPDATE expense_categories SET is_active = 1, name = ? WHERE category_key = ?",
-                    (name, existing["category_key"]),
+                    """
+                    UPDATE expense_categories
+                    SET is_active = 1, name = ?
+                    WHERE module = ? AND category_key = ?
+                    """,
+                    (name, LEDGER_MODULE_EXPENSE, existing["category_key"]),
                 )
                 conn.commit()
             return jsonify({
@@ -7540,14 +7548,18 @@ def stores_save_expense_category():
             })
 
         max_sort = conn.execute(
-            "SELECT COALESCE(MAX(sort_order), 0) AS m FROM expense_categories"
+            """
+            SELECT COALESCE(MAX(sort_order), 0) AS m FROM expense_categories
+            WHERE module = ?
+            """,
+            (LEDGER_MODULE_EXPENSE,),
         ).fetchone()["m"]
         conn.execute(
             """
-            INSERT INTO expense_categories (category_key, name, sort_order, is_active)
-            VALUES (?, ?, ?, 1)
+            INSERT INTO expense_categories (category_key, name, module, sort_order, is_active)
+            VALUES (?, ?, ?, ?, 1)
             """,
-            (key, name, int(max_sort) + 10),
+            (key, name, LEDGER_MODULE_EXPENSE, int(max_sort) + 10),
         )
         conn.commit()
     except Exception:

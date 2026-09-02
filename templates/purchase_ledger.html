@@ -306,7 +306,7 @@
             </thead>
             <tbody>
               {% for entry in purchase_entries %}
-              {% set cat_label = expense_category_labels.get(entry.category, entry.category or '') %}
+              {% set cat_label = entry.category_label or expense_category_labels.get(entry.category, entry.category or '') %}
               {% set pay_label = purchase_ledger_payment_labels.get(entry.display_payment_type, entry.display_payment_type) %}
               {% set status_label = credit_settlement_status_labels.get(entry.settlement_status, entry.settlement_status or '') %}
               {% set kind_label = ledger_entry_kind_labels.get(entry.entry_kind, entry.entry_kind or 'Expense') %}
@@ -319,7 +319,7 @@
                 <td data-sort-value="{{ entry.description or '' }}">
                   <div class="pl-name">{{ entry.description or '—' }}</div>
                 </td>
-                <td data-sort-value="{{ expense_category_labels.get(entry.category, entry.category or '') }}">{{ expense_category_labels.get(entry.category, entry.category or '—') }}</td>
+                <td data-sort-value="{{ cat_label }}">{{ cat_label or '—' }}</td>
                 <td data-sort-value="{{ entry.invoice_number or '' }}">{{ entry.invoice_number or '—' }}</td>
                 <td data-sort-value="{{ entry.supplier_name or '' }}">
                   {% if entry.supplier_name %}
@@ -351,7 +351,7 @@
                       data-description="{{ entry.description or '' }}"
                       data-amount="{{ entry.amount }}"
                       data-category="{{ entry.category or '' }}"
-                      data-category-label="{{ expense_category_labels.get(entry.category, entry.category or '') }}"
+                      data-category-label="{{ cat_label }}"
                       data-invoice="{{ entry.invoice_number or '' }}"
                       data-supplier-id="{{ entry.supplier_id or '' }}"
                       data-supplier-name="{{ entry.supplier_name or '' }}"

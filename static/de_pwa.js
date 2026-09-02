@@ -1,11 +1,9 @@
 /**
  * Register the Hotel Bell Elite app shell service worker once per browser session.
- * Cache version bumps activate via skipWaiting; do not force page reloads —
- * that made Settings / soft-nav feel like a multi-second stall.
  *
- * Cache cleanup must keep the *current* SW CACHE_VERSION (never hardcode an
- * old cache name — that deleted the live cache and caused thrash).
- * Also drops legacy hbe-pos-* caches after the hbe-app migration.
+ * New workers skipWaiting + claim. A controllerchange reload runs only when
+ * this page already had a worker (an actual update), so first install does
+ * not stall Sign In / Settings. Cache cleanup keeps the live CACHE_VERSION.
  */
 (function () {
   'use strict';
@@ -75,21 +73,31 @@
       null;
     return askCacheVersion(worker).then(function (version) {
       if (version) return version;
-      /* Fallback: newest hbe-app-vN (prefer) or legacy hbe-pos-vN. */
       if (typeof caches === 'undefined' || !caches.keys) return '';
       return caches.keys().then(function (keys) {
         var best = '';
         var bestN = -1;
         var bestPref = '';
         (keys || []).forEach(function (key) {
+          var hashed = String(key).match(/^(hbe-app)-([a-f0-9]{8,})$/);
+          if (hashed) {
+            if (bestPref !== 'hbe-app-hash') {
+              best = key;
+              bestPref = 'hbe-app-hash';
+              bestN = 0;
+            }
+            return;
+          }
           var m = String(key).match(/^(hbe-app|hbe-pos)-v(\d+)$/);
           if (!m) return;
           var pref = m[1];
           var n = parseInt(m[2], 10);
           var better =
-            !best ||
-            (pref === 'hbe-app' && bestPref !== 'hbe-app') ||
-            (pref === bestPref && n > bestN);
+            bestPref === 'hbe-app-hash'
+              ? false
+              : !best ||
+                (pref === 'hbe-app' && bestPref !== 'hbe-app') ||
+                (pref === bestPref && n > bestN);
           if (better) {
             bestN = n;
             best = key;
@@ -101,37 +109,68 @@
     });
   }
 
-  function register() {
-    var onAuthShell =
-      /\/(login)?$/.test(window.location.pathname || '') ||
-      String(window.location.pathname || '').indexOf('offline_login') !== -1;
+  function bindReloadOnUpdate() {
+    if (window.__hbeSwReloadBound) return;
+    window.__hbeSwReloadBound = true;
+    var hadController = !!(
+      navigator.serviceWorker && navigator.serviceWorker.controller
+    );
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (!hadController) {
+        hadController = true;
+        return;
+      }
+      if (window.__hbeSwReloaded) return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+      window.__hbeSwReloaded = true;
+      try {
+        window.location.reload();
+      } catch (e) {}
+    });
+  }
 
-    if (onAuthShell && !window.__hbeSwReloadBound) {
-      window.__hbeSwReloadBound = true;
-      navigator.serviceWorker.addEventListener('controllerchange', function () {
-        if (window.__hbeSwReloaded) return;
-        /* Reloading while offline paints Chrome's dinosaur on /login. */
-        if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
-        window.__hbeSwReloaded = true;
-        try {
-          window.location.reload();
-        } catch (e) {}
-      });
+  function checkForUpdate(reg) {
+    if (reg && typeof reg.update === 'function') {
+      try {
+        reg.update();
+      } catch (e) {}
     }
+    if (typeof fetch !== 'function') return;
+    fetch('/hbe-build.json', { cache: 'no-store', credentials: 'same-origin' })
+      .then(function (resp) {
+        if (!resp || !resp.ok) return null;
+        return resp.json();
+      })
+      .then(function (data) {
+        var remote = data && data.cacheVersion ? String(data.cacheVersion) : '';
+        if (!remote) return;
+        var worker =
+          (navigator.serviceWorker && navigator.serviceWorker.controller) ||
+          (reg && reg.active) ||
+          null;
+        return askCacheVersion(worker).then(function (local) {
+          if (local && remote && local !== remote && reg && reg.update) {
+            try {
+              reg.update();
+            } catch (e2) {}
+          }
+        });
+      })
+      .catch(function () {});
+  }
+
+  function register() {
+    bindReloadOnUpdate();
 
     navigator.serviceWorker
-      .register('/sw.js', { scope: '/' })
+      .register('/sw.js', { scope: '/', updateViaCache: 'none' })
       .then(function (reg) {
         resolveActiveCacheVersion(reg)
           .then(function (keep) {
             return pruneStaleAppCaches(keep);
           })
           .catch(function () {});
-        if (reg && typeof reg.update === 'function') {
-          try {
-            reg.update();
-          } catch (e) {}
-        }
+        checkForUpdate(reg);
         if (reg && reg.waiting) {
           try {
             reg.waiting.postMessage({ type: 'SKIP_WAITING' });
@@ -150,13 +189,21 @@
             });
           });
         }
+        function onVisible() {
+          if (document.visibilityState && document.visibilityState !== 'visible') {
+            return;
+          }
+          checkForUpdate(reg);
+        }
+        document.addEventListener('visibilitychange', onVisible);
+        window.addEventListener('focus', onVisible);
+        window.addEventListener('pageshow', onVisible);
       })
       .catch(function () {
         /* Ignore — HTTPS / localhost required; silent in unsupported hosts. */
       });
   }
 
-  /* Test/helpers: expose prune helper without registering twice. */
   window.__dePwaPruneStaleAppCaches = pruneStaleAppCaches;
   window.__dePwaPruneStalePosCaches = pruneStaleAppCaches;
 

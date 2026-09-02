@@ -1,68 +1,16 @@
 /* Hotel Bell Elite — whole-app shell service worker.
  * Network-first everywhere we intercept so online stays fast/fresh.
  * Cache Storage is a fallback for offline + brief disconnects.
+ * CACHE_VERSION is a content hash; activate drops every older cache name.
  * Floor APIs are never cached — occupancy must not go stale.
  * POS menu GETs stay network-first; mutation APIs are not intercepted. */
-var CACHE_VERSION = 'hbe-app-v20';
-var OFFLINE_LOGIN_URL = '/static/offline_login.html?v=10';
-var OFFLINE_AUTH_URL = '/static/offline_auth.js?v=12';
-var CRITICAL_STATIC_ALIASES = {
-  '/static/offline_auth.js': [
-    '/static/offline_auth.js?v=12',
-    '/static/offline_auth.js?v=11',
-    '/static/offline_auth.js?v=10',
-    '/static/offline_auth.js?v=9',
-    '/static/offline_auth.js?v=8',
-    '/static/offline_auth.js'
-  ],
-  '/static/de_pwa.js': [
-    '/static/de_pwa.js?v=14',
-    '/static/de_pwa.js?v=13',
-    '/static/de_pwa.js'
-  ],
-  '/static/offline_login.html': [
-    OFFLINE_LOGIN_URL,
-    '/static/offline_login.html?v=10',
-    '/static/offline_login.html?v=9',
-    '/static/offline_login.html'
-  ]
-};
-var PRECACHE = [
-  '/home',
-  '/point-of-sale/invoice',
-  '/bar-point-of-sale/invoice',
-  '/login',
-  OFFLINE_LOGIN_URL,
-  '/static/offline_login.html',
-  OFFLINE_AUTH_URL,
-  '/static/login_premium.css?v=12',
-  '/static/login_hero.jpg?v=2',
-  '/static/hbe_mark_sm.png',
-  '/static/hbe_mark_form_sm.png?v=3',
-  '/static/hbe_logo_sm.png',
-  '/static/hbe_logo_sm.webp',
-  '/static/manifest.webmanifest',
-  '/static/de_workspace_shell.css?v=56',
-  '/static/hbe_home_premium.css?v=20',
-  '/static/ep_form_listbox.css?v=29',
-  '/static/hbe_table_scroll.css?v=2',
-  '/static/hbe_kpi.css?v=13',
-  '/static/hbe_app_toast.css?v=1',
-  '/static/reports_page_scroll.css?v=5',
-  '/static/pos_invoice.css?v=52',
-  '/static/pos_invoice.js?v=156',
-  '/static/pos_offline.js?v=6',
-  '/static/ep_form_listbox.js?v=66',
-  '/static/de_workspace_nav.js?v=46',
-  '/static/de_workspace_transitions.js?v=193',
-  '/static/hbe_table_scroll.js?v=10',
-  '/static/hbe_app_toast.js?v=3',
-  '/static/print_agent.js?v=7',
-  '/static/de_pwa.js?v=14',
-  '/static/pwa-icon-192.png',
-  '/static/pwa-icon-512.png',
-  '/static/favicon-32.png'
-];
+/* CACHE_VERSION / PRECACHE / aliases are filled by asset_digest when Flask
+ * serves /sw.js. Session HTML is not precached — only hashed static + offline login. */
+var CACHE_VERSION = '__HBE_CACHE_VERSION__';
+var OFFLINE_LOGIN_URL = '__HBE_OFFLINE_LOGIN_URL__';
+var OFFLINE_AUTH_URL = '__HBE_OFFLINE_AUTH_URL__';
+var CRITICAL_STATIC_ALIASES = __HBE_CRITICAL_ALIASES__;
+var PRECACHE = __HBE_PRECACHE__;
 
 /* Menu catalog only — never floor (occupied status must not go stale). */
 var API_CACHE_PATHS = [

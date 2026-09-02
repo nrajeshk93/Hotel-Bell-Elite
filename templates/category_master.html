@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=56">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=55">
-<link rel="stylesheet" href="{{ url_for('static', filename='supplier_master.css') }}?v=10">
+<link rel="stylesheet" href="{{ url_for('static', filename='supplier_master.css') }}?v=15">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=2">
 <script>
@@ -25,6 +25,7 @@
 </head>
 <body class="de-open su-module">
 {% include 'partials/de_workspace_shell_open.html' %}
+{% from 'partials/ep_form_listbox_macros.html' import ep_listbox %}
 <div class="main-wrapper" id="category-master-page">
   <header class="se-sales-header su-header" id="se-sales-header">
     <div class="su-header-top">
@@ -47,13 +48,78 @@
         <button type="button" class="btn btn-primary" id="cm-open-category-modal" data-cm-action="open-category-modal">Add category</button>
       </div>
     </div>
+    <div class="se-sales-header-card">
+      <div class="se-sales-header-filters">
+        <div class="sr-topbar-filters cm-category-filters" aria-label="Category filters">
+          <div class="se-filter-chip se-filter-chip--search pl-search-chip pl-header-field-listbox pl-header-field" id="cm-category-search-chip">
+            <label class="se-filter-chip-label" for="cm-category-search">Search</label>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              </span>
+              <input type="search" id="cm-category-search" class="pl-search-input" placeholder="Name or module…" autocomplete="off" aria-label="Search categories">
+            </div>
+          </div>
+          {% set _cm_filter_opts = [('all', 'All'), ('restaurant', 'Restaurant'), ('bar', 'Bar'), ('purchase', 'Purchase'), ('expense', 'Expense')] %}
+          {{ ep_listbox('cm_module_filter', 'Module', _cm_filter_opts, 'all', placeholder='All', field_id='cm-module-filter', extra_class='pl-header-field-listbox pl-header-field md-master-outlet-filter', change_handler='cmApplyCategoryFilters') }}
+        </div>
+      </div>
+    </div>
   </header>
 
   {% include 'partials/category_master_body.html' %}
 </div>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
-<script src="{{ url_for('static', filename='category_master.js') }}?v=4"></script>
-<script>if (typeof window.initCategoryMasterPage === 'function') window.initCategoryMasterPage();</script>
+<script src="{{ url_for('static', filename='category_master.js') }}?v=9"></script>
+<script>
+(function initCmCategoryPageFilters(){
+  var searchInput = document.getElementById('cm-category-search');
+  var moduleInput = document.getElementById('cm-module-filter');
+  var table = document.getElementById('cm-category-table');
+  if (!table) return;
+  var countEl = document.getElementById('cm-category-count');
+  var tableWrap = document.getElementById('cm-category-table-wrap');
+  var emptyEl = document.getElementById('cm-category-search-empty');
+  var chip = document.getElementById('cm-category-search-chip');
+  var MODULES = { all: 1, restaurant: 1, bar: 1, purchase: 1, expense: 1 };
+  function applyFilters(){
+    var needle = searchInput ? String(searchInput.value || '').trim() : '';
+    var module = moduleInput ? String(moduleInput.value || 'all').trim().toLowerCase() : 'all';
+    if (!MODULES[module]) module = 'all';
+    if (chip) chip.classList.toggle('is-active', !!needle);
+    var rows = Array.from(table.querySelectorAll('tbody tr[data-sort-row]'));
+    var visible = 0;
+    var tbody = table.tBodies[0];
+    var ranked = rows.map(function(row){
+      var score = needle && window.hbeBestSearchScore ? window.hbeBestSearchScore([row.getAttribute('data-search') || ''], needle) : 0;
+      var rowModule = String(row.getAttribute('data-category-module') || row.getAttribute('data-category-outlet') || '').toLowerCase();
+      var matchModule = module === 'all' || rowModule === module;
+      var matchSearch = !needle || score >= 0;
+      return { row: row, score: score, match: matchModule && matchSearch };
+    });
+    if (needle) ranked.sort(function(a, b){ return b.score - a.score; });
+    ranked.forEach(function(entry){
+      entry.row.hidden = !entry.match;
+      if (entry.match) {
+        visible += 1;
+        if (needle && tbody) tbody.appendChild(entry.row);
+      }
+    });
+    if (countEl) countEl.textContent = visible + ' total';
+    var noMatch = visible === 0 && (!!needle || module !== 'all');
+    if (emptyEl) emptyEl.hidden = !noMatch;
+    if (tableWrap) tableWrap.hidden = !!noMatch;
+  }
+  window.cmApplyCategoryFilters = applyFilters;
+  if (typeof window.initEpListboxes === 'function') window.initEpListboxes();
+  if (searchInput) {
+    searchInput.addEventListener('input', applyFilters);
+    searchInput.addEventListener('keydown', function(e){ if (e.key === 'Enter') e.preventDefault(); });
+  }
+  applyFilters();
+})();
+if (typeof window.initCategoryMasterPage === 'function') window.initCategoryMasterPage();
+</script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

@@ -190,3 +190,95 @@ body.master-module .sm-check-label input{
   height:16px;
   margin:0;
 }
+
+
+/* Category Master add modal: four module tabs on a full row, never clipped. */
+#cm-category-modal .sm-supplier-modal-box,
+#md-master-modal #cm-category-modal .sm-supplier-modal-box{
+  width:640px;
+  max-width:min(640px,94vw);
+  overflow:visible;
+}
+#cm-category-module-field{
+  grid-column:1 / -1;
+  min-width:0;
+}
+#cm-category-module-field.is-locked{
+  opacity:.72;
+  pointer-events:none;
+}
+#cm-category-modal .pl-add-kind-field .pl-kind-tabs.cp-view-tabs,
+#md-master-modal #cm-category-modal .pl-add-kind-field .pl-kind-tabs.cp-view-tabs{
+  display:flex;
+  flex-wrap:nowrap;
+  width:100%;
+  min-width:0;
+  margin:8px 0 0;
+  box-sizing:border-box;
+}
+#cm-category-modal .pl-add-kind-field .pl-kind-tabs .pl-kind-tab,
+#md-master-modal #cm-category-modal .pl-add-kind-field .pl-kind-tabs .pl-kind-tab{
+  flex:1 1 0;
+  width:auto;
+  min-width:0;
+  height:40px;
+  padding:0 8px;
+  justify-content:center;
+}
+
+
+/* Category Master filters: Search (wide, left) + Module (compact, right). */
+.md-master-embed--category .cm-category-filters,
+#category-master-page .cm-category-filters{
+  display:flex;
+  flex-wrap:nowrap;
+  align-items:flex-end;
+  justify-content:flex-start;
+  gap:12px;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+}
+.md-master-embed--category .cm-category-filters #cm-category-search-chip,
+#category-master-page .cm-category-filters #cm-category-search-chip{
+  flex:1 1 auto;
+  width:auto;
+  min-width:180px;
+  max-width:none;
+}
+.md-master-embed--category .cm-category-filters #cm-category-search-chip .pl-search-input,
+#category-master-page .cm-category-filters #cm-category-search-chip .pl-search-input{
+  width:100%;
+  min-width:0;
+}
+#cm-module-filter-listbox{
+  flex:0 0 148px;
+  width:148px;
+  min-width:132px;
+  max-width:160px;
+  margin-left:0;
+}
+#cm-module-filter-listbox .se-filter-chip-icon{
+  display:none;
+}
+#cm-module-filter-listbox .se-filter-chip-trigger{
+  min-width:0;
+  padding-right:4px;
+}
+#cm-category-page .se-sales-header-card,
+.md-master-embed--category .se-sales-header-card,
+#category-master-page .se-sales-header-card{
+  overflow:visible;
+}
+#cm-category-modal .sm-supplier-modal-box,
+#md-master-modal #cm-category-modal .sm-supplier-modal-box{
+  overflow:visible;
+}
+#cm-category-module-listbox{
+  width:100%;
+  max-width:100%;
+}
+#cm-category-module-listbox .se-filter-listbox,
+#cm-module-filter-listbox .se-filter-listbox{
+  z-index:30;
+}

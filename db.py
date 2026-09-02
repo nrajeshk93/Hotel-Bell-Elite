@@ -22260,17 +22260,16 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS expense_categories (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            category_key  TEXT    NOT NULL UNIQUE,
+            category_key  TEXT    NOT NULL,
             name          TEXT    NOT NULL COLLATE NOCASE,
+            module        TEXT    NOT NULL DEFAULT 'expense',
             sort_order    INTEGER NOT NULL DEFAULT 0,
             is_active     INTEGER NOT NULL DEFAULT 1,
             created_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
         )
     """)
-    cursor.execute("""
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_expense_categories_name
-        ON expense_categories(lower(name))
-    """)
+    from ledger_categories import ensure_expense_category_modules
+    ensure_expense_category_modules(conn)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS suppliers (

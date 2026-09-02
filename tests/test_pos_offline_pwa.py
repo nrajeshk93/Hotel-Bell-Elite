@@ -34,9 +34,13 @@ class AppShellPwaTests(unittest.TestCase):
         resp = self.client.get("/sw.js")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.headers.get("Service-Worker-Allowed"), "/")
+        cc = (resp.headers.get("Cache-Control") or "").lower()
+        self.assertIn("no-store", cc)
+        self.assertEqual(resp.headers.get("CDN-Cache-Control"), "no-store")
+        self.assertEqual(resp.headers.get("Surrogate-Control"), "no-store")
         body = resp.get_data(as_text=True)
         resp.close()
-        self.assertRegex(body, r"CACHE_VERSION\s*=\s*'hbe-app-v\d+'")
+        self.assertRegex(body, r"CACHE_VERSION\s*=\s*'hbe-app-[a-f0-9]{8,}'")
         self.assertIn("GET_CACHE_VERSION", body)
         self.assertIn("isWorkspaceHtml", body)
         self.assertIn("partial", body)
@@ -64,7 +68,8 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("hbe_home_premium.css", body)
         self.assertIn("matchStaticCache", body)
         self.assertIn("CRITICAL_STATIC_ALIASES", body)
-        self.assertIn("offline_login.html?v=10", body)
+        self.assertIn("offline_login.html?v=", body)
+        self.assertNotIn("__HBE_CACHE_VERSION__", body)
         self.assertIn("hbe_logo_sm.png", body)
         self.assertIn("isLoginShellPath", body)
         self.assertIn("offlineNavigateFallback", body)
@@ -91,7 +96,7 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("You can still sign in with your password on this device.", html)
         self.assertIn('action="/login"', html)
         self.assertIn("de_pwa.js", html)
-        self.assertIn("offline_login.html?v=10", html)
+        self.assertIn("offline_login.html?v=", html)
         self.assertNotIn("Reconnect to sign in.", html)
 
     def test_get_login_serves_sign_in_page(self):
@@ -143,6 +148,9 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("hbe-app-", body)
         self.assertIn("pruneStaleAppCaches", body)
         self.assertIn("key === keepName", body)
+        self.assertIn("updateViaCache", body)
+        self.assertIn("hbe-build.json", body)
+        self.assertIn("bindReloadOnUpdate", body)
 
     def test_pos_offline_has_seven_day_prune(self):
         resp = self.client.get("/static/pos_offline.js")
@@ -226,6 +234,43 @@ class AppShellPwaTests(unittest.TestCase):
         html = page.get_data(as_text=True)
         self.assertNotIn("sd-pwa-hint", html)
         self.assertNotRegex(html, re.compile(r"Install this app over HTTPS", re.I))
+
+    def test_html_static_urls_use_content_hash(self):
+        login = self.client.post(
+            "/login",
+            data={"username": "admin", "password": "admin"},
+            follow_redirects=False,
+        )
+        self.assertIn(login.status_code, (302, 303))
+        page = self.client.get("/point-of-sale/invoice")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        page.close()
+        import asset_digest
+        asset_digest.reset_digest()
+        expected = asset_digest.hashed_static_url("pos_invoice.js")
+        self.assertIn(expected, html)
+        self.assertNotIn("pos_invoice.js?v=156", html)
+        self.assertNotIn("pos_invoice.js?v=157", html)
+
+    def test_hbe_build_json_matches_service_worker(self):
+        sw = self.client.get("/sw.js")
+        body = sw.get_data(as_text=True)
+        sw.close()
+        build = self.client.get("/hbe-build.json")
+        self.assertEqual(build.status_code, 200)
+        cc = (build.headers.get("Cache-Control") or "").lower()
+        self.assertIn("no-store", cc)
+        data = build.get_json()
+        build.close()
+        version = data.get("cacheVersion") or ""
+        self.assertTrue(version.startswith("hbe-app-"))
+        self.assertIn("CACHE_VERSION = '%s'" % version, body)
+        self.assertIn("/static/pos_offline.js?v=", body)
+        precache = body.split("var PRECACHE")[1].split("var API_CACHE")[0]
+        self.assertNotIn("'/home'", precache)
+        self.assertNotIn("/point-of-sale/invoice", precache)
+
 
 
 if __name__ == "__main__":

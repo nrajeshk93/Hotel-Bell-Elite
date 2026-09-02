@@ -101,7 +101,8 @@
           </div>
           <div class="se-filter-listbox" id="pl-add-category-list" role="listbox" aria-labelledby="pl-add-category-label" hidden>
             <div class="ep-listbox-options" id="pl-add-category-options">
-              {% for category_key, category_label in expense_categories %}
+              {% set _add_cats = (purchase_add_categories if purchase_add_categories is defined else expense_categories) %}
+              {% for category_key, category_label in _add_cats %}
               <button type="button" class="se-filter-listbox-option staff-category-option" role="option" data-value="{{ category_key }}" data-name="{{ category_label|lower }}" data-label="{{ category_label }}" aria-selected="false">{{ category_label }}</button>
               {% endfor %}
             </div>

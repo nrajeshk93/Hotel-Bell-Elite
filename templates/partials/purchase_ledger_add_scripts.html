@@ -12,6 +12,8 @@
   var todayIso = {{ today_iso|tojson }};
   var paymentLabels = {{ expense_payment_labels|tojson }};
   var categoryLabels = {{ expense_category_labels|tojson }};
+  var purchaseAddCategories = {{ purchase_add_categories|default([])|tojson }};
+  var expenseAddCategories = {{ expense_add_categories|default([])|tojson }};
   var availableCashUrl = {{ available_cash_url|tojson }};
   var availableCash = Number({{ available_cash|default(0)|tojson }} || 0);
 
@@ -156,7 +158,60 @@
       tab.setAttribute('aria-selected', selected ? 'true' : 'false');
     });
     setModalMode(!!editingExpenseId);
+    rebuildAddCategoryOptions(kind);
     syncSaveEnabled();
+  }
+
+  function categoryPairsForKind(kind) {
+    if (kind === 'purchase' && purchaseAddCategories && purchaseAddCategories.length) return purchaseAddCategories;
+    if (kind === 'expense' && expenseAddCategories && expenseAddCategories.length) return expenseAddCategories;
+    var seen = {};
+    var union = [];
+    function addAll(list) {
+      (list || []).forEach(function (pair) {
+        var key = pair && pair[0];
+        var label = pair && pair[1];
+        if (!key || seen[key]) return;
+        seen[key] = true;
+        union.push([key, label]);
+      });
+    }
+    addAll(purchaseAddCategories);
+    addAll(expenseAddCategories);
+    return union;
+  }
+
+  function rebuildAddCategoryOptions(kind) {
+    var options = document.getElementById('pl-add-category-options');
+    var hidden = document.getElementById('pl-add-category');
+    if (!options) return;
+    var pairs = categoryPairsForKind(kind);
+    if (!pairs.length) return;
+    var current = hidden ? hidden.value : '';
+    var labels = {};
+    options.innerHTML = '';
+    pairs.forEach(function (pair) {
+      var key = pair[0];
+      var label = pair[1];
+      labels[key] = label;
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'se-filter-listbox-option staff-category-option';
+      btn.setAttribute('role', 'option');
+      btn.setAttribute('data-value', key);
+      btn.setAttribute('data-name', String(label || '').toLowerCase());
+      btn.setAttribute('data-label', label);
+      btn.setAttribute('aria-selected', key === current ? 'true' : 'false');
+      if (key === current) btn.classList.add('is-selected');
+      btn.textContent = label;
+      options.appendChild(btn);
+    });
+    Object.keys(labels).forEach(function (key) { categoryLabels[key] = labels[key]; });
+    if (current && !labels[current]) {
+      setListboxValue('pl-add-category', '', '', 'Select category');
+    } else if (typeof window.initEpListboxes === 'function') {
+      window.initEpListboxes();
+    }
   }
 
   function setPurchaseDate(iso) {

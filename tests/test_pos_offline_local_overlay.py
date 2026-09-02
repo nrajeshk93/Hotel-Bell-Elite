@@ -17,11 +17,10 @@ def _read(*parts):
 
 
 class PosOfflineLocalOverlaySourceTests(unittest.TestCase):
-    def test_sw_v20_does_not_cache_floor_occupancy(self):
+    def test_sw_does_not_cache_floor_occupancy(self):
         sw = _read("static", "sw.js")
-        self.assertIn("CACHE_VERSION = 'hbe-app-v20'", sw)
-        self.assertIn("pos_offline.js?v=6", sw)
-        self.assertIn("pos_invoice.js?v=156", sw)
+        self.assertIn("__HBE_CACHE_VERSION__", sw)
+        self.assertIn("__HBE_PRECACHE__", sw)
         self.assertIn("Do not cache occupancy", sw)
         self.assertIn("/point-of-sale/api/floor", sw)
         self.assertIn("/bar-point-of-sale/api/floor", sw)
@@ -82,7 +81,6 @@ class PosOfflineLocalOverlaySourceTests(unittest.TestCase):
         ledger = _read("templates", "point_of_sale_invoice_ledger.html")
         for html in (tables, invoice, ledger):
             self.assertIn("pos_offline.js", html)
-            self.assertIn("?v=6", html)
             self.assertIn("pos_outlet|default('restaurant')", html)
         self.assertLess(tables.find("pos_offline.js"), tables.find("pos_tables.js"))
         self.assertLess(invoice.find("pos_offline.js"), invoice.find("pos_invoice.js"))
@@ -137,7 +135,7 @@ class PosOfflineLocalOverlayPageTests(unittest.TestCase):
         html = page.get_data(as_text=True)
         page.close()
         self.assertIn("pos_offline.js", html, path)
-        self.assertRegex(html, re.compile(r"pos_offline\.js[^\"']*\?v=6"))
+        self.assertRegex(html, re.compile(r"pos_offline\.js\?v=[a-f0-9]{8,}"))
         self.assertIn('data-pos-outlet="%s"' % outlet, html)
 
     def test_restaurant_and_bar_tables_share_overlay(self):

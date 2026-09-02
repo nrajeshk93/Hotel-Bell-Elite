@@ -1,12 +1,49 @@
 (function (global) {
   'use strict';
 
+  var MODULE_LABELS = {
+    restaurant: 'Restaurant',
+    bar: 'Bar',
+    purchase: 'Purchase',
+    expense: 'Expense'
+  };
+
   function getModal() {
     return document.getElementById('cm-category-modal');
   }
 
   function getForm() {
     return document.getElementById('cm-category-form');
+  }
+
+  function moduleLabel(module) {
+    return MODULE_LABELS[module] || 'Restaurant';
+  }
+
+  function isPosModule(module) {
+    return module === 'restaurant' || module === 'bar';
+  }
+
+  function setModuleValue(module) {
+    var next = MODULE_LABELS[module] ? module : 'restaurant';
+    var hidden = document.getElementById('cm-category-module');
+    if (hidden) hidden.value = next;
+    if (typeof global.resetEpListbox === 'function') {
+      global.resetEpListbox('cm-category-module', next, moduleLabel(next));
+    }
+  }
+
+  function setModuleLocked(locked) {
+    var field = document.getElementById('cm-category-module-field');
+    if (!field) return;
+    field.classList.toggle('is-locked', !!locked);
+    var listbox = document.getElementById('cm-category-module-listbox');
+    if (listbox) listbox.setAttribute('aria-disabled', locked ? 'true' : 'false');
+  }
+
+  function currentModule() {
+    var el = document.getElementById('cm-category-module');
+    return el ? String(el.value || 'restaurant') : 'restaurant';
   }
 
   function setEditing(editing) {
@@ -17,6 +54,7 @@
     if (title) title.textContent = editing ? 'Edit category' : 'Add category';
     var saveBtn = document.getElementById('cm-category-save-btn');
     if (saveBtn) saveBtn.textContent = 'Save';
+    setModuleLocked(!!editing);
   }
 
   function clearForm() {
@@ -24,11 +62,8 @@
     if (idEl) idEl.value = '';
     var nameEl = document.getElementById('cm-category-name');
     if (nameEl) nameEl.value = '';
-    var visibleEl = document.getElementById('cm-category-visible');
-    if (visibleEl) visibleEl.checked = true;
-    if (typeof global.resetEpListbox === 'function') {
-      global.resetEpListbox('cm-category-outlet', 'restaurant', 'Restaurant');
-    }
+    setModuleValue('restaurant');
+    setModuleLocked(false);
     var err = document.getElementById('cm-category-modal-err');
     if (err) {
       err.innerHTML = '';
@@ -41,18 +76,12 @@
     if (!row) return;
     var id = row.getAttribute('data-category-id') || '';
     var name = row.getAttribute('data-category-name') || '';
-    var outlet = row.getAttribute('data-category-outlet') || 'restaurant';
-    var visible = row.getAttribute('data-category-visible') === '1';
+    var module = row.getAttribute('data-category-module') || row.getAttribute('data-category-outlet') || 'restaurant';
     var idEl = document.getElementById('cm-category-id');
     if (idEl) idEl.value = id;
     var nameEl = document.getElementById('cm-category-name');
     if (nameEl) nameEl.value = name;
-    var visibleEl = document.getElementById('cm-category-visible');
-    if (visibleEl) visibleEl.checked = visible;
-    var outletLabel = outlet === 'bar' ? 'Bar' : 'Restaurant';
-    if (typeof global.resetEpListbox === 'function') {
-      global.resetEpListbox('cm-category-outlet', outlet, outletLabel);
-    }
+    setModuleValue(module);
     setEditing(true);
   }
 
@@ -196,10 +225,19 @@
           var delRow = actionEl.closest('tr[data-category-id]');
           var delId = delRow ? delRow.getAttribute('data-category-id') || '' : '';
           var delName = delRow ? delRow.getAttribute('data-category-name') || 'this category' : 'this category';
+          var delModule = delRow ? delRow.getAttribute('data-category-module') || '' : '';
+          var itemCount = delRow ? Number(delRow.getAttribute('data-category-item-count') || 0) : 0;
           if (!delId) return;
-          if (!global.confirm('Delete "' + delName + '"? Menu items in it will also be removed from the menu.')) {
+          if (itemCount > 0 && isPosModule(delModule)) {
+            global.alert('This category still has menu items. Remove or move them first.');
             return;
           }
+          if (itemCount > 0 && (delModule === 'purchase' || delModule === 'expense')) {
+            global.alert('This category is used on ' + (delModule === 'purchase' ? 'purchase' : 'expense') + ' bills. Remove or recategorize those entries first.');
+            return;
+          }
+          var confirmMsg = 'Delete "' + delName + '"?';
+          if (!global.confirm(confirmMsg)) return;
           var deleteForm = document.getElementById('cm-category-delete-form');
           var deleteIdEl = document.getElementById('cm-category-delete-id');
           if (!deleteForm || !deleteIdEl) return;
@@ -229,6 +267,7 @@
     if (modal.classList.contains('active')) {
       modal.setAttribute('aria-hidden', 'false');
       if (typeof global.initEpListboxes === 'function') global.initEpListboxes();
+      setModuleLocked(modal.getAttribute('data-cm-editing') === '1');
       global.setTimeout(function () {
         var focusEl = document.getElementById('cm-category-name');
         if (focusEl) focusEl.focus();

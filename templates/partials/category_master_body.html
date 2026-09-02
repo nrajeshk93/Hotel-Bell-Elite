@@ -1,6 +1,6 @@
 {% from 'partials/ep_form_listbox_macros.html' import ep_listbox %}
 {% set _cm_list_url = url_for('category_master', **({'embed': 1} if embed_mode else {})) %}
-{% set outlet_opts = [('restaurant', 'Restaurant'), ('bar', 'Bar')] %}
+{% set module_opts = module_opts if module_opts is defined else [('restaurant', 'Restaurant'), ('bar', 'Bar'), ('purchase', 'Purchase'), ('expense', 'Expense')] %}
 <section class="content se-content"{% if embed_page_shell|default(false) %} style="padding:0;margin:0;max-width:none;"{% endif %}>
   {% if auth_notice %}
   <div class="sm-flash sm-flash--ok">{{ auth_notice }}</div>
@@ -25,25 +25,27 @@
             <thead>
               <tr>
                 <th class="pl-sortable" data-sort="name" scope="col" tabindex="0" aria-sort="none">Name</th>
-                <th class="pl-sortable" data-sort="outlet" scope="col" tabindex="0" aria-sort="none">Outlet</th>
+                <th class="pl-sortable" data-sort="module" scope="col" tabindex="0" aria-sort="none">Module</th>
                 <th class="pl-sortable pl-col-amount" data-sort="items" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Items</th>
-                <th class="pl-sortable" data-sort="visible" scope="col" tabindex="0" aria-sort="none">Visible</th>
                 <th class="pl-col-actions" scope="col">Actions</th>
               </tr>
             </thead>
             <tbody>
               {% for category in categories %}
-              {% set outlet_label = 'Bar' if category.outlet == 'bar' else 'Restaurant' %}
+              {% set module_label = category.module_label or category.module or '' %}
               <tr data-sort-row
-                  data-search="{{ [category.name or '', outlet_label, category.outlet or '']|join(' ')|lower }}"
+                  data-search="{{ [category.name or '', module_label, category.module or '']|join(' ')|lower }}"
                   data-category-id="{{ category.id }}"
                   data-category-name="{{ category.name }}"
-                  data-category-outlet="{{ category.outlet }}"
-                  data-category-visible="{{ '1' if category.is_visible else '0' }}">
+                  data-category-module="{{ category.module }}"
+                  data-category-outlet="{{ category.module }}"
+                  data-category-visible="{{ '1' if category.is_visible else '0' }}"
+                  data-category-item-count="{{ category.item_count or 0 }}"
+                  data-category-source="{{ category.source or '' }}"
+                  data-category-show-visible="{{ '1' if category.show_visible else '0' }}">
                 <td class="pl-name" data-sort-value="{{ category.name or '' }}">{{ category.name }}</td>
-                <td data-sort-value="{{ outlet_label }}">{{ outlet_label }}</td>
+                <td data-sort-value="{{ module_label }}">{{ module_label }}</td>
                 <td class="pl-col-amount" data-sort-value="{{ category.item_count or 0 }}">{{ category.item_count or 0 }}</td>
-                <td data-sort-value="{{ 'Yes' if category.is_visible else 'No' }}">{{ 'Yes' if category.is_visible else 'No' }}</td>
                 <td class="pl-col-actions">
                   <div class="act-grp">
                     <button type="button"
@@ -117,14 +119,8 @@
           <label for="cm-category-name">Category name *</label>
           <input id="cm-category-name" class="staff-input" name="name" type="text" value="{{ form.name or '' }}" placeholder="e.g. Main Course" required maxlength="80">
         </div>
-        <div class="staff-field staff-field--inline">
-          {{ ep_listbox('outlet', 'Outlet *', outlet_opts, form.outlet or 'restaurant', placeholder='Select outlet…', field_id='cm-category-outlet', extra_class='st-product-listbox') }}
-        </div>
-        <div class="staff-field staff-field--inline staff-field--full">
-          <label class="sm-check-label" for="cm-category-visible">
-            <input id="cm-category-visible" type="checkbox" name="is_visible" value="1"{% if form.is_visible %} checked{% endif %}>
-            Visible on menu
-          </label>
+        <div class="staff-field staff-field--full" id="cm-category-module-field">
+          {{ ep_listbox('module', 'Module *', module_opts, form.module or form.outlet or 'restaurant', placeholder='Select module…', field_id='cm-category-module', extra_class='st-product-listbox') }}
         </div>
       </div>
 
