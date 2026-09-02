@@ -5255,6 +5255,7 @@ def _no_cache_offline_auth_shell(response):
         path == "/static/offline_login.html"
         or path.startswith("/static/offline_auth.js")
         or path.startswith("/static/de_pwa.js")
+        or path.endswith("sw.js")
     ):
         apply_no_store_cdn(response)
         return response
