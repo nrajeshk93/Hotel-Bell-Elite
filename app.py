@@ -33,6 +33,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
 
 import auth_security
+import activity_audit
 import csrf_protect
 from secret_key import get_secret_key
 from mailer import app_base_url, send_account_unlock_email, smtp_configured
@@ -737,14 +738,26 @@ def _am_logs_page_render(template, **kwargs):
 
 
 def _write_login_log(conn, *, username, success, reason, user_id=None):
+    ip = auth_security.client_ip_from_request(request)
+    user_agent = (request.headers.get("User-Agent") or "")[:250]
     auth_security.record_login_attempt(
         conn,
         username=username,
         success=success,
         reason=reason,
         user_id=user_id,
-        ip=auth_security.client_ip_from_request(request),
-        user_agent=(request.headers.get("User-Agent") or "")[:250],
+        ip=ip,
+        user_agent=user_agent,
+    )
+    activity_audit.record_auth_activity(
+        conn=conn,
+        username=username,
+        success=success,
+        reason=reason,
+        user_id=user_id,
+        ip_address=ip,
+        user_agent=user_agent,
+        source="web",
     )
 
 
@@ -791,6 +804,9 @@ def whatsapp_webhook():
 @app.before_request
 def _csrf_before_request():
     csrf_protect.csrf_protect_request(app)
+
+
+activity_audit.register_after_request(app, get_current_user)
 
 
 @app.before_request
@@ -5550,6 +5566,21 @@ def logout():
         if is_background_fetch_request():
             return Response(status=204)
         return Response("Method Not Allowed", status=405)
+    user = get_current_user()
+    if user:
+        activity_audit.record_activity_log(
+            "logout",
+            "auth",
+            f"{user.get('username') or 'User'} signed out",
+            user_id=user.get("id"),
+            username=user.get("username") or "",
+            entity_type="session",
+            endpoint="logout",
+            method="POST",
+            path="/logout",
+            ip_address=activity_audit.client_ip_from_request(),
+            status_code=302,
+        )
     session.pop(AUTH_USER_SESSION_KEY, None)
     return redirect(url_for("index"))
 
@@ -20260,43 +20291,43 @@ def access_roles():
 
 
 @app.route("/access-management/logs")
-def access_login_logs():
+def access_management_logs():
     user = get_current_user()
     if not user_can_access_user_access_submodule(user, "logs"):
         return _permission_denied_response("You do not have access to Logs.")
 
-    result = (request.args.get("result") or "all").strip().lower()
-    if result not in {"all", "success", "failed"}:
-        result = "all"
-    selected_user = (request.args.get("user") or "").strip()
-
+    filters = {
+        "date_from": (request.args.get("date_from") or "").strip(),
+        "date_to": (request.args.get("date_to") or "").strip(),
+        "user_id": (request.args.get("user_id") or "").strip(),
+        "action": (request.args.get("action") or "").strip(),
+        "module": (request.args.get("module") or "").strip(),
+        "q": (request.args.get("q") or "").strip(),
+    }
+    page = activity_audit.parse_activity_log_page(request.args.get("page", 1))
     conn = get_db()
     try:
-        logs = auth_security.fetch_login_logs(conn, result="all", limit=500)
+        logs, total_count, total_pages, user_options = activity_audit.fetch_activity_logs(
+            conn, filters, page
+        )
     finally:
         conn.close()
-
-    success_count = sum(1 for item in logs if item.get("success"))
-    failed_count = len(logs) - success_count
-    usernames = sorted(
-        {
-            str(item.get("username") or "").strip()
-            for item in logs
-            if str(item.get("username") or "").strip()
-        },
-        key=lambda value: value.lower(),
-    )
-    if selected_user and selected_user not in usernames:
-        selected_user = ""
+    if page > total_pages:
+        page = total_pages
+    today_iso = date.today().isoformat()
     return _am_logs_page_render(
-        "access_login_logs.html",
+        "access_management_logs.html",
         logs=logs,
-        result_filter=result,
-        success_count=success_count,
-        failed_count=failed_count,
-        log_usernames=usernames,
-        selected_user=selected_user,
-        selected_user_label=selected_user or "All users",
+        filters=filters,
+        page=page,
+        total_pages=total_pages,
+        total_count=total_count,
+        user_options=user_options,
+        action_options=activity_audit.ACTIVITY_LOG_ACTIONS,
+        module_options=activity_audit.ACTIVITY_LOG_MODULES,
+        action_labels=activity_audit.ACTIVITY_LOG_ACTION_LABELS,
+        module_labels=activity_audit.ACTIVITY_LOG_MODULE_LABELS,
+        today_iso=today_iso,
     )
 
 
@@ -20594,6 +20625,25 @@ def delete_access_user(user_id):
             return redirect(url_for("access_management"))
 
         photo_path = (user.get("photo_path") or "").strip()
+        actor_user = get_current_user()
+        activity_audit.record_activity_log(
+            "delete",
+            "user_access",
+            f"Deleted user {row['username']}",
+            user_id=actor_user.get("id") if actor_user else None,
+            username=actor_user.get("username") if actor_user else "",
+            entity_type="user",
+            entity_id=user_id,
+            details={
+                "target_username": row["username"],
+                "target_full_name": row["full_name"] if "full_name" in row.keys() else "",
+            },
+            endpoint="delete_access_user",
+            method="POST",
+            path=request.path,
+            ip_address=activity_audit.client_ip_from_request(),
+            status_code=303,
+        )
         conn.execute("DELETE FROM user_permissions WHERE user_id = ?", (user_id,))
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
         conn.commit()
@@ -20813,12 +20863,40 @@ def mobile_login():
 
     from mobile_preview_flask import preview_authenticate_credentials
 
+    ip = activity_audit.client_ip_from_request()
     status, data = preview_authenticate_credentials(username, password)
     if status != 200 or not data.get("ok"):
+        activity_audit.record_activity_log(
+            "login_failed",
+            "auth",
+            f"Failed mobile sign-in for {username or 'unknown user'}",
+            username=username,
+            entity_type="session",
+            details={"source": "mobile", "error": data.get("error")},
+            endpoint="mobile_login",
+            method="POST",
+            path="/api/mobile/login",
+            ip_address=ip,
+            status_code=status,
+        )
         return jsonify(data), status
 
     session.clear()
     session[AUTH_USER_SESSION_KEY] = int(data["user_id"])
+    activity_audit.record_activity_log(
+        "login",
+        "auth",
+        f"{data.get('username') or username} signed in (mobile)",
+        user_id=int(data["user_id"]),
+        username=data.get("username") or username,
+        entity_type="session",
+        details={"source": "mobile"},
+        endpoint="mobile_login",
+        method="POST",
+        path="/api/mobile/login",
+        ip_address=ip,
+        status_code=200,
+    )
     if bool(data.get("must_change_password")):
         return jsonify(
             {

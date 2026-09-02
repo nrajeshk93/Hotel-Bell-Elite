@@ -805,7 +805,7 @@ _ACCESS_ENDPOINT_GROUPS = {
         "save_access_role",
         "delete_access_role",
     },
-    "logs": {"access_login_logs"},
+    "logs": {"access_management_logs"},
 }
 _ACCESS_MANAGEMENT_ENDPOINTS = {
     "access_management",
@@ -815,7 +815,7 @@ _ACCESS_MANAGEMENT_ENDPOINTS = {
     "access_roles",
     "save_access_role",
     "delete_access_role",
-    "access_login_logs",
+    "access_management_logs",
 }
 SUPER_ADMINISTRATOR_ROLE_NAME = "Super Administrator"
 _ADMINISTRATOR_ROLE_NAME = SUPER_ADMINISTRATOR_ROLE_NAME  # seeded full-authority role

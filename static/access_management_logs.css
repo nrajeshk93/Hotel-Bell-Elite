@@ -1,0 +1,708 @@
+#access-management-logs-page {
+  --am-logs-acc: #2563eb;
+  --am-logs-acc-bg: #eff6ff;
+  --am-logs-bg: #f4f6f9;
+  --am-logs-border: #e2e8f0;
+  --am-logs-filter-control-h: 44px;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--am-logs-bg);
+  color: #111827;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+}
+
+#access-management-logs-page .am-header {
+  background: var(--am-logs-bg);
+  padding: 40px 48px 0;
+  position: relative;
+  z-index: 1;
+}
+
+#access-management-logs-page .am-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+#access-management-logs-page .am-header-left {
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+  flex: 1;
+}
+
+#access-management-logs-page .am-title-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+#access-management-logs-page .am-title-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--am-logs-acc-bg);
+  color: var(--am-logs-acc);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+#access-management-logs-page .am-title-icon svg {
+  width: 24px;
+  height: 24px;
+  stroke-width: 1.75;
+}
+
+#access-management-logs-page .am-title h1 {
+  font-size: 34px;
+  line-height: 1.15;
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+
+#access-management-logs-page .am-logs-filter-wrap {
+  padding: 0 48px 20px;
+}
+
+#access-management-logs-page .am-logs-filter-card {
+  padding: 20px 24px;
+  overflow: visible;
+}
+
+#access-management-logs-page .am-logs-header-filters {
+  width: 100%;
+}
+
+#access-management-logs-page #am-logs-filter-form.sr-topbar-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 12px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+#access-management-logs-page .am-logs-header-field {
+  flex: 1 1 0;
+  min-width: min(160px, 100%);
+  margin: 0;
+}
+
+#access-management-logs-page .am-logs-search-field {
+  flex: 1.35 1 220px;
+  min-width: min(220px, 100%);
+}
+
+#access-management-logs-page .am-logs-date-range-host {
+  flex: 0 0 auto;
+  min-width: 0;
+  width: max-content;
+  max-width: 100%;
+  z-index: 30;
+  overflow: visible;
+}
+
+#access-management-logs-page .am-logs-date-range-host .se-filter-chip-label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #4a5568;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  text-align: left;
+}
+
+#access-management-logs-page .am-logs-date-range-host .se-filter-chip--date-range {
+  flex: none;
+  display: block;
+  min-width: 0;
+  width: max-content;
+  max-width: 100%;
+}
+
+#access-management-logs-page .am-logs-date-range-host .se-filter-chip--date-range .se-filter-chip-control {
+  overflow: visible;
+  width: max-content;
+  max-width: 100%;
+  height: var(--am-logs-filter-control-h);
+  min-height: var(--am-logs-filter-control-h);
+  max-height: var(--am-logs-filter-control-h);
+  background: #fff !important;
+  border: 1px solid var(--am-logs-border) !important;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-range-wrap {
+  display: flex;
+  align-items: stretch;
+  width: max-content;
+  min-width: 0;
+  height: 100%;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-range-trigger.se-filter-chip-trigger {
+  min-width: 0;
+  width: max-content;
+  max-width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0 12px 0 14px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  justify-content: flex-start;
+  border: 0;
+  background: transparent;
+}
+
+#access-management-logs-page .am-logs-date-range-host .se-filter-chip.is-filtered .se-filter-chip-control,
+#access-management-logs-page .am-logs-date-range-host .an-range-wrap.open + .se-filter-chip-chev,
+#access-management-logs-page .am-logs-date-range-host .se-filter-chip--date-range.is-open .se-filter-chip-control {
+  border-color: #93c5fd !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  background: #fff !important;
+}
+
+#access-management-logs-page .am-logs-date-range-host .se-filter-chip-chev {
+  display: none !important;
+}
+
+#access-management-logs-page .am-logs-header-field .se-filter-chip-label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #4a5568;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  text-align: left;
+}
+
+#access-management-logs-page .am-logs-header-field-listbox .se-filter-chip-control,
+#access-management-logs-page .am-logs-search-field .se-filter-chip-control {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--am-logs-filter-control-h);
+  min-height: var(--am-logs-filter-control-h);
+  max-height: var(--am-logs-filter-control-h);
+  background: #fff !important;
+  border: 1px solid var(--am-logs-border) !important;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+#access-management-logs-page .am-logs-header-field-listbox .se-filter-chip-trigger,
+#access-management-logs-page .am-logs-search-input {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 8px 0 12px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  color: #111827;
+}
+
+#access-management-logs-page .am-logs-search-input {
+  font-weight: 500;
+}
+
+#access-management-logs-page .am-logs-header-field-listbox .se-filter-chip-value {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#access-management-logs-page .am-logs-header-field-listbox .se-filter-chip-chev {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  align-self: stretch;
+  color: #94a3b8;
+}
+
+#access-management-logs-page .am-logs-header-field-listbox .se-filter-chip-chev svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+}
+
+#access-management-logs-page .am-logs-header-field-listbox.is-open,
+#access-management-logs-page .am-logs-search-field.is-active {
+  z-index: 80;
+}
+
+#access-management-logs-page .am-logs-header-field-listbox.is-open .se-filter-chip-control,
+#access-management-logs-page .am-logs-header-field-listbox .se-filter-chip-control:focus-within,
+#access-management-logs-page .am-logs-search-field.is-active .se-filter-chip-control {
+  border-color: #93c5fd !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  background: #fff !important;
+}
+
+#access-management-logs-page .am-logs-header-field-listbox.is-open .se-filter-chip-chev {
+  color: #2563eb;
+  transform: rotate(180deg);
+}
+
+#access-management-logs-page .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: var(--am-logs-filter-control-h);
+  padding: 0 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+  border: 1px solid transparent;
+}
+
+#access-management-logs-page .btn-primary {
+  background: var(--am-logs-acc);
+  border-color: var(--am-logs-acc);
+  color: #fff;
+}
+
+#access-management-logs-page .btn-primary:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  color: #fff;
+}
+
+#access-management-logs-page .btn:not(.btn-primary) {
+  background: #fff;
+  border-color: var(--am-logs-border);
+  color: #475569;
+}
+
+#access-management-logs-page .btn:not(.btn-primary):hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+#access-management-logs-page .am-logs-content {
+  padding: 0 48px 48px;
+}
+
+#access-management-logs-page .am-logs-list-panel {
+  margin-bottom: 0;
+}
+
+#access-management-logs-page .pl-count,
+#access-management-logs-page .am-logs-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+#access-management-logs-page .pl-card-body--flush {
+  padding: 0;
+}
+
+#access-management-logs-page .am-logs-table-wrap {
+  overflow: auto;
+}
+
+#access-management-logs-page .am-logs-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#access-management-logs-page .am-logs-table th,
+#access-management-logs-page .am-logs-table td {
+  padding: 12px 18px;
+  text-align: left;
+  border-bottom: 1px solid #eef2f7;
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+#access-management-logs-page .am-logs-table th {
+  background: #f8fafd;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+#access-management-logs-page .am-logs-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+#access-management-logs-page .am-logs-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+#access-management-logs-page .am-log-time,
+#access-management-logs-page .am-log-ip {
+  white-space: nowrap;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+
+#access-management-logs-page .am-log-user {
+  white-space: nowrap;
+  font-weight: 600;
+  color: #111827;
+}
+
+#access-management-logs-page .am-log-module {
+  white-space: nowrap;
+  color: #475569;
+}
+
+#access-management-logs-page .am-log-summary {
+  color: #1f2937;
+  line-height: 1.45;
+  min-width: 220px;
+}
+
+#access-management-logs-page .am-log-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+#access-management-logs-page .am-log-badge.is-info {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+#access-management-logs-page .am-log-badge.is-success {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+#access-management-logs-page .am-log-badge.is-warning {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+#access-management-logs-page .am-log-badge.is-danger {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+#access-management-logs-page .am-log-badge.is-neutral {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+#access-management-logs-page .am-logs-empty {
+  padding: 48px 20px;
+  text-align: center;
+  color: #94a3b8;
+}
+
+#access-management-logs-page .am-logs-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  flex-wrap: wrap;
+}
+
+#access-management-logs-page .am-logs-pagination .btn[disabled] {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+@media (max-width: 1100px) {
+  #access-management-logs-page #am-logs-filter-form.sr-topbar-filters {
+    gap: 10px;
+  }
+
+  #access-management-logs-page .am-logs-header-field,
+  #access-management-logs-page .am-logs-search-field {
+    flex: 1 1 calc(50% - 10px);
+    min-width: calc(50% - 10px);
+  }
+
+  #access-management-logs-page .am-logs-date-range-host {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  #access-management-logs-page .am-header {
+    padding: 24px 20px 0;
+  }
+
+  #access-management-logs-page .am-logs-filter-wrap,
+  #access-management-logs-page .am-logs-content {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  #access-management-logs-page .am-logs-filter-card {
+    padding: 16px;
+  }
+
+  #access-management-logs-page .am-title h1 {
+    font-size: 28px;
+  }
+}
+
+@media (max-width: 640px) {
+  #access-management-logs-page .am-title-icon {
+    display: none;
+  }
+
+  #access-management-logs-page .am-title h1 {
+    font-size: 24px;
+  }
+
+  #access-management-logs-page .am-logs-header-field,
+  #access-management-logs-page .am-logs-search-field {
+    flex: 1 1 100%;
+    min-width: 100%;
+  }
+}
+
+/* Date range picker — match Purchase & Expenses (override sales_entry_dashboard 308px panel) */
+#access-management-logs-page .am-logs-date-range-host .an-range-wrap.an-range-wrap--sales,
+#access-management-logs-page .am-logs-date-range-host .an-range-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  position: static;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-range-panel[hidden] {
+  display: none !important;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-range-wrap:not(.open) .an-range-panel {
+  display: none !important;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-range-wrap.open .an-range-panel {
+  position: fixed !important;
+  z-index: 200;
+  right: auto !important;
+  bottom: auto !important;
+  width: min(640px, calc(100vw - 24px)) !important;
+  max-width: calc(100vw - 24px) !important;
+  max-height: calc(100dvh - 24px);
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.15);
+  padding: 0;
+  display: flex !important;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-range-wrap.open .an-range-backdrop {
+  position: fixed !important;
+  z-index: 199;
+  display: block;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-range-panel-inner {
+  padding: 14px 16px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-range-panel-h {
+  font-size: 11px;
+  font-weight: 800;
+  color: #4a5568;
+  text-transform: uppercase;
+  letter-spacing: 0.55px;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-cal-dual {
+  display: flex;
+  flex-direction: row;
+  border: 1px solid #eef2f7;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-cal-pane {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 10px 12px;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-cal-pane + .an-cal-pane {
+  border-left: 1px solid #eef2f7;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-cal-pane-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 8px;
+  min-height: 32px;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-cal-month-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a202c;
+  text-align: center;
+  flex: 1;
+  margin: 0;
+  line-height: 1.2;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-cal-nav-btn {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #4a5568;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-cal-nav-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-cal-dow {
+  display: grid !important;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0;
+  margin-bottom: 4px;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-cal-dow span {
+  display: block;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #94a3b8;
+  padding: 3px 0;
+  letter-spacing: 0.02em;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-cal-grid {
+  display: grid !important;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-cal-cell {
+  min-height: 36px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a202c;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  padding: 0;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-cal-cell.an-cal-inrange {
+  background: #fce7f3;
+  color: #9f1239;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-cal-cell.an-cal-range-start,
+#access-management-logs-page .am-logs-date-range-host .an-cal-cell.an-cal-range-end {
+  background: #e11d48;
+  color: #fff;
+  font-weight: 700;
+}
+
+#access-management-logs-page .am-logs-date-range-host .an-range-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px 14px;
+  margin: 0;
+  border-top: 1px solid #eef2f7;
+  background: #fff;
+}
+
+@media (max-width: 760px) {
+  #access-management-logs-page .am-logs-date-range-host .an-range-wrap.open .an-range-panel {
+    width: auto !important;
+    max-width: none !important;
+    left: 12px !important;
+    right: 12px !important;
+  }
+
+  #access-management-logs-page .am-logs-date-range-host .an-cal-dual {
+    flex-direction: column;
+  }
+
+  #access-management-logs-page .am-logs-date-range-host .an-cal-pane + .an-cal-pane {
+    border-left: 0;
+    border-top: 1px solid #eef2f7;
+  }
+}

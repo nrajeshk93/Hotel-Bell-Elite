@@ -12,6 +12,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from flask import Blueprint, has_request_context, jsonify, redirect, render_template, request, send_file, session, url_for
 
 from db import SQL_NOW, get_db, hbe_rank_records
+import activity_audit
 from embed_helpers import is_embed_request
 from reports import (
     SALARY_PAYMENT_NAME,
@@ -2272,10 +2273,41 @@ def edit_employee(emp_id):
 @payroll_bp.route('/delete_employee/<int:emp_id>')
 def delete_employee(emp_id):
     conn = get_db()
+    row = conn.execute(
+        "SELECT id, emp_code, name, company, location FROM employees WHERE id=?",
+        (emp_id,),
+    ).fetchone()
     if _employee_has_locked_month_data(conn, emp_id):
         conn.close()
         return _permission_denied_response(
             'This employee has data in a locked payroll month and cannot be deleted — including by administrators.'
+        )
+    if row:
+        user = get_current_user()
+        name = (row['name'] or '').strip() or 'Unknown'
+        code = (row['emp_code'] or '').strip()
+        summary = f"Deleted employee {name}" + (f" ({code})" if code else "")
+        activity_audit.record_activity_log(
+            'delete',
+            'payroll',
+            summary,
+            conn=conn,
+            user_id=user.get('id') if user else None,
+            username=user.get('username') if user else '',
+            entity_type='employee',
+            entity_id=emp_id,
+            details={
+                'emp_code': code,
+                'name': name,
+                'company': row['company'] if 'company' in row.keys() else '',
+                'location': row['location'] if 'location' in row.keys() else '',
+            },
+            endpoint='payroll.delete_employee',
+            method='GET',
+            path=request.path,
+            ip_address=activity_audit.client_ip_from_request(),
+            status_code=302,
+            commit=False,
         )
     conn.execute("DELETE FROM credits WHERE employee_id=?", (emp_id,))
     conn.execute("DELETE FROM attendance WHERE employee_id=?", (emp_id,))
@@ -3040,6 +3072,29 @@ def delete_credit(credit_id):
                 _notify(delete_error)
                 return redirect(url_for('employee_credits', emp_id=emp_id, year=year, month=month))
 
+        emp = conn.execute(
+            "SELECT name, emp_code FROM employees WHERE id=?",
+            (emp_id,),
+        ).fetchone()
+        emp_name = (emp['name'] if emp else '') or 'Unknown'
+        emp_code = (emp['emp_code'] if emp else '') or ''
+        activity_audit.record_activity_log(
+            'delete',
+            'payroll',
+            f"Deleted credit for {emp_name}" + (f" ({emp_code})" if emp_code else ""),
+            conn=conn,
+            user_id=user.get('id') if user else None,
+            username=user.get('username') if user else '',
+            entity_type='credit',
+            entity_id=credit_id,
+            details={'employee_id': emp_id, 'date': row['date']},
+            endpoint='payroll.delete_credit',
+            method='GET',
+            path=request.path,
+            ip_address=activity_audit.client_ip_from_request(),
+            status_code=302,
+            commit=False,
+        )
         conn.execute("DELETE FROM credits WHERE id=?", (credit_id,))
         conn.commit()
         return redirect(url_for('employee_credits', emp_id=emp_id, year=year, month=month))

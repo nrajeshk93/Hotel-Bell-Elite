@@ -42,7 +42,7 @@ var PRECACHE = [
   '/static/hbe_logo_sm.png',
   '/static/hbe_logo_sm.webp',
   '/static/manifest.webmanifest',
-  '/static/de_workspace_shell.css?v=55',
+  '/static/de_workspace_shell.css?v=56',
   '/static/hbe_home_premium.css?v=20',
   '/static/ep_form_listbox.css?v=29',
   '/static/hbe_table_scroll.css?v=2',

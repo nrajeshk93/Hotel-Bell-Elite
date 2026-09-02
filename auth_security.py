@@ -270,6 +270,7 @@ LOGIN_LOG_REASON_LABELS = {
     "locked": "Account locked",
     "captcha": "CAPTCHA failed",
     "throttled": "Too many attempts",
+    "no_access_role": "No access role assigned",
 }
 
 

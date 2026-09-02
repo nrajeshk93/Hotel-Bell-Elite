@@ -598,8 +598,8 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(get_endpoint_user_access_submodule("access_roles"), "roles")
         self.assertEqual(get_endpoint_user_access_submodule("save_access_role"), "roles")
         self.assertEqual(get_endpoint_user_access_submodule("delete_access_role"), "roles")
-        self.assertEqual(get_endpoint_user_access_submodule("access_login_logs"), "logs")
-        self.assertEqual(get_endpoint_dashboard_module("access_login_logs"), "access_management")
+        self.assertEqual(get_endpoint_user_access_submodule("access_management_logs"), "logs")
+        self.assertEqual(get_endpoint_dashboard_module("access_management_logs"), "access_management")
         self.assertEqual(get_endpoint_user_access_submodule("toggle_access_user_active"), "users")
         self.assertEqual(
             get_endpoint_dashboard_module("toggle_access_user_active"),

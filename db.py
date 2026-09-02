@@ -22120,6 +22120,38 @@ def init_db():
     )
 
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS activity_log (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id      INTEGER,
+            username     TEXT    NOT NULL DEFAULT '',
+            action       TEXT    NOT NULL DEFAULT '',
+            module       TEXT    NOT NULL DEFAULT '',
+            entity_type  TEXT    NOT NULL DEFAULT '',
+            entity_id    TEXT,
+            summary      TEXT    NOT NULL DEFAULT '',
+            details_json TEXT    NOT NULL DEFAULT '',
+            endpoint     TEXT    NOT NULL DEFAULT '',
+            method       TEXT    NOT NULL DEFAULT '',
+            path         TEXT    NOT NULL DEFAULT '',
+            ip_address   TEXT    NOT NULL DEFAULT '',
+            status_code  INTEGER,
+            created_at   TEXT    NOT NULL
+        )
+    """)
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_activity_log_created ON activity_log(created_at DESC, id DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_activity_log_user ON activity_log(user_id, created_at DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_activity_log_action ON activity_log(action, created_at DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_activity_log_module ON activity_log(module, created_at DESC)"
+    )
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_permissions (
             user_id  INTEGER NOT NULL,
             scope    TEXT    NOT NULL,

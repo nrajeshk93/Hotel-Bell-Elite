@@ -298,7 +298,7 @@
         <a class="de-nav-subitem{% if access_view == 'roles' %} is-active{% endif %}" id="de-nav-access-roles" href="{{ url_for('access_roles') }}"{% if access_view == 'roles' %} aria-current="page"{% endif %}>Roles</a>
         {% endif %}
         {% if has_user_access_submodule('logs') %}
-        <a class="de-nav-subitem{% if access_view == 'logs' %} is-active{% endif %}" id="de-nav-access-logs" href="{{ url_for('access_login_logs') }}"{% if access_view == 'logs' %} aria-current="page"{% endif %}>Logs</a>
+        <a class="de-nav-subitem{% if access_view == 'logs' %} is-active{% endif %}" id="de-nav-access-logs" href="{{ url_for('access_management_logs') }}"{% if access_view == 'logs' %} aria-current="page"{% endif %}>Logs</a>
         {% endif %}
       </div>
     </div>

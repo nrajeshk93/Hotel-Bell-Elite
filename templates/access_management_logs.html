@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Activity Logs | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='access_management_premium.css') }}?v=34">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=56">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=30">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='access_management_logs.css') }}?v=6">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open am-module">
+{% include 'partials/de_workspace_shell_open.html' %}
+{% set selected_user_label = 'All users' %}
+{% for option in user_options %}
+  {% if filters.user_id == option.user_id|string %}
+    {% set selected_user_label = option.username %}
+  {% endif %}
+{% endfor %}
+{% set selected_action_label = action_labels.get(filters.action, 'All actions') if filters.action else 'All actions' %}
+{% set selected_module_label = module_labels.get(filters.module, 'All modules') if filters.module else 'All modules' %}
+{% set active_date_filter = filters.date_from or filters.date_to %}
+<div class="main-wrapper" id="access-management-logs-page">
+  <header class="am-header">
+    <div class="am-header-top">
+      <div class="am-header-left">
+        <div class="am-title">
+          <div class="am-title-row">
+            <div class="am-title-icon" aria-hidden="true"><i data-lucide="scroll-text"></i></div>
+            <h1>Activity Logs</h1>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="am-logs-filter-wrap">
+    <div class="am-logs-filter-card se-sales-header-card">
+      <div class="se-sales-header-filters am-logs-header-filters">
+        <form id="am-logs-filter-form" method="GET" action="{{ url_for('access_management_logs') }}" class="sr-topbar-filters" aria-label="Activity log filters">
+          <input type="hidden" id="am-logs-date-from" name="date_from" value="{{ filters.date_from }}">
+          <input type="hidden" id="am-logs-date-to" name="date_to" value="{{ filters.date_to }}">
+          <div class="se-filter-chip se-filter-chip--search pl-search-chip am-logs-header-field am-logs-search-field" id="am-logs-search-chip">
+            <label class="se-filter-chip-label" for="am-logs-search">Search</label>
+            <div class="se-filter-chip-control">
+              <input type="search" id="am-logs-search" name="q" class="pl-search-input am-logs-search-input" value="{{ filters.q }}" placeholder="Summary text…" autocomplete="off" aria-label="Search activity summaries">
+            </div>
+          </div>
+
+          <div class="se-filter-chip se-filter-chip--listbox ep-form-listbox ep-combobox-listbox am-logs-header-field am-logs-header-field-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox data-se-listbox-submit="am-logs-filter-form" id="am-logs-user-listbox">
+            <span class="se-filter-chip-label" id="am-logs-user-label">User</span>
+            <div class="se-filter-chip-control">
+              <input type="hidden" id="am-logs-user" name="user_id" value="{{ filters.user_id }}">
+              <input type="search"
+                     class="se-filter-chip-trigger se-filter-chip-combobox{% if not filters.user_id %} is-placeholder{% endif %}"
+                     id="am-logs-user-trigger"
+                     role="combobox"
+                     aria-autocomplete="list"
+                     aria-haspopup="listbox"
+                     aria-expanded="false"
+                     aria-controls="am-logs-user-list"
+                     aria-labelledby="am-logs-user-label"
+                     value="{% if filters.user_id %}{{ selected_user_label }}{% endif %}"
+                     placeholder="All users"
+                     autocomplete="off"
+                     spellcheck="false">
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="am-logs-user-list" role="listbox" aria-labelledby="am-logs-user-label" hidden>
+              <div class="ep-listbox-options">
+                <button type="button" class="se-filter-listbox-option{% if not filters.user_id %} is-selected{% endif %}" role="option" data-value="" data-name="all users" data-label="All users" aria-selected="{{ 'true' if not filters.user_id else 'false' }}">All users</button>
+                {% for option in user_options %}
+                <button type="button" class="se-filter-listbox-option{% if filters.user_id == option.user_id|string %} is-selected{% endif %}" role="option" data-value="{{ option.user_id }}" data-name="{{ option.username|lower }}" data-label="{{ option.username }}" aria-selected="{{ 'true' if filters.user_id == option.user_id|string else 'false' }}">{{ option.username }}</button>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+
+          <div class="se-filter-chip se-filter-chip--listbox ep-form-listbox am-logs-header-field am-logs-header-field-listbox" data-se-listbox data-se-listbox-submit="am-logs-filter-form" id="am-logs-action-listbox">
+            <span class="se-filter-chip-label" id="am-logs-action-label">Action</span>
+            <div class="se-filter-chip-control">
+              <input type="hidden" id="am-logs-action" name="action" value="{{ filters.action }}">
+              <button type="button" class="se-filter-chip-trigger" id="am-logs-action-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="am-logs-action-list" aria-labelledby="am-logs-action-label am-logs-action-value">
+                <span class="se-filter-chip-value{% if not filters.action %} is-placeholder{% endif %}" id="am-logs-action-value">{{ selected_action_label }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="am-logs-action-list" role="listbox" aria-labelledby="am-logs-action-label" hidden>
+              <div class="ep-listbox-options">
+                <button type="button" class="se-filter-listbox-option{% if not filters.action %} is-selected{% endif %}" role="option" data-value="" data-name="all actions" data-label="All actions" aria-selected="{{ 'true' if not filters.action else 'false' }}">All actions</button>
+                {% for key in action_options %}
+                <button type="button" class="se-filter-listbox-option{% if filters.action == key %} is-selected{% endif %}" role="option" data-value="{{ key }}" data-name="{{ action_labels.get(key, key)|lower }}" data-label="{{ action_labels.get(key, key) }}" aria-selected="{{ 'true' if filters.action == key else 'false' }}">{{ action_labels.get(key, key) }}</button>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+
+          <div class="se-filter-chip se-filter-chip--listbox ep-form-listbox am-logs-header-field am-logs-header-field-listbox" data-se-listbox data-se-listbox-submit="am-logs-filter-form" id="am-logs-module-listbox">
+            <span class="se-filter-chip-label" id="am-logs-module-label">Module</span>
+            <div class="se-filter-chip-control">
+              <input type="hidden" id="am-logs-module" name="module" value="{{ filters.module }}">
+              <button type="button" class="se-filter-chip-trigger" id="am-logs-module-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="am-logs-module-list" aria-labelledby="am-logs-module-label am-logs-module-value">
+                <span class="se-filter-chip-value{% if not filters.module %} is-placeholder{% endif %}" id="am-logs-module-value">{{ selected_module_label }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="am-logs-module-list" role="listbox" aria-labelledby="am-logs-module-label" hidden>
+              <div class="ep-listbox-options">
+                <button type="button" class="se-filter-listbox-option{% if not filters.module %} is-selected{% endif %}" role="option" data-value="" data-name="all modules" data-label="All modules" aria-selected="{{ 'true' if not filters.module else 'false' }}">All modules</button>
+                {% for key in module_options %}
+                <button type="button" class="se-filter-listbox-option{% if filters.module == key %} is-selected{% endif %}" role="option" data-value="{{ key }}" data-name="{{ module_labels.get(key, key)|lower }}" data-label="{{ module_labels.get(key, key) }}" aria-selected="{{ 'true' if filters.module == key else 'false' }}">{{ module_labels.get(key, key) }}</button>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+
+          <div class="se-filter-chip-date-host pl-date-range-host pl-header-field am-logs-date-range-host" id="am-logs-date-range-host">
+            <span class="se-filter-chip-label" id="am-logs-date-range-label">Date</span>
+            <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range pl-header-field-listbox ep-form-listbox{% if active_date_filter %} is-filtered{% endif %}">
+              <div class="se-filter-chip-control">
+                <div class="an-range-wrap an-range-wrap--sales" id="am-logs-date-range-wrap" data-max-date="{{ today_iso }}">
+                  <button type="button" class="an-range-trigger se-filter-chip-trigger" id="am-logs-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="am-logs-date-range-panel" aria-labelledby="am-logs-date-range-label am-logs-date-range-display">
+                    <span class="an-range-trigger-label">
+                      <span id="am-logs-date-range-display">{% if active_date_filter %}{{ filters.date_from|report_date }} – {{ filters.date_to|report_date }}{% else %}Select date…{% endif %}</span>
+                    </span>
+                  </button>
+                  <div class="an-range-backdrop" id="am-logs-date-range-backdrop" aria-hidden="true"></div>
+                  <div class="an-range-panel" id="am-logs-date-range-panel" role="dialog" aria-labelledby="am-logs-date-range-panel-title" hidden>
+                    <div class="an-range-panel-inner">
+                      <div class="an-range-panel-h" id="am-logs-date-range-panel-title">Date range</div>
+                      <div class="an-cal-dual">
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <button type="button" class="an-cal-nav-btn" id="am-logs-cal-prev" aria-label="Previous months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                            </button>
+                            <h4 class="an-cal-month-title" id="am-logs-cal-title0">—</h4>
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="am-logs-cal-grid0"></div>
+                        </div>
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                            <h4 class="an-cal-month-title" id="am-logs-cal-title1">—</h4>
+                            <button type="button" class="an-cal-nav-btn" id="am-logs-cal-next" aria-label="Next months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                            </button>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="am-logs-cal-grid1"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="an-range-actions">
+                      <button type="button" class="btn" id="am-logs-date-range-clear">Clear</button>
+                      <button type="button" class="btn btn-primary" id="am-logs-date-range-apply">Apply</button>
+                    </div>
+                  </div>
+                </div>
+                <span class="se-filter-chip-chev" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <section class="content se-content am-logs-content">
+    {% if auth_notice %}
+    <div class="msg info">{{ auth_notice }}</div>
+    {% endif %}
+
+    <article class="card pl-list-panel am-logs-list-panel" aria-label="Activity log entries">
+      <div class="card-hdr">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+          <span>Recent activity</span>
+        </div>
+        <span class="pl-count am-logs-count">{{ total_count }} event{% if total_count != 1 %}s{% endif %}{% if total_pages > 1 %} · Page {{ page }} of {{ total_pages }}{% endif %}</span>
+      </div>
+      <div class="card-body pl-card-body--flush">
+        {% if logs %}
+        <div class="pl-table-wrap am-logs-table-wrap" tabindex="0" aria-label="Activity log entries, scroll for more">
+          <table class="pl-table am-logs-table" aria-label="Activity log entries">
+            <thead>
+              <tr>
+                <th class="am-log-col-time" scope="col">Time</th>
+                <th class="am-log-col-user" scope="col">User</th>
+                <th class="am-log-col-action" scope="col">Action</th>
+                <th class="am-log-col-module" scope="col">Module</th>
+                <th class="am-log-col-summary" scope="col">Summary</th>
+                <th class="am-log-col-ip" scope="col">IP</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for log in logs %}
+              {% set action_key = log.action or '' %}
+              {% set badge_class = 'is-neutral' %}
+              {% if action_key in ['login', 'logout'] %}
+                {% set badge_class = 'is-info' %}
+              {% elif action_key in ['create', 'bulk_import', 'send'] %}
+                {% set badge_class = 'is-success' %}
+              {% elif action_key in ['update', 'lock'] %}
+                {% set badge_class = 'is-warning' %}
+              {% elif action_key in ['delete', 'login_failed'] %}
+                {% set badge_class = 'is-danger' %}
+              {% endif %}
+              <tr>
+                <td class="am-log-time">{{ log.created_at or '—' }}</td>
+                <td class="am-log-user">{{ log.username or '—' }}</td>
+                <td><span class="am-log-badge {{ badge_class }}">{{ action_labels.get(action_key, action_key or '—') }}</span></td>
+                <td class="am-log-module">{{ module_labels.get(log.module, log.module or '—') }}</td>
+                <td class="am-log-summary">{{ log.summary or '—' }}</td>
+                <td class="am-log-ip">{{ log.ip_address or '—' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        {% if total_pages > 1 %}
+        <div class="am-logs-pagination">
+          {% set base_args = {
+            'date_from': filters.date_from,
+            'date_to': filters.date_to,
+            'user_id': filters.user_id,
+            'action': filters.action,
+            'module': filters.module,
+            'q': filters.q,
+          } %}
+          {% if page > 1 %}
+          <a class="btn" href="{{ url_for('access_management_logs', page=page-1, **base_args) }}">Previous</a>
+          {% else %}
+          <span class="btn" disabled>Previous</span>
+          {% endif %}
+          {% if page < total_pages %}
+          <a class="btn" href="{{ url_for('access_management_logs', page=page+1, **base_args) }}">Next</a>
+          {% else %}
+          <span class="btn" disabled>Next</span>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="am-logs-empty">
+          <p>No activity logs match the current filters.</p>
+        </div>
+        {% endif %}
+      </div>
+    </article>
+  </section>
+</div>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=30"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=3"></script>
+<script data-de-rerun="1">
+(function(){
+  if (window.lucide && typeof window.lucide.createIcons === 'function') {
+    window.lucide.createIcons();
+  }
+  if (typeof window.initEpListboxes === 'function') {
+    window.initEpListboxes();
+  }
+
+  var form = document.getElementById('am-logs-filter-form');
+  if (!form) return;
+
+  function submitFilters() {
+    if (typeof window.deSoftSubmitForm === 'function' && window.deSoftSubmitForm(form)) return;
+    if (typeof form.requestSubmit === 'function') form.requestSubmit();
+    else form.submit();
+  }
+
+  var search = document.getElementById('am-logs-search');
+  var searchTimer = null;
+  if (search) {
+    search.addEventListener('input', function() {
+      var chip = document.getElementById('am-logs-search-chip');
+      if (chip) chip.classList.toggle('is-active', !!String(search.value || '').trim());
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(submitFilters, 400);
+    });
+    search.addEventListener('keydown', function(event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        clearTimeout(searchTimer);
+        submitFilters();
+      }
+    });
+    search.addEventListener('focus', function() {
+      var chip = document.getElementById('am-logs-search-chip');
+      if (chip) chip.classList.add('is-active');
+    });
+    search.addEventListener('blur', function() {
+      var chip = document.getElementById('am-logs-search-chip');
+      if (chip && !String(search.value || '').trim()) chip.classList.remove('is-active');
+    });
+  }
+
+  var dateFrom = document.getElementById('am-logs-date-from');
+  var dateTo = document.getElementById('am-logs-date-to');
+  if (window.SalesDateRangePicker) {
+    SalesDateRangePicker.init({
+      wrapId: 'am-logs-date-range-wrap',
+      triggerId: 'am-logs-date-range-trigger',
+      backdropId: 'am-logs-date-range-backdrop',
+      panelId: 'am-logs-date-range-panel',
+      displayId: 'am-logs-date-range-display',
+      formId: 'am-logs-filter-form',
+      fromInputId: 'am-logs-date-from',
+      toInputId: 'am-logs-date-to',
+      applyId: 'am-logs-date-range-apply',
+      prevId: 'am-logs-cal-prev',
+      nextId: 'am-logs-cal-next',
+      title0Id: 'am-logs-cal-title0',
+      title1Id: 'am-logs-cal-title1',
+      grid0Id: 'am-logs-cal-grid0',
+      grid1Id: 'am-logs-cal-grid1',
+      emptyLabel: 'Select date…',
+      onOpen: function() {
+        if (typeof window.closeAllEpListboxes === 'function') window.closeAllEpListboxes();
+      },
+      onBeforeSubmit: function() {
+        if (dateFrom && !dateFrom.value) dateFrom.removeAttribute('name');
+        if (dateTo && !dateTo.value) dateTo.removeAttribute('name');
+      }
+    });
+
+    var rangeWrap = document.getElementById('am-logs-date-range-wrap');
+    var rangeTrigger = document.getElementById('am-logs-date-range-trigger');
+    var rangePanel = document.getElementById('am-logs-date-range-panel');
+    function repositionAmLogsDatePanel() {
+      if (!rangeWrap || !rangeWrap.classList.contains('open')) return;
+      if (window.SalesDateRangePicker && typeof window.SalesDateRangePicker.positionPanel === 'function') {
+        window.SalesDateRangePicker.positionPanel(rangeTrigger, rangePanel);
+      }
+    }
+    window.addEventListener('resize', repositionAmLogsDatePanel);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', repositionAmLogsDatePanel);
+      window.visualViewport.addEventListener('scroll', repositionAmLogsDatePanel);
+    }
+  }
+
+  var clearBtn = document.getElementById('am-logs-date-range-clear');
+  if (clearBtn && clearBtn.getAttribute('data-am-logs-clear-bound') !== '1') {
+    clearBtn.setAttribute('data-am-logs-clear-bound', '1');
+    clearBtn.addEventListener('click', function(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (dateFrom) {
+        dateFrom.value = '';
+        dateFrom.setAttribute('name', 'date_from');
+      }
+      if (dateTo) {
+        dateTo.value = '';
+        dateTo.setAttribute('name', 'date_to');
+      }
+      var display = document.getElementById('am-logs-date-range-display');
+      if (display) display.textContent = 'Select date…';
+      var chip = document.querySelector('#am-logs-date-range-host .se-filter-chip--date-range');
+      if (chip) chip.classList.remove('is-filtered');
+      if (window.SalesDateRangePicker && typeof window.SalesDateRangePicker.closeIfOpen === 'function') {
+        window.SalesDateRangePicker.closeIfOpen('am-logs-date-range-wrap');
+      }
+      submitFilters();
+    });
+  }
+})();
+</script>
+{% include 'partials/de_workspace_shell_close.html' %}
+</body>
+</html>
