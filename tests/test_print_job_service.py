@@ -194,17 +194,29 @@ class PrintJobServiceTests(unittest.TestCase):
         finally:
             conn.close()
 
-    def test_send_kot_api_enqueues_print_job(self):
 
+    def test_enqueue_kot_print_jobs_is_noop(self):
+        import inspect
+
+        src = inspect.getsource(self.app_mod._enqueue_kot_print_jobs)
+        self.assertIn("return []", src)
+        self.assertNotIn("enqueue_kot_jobs_for_invoice", src)
+
+    def test_send_kot_api_does_not_enqueue_saas_job(self):
+        """Hotel Print Agent is loopback-only; send-kot must not park QUEUED jobs."""
         resp = self.client.post(f"/point-of-sale/api/invoices/{self.invoice_id}/send-kot")
         self.assertEqual(resp.status_code, 200, resp.get_json())
+        self.assertTrue((resp.get_json() or {}).get("ok"))
         conn = db_mod.get_db()
         try:
-            rows = conn.execute(
-                "SELECT job_id, document_type, status FROM print_jobs"
-            ).fetchall()
-            self.assertGreaterEqual(len(rows), 1)
-            self.assertEqual(rows[0]["document_type"], "kot")
+            exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='print_jobs'"
+            ).fetchone()
+            if exists:
+                rows = conn.execute(
+                    "SELECT job_id FROM print_jobs"
+                ).fetchall()
+                self.assertEqual(len(rows), 0)
         finally:
             conn.close()
 

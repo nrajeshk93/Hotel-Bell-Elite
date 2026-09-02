@@ -9871,23 +9871,14 @@ def _pos_pending_kot_items(invoice):
 
 
 def _enqueue_kot_print_jobs(conn, invoice, pending_items):
-    """Best-effort server print queue for web + mobile KOT."""
-    if os.environ.get("PRINT_SERVER_ENQUEUE", "1").strip().lower() in ("0", "false", "no", "off"):
-        return []
-    if not invoice or not pending_items:
-        return []
-    try:
-        from print_job_service import enqueue_kot_jobs_for_invoice
+    """Do not enqueue SaaS KOT jobs.
 
-        user = get_current_user()
-        return enqueue_kot_jobs_for_invoice(
-            conn,
-            invoice,
-            pending_items,
-            user_id=int(user.get("id") or 0) if user else 0,
-        )
-    except Exception:
-        return []
+    Hotel Print Agent only accepts loopback POST /print on 127.0.0.1:4567.
+    It never pulls print_jobs, so queued KOTs sat forever while POS skipped
+    the local ticket. Send KOT / KOT page both print on the POS PC instead.
+    Direct /api/print-jobs callers still create jobs.
+    """
+    return []
 
 
 def _pos_bulk_outlet_from_request():

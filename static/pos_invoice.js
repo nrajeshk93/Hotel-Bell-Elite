@@ -2306,14 +2306,6 @@
     return 'restaurant';
   }
 
-  function shouldSkipClientKotPrint() {
-    /* The SaaS print queue parks jobs as QUEUED when no Print Agent is
-       registered. POS used to skip local printing in that case, so Send KOT
-       from Create Invoice never reached Hotel Print Agent. The KOT page always
-       prints locally — keep the same path here. */
-    return false;
-  }
-
   function printKotTicket(page, pending) {
     try {
       if (!pending || !pending.length) return;
@@ -2897,15 +2889,10 @@
           return;
         }
         syncKotSentFromInvoice(result.data.invoice);
-        if (
-          !shouldSkipClientKotPrint() &&
-          (!global.hbePosPrinterPrefs ||
-          global.hbePosPrinterPrefs.shouldAutoPrintKot(
-            (page && page.getAttribute('data-pos-outlet')) || undefined
-          ))
-        ) {
-          printKotTicket(page, pending);
-        }
+        /* Send KOT always prints through Hotel Print Agent on this PC, same
+         as the KOT page. Never skip because the SaaS queue is on: the EXE
+         only accepts loopback /print, so queued jobs never reach a printer. */
+        printKotTicket(page, pending);
         var count = pending.length;
         renderLines(page);
         persistInvoiceResumeContext();
@@ -3008,15 +2995,10 @@
       if (!state.dirty) cancelAutosaveTimer();
       syncFloorOccupancyAfterSave(page, payload, invoice);
       persistInvoiceResumeContext();
-      if (
-        !shouldSkipClientKotPrint() &&
-        (!global.hbePosPrinterPrefs ||
-        global.hbePosPrinterPrefs.shouldAutoPrintKot(
-          (page && page.getAttribute('data-pos-outlet')) || undefined
-        ))
-      ) {
+      /* Send KOT always prints through Hotel Print Agent on this PC, same
+         as the KOT page. Never skip because the SaaS queue is on: the EXE
+         only accepts loopback /print, so queued jobs never reach a printer. */
         printKotTicket(page, pending);
-      }
       pending.forEach(function (entry) {
         entry.line.sentQty = Number(entry.line.qty) || 0;
       });

@@ -128,6 +128,25 @@ class PrintAgentApiTests(unittest.TestCase):
         self.assertFalse((miss.get_json() or {}).get("ok"))
 
 
+
+    def test_pos_send_kot_always_prints_locally_like_kot_page(self):
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        invoice = (root / "static" / "pos_invoice.js").read_text(encoding="utf-8")
+        tables = (root / "static" / "pos_tables.js").read_text(encoding="utf-8")
+        agent = (root / "static" / "print_agent.js").read_text(encoding="utf-8")
+        self.assertNotIn("shouldSkipClientKotPrint", invoice)
+        self.assertNotIn("serverQueueEnabled", invoice)
+        self.assertGreaterEqual(invoice.count("printKotTicket(page, pending);"), 2)
+        self.assertNotIn("shouldSkipClientKotPrint", tables)
+        self.assertNotIn("serverQueueEnabled", tables)
+        self.assertIn("function printKotTokenTicket", tables)
+        self.assertIn("printKotHtml", tables)
+        self.assertIn("probeLocalAgent(2)", agent)
+        self.assertIn("printLocalIfPossible", agent)
+        self.assertIn("No Print Agent online", agent)
+
     def test_browser_print_prefers_local_agent(self):
         from pathlib import Path
         js = Path(__file__).resolve().parents[1].joinpath("static", "print_agent.js").read_text(encoding="utf-8")
