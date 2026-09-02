@@ -48,6 +48,8 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("networkOnlyFloor", body)
         self.assertIn("Occupancy may be slightly stale offline", body)
         self.assertIn("networkFirstHtml", body)
+        self.assertIn("shouldCacheHtmlPath", body)
+        self.assertIn('"/static/de_pwa.js":', body)
         self.assertIn("FLOOR_API_PATHS", body)
         self.assertIn("/home", body)
         self.assertIn("de_workspace_transitions.js", body)
@@ -140,6 +142,10 @@ class AppShellPwaTests(unittest.TestCase):
     def test_de_pwa_prunes_app_and_legacy_pos_caches(self):
         resp = self.client.get("/static/de_pwa.js")
         self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.headers.get("CDN-Cache-Control"), "no-store")
+        self.assertEqual(resp.headers.get("Surrogate-Control"), "no-store")
+        cc = (resp.headers.get("Cache-Control") or "").lower()
+        self.assertIn("no-store", cc)
         body = resp.get_data(as_text=True)
         resp.close()
         self.assertNotIn("key !== 'hbe-pos-v40'", body)
@@ -151,6 +157,7 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("updateViaCache", body)
         self.assertIn("hbe-build.json", body)
         self.assertIn("bindReloadOnUpdate", body)
+        self.assertNotIn("navigator.onLine === false", body)
 
     def test_pos_offline_has_seven_day_prune(self):
         resp = self.client.get("/static/pos_offline.js")

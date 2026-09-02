@@ -217,12 +217,15 @@ def render_service_worker(root=None):
     path = os.path.join(root, "sw.js")
     with open(path, encoding="utf-8") as fh:
         src = fh.read()
+    # Hash any leftover /static refs in the template first. Doing this after
+    # JSON inject rewrote alias keys to ?v= hashes and dropped the bare paths,
+    # so Cloudflare/SW could keep serving an unversioned stale file.
+    src, _ = rewrite_html_static_urls(src, root)
     src = src.replace("__HBE_CACHE_VERSION__", d["version"])
     src = src.replace("__HBE_OFFLINE_LOGIN_URL__", d["offline_login"])
     src = src.replace("__HBE_OFFLINE_AUTH_URL__", d["offline_auth"])
     src = src.replace("__HBE_CRITICAL_ALIASES__", json.dumps(d["aliases"]))
     src = src.replace("__HBE_PRECACHE__", json.dumps(d["precache"]))
-    src, _ = rewrite_html_static_urls(src, root)
     if "__HBE_" in src:
         raise RuntimeError("service worker placeholders were not filled")
     return src

@@ -431,6 +431,18 @@ function offlineNavigateFallback() {
   });
 }
 
+function shouldCacheHtmlPath(pathname) {
+  /* Reports / Master / Unit Insight must not sit in Cache Storage.
+     Only shells needed for offline Sign In and POS. */
+  return (
+    pathname === '/' ||
+    pathname === '/login' ||
+    pathname === '/home' ||
+    pathname === '/point-of-sale/invoice' ||
+    pathname === '/bar-point-of-sale/invoice'
+  );
+}
+
 function networkFirstHtml(req) {
   var pathname = '/';
   try {
@@ -438,7 +450,7 @@ function networkFirstHtml(req) {
   } catch (e) {}
   return fetch(req, { cache: 'no-store' })
     .then(function (res) {
-      if (res && res.ok) {
+      if (res && res.ok && shouldCacheHtmlPath(pathname)) {
         var copy = res.clone();
         caches.open(CACHE_VERSION).then(function (cache) {
           putHtmlCache(cache, req, copy);

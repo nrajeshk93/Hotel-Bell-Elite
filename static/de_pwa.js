@@ -121,7 +121,6 @@
         return;
       }
       if (window.__hbeSwReloaded) return;
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
       window.__hbeSwReloaded = true;
       try {
         window.location.reload();
