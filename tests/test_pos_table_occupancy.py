@@ -999,6 +999,107 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual({line["name"] for line in t3["lines"]}, {"Filter Coffee", "Sandwich"})
         self.assertTrue(all(isinstance(line.get("id"), int) for line in t3["lines"]))
         self.assertFalse(t3.get("customer_bill_sent"))
+        self.assertTrue(t3.get("sends"))
+        self.assertEqual(t3["sends"][0]["lines"][0]["name"], t3["lines"][0]["name"])
+
+    def test_kot_tokens_timestamp_repeat_sends(self):
+        """Repeat Send KOT of the same item is listed as separate timed batches."""
+        first = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                "ORD-2607-0072",
+                "T1",
+                kot_send=True,
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "rate": 100,
+                        "qty": 1,
+                        "kotSentQty": 1,
+                    }
+                ],
+                totals={
+                    "subtotal": 100,
+                    "discount": 0,
+                    "discountType": "pct",
+                    "discountValue": 0,
+                    "gst": 5,
+                    "service": 0,
+                    "serviceType": "pct",
+                    "serviceValue": 0,
+                    "tip": 0,
+                    "roundOff": 0,
+                    "total": 105,
+                },
+            ),
+        )
+        self.assertEqual(first.status_code, 200, first.get_data(as_text=True))
+
+        second = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                "ORD-2607-0072",
+                "T1",
+                kot_send=True,
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "rate": 100,
+                        "qty": 2,
+                        "kotSentQty": 2,
+                    }
+                ],
+                totals={
+                    "subtotal": 200,
+                    "discount": 0,
+                    "discountType": "pct",
+                    "discountValue": 0,
+                    "gst": 10,
+                    "service": 0,
+                    "serviceType": "pct",
+                    "serviceValue": 0,
+                    "tip": 0,
+                    "roundOff": 0,
+                    "total": 210,
+                },
+            ),
+        )
+        self.assertEqual(second.status_code, 200, second.get_data(as_text=True))
+
+        tokens = self.client.get("/point-of-sale/api/kot-tokens").get_json()
+        row = tokens["tables"][0]
+        self.assertEqual(row["sent_qty"], 2)
+        self.assertEqual(len(row["lines"]), 1)
+        self.assertEqual(row["lines"][0]["sent_qty"], 2)
+        sends = row.get("sends") or []
+        self.assertEqual(len(sends), 2)
+        self.assertEqual(sends[0]["lines"][0]["name"], "Filter Coffee")
+        self.assertEqual(float(sends[0]["lines"][0]["qty"]), 1)
+        self.assertEqual(sends[1]["lines"][0]["name"], "Filter Coffee")
+        self.assertEqual(float(sends[1]["lines"][0]["qty"]), 1)
+        self.assertTrue(sends[0]["sent_at"])
+        self.assertTrue(sends[1]["sent_at"])
+
+    def test_kot_tokens_pending_send_also_timestamps(self):
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-0073", "T1"),
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        invoice_id = saved.get_json()["invoice"]["id"]
+        send = self.client.post(f"/point-of-sale/api/invoices/{invoice_id}/send-kot")
+        self.assertEqual(send.status_code, 200, send.get_data(as_text=True))
+        tokens = self.client.get("/point-of-sale/api/kot-tokens").get_json()
+        row = tokens["tables"][0]
+        self.assertEqual(len(row.get("sends") or []), 1)
+        self.assertTrue(row["sends"][0]["sent_at"])
+        self.assertEqual(float(row["sends"][0]["lines"][0]["qty"]), 2)
 
     def test_kot_tokens_hidden_after_invoice_generated(self):
         """After Generate Invoice (customerBill), token leaves the KOT hub list."""
@@ -1033,6 +1134,7 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(bill.status_code, 200, bill.get_data(as_text=True))
         invoice = bill.get_json().get("invoice") or {}
         self.assertTrue(invoice.get("customer_bill_sent"))
+        official_no = invoice.get("order_no") or "ORD-2607-0090"
 
         after = self.client.get("/point-of-sale/api/kot-tokens").get_json()
         self.assertEqual(after["token_count"], 0)
@@ -1042,7 +1144,7 @@ class PosTableOccupancyTests(unittest.TestCase):
         again = self.client.post(
             "/point-of-sale/api/invoices",
             json=self._payload(
-                "ORD-2607-0090",
+                official_no,
                 "T1",
                 lines=[
                     {

@@ -1673,6 +1673,42 @@ def ensure_pos_schema(conn):
     )
     cursor.execute(
         """
+        CREATE TABLE IF NOT EXISTS pos_kot_send_batches (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_id  INTEGER NOT NULL,
+            sent_at     TEXT    NOT NULL,
+            created_by  TEXT    NOT NULL DEFAULT '',
+            FOREIGN KEY (invoice_id) REFERENCES pos_invoices(id)
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pos_kot_send_batches_invoice
+        ON pos_kot_send_batches(invoice_id, sent_at, id)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pos_kot_send_batch_lines (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id         INTEGER NOT NULL,
+            invoice_line_id  INTEGER,
+            name             TEXT    NOT NULL DEFAULT '',
+            variant          TEXT    NOT NULL DEFAULT '',
+            qty              REAL    NOT NULL DEFAULT 0,
+            FOREIGN KEY (batch_id) REFERENCES pos_kot_send_batches(id)
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pos_kot_send_batch_lines_batch
+        ON pos_kot_send_batch_lines(batch_id, id)
+        """
+    )
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS pos_invoice_payments (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             invoice_id      INTEGER NOT NULL,
@@ -5597,6 +5633,249 @@ def list_pos_kot_pending_summary(conn, outlet=POS_OUTLET_RESTAURANT):
     }
 
 
+def ensure_pos_kot_send_schema(conn):
+    """Kitchen send log used by the Tables KOT hub (not the customer bill)."""
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pos_kot_send_batches (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_id  INTEGER NOT NULL,
+            sent_at     TEXT    NOT NULL,
+            created_by  TEXT    NOT NULL DEFAULT '',
+            FOREIGN KEY (invoice_id) REFERENCES pos_invoices(id)
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pos_kot_send_batches_invoice
+        ON pos_kot_send_batches(invoice_id, sent_at, id)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pos_kot_send_batch_lines (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id         INTEGER NOT NULL,
+            invoice_line_id  INTEGER,
+            name             TEXT    NOT NULL DEFAULT '',
+            variant          TEXT    NOT NULL DEFAULT '',
+            qty              REAL    NOT NULL DEFAULT 0,
+            FOREIGN KEY (batch_id) REFERENCES pos_kot_send_batches(id)
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pos_kot_send_batch_lines_batch
+        ON pos_kot_send_batch_lines(batch_id, id)
+        """
+    )
+
+
+def _pos_invoice_sent_qty_snapshot(conn, invoice_id):
+    """Kitchen-sent qty keyed the same way invoice lines merge."""
+    rows = conn.execute(
+        """
+        SELECT menu_item_id, name, variant, COALESCE(sent_qty, 0) AS sent_qty
+        FROM pos_invoice_lines
+        WHERE invoice_id = ?
+        """,
+        (invoice_id,),
+    ).fetchall()
+    snap = {}
+    for row in rows:
+        key = _pos_invoice_line_kitchen_key(
+            row["menu_item_id"] if "menu_item_id" in row.keys() else None,
+            row["name"],
+            row["variant"],
+        )
+        snap[key] = snap.get(key, 0.0) + float(row["sent_qty"] or 0)
+    return snap
+
+
+def record_pos_kot_send_batch(conn, invoice_id, items, *, sent_at=None, created_by=""):
+    """Append one kitchen-send batch. ``items`` is [{name, variant, qty, invoice_line_id?}]."""
+    ensure_pos_kot_send_schema(conn)
+    rows = []
+    for raw in items or []:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            qty = float(raw.get("qty") or 0)
+        except (TypeError, ValueError):
+            continue
+        if qty <= 0.009:
+            continue
+        line_id = raw.get("invoice_line_id") or raw.get("id")
+        try:
+            line_id = int(line_id) if line_id not in (None, "") else None
+        except (TypeError, ValueError):
+            line_id = None
+        rows.append(
+            {
+                "invoice_line_id": line_id,
+                "name": str(raw.get("name") or "").strip(),
+                "variant": str(raw.get("variant") or "").strip(),
+                "qty": round(qty, 3),
+            }
+        )
+    if not rows:
+        return None
+    stamp = str(sent_at or "").strip() or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cur = conn.execute(
+        """
+        INSERT INTO pos_kot_send_batches (invoice_id, sent_at, created_by)
+        VALUES (?, ?, ?)
+        """,
+        (int(invoice_id), stamp, str(created_by or "").strip()),
+    )
+    batch_id = int(cur.lastrowid)
+    for row in rows:
+        conn.execute(
+            """
+            INSERT INTO pos_kot_send_batch_lines (
+                batch_id, invoice_line_id, name, variant, qty
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                batch_id,
+                row["invoice_line_id"],
+                row["name"],
+                row["variant"],
+                row["qty"],
+            ),
+        )
+    return batch_id
+
+
+def _record_pos_kot_send_from_snapshot(conn, invoice_id, previous_sent, *, created_by=""):
+    """Diff current sent_qty against a pre-send snapshot and store the delta."""
+    remaining = dict(previous_sent or {})
+    items = []
+    lines = conn.execute(
+        """
+        SELECT id, menu_item_id, name, variant, COALESCE(sent_qty, 0) AS sent_qty
+        FROM pos_invoice_lines
+        WHERE invoice_id = ?
+        ORDER BY sort_order ASC, id ASC
+        """,
+        (invoice_id,),
+    ).fetchall()
+    for line in lines:
+        key = _pos_invoice_line_kitchen_key(
+            line["menu_item_id"] if "menu_item_id" in line.keys() else None,
+            line["name"],
+            line["variant"],
+        )
+        old = float(remaining.get(key, 0.0) or 0)
+        new = float(line["sent_qty"] or 0)
+        take_old = min(old, new)
+        remaining[key] = old - take_old
+        delta = new - take_old
+        if delta <= 0.009:
+            continue
+        items.append(
+            {
+                "invoice_line_id": int(line["id"]),
+                "name": (line["name"] or "").strip(),
+                "variant": (line["variant"] or "").strip(),
+                "qty": round(delta, 3),
+            }
+        )
+    return record_pos_kot_send_batch(
+        conn, invoice_id, items, created_by=created_by
+    )
+
+
+def _list_pos_kot_send_batches(conn, invoice_id, live_lines, fallback_sent_at):
+    """Timestamped kitchen sends for the Tables KOT hub, with a live-line fallback."""
+    ensure_pos_kot_send_schema(conn)
+    live_lines = list(live_lines or [])
+    live_by_id = {}
+    live_by_name = {}
+    for line in live_lines:
+        try:
+            lid = int(line.get("id"))
+        except (TypeError, ValueError):
+            lid = None
+        if lid:
+            live_by_id[lid] = line
+        key = (
+            str(line.get("name") or "").strip().lower(),
+            str(line.get("variant") or "").strip().lower(),
+        )
+        live_by_name.setdefault(key, line)
+    batch_rows = conn.execute(
+        """
+        SELECT id, sent_at
+        FROM pos_kot_send_batches
+        WHERE invoice_id = ?
+        ORDER BY sent_at ASC, id ASC
+        """,
+        (invoice_id,),
+    ).fetchall()
+    sends = []
+    for batch in batch_rows:
+        line_rows = conn.execute(
+            """
+            SELECT invoice_line_id, name, variant, qty
+            FROM pos_kot_send_batch_lines
+            WHERE batch_id = ?
+            ORDER BY id ASC
+            """,
+            (int(batch["id"]),),
+        ).fetchall()
+        blines = []
+        for row in line_rows:
+            try:
+                qty = float(row["qty"] or 0)
+            except (TypeError, ValueError):
+                qty = 0.0
+            if qty <= 0.009:
+                continue
+            try:
+                lid = int(row["invoice_line_id"]) if row["invoice_line_id"] not in (None, "") else None
+            except (TypeError, ValueError):
+                lid = None
+            name = (row["name"] or "").strip()
+            variant = (row["variant"] or "").strip()
+            live = live_by_id.get(lid) if lid else None
+            if live is None:
+                live = live_by_name.get((name.lower(), variant.lower()))
+            if live is not None:
+                try:
+                    lid = int(live.get("id") or lid or 0) or lid
+                except (TypeError, ValueError):
+                    pass
+            blines.append(
+                {
+                    "id": lid or 0,
+                    "name": name or ((live or {}).get("name") or "Item"),
+                    "variant": variant or ((live or {}).get("variant") or ""),
+                    "qty": qty,
+                    "sent_qty": qty,
+                    "outlet": (live or {}).get("outlet") or "restaurant",
+                }
+            )
+        if blines:
+            sends.append(
+                {
+                    "sent_at": str(batch["sent_at"] or "").strip(),
+                    "lines": blines,
+                }
+            )
+    if sends:
+        return sends
+    return [
+        {
+            "sent_at": str(fallback_sent_at or "").strip(),
+            "lines": live_lines,
+        }
+    ]
+
+
 def send_pos_invoice_pending_kot(conn, invoice_id):
     """Mark every unsent line qty as sent for an open invoice (Tables KOT modal).
 
@@ -5621,6 +5900,7 @@ def send_pos_invoice_pending_kot(conn, invoice_id):
     if str(row["status"] or "").strip().lower() != "open":
         raise ValueError("Only open invoices can be sent to kitchen.")
 
+    previous_sent = _pos_invoice_sent_qty_snapshot(conn, invoice_id)
     pending = conn.execute(
         """
         SELECT id, qty, COALESCE(sent_qty, 0) AS sent_qty
@@ -5660,6 +5940,8 @@ def send_pos_invoice_pending_kot(conn, invoice_id):
             outlet=row["outlet"] if "outlet" in row.keys() else None,
             order_date=row["order_date"] if "order_date" in row.keys() else None,
         )
+
+    _record_pos_kot_send_from_snapshot(conn, invoice_id, previous_sent)
 
     table_label = (row["table_label"] or "").strip()
     order_type = _normalize_pos_order_type(row["order_type"])
@@ -5775,6 +6057,11 @@ def list_pos_kot_tokens(conn, outlet=POS_OUTLET_RESTAURANT):
                     "outlet": menu_outlet,
                 }
             )
+        sends = _list_pos_kot_send_batches(conn, invoice_id, lines, sent_at)
+        if sends:
+            last_sent = str((sends[-1] or {}).get("sent_at") or "").strip()
+            if last_sent:
+                sent_at = last_sent
         tables.append(
             {
                 "name": name,
@@ -5790,6 +6077,7 @@ def list_pos_kot_tokens(conn, outlet=POS_OUTLET_RESTAURANT):
                 "customer_bill_sent": bool(row["customer_bill_sent"]),
                 "customer_bill_at": (row["customer_bill_at"] or "").strip(),
                 "lines": lines,
+                "sends": sends,
             }
         )
     return {
@@ -7459,7 +7747,9 @@ def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, ac
             f'Order number {order_no} is already reserved. Start a new order with a fresh draft.'
         )
 
+    previous_sent = {}
     if existing:
+        previous_sent = _pos_invoice_sent_qty_snapshot(conn, int(existing["id"]))
         _enforce_pos_kot_line_protections(
             conn,
             int(existing["id"]),
@@ -7643,6 +7933,11 @@ def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, ac
             invoice_id,
             outlet=outlet,
             order_date=order_date,
+        )
+
+    if kot_send:
+        _record_pos_kot_send_from_snapshot(
+            conn, invoice_id, previous_sent, created_by=creator
         )
 
     invoice = get_pos_invoice(conn, invoice_id)

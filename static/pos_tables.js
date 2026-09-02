@@ -2886,23 +2886,34 @@
     });
     var out = [];
     Array.prototype.forEach.call(checked, function (el) {
-      var line = byId[String(el.getAttribute('data-kot-line-id'))];
-      if (!line) return;
-      var maxQty = Number(line.sent_qty != null ? line.sent_qty : line.qty) || 0;
       var row = el.closest('.pos-kot-token-line');
+      var line = byId[String(el.getAttribute('data-kot-line-id'))] || {};
+      var maxQty = Number(
+        (row && row.getAttribute('data-kot-max-qty')) ||
+          line.sent_qty ||
+          line.qty ||
+          0
+      );
       var qtyEl = row && row.querySelector('[data-kot-line-qty]');
       var customQty = qtyEl
         ? Number(qtyEl.getAttribute('data-kot-line-qty') || qtyEl.textContent)
         : maxQty;
       if (!isFinite(customQty) || customQty < 1) customQty = 1;
-      if (customQty > maxQty) customQty = maxQty;
+      if (maxQty && customQty > maxQty) customQty = maxQty;
+      var name =
+        (row && row.getAttribute('data-kot-line-name')) || line.name || 'Item';
+      var variant =
+        (row && row.getAttribute('data-kot-line-variant')) || line.variant || '';
+      var outlet =
+        (row && row.getAttribute('data-kot-line-outlet')) || line.outlet || '';
+      var lineId = Number(el.getAttribute('data-kot-line-id') || line.id || 0);
       out.push({
-        id: line.id,
-        name: line.name,
-        variant: line.variant,
+        id: lineId,
+        name: name,
+        variant: variant,
         qty: customQty,
         sent_qty: customQty,
-        outlet: line.outlet || ''
+        outlet: outlet
       });
     });
     return out;
@@ -3243,14 +3254,18 @@
         var when = formatKotPendingWhen(t.sent_at);
         var items = Number(t.sent_qty) > 0 ? Number(t.sent_qty) : Number(t.sent_items) || 0;
         var kotNo = t.kot_no || t.order_no || '—';
-        var lines = Array.isArray(t.lines) ? t.lines : [];
+        var liveLines = Array.isArray(t.lines) ? t.lines : [];
+        var sendGroups =
+          !editMode && Array.isArray(t.sends) && t.sends.length
+            ? t.sends
+            : [{ sent_at: t.sent_at, lines: liveLines }];
+        var lines = liveLines;
         var expanded = !!kotTokenExpanded[idx];
         var billSent = !!t.customer_bill_sent;
         var linesLocked = kotTokenLinesLocked(t);
         var editLocked = linesLocked || (editMode && !canCancelKotLines());
         var themeClass = 'pos-kot-theme-' + (idx % 3);
-        var lineChecks = lines
-          .map(function (line) {
+        var renderKotLine = function (line) {
             var qty = Number(line.sent_qty != null ? line.sent_qty : line.qty) || 0;
             var label =
               (line.name || 'Item') +
@@ -3310,6 +3325,12 @@
               escapeHtml(qty) +
               '" data-kot-orig-qty="' +
               escapeHtml(qty) +
+              '" data-kot-line-name="' +
+              escapeHtml(line.name || 'Item') +
+              '" data-kot-line-variant="' +
+              escapeHtml(line.variant || '') +
+              '" data-kot-line-outlet="' +
+              escapeHtml(line.outlet || '') +
               '">' +
               '<label class="pos-kot-token-line-check">' +
               '<input type="checkbox" data-kot-line-id="' +
@@ -3329,6 +3350,29 @@
               '</span>' +
               '</label>' +
               stepper +
+              '</div>'
+            );
+        };
+
+        var lineChecks = sendGroups
+          .map(function (group) {
+            var groupWhen = formatKotPendingWhen(group.sent_at || t.sent_at);
+            var groupLines = Array.isArray(group.lines) ? group.lines : [];
+            var rows = groupLines.map(renderKotLine).join('');
+            if (!rows) return '';
+            return (
+              '<div class="pos-kot-send-group">' +
+              '<div class="pos-kot-send-time">' +
+              '<span class="pos-kot-send-time-clock">' +
+              escapeHtml(groupWhen.time) +
+              '</span>' +
+              (groupWhen.date
+                ? '<small class="pos-kot-send-time-date">' +
+                  escapeHtml(groupWhen.date) +
+                  '</small>'
+                : '') +
+              '</div>' +
+              rows +
               '</div>'
             );
           })

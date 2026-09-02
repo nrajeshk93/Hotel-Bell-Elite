@@ -648,6 +648,26 @@ html.de-soft-navigating .de-main-wrapper .pos-kot-pending-banner--attention .pos
   gap:0;
   max-height:none;
 }
+#pos-kot-tokens-modal .pos-kot-send-group + .pos-kot-send-group{
+  margin-top:10px;
+  padding-top:8px;
+  border-top:1px solid #E2E8F0;
+}
+#pos-kot-tokens-modal .pos-kot-send-time{
+  display:flex;
+  align-items:baseline;
+  gap:8px;
+  padding:2px 4px 8px;
+  color:#0F172A;
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:0.02em;
+}
+#pos-kot-tokens-modal .pos-kot-send-time-date{
+  color:#64748B;
+  font-size:11px;
+  font-weight:500;
+}
 #pos-kot-tokens-modal .pos-kot-token-line{
   display:flex;
   align-items:center;
