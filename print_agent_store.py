@@ -318,6 +318,24 @@ def verify_print_agent_bearer(conn, agent_id: str, bearer_token: str | None) -> 
     return _hashes_match(row["token_hash"] or "", bearer_token)
 
 
+
+def business_has_enrolled_agent(conn, business_id: str) -> bool:
+    """True when this business already has a live Print Agent row."""
+    ensure_print_agent_schema(conn)
+    biz = str(business_id or "").strip()
+    if not biz:
+        return False
+    row = conn.execute(
+        """
+        SELECT 1 FROM print_agents
+        WHERE revoked = 0 AND business_id = ?
+        LIMIT 1
+        """,
+        (biz,),
+    ).fetchone()
+    return bool(row)
+
+
 def heartbeat_print_agent(conn, payload: dict, bearer_token: str | None) -> dict:
     ensure_print_agent_schema(conn)
     agent_id = str(payload.get("agentId") or payload.get("agent_id") or "").strip()
@@ -328,9 +346,13 @@ def heartbeat_print_agent(conn, payload: dict, bearer_token: str | None) -> dict
         "SELECT token_hash, revoked FROM print_agents WHERE agent_id = ?", (agent_id,)
     ).fetchone()
     if not row or int(row["revoked"] or 0) == 1:
-        return {"ok": False, "error": "Unknown or revoked agent."}
+        return {
+            "ok": False,
+            "error": "Unknown or revoked agent.",
+            "reregister": True,
+        }
     if not bearer_token or not _hashes_match(row["token_hash"] or "", bearer_token):
-        return {"ok": False, "error": "Invalid token."}
+        return {"ok": False, "error": "Invalid token.", "reregister": True}
 
     current_hash = _hash_secret(bearer_token)
     if (row["token_hash"] or "") != current_hash:

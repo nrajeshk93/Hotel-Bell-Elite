@@ -20870,6 +20870,7 @@ def _user_can_enroll_print_agent(user):
 def print_agent_register():
     """First-launch registration from Hotel Print Agent desktop app."""
     from print_agent_store import (
+        business_has_enrolled_agent,
         consume_print_agent_pairing_code,
         existing_agent_accepts_key,
         register_print_agent,
@@ -20883,6 +20884,9 @@ def print_agent_register():
         or request.headers.get("X-Print-Agent-Pairing")
         or ""
     ).strip()
+    business_id = str(
+        payload.get("businessId") or payload.get("business_id") or ""
+    ).strip()
     conn = get_db()
     try:
         if existing_agent_accepts_key(conn, payload):
@@ -20890,6 +20894,10 @@ def print_agent_register():
         elif _user_can_enroll_print_agent(user):
             pass
         elif consume_print_agent_pairing_code(conn, pairing):
+            pass
+        elif not business_has_enrolled_agent(conn, business_id):
+            # After a DB wipe / empty print_agents table, let the hotel EXE
+            # re-enrol as the first agent so KOT/invoice print recovers.
             pass
         else:
             return (

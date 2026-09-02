@@ -127,6 +127,14 @@ class PrintAgentApiTests(unittest.TestCase):
         self.assertEqual(miss.status_code, 404)
         self.assertFalse((miss.get_json() or {}).get("ok"))
 
+
+    def test_browser_print_prefers_local_agent(self):
+        from pathlib import Path
+        js = Path(__file__).resolve().parents[1].joinpath("static", "print_agent.js").read_text(encoding="utf-8")
+        self.assertIn("probeLocalAgent(2)", js)
+        self.assertIn("printLocalIfPossible", js)
+        self.assertIn("No Print Agent online", js)
+
     def test_updates_and_config(self):
         upd = self.client.get("/api/print-agent/updates/latest?current=1.0.0")
         self.assertEqual(upd.status_code, 200)
@@ -146,7 +154,7 @@ class PrintAgentApiTests(unittest.TestCase):
         self.assertIn("serverPrintQueue", data)
         self.assertIn("printQueuePrimary", data)
 
-    def test_register_rejected_without_session_or_pairing(self):
+    def test_first_agent_bootstraps_when_none_enrolled(self):
         self._get_user_patch.stop()
         try:
             with self.client.session_transaction() as sess:
@@ -158,7 +166,17 @@ class PrintAgentApiTests(unittest.TestCase):
                     "businessId": "biz-demo",
                 },
             )
-            self.assertEqual(reg.status_code, 401)
+            # Empty print_agents: first EXE for this business may bootstrap.
+            self.assertEqual(reg.status_code, 200, reg.get_data(as_text=True))
+            self.assertTrue((reg.get_json() or {}).get("ok"))
+            second = self.client.post(
+                "/api/print-agent/register",
+                json={
+                    "agentId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                    "businessId": "biz-demo",
+                },
+            )
+            self.assertEqual(second.status_code, 401)
         finally:
             self._get_user_patch.start()
 

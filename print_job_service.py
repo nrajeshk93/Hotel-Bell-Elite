@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import os
 import secrets
 import uuid
@@ -554,35 +555,43 @@ def create_print_job(conn, payload: dict[str, Any], *, user_id: int = 0) -> dict
         content_encoding = built["content_encoding"]
 
     stamp = _now()
-    conn.execute(
-        """
-        INSERT INTO print_jobs (
-            job_id, business_id, location_id, agent_id, printer_id, printer_role,
-            document_type, document_id, copies, status,
-            content_type, content_encoding, content,
-            idempotency_key, error_message, meta_json,
-            created_by, created_at, updated_at
-        ) VALUES (?, ?, ?, '', '', ?, ?, ?, ?, 'CREATED', ?, ?, ?, ?, '', ?, ?, ?, ?)
-        """,
-        (
-            norm["job_id"],
-            norm["business_id"],
-            norm["location_id"],
-            norm["printer_role"],
-            norm["document_type"],
-            norm["document_id"],
-            norm["copies"],
-            content_type,
-            content_encoding,
-            content,
-            norm["idempotency_key"],
-            json.dumps(norm["meta"]),
-            int(user_id or 0),
-            stamp,
-            stamp,
-        ),
-    )
-    conn.commit()
+    try:
+        conn.execute(
+            """
+            INSERT INTO print_jobs (
+                job_id, business_id, location_id, agent_id, printer_id, printer_role,
+                document_type, document_id, copies, status,
+                content_type, content_encoding, content,
+                idempotency_key, error_message, meta_json,
+                created_by, created_at, updated_at
+            ) VALUES (?, ?, ?, '', '', ?, ?, ?, ?, 'CREATED', ?, ?, ?, ?, '', ?, ?, ?, ?)
+            """,
+            (
+                norm["job_id"],
+                norm["business_id"],
+                norm["location_id"],
+                norm["printer_role"],
+                norm["document_type"],
+                norm["document_id"],
+                norm["copies"],
+                content_type,
+                content_encoding,
+                content,
+                norm["idempotency_key"],
+                json.dumps(norm["meta"]),
+                int(user_id or 0),
+                stamp,
+                stamp,
+            ),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        existing = _find_existing_job(conn, norm["job_id"], norm["idempotency_key"])
+        if existing:
+            existing["duplicate"] = True
+            return existing
+        raise
     job = get_print_job(conn, norm["job_id"])
     if not job:
         return {"ok": False, "error": "Could not create print job."}

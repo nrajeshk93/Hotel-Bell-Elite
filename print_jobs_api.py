@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sqlite3
+
 from flask import jsonify, request
 
 from print_agent_store import verify_print_agent_bearer
@@ -100,6 +102,25 @@ def register_print_jobs(app) -> None:
             if job.get("error") and not job.get("jobId"):
                 return _json(job, 400)
             return _json({"ok": True, "job": job, "duplicate": bool(job.get("duplicate"))})
+        except sqlite3.IntegrityError:
+            from print_job_service import _find_existing_job
+
+            key = str(
+                payload.get("idempotencyKey")
+                or payload.get("idempotency_key")
+                or payload.get("jobId")
+                or payload.get("job_id")
+                or ""
+            ).strip()
+            existing = _find_existing_job(
+                conn,
+                str(payload.get("jobId") or payload.get("job_id") or ""),
+                key,
+            )
+            if existing:
+                existing["duplicate"] = True
+                return _json({"ok": True, "job": existing, "duplicate": True})
+            return _json({"ok": False, "error": "Print job already exists."}, 409)
         finally:
             conn.close()
 

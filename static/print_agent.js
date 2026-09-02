@@ -364,6 +364,14 @@
             throw new Error(job.error || job.error_message || 'Print job failed.');
           }
           if (left <= 1) {
+            var agent = String(job.agentId || job.agent_id || '').trim();
+            if (!agent && (status === 'QUEUED' || status === 'CREATED' || !status)) {
+              throw new Error(
+                job.error ||
+                  job.error_message ||
+                  'No Print Agent online. Open Hotel Print Agent on this PC.'
+              );
+            }
             return { ok: true, via: 'queue', pending: true, job: job };
           }
           left -= 1;
@@ -420,23 +428,61 @@
       });
   }
 
+  function queuedJobHasAgent(result) {
+    var queued = (result && result.job) || {};
+    return String(queued.agentId || queued.agent_id || '').trim() !== '';
+  }
+
+  function printLocalIfPossible(job, err) {
+    if (!job || !job.content) {
+      return Promise.reject(
+        err ||
+          new Error(
+            'Print Agent is not running on this PC. Open Hotel Print Agent and leave it in the tray.'
+          )
+      );
+    }
+    return printLocal(job).then(function (data) {
+      data.via = 'local';
+      return data;
+    });
+  }
+
   function print(job) {
     return loadQueueConfig(false).then(function (cfg) {
-      if (cfg.printQueuePrimary !== false) {
-        return submitJob(job).catch(function (queueErr) {
-          if (!job || !job.content) {
-            throw queueErr;
+      /* Prefer the EXE on this PC (127.0.0.1:4567). The server queue only
+         prints when a Print Agent is registered in SaaS; otherwise jobs sit
+         QUEUED forever and look like a successful KOT. */
+      return probeLocalAgent(2)
+        .then(function (probed) {
+          if (probed.ok && probed.data && probed.data.ok !== false) {
+            return printLocalIfPossible(job);
           }
-          return printLocal(job).then(function (data) {
-            data.via = 'local';
-            return data;
+          if (cfg.printQueuePrimary === false) {
+            return printLocalIfPossible(job);
+          }
+          return submitJob(job).then(function (result) {
+            if (result && result.pending && !queuedJobHasAgent(result)) {
+              return printLocalIfPossible(job);
+            }
+            return result;
           });
+        })
+        .catch(function (err) {
+          if (cfg.printQueuePrimary === false) {
+            return printLocalIfPossible(job, err);
+          }
+          return submitJob(job)
+            .then(function (result) {
+              if (result && result.pending && !queuedJobHasAgent(result)) {
+                return printLocalIfPossible(job, err);
+              }
+              return result;
+            })
+            .catch(function (queueErr) {
+              return printLocalIfPossible(job, queueErr || err);
+            });
         });
-      }
-      return printLocal(job).then(function (data) {
-        data.via = 'local';
-        return data;
-      });
     });
   }
 

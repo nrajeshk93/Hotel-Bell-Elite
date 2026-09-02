@@ -162,7 +162,40 @@ class PrintJobServiceTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_duplicate_idempotency_key_does_not_500(self):
+        conn = db_mod.get_db()
+        try:
+            first = create_print_job(
+                conn,
+                {
+                    "jobId": "dup-job-a",
+                    "idempotencyKey": "shared-key-1",
+                    "documentType": "kot",
+                    "documentId": self.invoice_id,
+                    "locationId": "restaurant",
+                    "items": [{"name": "Paneer Tikka", "qty": 1}],
+                },
+                user_id=self.admin_id,
+            )
+            second = create_print_job(
+                conn,
+                {
+                    "jobId": "dup-job-b",
+                    "idempotencyKey": "shared-key-1",
+                    "documentType": "kot",
+                    "documentId": self.invoice_id,
+                    "locationId": "restaurant",
+                    "items": [{"name": "Paneer Tikka", "qty": 1}],
+                },
+                user_id=self.admin_id,
+            )
+            self.assertTrue(second.get("duplicate"))
+            self.assertEqual(first.get("jobId"), second.get("jobId"))
+        finally:
+            conn.close()
+
     def test_send_kot_api_enqueues_print_job(self):
+
         resp = self.client.post(f"/point-of-sale/api/invoices/{self.invoice_id}/send-kot")
         self.assertEqual(resp.status_code, 200, resp.get_json())
         conn = db_mod.get_db()
