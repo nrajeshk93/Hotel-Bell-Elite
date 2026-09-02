@@ -2376,7 +2376,7 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertIn("hil-open-room-transfer", html)
         self.assertIn("/hotel/room-transfer-invoices", html)
         self.assertNotIn("hil-rt-overlay", html)
-        self.assertNotIn('data-value="room_transfer"', html)
+        self.assertIn('data-value="room_transfer"', html)
         self.assertIn(">Invoice</span>", html)
 
         api = self.client.get(f"/hotel/invoice-ledger/api/{inv_no}")
@@ -2606,7 +2606,7 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertNotIn("checkout", methods)
 
     def test_pos_room_transfer_lists_on_invoice_ledger(self):
-        """Per-POS room transfers list on Room Transfer, not Invoice Ledger."""
+        """Per-POS room transfers list on Invoice Ledger All and Room Transfer."""
         self._checkin_with_charges(advance=0)
         conn = db_mod.get_db()
         try:
@@ -2654,12 +2654,18 @@ class HotelRoomsTests(unittest.TestCase):
         page = self.client.get("/hotel/invoice-ledger")
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
-        self.assertNotIn(rt_spc, html)
+        self.assertIn(rt_spc, html)
+        self.assertIn("SPC/26-27/12", html)
         self.assertIn("hil-open-room-transfer", html)
         self.assertIn("/hotel/room-transfer-invoices", html)
         self.assertNotIn("hil-rt-overlay", html)
         self.assertNotIn('id="hil-rt-frame"', html)
-        self.assertNotIn('data-value="room_transfer"', html)
+        self.assertIn('data-value="room_transfer"', html)
+        rt_tab = self.client.get("/hotel/invoice-ledger?invoice=room_transfer")
+        self.assertEqual(rt_tab.status_code, 200)
+        rt_tab_html = rt_tab.get_data(as_text=True)
+        self.assertIn(rt_spc, rt_tab_html)
+        self.assertIn("SPC/26-27/12", rt_tab_html)
 
         room_transfer = self.client.get("/hotel/room-transfer-invoices")
         self.assertEqual(room_transfer.status_code, 200)

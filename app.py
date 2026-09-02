@@ -10647,10 +10647,12 @@ def _hotel_invoice_ledger_filters(args):
         selected_status = "all"
     status_filter = "" if selected_status == "all" else selected_status
     selected_invoice = (args.get("invoice") or "all").strip().lower()
-    if selected_invoice not in ("all", "hotel", "fb_transfer"):
+    if selected_invoice not in ("all", "hotel", "fb_transfer", "room_transfer"):
         selected_invoice = "all"
     if selected_invoice == "all":
-        invoice_source = "hotel_ledger"
+        invoice_source = ""
+    elif selected_invoice == "room_transfer":
+        invoice_source = "pos_room_transfer"
     else:
         invoice_source = selected_invoice
     selected_agency = (args.get("agency") or "all").strip()
@@ -10711,6 +10713,7 @@ def hotel_invoice_ledger():
         "all": "All",
         "hotel": "Hotel",
         "fb_transfer": "F&B Transfers",
+        "room_transfer": "Room Transfer",
     }
     selected_agency = filters["selected_agency"]
     selected_agency_label = (

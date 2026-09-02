@@ -125,6 +125,7 @@
               <button type="button" class="cp-view-tab pl-kind-filter-tab{% if selected_invoice == 'all' %} is-active{% endif %}" role="tab" data-value="all" data-label="All" aria-selected="{{ 'true' if selected_invoice == 'all' else 'false' }}" onclick="return window.hilInvoiceTabClick(this)">All</button>
               <button type="button" class="cp-view-tab pl-kind-filter-tab{% if selected_invoice == 'hotel' %} is-active{% endif %}" role="tab" data-value="hotel" data-label="Hotel" aria-selected="{{ 'true' if selected_invoice == 'hotel' else 'false' }}" onclick="return window.hilInvoiceTabClick(this)">Hotel</button>
               <button type="button" class="cp-view-tab pl-kind-filter-tab{% if selected_invoice == 'fb_transfer' %} is-active{% endif %}" role="tab" data-value="fb_transfer" data-label="F&amp;B Transfers" aria-selected="{{ 'true' if selected_invoice == 'fb_transfer' else 'false' }}" onclick="return window.hilInvoiceTabClick(this)">F&amp;B Transfers</button>
+              <button type="button" class="cp-view-tab pl-kind-filter-tab{% if selected_invoice == 'room_transfer' %} is-active{% endif %}" role="tab" data-value="room_transfer" data-label="Room Transfer" aria-selected="{{ 'true' if selected_invoice == 'room_transfer' else 'false' }}" onclick="return window.hilInvoiceTabClick(this)">Room Transfer</button>
             </div>
           </div>
           {% endif %}
@@ -383,6 +384,8 @@
               {% set is_cancelled = inv.status == 'cancelled' %}
               {% set is_hotel_stay = (inv.source or 'hotel') not in ('pos_room_transfer', 'fb_combined_transfer') %}
               {% set is_fb_combined = (inv.source or '') == 'fb_combined_transfer' %}
+              {% set is_pos_transfer = (inv.source or '') == 'pos_room_transfer' %}
+              {% set display_invoice_no = inv.pos_order_no if (is_pos_transfer and inv.pos_order_no) else inv.invoice_number %}
               {% set can_edit = can_edit_invoices and is_open and is_hotel_stay %}
               {% set can_cancel = can_cancel_invoices and is_open and is_hotel_stay %}
               {% set payment_mode_label = inv.payment_mode_label or ('Un Settled' if is_open else ('Cancelled' if is_cancelled else 'Settled')) %}
@@ -405,7 +408,7 @@
                   {% endif %}
                 </td>
                 {% endif %}
-                <td class="pl-col-code hil-col-invoice" data-sort-value="{{ inv.invoice_number or '' }}"><span class="pl-expense-code" title="{{ inv.invoice_number }}{% if inv.pos_order_no and inv.pos_order_no != inv.invoice_number %} · {{ inv.pos_order_no }}{% endif %}">{{ inv.invoice_number }}</span>{% if room_transfer_ledger and inv.pos_order_no and inv.pos_order_no != inv.invoice_number %}<div class="pl-meta" title="{{ inv.pos_order_no }}">{{ inv.pos_order_no }}</div>{% endif %}</td>
+                <td class="pl-col-code hil-col-invoice" data-sort-value="{{ display_invoice_no or '' }}"><span class="pl-expense-code" title="{{ display_invoice_no }}{% if inv.invoice_number and inv.invoice_number != display_invoice_no %} · {{ inv.invoice_number }}{% endif %}">{{ display_invoice_no }}</span>{% if inv.invoice_number and inv.invoice_number != display_invoice_no %}<div class="pl-meta" title="{{ inv.invoice_number }}">{{ inv.invoice_number }}</div>{% elif room_transfer_ledger and inv.pos_order_no and inv.pos_order_no != inv.invoice_number %}<div class="pl-meta" title="{{ inv.pos_order_no }}">{{ inv.pos_order_no }}</div>{% endif %}</td>
                 <td class="pl-col-date hil-col-date" data-sort-value="{{ inv.invoice_generated_at or '' }}">{{ inv.invoice_generated_at[:10] if inv.invoice_generated_at else '—' }}</td>
                 <td class="hil-col-room" data-sort-value="{{ inv.room_number or '' }}">
                   <div class="pl-name" title="{{ inv.room_number or '' }}">{{ inv.room_number or '—' }}</div>

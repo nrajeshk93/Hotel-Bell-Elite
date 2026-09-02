@@ -726,7 +726,7 @@ class PosTableOccupancyTests(unittest.TestCase):
         order_no = folio[0]["orderNo"]
         hotel_ledger = self.client.get("/hotel/invoice-ledger")
         self.assertEqual(hotel_ledger.status_code, 200)
-        self.assertNotIn(order_no, hotel_ledger.get_data(as_text=True))
+        self.assertIn(order_no, hotel_ledger.get_data(as_text=True))
         ledger = self.client.get("/hotel/room-transfer-invoices")
         self.assertEqual(ledger.status_code, 200)
         self.assertIn(order_no, ledger.get_data(as_text=True))
@@ -799,6 +799,11 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(pos_ledger.status_code, 200)
         self.assertIn(order_no, pos_ledger.get_data(as_text=True))
         self.assertNotIn("SPC/4886C9/26-27", pos_ledger.get_data(as_text=True))
+        hotel_ledger = self.client.get("/hotel/invoice-ledger")
+        self.assertEqual(hotel_ledger.status_code, 200)
+        self.assertIn(order_no, hotel_ledger.get_data(as_text=True))
+        hotel_only = self.client.get("/hotel/invoice-ledger?invoice=hotel")
+        self.assertNotIn(order_no, hotel_only.get_data(as_text=True))
 
     def test_settle_bill_rejects_credit_mode(self):
 
