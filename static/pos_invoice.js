@@ -2307,11 +2307,11 @@
   }
 
   function shouldSkipClientKotPrint() {
-    return (
-      global.HotelPrintAgent &&
-      typeof global.HotelPrintAgent.serverQueueEnabled === 'function' &&
-      global.HotelPrintAgent.serverQueueEnabled()
-    );
+    /* The SaaS print queue parks jobs as QUEUED when no Print Agent is
+       registered. POS used to skip local printing in that case, so Send KOT
+       from Create Invoice never reached Hotel Print Agent. The KOT page always
+       prints locally — keep the same path here. */
+    return false;
   }
 
   function printKotTicket(page, pending) {
