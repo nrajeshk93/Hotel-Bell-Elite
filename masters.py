@@ -17,7 +17,7 @@ MASTER_CATEGORY_LABELS = {
 MASTER_DEFINITIONS = [
     {
         "id": "supplier",
-        "name": "Supplier Master",
+        "name": "Supplier",
         "icon": "truck",
         "icon_tone": "blue",
         "category": "accounts",
@@ -29,7 +29,7 @@ MASTER_DEFINITIONS = [
     },
     {
         "id": "customer",
-        "name": "Customer Master",
+        "name": "Customer",
         "icon": "user",
         "icon_tone": "teal",
         "category": "sales",
@@ -41,7 +41,7 @@ MASTER_DEFINITIONS = [
     },
     {
         "id": "agency",
-        "name": "Agency Master",
+        "name": "Agency",
         "icon": "building",
         "icon_tone": "blue",
         "category": "others",
@@ -53,7 +53,7 @@ MASTER_DEFINITIONS = [
     },
     {
         "id": "product",
-        "name": "Product Master",
+        "name": "Product",
         "icon": "package",
         "icon_tone": "amber",
         "category": "inventory",
@@ -65,7 +65,7 @@ MASTER_DEFINITIONS = [
     },
     {
         "id": "menu",
-        "name": "Menu Master",
+        "name": "Menu",
         "icon": "menu",
         "icon_tone": "violet",
         "category": "restaurant",
@@ -77,7 +77,7 @@ MASTER_DEFINITIONS = [
     },
     {
         "id": "category",
-        "name": "Category Master",
+        "name": "Category",
         "icon": "tag",
         "icon_tone": "violet",
         "category": "restaurant",
@@ -89,7 +89,7 @@ MASTER_DEFINITIONS = [
     },
     {
         "id": "unit",
-        "name": "Unit Master",
+        "name": "Unit",
         "icon": "beaker",
         "icon_tone": "amber",
         "category": "inventory",
@@ -101,7 +101,7 @@ MASTER_DEFINITIONS = [
     },
     {
         "id": "employee",
-        "name": "Employee Master",
+        "name": "Employee",
         "icon": "person",
         "icon_tone": "cyan",
         "category": "hr",

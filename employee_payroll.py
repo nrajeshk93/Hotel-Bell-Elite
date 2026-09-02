@@ -2270,51 +2270,12 @@ def edit_employee(emp_id):
     )
 
 
-@payroll_bp.route('/delete_employee/<int:emp_id>')
+@payroll_bp.route('/delete_employee/<int:emp_id>', methods=['GET', 'POST'])
 def delete_employee(emp_id):
-    conn = get_db()
-    row = conn.execute(
-        "SELECT id, emp_code, name, company, location FROM employees WHERE id=?",
-        (emp_id,),
-    ).fetchone()
-    if _employee_has_locked_month_data(conn, emp_id):
-        conn.close()
-        return _permission_denied_response(
-            'This employee has data in a locked payroll month and cannot be deleted — including by administrators.'
-        )
-    if row:
-        user = get_current_user()
-        name = (row['name'] or '').strip() or 'Unknown'
-        code = (row['emp_code'] or '').strip()
-        summary = f"Deleted employee {name}" + (f" ({code})" if code else "")
-        activity_audit.record_activity_log(
-            'delete',
-            'payroll',
-            summary,
-            conn=conn,
-            user_id=user.get('id') if user else None,
-            username=user.get('username') if user else '',
-            entity_type='employee',
-            entity_id=emp_id,
-            details={
-                'emp_code': code,
-                'name': name,
-                'company': row['company'] if 'company' in row.keys() else '',
-                'location': row['location'] if 'location' in row.keys() else '',
-            },
-            endpoint='payroll.delete_employee',
-            method='GET',
-            path=request.path,
-            ip_address=activity_audit.client_ip_from_request(),
-            status_code=302,
-            commit=False,
-        )
-    conn.execute("DELETE FROM credits WHERE employee_id=?", (emp_id,))
-    conn.execute("DELETE FROM attendance WHERE employee_id=?", (emp_id,))
-    conn.execute("DELETE FROM employees WHERE id=?", (emp_id,))
-    conn.commit()
-    conn.close()
-    return redirect(url_for('employees'))
+    """Employees are never deleted. Keep them active or inactive."""
+    return _permission_denied_response(
+        'Employees cannot be deleted. Set the employee to inactive instead.'
+    )
 
 
 @payroll_bp.route('/attendance_overview')

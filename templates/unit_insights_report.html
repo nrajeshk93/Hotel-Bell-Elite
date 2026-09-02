@@ -17,7 +17,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=3">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=19">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=20">
 <script>
 (function(){
   try{
@@ -38,7 +38,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=3">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=19">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=20">
 {% endif %}
 
 <div class="main-wrapper" id="unit-insights-report-page"
@@ -191,24 +191,20 @@
           </div>
         </div>
       </article>
-      {% if kpis.unit_subtotals %}
-      <article class="card pl-summary-card hbe-kpi-card uir-unit-subtotals-card" aria-label="Units sold by type">
+      {% for sub in kpis.unit_kpis %}
+      <article class="card pl-summary-card hbe-kpi-card uir-unit-kpi-card" aria-label="{{ sub.label }}">
         <div class="card-body pl-summary-body">
-          <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
+          <div class="hbe-kpi-icon hbe-kpi-icon--{{ sub.icon_tone or 'orange' }}" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/></svg>
           </div>
           <div class="hbe-kpi-text">
-            <div class="pl-summary-label">Units sold</div>
-            <div class="uir-unit-subtotals">
-              {% for sub in kpis.unit_subtotals %}
-              <span class="uir-unit-subtotal">{{ sub.qty }} {{ sub.unit }}</span>{% if not loop.last %}<span class="uir-unit-subtotal-sep">·</span>{% endif %}
-              {% endfor %}
-            </div>
-            <div class="pl-summary-meta">Totals by unit type</div>
+            <div class="pl-summary-label">{{ sub.label }}</div>
+            <div class="pl-summary-value">{{ sub.qty_display }}</div>
+            <div class="pl-summary-meta">From settled and open invoices</div>
           </div>
         </div>
       </article>
-      {% endif %}
+      {% endfor %}
     </div>
 
     <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel" aria-label="Unit Insight report">

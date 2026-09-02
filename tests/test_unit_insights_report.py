@@ -207,6 +207,117 @@ class UnitInsightsReportDbTests(unittest.TestCase):
         )
         self.assertEqual(rows, [])
 
+    def test_cancelled_invoice_does_not_count_as_sold(self):
+        invoice_id = self._insert_invoice(order_no="UIR-4", qty=4, settled=True)
+        self.conn.execute(
+            """
+            UPDATE pos_invoices
+            SET status = 'cancelled',
+                cancelled_at = '2026-08-01 19:00:00',
+                cancel_reason = 'Guest left'
+            WHERE id = ?
+            """,
+            (invoice_id,),
+        )
+        self.conn.commit()
+        rows = db_mod.list_pos_unit_insights(
+            self.conn,
+            date_from="2026-08-01",
+            date_to="2026-08-01",
+            outlet="bar",
+        )
+        self.assertEqual(rows, [])
+
+    def test_soft_deleted_invoice_does_not_count_as_sold(self):
+        invoice_id = self._insert_invoice(order_no="UIR-5", qty=2, settled=True)
+        self.conn.execute(
+            "UPDATE pos_invoices SET is_active = 0 WHERE id = ?",
+            (invoice_id,),
+        )
+        self.conn.commit()
+        rows = db_mod.list_pos_unit_insights(
+            self.conn,
+            date_from="2026-08-01",
+            date_to="2026-08-01",
+            outlet="bar",
+        )
+        self.assertEqual(rows, [])
+
+    def test_kpis_split_bottle_and_ml(self):
+        self._insert_invoice(order_no="UIR-6", qty=3, settled=True)
+        cat_id = self.conn.execute(
+            "SELECT category_id FROM store_products WHERE id = ?",
+            (self.product_id,),
+        ).fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO store_products
+                (category_id, name, default_unit, outlet, approximate_price, is_active, sort_order)
+            VALUES (?, 'Soda Water', 'milliliter', 'bar', 20, 1, 3)
+            """,
+            (cat_id,),
+        )
+        soda_id = self.conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO pos_menu_items
+                (category_id, product_id, name, code, variant, rate, sort_order, is_active, outlet)
+            VALUES (?, ?, 'Soda Splash', 'SS1', 'Regular', 80, 2, 1, 'bar')
+            """,
+            (self.menu_cat_id, soda_id),
+        )
+        soda_menu_id = self.conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO pos_menu_recipe_lines (menu_item_id, product_id, qty, unit, sort_order)
+            VALUES (?, ?, 200, 'ml', 1)
+            """,
+            (soda_menu_id, soda_id),
+        )
+        self.conn.execute(
+            """
+            INSERT INTO pos_invoices
+                (order_no, saved_at, order_date, outlet, status, is_active,
+                 customer_name, customer_mobile, subtotal, grand_total,
+                 created_at, updated_at)
+            VALUES ('UIR-7', '2026-08-01 18:00:00', '2026-08-01', 'bar', 'open', 1,
+                    'Guest', '9000000007', 80, 80,
+                    datetime('now','localtime'), datetime('now','localtime'))
+            """
+        )
+        soda_invoice_id = self.conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO pos_invoice_lines
+                (invoice_id, menu_item_id, name, variant, rate, qty, line_total, sort_order)
+            VALUES (?, ?, 'Soda Splash', 'Regular', 80, 1, 80, 1)
+            """,
+            (soda_invoice_id, soda_menu_id),
+        )
+        self.conn.execute(
+            """
+            INSERT INTO pos_invoice_payments
+                (invoice_id, payment_method, amount, payment_date, created_at)
+            VALUES (?, 'cash', 80, '2026-08-01', datetime('now','localtime'))
+            """,
+            (soda_invoice_id,),
+        )
+        self.conn.commit()
+        rows = db_mod.list_pos_unit_insights(
+            self.conn,
+            date_from="2026-08-01",
+            date_to="2026-08-01",
+            outlet="bar",
+            settlement="settled",
+        )
+        kpis = db_mod.pos_unit_insights_kpis(rows)
+        labels = [item["label"] for item in kpis["unit_kpis"]]
+        self.assertIn("Bottles sold", labels)
+        self.assertIn("ML sold", labels)
+        by_unit = {item["unit"]: item for item in kpis["unit_kpis"]}
+        self.assertEqual(by_unit["bottle"]["qty_display"], "3 bottle")
+        self.assertEqual(by_unit["ml"]["qty_display"], "200 ml")
+
 
 class UnitInsightsReportRouteTests(unittest.TestCase):
     def setUp(self):

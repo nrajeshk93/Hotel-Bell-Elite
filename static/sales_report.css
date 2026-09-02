@@ -315,14 +315,15 @@ body.sales-report-module #msr-table tfoot tr.msr-grand-total td{
   border-top:2px solid var(--border, #d1d5db);
 }
 
-/* Unit Insight — product name + units sold. */
+/* Unit Insight — units sold sits next to the product, not the far right. */
 body.sales-report-module #uir-table{
-  table-layout:fixed;
-  width:100%;
-  min-width:640px;
+  table-layout:auto;
+  width:auto;
+  max-width:100%;
+  min-width:0;
 }
-body.sales-report-module #uir-table col.uir-col-product{width:68%;}
-body.sales-report-module #uir-table col.uir-col-units{width:32%;}
+body.sales-report-module #uir-table col.uir-col-product{width:auto;}
+body.sales-report-module #uir-table col.uir-col-units{width:1%;}
 body.sales-report-module #uir-table th,
 body.sales-report-module #uir-table td{
   padding:12px 12px;
@@ -334,11 +335,18 @@ body.sales-report-module #uir-table th.pl-sortable{
 body.sales-report-module #uir-table .uir-col-product .pl-name{
   font-weight:600;
 }
+body.sales-report-module #uir-table th.uir-col-product,
+body.sales-report-module #uir-table td.uir-col-product{
+  text-align:left;
+  padding-right:28px;
+}
 body.sales-report-module #uir-table th.uir-col-units,
 body.sales-report-module #uir-table td.uir-col-units{
-  text-align:right;
+  text-align:left;
   white-space:nowrap;
+  width:1%;
   font-variant-numeric:tabular-nums;
+  font-weight:700;
 }
 body.sales-report-module #unit-insights-report-page .uir-report-heading{
   display:flex;
@@ -350,18 +358,8 @@ body.sales-report-module #unit-insights-report-page .uir-report-dates{
   font-weight:500;
   color:var(--txt2, #64748B);
 }
-body.sales-report-module #unit-insights-report-page .uir-unit-subtotals{
-  display:flex;
-  flex-wrap:wrap;
-  gap:6px;
-  align-items:center;
-  font-size:18px;
-  font-weight:700;
-  color:var(--txt, #0F172A);
-}
-body.sales-report-module #unit-insights-report-page .uir-unit-subtotal-sep{
-  color:var(--txt3, #94A3B8);
-  font-weight:500;
+body.sales-report-module #unit-insights-report-page .uir-unit-kpi-card .pl-summary-value{
+  font-variant-numeric:tabular-nums;
 }
 body.sales-report-module #uir-filter-form .pl-date-range-host.pl-header-field,
 body.sales-report-module #uir-filter-form .se-filter-chip-date-host.pl-header-field,

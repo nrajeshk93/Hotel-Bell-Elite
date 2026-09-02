@@ -192,20 +192,35 @@ body.master-module .sm-check-label input{
 }
 
 
-/* Category Master add modal: four module tabs on a full row, never clipped. */
+/* Category add/edit modal: name + module on one row. */
 #cm-category-modal .sm-supplier-modal-box,
 #md-master-modal #cm-category-modal .sm-supplier-modal-box{
   width:640px;
   max-width:min(640px,94vw);
   overflow:visible;
 }
+#cm-category-modal .cm-category-form-row,
+#md-master-modal #cm-category-modal .cm-category-form-row{
+  display:grid;
+  grid-template-columns:minmax(0,1.6fr) minmax(168px,.9fr);
+  gap:12px;
+  align-items:end;
+  margin-bottom:0;
+}
+#cm-category-modal .cm-category-form-row > .staff-field,
+#md-master-modal #cm-category-modal .cm-category-form-row > .staff-field{
+  margin-bottom:0;
+  min-width:0;
+}
 #cm-category-module-field{
-  grid-column:1 / -1;
   min-width:0;
 }
 #cm-category-module-field.is-locked{
   opacity:.72;
   pointer-events:none;
+}
+#cm-category-module-listbox .se-filter-chip-icon{
+  display:none;
 }
 #cm-category-modal .pl-add-kind-field .pl-kind-tabs.cp-view-tabs,
 #md-master-modal #cm-category-modal .pl-add-kind-field .pl-kind-tabs.cp-view-tabs{

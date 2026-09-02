@@ -114,12 +114,12 @@
       <div class="sm-errors" id="cm-category-modal-err" hidden></div>
       {% endif %}
 
-      <div class="staff-grid sm-form-grid">
-        <div class="staff-field staff-field--inline">
+      <div class="staff-grid sm-form-grid cm-category-form-row">
+        <div class="staff-field" id="cm-category-name-field">
           <label for="cm-category-name">Category name *</label>
           <input id="cm-category-name" class="staff-input" name="name" type="text" value="{{ form.name or '' }}" placeholder="e.g. Main Course" required maxlength="80">
         </div>
-        <div class="staff-field staff-field--full" id="cm-category-module-field">
+        <div class="staff-field" id="cm-category-module-field">
           {{ ep_listbox('module', 'Module *', module_opts, form.module or form.outlet or 'restaurant', placeholder='Select module…', field_id='cm-category-module', extra_class='st-product-listbox') }}
         </div>
       </div>

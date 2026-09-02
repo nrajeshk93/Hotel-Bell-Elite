@@ -120,7 +120,7 @@ class ActivityLogTests(unittest.TestCase):
         self.assertEqual(rows[1]["username"], "admin")
         self.assertIn("signed in", rows[1]["summary"])
 
-    def test_delete_employee_writes_audit_before_row_removed(self):
+    def test_delete_employee_is_refused_and_row_kept(self):
         with self.client.session_transaction() as sess:
             sess[self.app_mod.AUTH_USER_SESSION_KEY] = self.admin_id
 
@@ -141,13 +141,16 @@ class ActivityLogTests(unittest.TestCase):
         resp = self.client.get(f"/delete_employee/{emp_id}")
         self.assertEqual(resp.status_code, 302)
 
-        rows = self._activity_rows()
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["action"], "delete")
-        self.assertEqual(rows[0]["module"], "payroll")
-        self.assertEqual(rows[0]["entity_type"], "employee")
-        self.assertEqual(str(rows[0]["entity_id"]), str(emp_id))
-        self.assertIn("A NISHA", rows[0]["summary"])
+        conn = sqlite3.connect(self.db_path)
+        row = conn.execute(
+            "SELECT id, name, status FROM employees WHERE id=?",
+            (emp_id,),
+        ).fetchone()
+        conn.close()
+        self.assertIsNotNone(row)
+        self.assertEqual(row[1], "A NISHA")
+        self.assertEqual(row[2], "active")
+        self.assertEqual(len(self._activity_rows()), 0)
 
     def test_registry_covers_save_access_user_and_delete_employee_is_explicit(self):
         self.assertIn("save_access_user", activity_audit.MUTATION_REGISTRY)

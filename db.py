@@ -2465,6 +2465,10 @@ def _normalize_pos_menu_unit(unit):
     u = str(unit or "").strip().lower()
     if u in ("ltr", "l", "litre", "liters", "litres"):
         return "liter"
+    if u in ("ml", "mls", "milliliter", "milliliters", "millilitre", "millilitres"):
+        return "ml"
+    if u in ("bottle", "bottles", "btl", "btls"):
+        return "bottle"
     if u in ("gram", "grams"):
         return "g"
     if u in ("kilogram", "kilograms", "kgs"):
@@ -7926,7 +7930,10 @@ def _pos_menu_sales_invoice_clauses(
     """Shared WHERE clauses/params for menu sales aggregations."""
     clauses = [
         "i.is_active = 1",
-        "lower(COALESCE(i.status, 'open')) != 'cancelled'",
+        "TRIM(COALESCE(i.cancelled_at, '')) = ''",
+        """lower(trim(COALESCE(i.status, 'open'))) NOT IN (
+            'cancelled', 'canceled', 'void', 'voided', 'deleted'
+        )""",
     ]
     params = []
     outlet_key = str(outlet or "").strip().lower()
@@ -8254,25 +8261,47 @@ def list_pos_unit_insights(
     return aggregate_pos_unit_insights(raw_rows)
 
 
+_UNIT_INSIGHT_KPI_META = {
+    "bottle": ("Bottles sold", "bottle", "orange"),
+    "ml": ("ML sold", "ml", "blue"),
+    "liter": ("Liters sold", "L", "blue"),
+    "kg": ("KG sold", "kg", "purple"),
+    "g": ("Grams sold", "g", "purple"),
+    "pcs": ("Pieces sold", "pcs", "purple"),
+}
+_UNIT_INSIGHT_KPI_ORDER = ("bottle", "ml", "liter", "kg", "g", "pcs")
+
+
 def pos_unit_insights_kpis(rows):
-    """KPIs for Unit Insight — product count and per-unit subtotals."""
+    """KPIs for Unit Insight — product count and one card per unit type."""
     item_rows = list(rows or [])
     unit_totals = {}
     for row in item_rows:
-        unit = str(row.get("default_unit") or "").strip() or "pcs"
+        unit = _normalize_pos_menu_unit(row.get("default_unit") or "pcs")
         unit_totals[unit] = unit_totals.get(unit, 0.0) + float(row.get("units_sold") or 0)
-    unit_subtotals = []
-    for unit in sorted(unit_totals.keys(), key=str.casefold):
+    ordered = [u for u in _UNIT_INSIGHT_KPI_ORDER if u in unit_totals]
+    ordered.extend(sorted((u for u in unit_totals if u not in ordered), key=str.casefold))
+    unit_kpis = []
+    for unit in ordered:
         qty = unit_totals[unit]
-        unit_subtotals.append(
+        label, suffix, tone = _UNIT_INSIGHT_KPI_META.get(
+            unit, (f"{unit} sold".capitalize(), unit, "purple")
+        )
+        qty_display = _menu_sales_qty_display(qty)
+        unit_kpis.append(
             {
                 "unit": unit,
-                "qty": _menu_sales_qty_display(qty),
+                "label": label,
+                "qty": qty_display,
+                "suffix": suffix,
+                "qty_display": f"{qty_display} {suffix}".strip(),
+                "icon_tone": tone,
             }
         )
     return {
         "product_count": len(item_rows),
-        "unit_subtotals": unit_subtotals,
+        "unit_kpis": unit_kpis,
+        "unit_subtotals": unit_kpis,
     }
 
 
