@@ -9,15 +9,15 @@
 <title>{{ page_title }} | Reports | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=13">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=29">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=56">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=56">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
-<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=3">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=25">
+<link rel="stylesheet" href="{{ asset('sales_entry_dashboard.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_header.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_premium.css') }}">
+<link rel="stylesheet" href="{{ asset('de_workspace_shell.css') }}">
+<link rel="stylesheet" href="{{ asset('purchase_ledger.css') }}">
+<link rel="stylesheet" href="{{ asset('ep_form_listbox.css') }}">
+<link rel="stylesheet" href="{{ asset('credit_payment.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_date_range.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_report.css') }}">
 <script>
 (function(){
   try{
@@ -31,14 +31,14 @@
 {% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=13">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=29">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=56">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
-<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=3">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=25">
+<link rel="stylesheet" href="{{ asset('sales_entry_dashboard.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_header.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_premium.css') }}">
+<link rel="stylesheet" href="{{ asset('purchase_ledger.css') }}">
+<link rel="stylesheet" href="{{ asset('ep_form_listbox.css') }}">
+<link rel="stylesheet" href="{{ asset('credit_payment.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_date_range.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_report.css') }}">
 {% endif %}
 
 <div class="main-wrapper" id="unit-insights-report-page"
@@ -264,9 +264,9 @@
 </div>
 
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
-<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
-<script src="{{ url_for('static', filename='unit_insights_report.js') }}?v=2"></script>
+<script src="{{ asset('sales_date_range.js') }}"></script>
+<script src="{{ asset('ep_form_listbox.js') }}"></script>
+<script src="{{ asset('unit_insights_report.js') }}"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

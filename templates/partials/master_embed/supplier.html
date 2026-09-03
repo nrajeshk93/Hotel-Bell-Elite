@@ -53,7 +53,7 @@
     {% endwith %}
   </div>
 
-  <script src="{{ url_for('static', filename='supplier_master.js') }}?v=3"></script>
+  <script src="{{ asset('supplier_master.js') }}"></script>
   {% if not show_form %}
   <script>
   (function initSmSupplierEmbedSearch(){

@@ -5,17 +5,17 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Back Office Receipt | Hotel Bell Elite</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=13">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=29">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=56">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=55">
-<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=29">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=3">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=30">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
-<link rel="stylesheet" href="{{ url_for('static', filename='back_office_receipt.css') }}?v=15">
+<link rel="stylesheet" href="{{ asset('sales_entry_dashboard.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_header.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_premium.css') }}">
+<link rel="stylesheet" href="{{ asset('de_workspace_shell.css') }}">
+<link rel="stylesheet" href="{{ asset('purchase_ledger.css') }}">
+<link rel="stylesheet" href="{{ asset('credit_payment.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_date_range.css') }}">
+<link rel="stylesheet" href="{{ asset('hotel_date_picker.css') }}">
+<link rel="stylesheet" href="{{ asset('ep_form_listbox.css') }}">
+<link rel="stylesheet" href="{{ asset('hbe_kpi.css') }}">
+<link rel="stylesheet" href="{{ asset('back_office_receipt.css') }}">
 <script>
 (function(){
   try{
@@ -307,10 +307,10 @@
 
 <script type="application/json" id="bor-agencies-json">{{ agencies|tojson }}</script>
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
-<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=65"></script>
-<script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=10"></script>
-<script src="{{ url_for('static', filename='back_office_receipt.js') }}?v=9" data-de-rerun="1"></script>
+<script src="{{ asset('sales_date_range.js') }}"></script>
+<script src="{{ asset('ep_form_listbox.js') }}"></script>
+<script src="{{ asset('hotel_date_picker.js') }}"></script>
+<script src="{{ asset('back_office_receipt.js') }}" data-de-rerun="1"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

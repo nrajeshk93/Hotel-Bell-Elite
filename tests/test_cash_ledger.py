@@ -1,9 +1,12 @@
 """Tests for Cash Ledger aggregations and validation."""
 
 import json
+import os
 import sqlite3
+import tempfile
 import unittest
 from datetime import date
+from unittest import mock
 
 import app as app_module
 import db as db_mod
@@ -395,6 +398,56 @@ class CashLedgerHelperTests(unittest.TestCase):
     def test_export_cash_ledger_report_route_registered(self):
         rules = [rule.rule for rule in app_module.app.url_map.iter_rules()]
         self.assertIn("/accounts/cash-ledger/report", rules)
+
+    def test_cash_ledger_purchase_entries_render_as_purchase(self):
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tmp.close()
+        db_path = tmp.name
+        orig = db_mod.DATABASE_PATH
+        db_mod.DATABASE_PATH = db_path
+        try:
+            db_mod.init_db()
+            conn = db_mod.get_db()
+            try:
+                conn.execute(
+                    """INSERT INTO sales_updates
+                       (company, location, sales_date, sales_entry_values, created_at, updated_at)
+                       VALUES (?,?,?,?,datetime('now'),datetime('now'))""",
+                    ("HBE", "Hotel", "2026-07-01", json.dumps({"actual_cash": 1000})),
+                )
+                conn.execute(
+                    """INSERT INTO sales_update_expenses
+                       (company, location, sales_date, description, amount,
+                        payment_type, expense_code, entry_kind)
+                       VALUES (?,?,?,?,?,?,?,?)""",
+                    ("HBE", "Hotel", "2026-07-01", "Some purchase", 120, "cash", "HBE-PU-1", "purchase"),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            app = app_module.app
+            app.config["TESTING"] = True
+            client = app.test_client()
+            user = {
+                "id": 1,
+                "username": "admin",
+                "full_name": "Administrator",
+                "is_admin": True,
+                "is_active": True,
+                "dashboard_access": set(),
+                "stores_access": set(),
+            }
+            with mock.patch.object(app_module, "get_current_user", return_value=user):
+                page = client.get("/accounts/cash-ledger?date_from=2026-07-01&date_to=2026-07-01&location=Hotel")
+            html = page.get_data(as_text=True)
+            self.assertIn('data-sort-value="Purchase"', html)
+        finally:
+            db_mod.DATABASE_PATH = orig
+            try:
+                os.unlink(db_path)
+            except OSError:
+                pass
 
     def test_export_cash_ledger_report_summary_and_line_items(self):
         import os

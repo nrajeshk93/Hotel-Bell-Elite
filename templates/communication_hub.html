@@ -9,11 +9,11 @@
 <title>Communication Hub | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=13">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=29">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=56">
-<link rel="stylesheet" href="{{ url_for('static', filename='communication_hub.css') }}?v=12">
+<link rel="stylesheet" href="{{ asset('sales_entry_dashboard.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_header.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_premium.css') }}">
+<link rel="stylesheet" href="{{ asset('de_workspace_shell.css') }}">
+<link rel="stylesheet" href="{{ asset('communication_hub.css') }}">
 <script>
 (function(){
   try{
@@ -28,10 +28,10 @@
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=13">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=29">
-<link rel="stylesheet" href="{{ url_for('static', filename='communication_hub.css') }}?v=12">
+<link rel="stylesheet" href="{{ asset('sales_entry_dashboard.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_header.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_premium.css') }}">
+<link rel="stylesheet" href="{{ asset('communication_hub.css') }}">
 {% endif %}
 
 <div class="main-wrapper" id="communication-hub-page"
@@ -204,7 +204,7 @@
 </div>
 
 <template id="ch-bootstrap" data-ch-bootstrap="1">{{ conversations|tojson }}</template>
-<script src="{{ url_for('static', filename='communication_hub.js') }}?v=16"></script>
+<script src="{{ asset('communication_hub.js') }}"></script>
 <script>
 if (typeof window.initCommunicationHubPage === 'function') {
   window.initCommunicationHubPage();

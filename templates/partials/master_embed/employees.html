@@ -212,7 +212,7 @@
         No employees found.{% if has_payroll_access('employee') %} <a href="{% if emp_list_endpoint == 'employee_master' and back_href is defined and back_href %}{% if from_hub %}{{ url_for('add_employee', **{'from': 'employee_master', 'from_hub': from_hub}) }}{% else %}{{ url_for('add_employee', **{'from': 'employee_master'}) }}{% endif %}{% elif emp_list_endpoint == 'employee_master' %}{{ url_for('add_employee', embed=1, **{'from': 'employee_master'}) }}{% else %}{{ url_for('add_employee', embed=1) }}{% endif %}" style="color:var(--acc);">Add an employee</a> to get started.{% endif %}
       </div>
       {% endif %}
-      <script src="{{ url_for('static', filename='employee_master.js') }}?v=1" data-de-rerun="1"></script>
+      <script src="{{ asset('employee_master.js') }}" data-de-rerun="1"></script>
       <script>
       if (typeof window.initEmpMasterTableSort === 'function') window.initEmpMasterTableSort();
       </script>

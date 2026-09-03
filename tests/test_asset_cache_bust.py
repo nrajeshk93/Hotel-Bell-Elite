@@ -1,0 +1,159 @@
+"""Guards for the permanent cache-bust.
+
+A hardcoded ?v=N pin in a template goes stale the moment the file changes and
+only the in-flight rewrite hook saved it, so a response that skipped that hook
+shipped a pinned asset (this is how sales_report.css?v=19 stuck). Templates
+must stamp the live content hash with asset() instead, and these tests fail if
+anyone reintroduces a pin.
+"""
+
+import io
+import os
+import re
+import tempfile
+import unittest
+
+import asset_digest
+import db as db_mod
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TEMPLATES_DIR = os.path.join(PROJECT_ROOT, "templates")
+
+# `}}?v=` is the url_for(...)+pin form; `/static/x.js?v=` is the raw-string form.
+PIN_PATTERNS = (
+    re.compile(r"\}\}\s*\?v="),
+    re.compile(r"/static/[A-Za-z0-9_./-]+\?v="),
+)
+
+
+class TemplatePinTests(unittest.TestCase):
+    def test_no_hardcoded_version_pins_in_templates(self):
+        offenders = []
+        for dirpath, dirs, files in os.walk(TEMPLATES_DIR):
+            dirs[:] = [d for d in dirs if d != "__pycache__"]
+            for fn in sorted(files):
+                if not fn.endswith(".html"):
+                    continue
+                path = os.path.join(dirpath, fn)
+                with io.open(path, encoding="utf-8") as fh:
+                    for lineno, line in enumerate(fh, 1):
+                        for pat in PIN_PATTERNS:
+                            if pat.search(line):
+                                rel = os.path.relpath(path, PROJECT_ROOT)
+                                offenders.append(
+                                    "%s:%d: %s" % (rel, lineno, line.strip())
+                                )
+                                break
+        self.assertEqual(
+            offenders,
+            [],
+            "Hardcoded ?v= pins found. Use {{ asset('file.css') }} so the live "
+            "content hash is stamped at render time:\n" + "\n".join(offenders),
+        )
+
+
+class AssetHelperTests(unittest.TestCase):
+    def setUp(self):
+        import app as app_mod
+
+        self.app_mod = app_mod
+        self.app = app_mod.app
+        self.static_dir = self.app.static_folder
+
+    def tearDown(self):
+        asset_digest.reset_digest()
+
+    def _asset(self, name):
+        with self.app.test_request_context("/"):
+            return self.app.jinja_env.globals["asset"](name)
+
+    def test_asset_stamps_live_content_hash(self):
+        url = self._asset("de_pwa.js")
+        expected = asset_digest.current_static_hash("de_pwa.js", self.static_dir)
+        self.assertTrue(expected, "de_pwa.js should have a content hash")
+        self.assertEqual(url, "/static/de_pwa.js?v=%s" % expected)
+
+    def test_hash_changes_when_file_bytes_change(self):
+        fd, path = tempfile.mkstemp(
+            suffix=".css", prefix="hbe_cache_guard_", dir=self.static_dir
+        )
+        os.close(fd)
+        name = os.path.basename(path)
+        try:
+            with io.open(path, "w", encoding="utf-8") as fh:
+                fh.write("/* one */\n")
+            asset_digest.reset_digest()
+            first = self._asset(name)
+
+            with io.open(path, "w", encoding="utf-8") as fh:
+                fh.write("/* two, different bytes */\n")
+            asset_digest.reset_digest()
+            second = self._asset(name)
+
+            self.assertTrue(first.endswith(tuple("0123456789abcdef")))
+            self.assertNotEqual(
+                first, second, "editing a static file must change its hashed URL"
+            )
+        finally:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+            asset_digest.reset_digest()
+
+    def test_unknown_file_falls_back_to_plain_static_path(self):
+        self.assertEqual(
+            self._asset("definitely_not_a_real_file_9f2b.css"),
+            "/static/definitely_not_a_real_file_9f2b.css",
+        )
+
+    def test_templates_are_never_served_from_a_stale_compiled_cache(self):
+        # Under gunicorn there is no reloader; without this a template-only
+        # deploy keeps rendering the previous HTML until a manual restart.
+        self.assertTrue(self.app.jinja_env.auto_reload)
+        self.assertTrue(self.app.config.get("TEMPLATES_AUTO_RELOAD"))
+
+
+class RenderedPageHashTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.tmp.close()
+        self.db_path = self.tmp.name
+        self._orig_path = db_mod.DATABASE_PATH
+        db_mod.DATABASE_PATH = self.db_path
+        db_mod.init_db()
+
+        import app as app_mod
+
+        self.app = app_mod.app
+        self.app.config["TESTING"] = True
+        self.client = self.app.test_client()
+
+    def tearDown(self):
+        db_mod.DATABASE_PATH = self._orig_path
+        try:
+            os.unlink(self.db_path)
+        except OSError:
+            pass
+
+    def test_login_page_static_refs_all_carry_the_live_hash(self):
+        resp = self.client.get("/login")
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        resp.close()
+
+        refs = re.findall(r"/static/([A-Za-z0-9_./-]+\.(?:css|js))(\?v=([^\"'&\s]+))?", html)
+        self.assertTrue(refs, "login page should reference static assets")
+        for name, _q, version in refs:
+            expected = asset_digest.current_static_hash(name, self.app.static_folder)
+            if not expected:
+                continue
+            self.assertEqual(
+                version,
+                expected,
+                "%s must be stamped with its live content hash" % name,
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

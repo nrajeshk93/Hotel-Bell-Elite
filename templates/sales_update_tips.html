@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Tips | Hotel Bell Elite</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=35">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=13">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=29">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=56">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=55">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=3">
-<link rel="stylesheet" href="{{ url_for('static', filename='cash_ledger.css') }}?v=7">
-<link rel="stylesheet" href="{{ url_for('static', filename='tips_analytics.css') }}?v=16">
+<link rel="stylesheet" href="{{ asset('sales_entry_dashboard.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_header.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_premium.css') }}">
+<link rel="stylesheet" href="{{ asset('de_workspace_shell.css') }}">
+<link rel="stylesheet" href="{{ asset('purchase_ledger.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_date_range.css') }}">
+<link rel="stylesheet" href="{{ asset('cash_ledger.css') }}">
+<link rel="stylesheet" href="{{ asset('tips_analytics.css') }}">
 <script>
 (function(){
   try{
@@ -457,8 +457,8 @@ window.TIPS_EDIT_EMPLOYEE = {
 };
 </script>
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
-<script src="{{ url_for('static', filename='report_datetime.js') }}?v=1"></script>
-<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
+<script src="{{ asset('report_datetime.js') }}"></script>
+<script src="{{ asset('sales_date_range.js') }}"></script>
 {% include 'partials/sales_update_filter_listbox_scripts.html' %}
 {% include 'partials/sales_update_tips_page_scripts.html' %}
 {% include 'partials/sales_update_tips_incentive_payout_scripts.html' %}

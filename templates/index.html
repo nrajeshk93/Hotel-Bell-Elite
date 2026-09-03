@@ -8,12 +8,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='login_premium.css') }}?v=12" />
+  <link rel="stylesheet" href="{{ asset('login_premium.css') }}" />
 </head>
 <body class="login-page">
   <div class="login-shell">
     <aside class="login-brand" aria-hidden="false">
-      <div class="login-brand-media" style="--login-hero:url('{{ url_for('static', filename='login_hero.jpg') }}?v=2')"></div>
+      <div class="login-brand-media" style="--login-hero:url('{{ asset('login_hero.jpg') }}')"></div>
       <div class="login-brand-veil" aria-hidden="true"></div>
       <div class="login-brand-inner">
         <div class="login-brand-top">
@@ -54,7 +54,7 @@
     <main class="login-panel">
       <div class="login-panel-card">
         <div class="login-panel-head">
-          <img class="login-mark login-mark--badge" src="{{ url_for('static', filename='hbe_mark_form_sm.png') }}?v=3" width="88" height="88" alt="Hotel Bell Elite" />
+          <img class="login-mark login-mark--badge" src="{{ asset('hbe_mark_form_sm.png') }}" width="88" height="88" alt="Hotel Bell Elite" />
           <h2 class="login-panel-title">Hotel Bell Elite</h2>
           <p class="login-panel-sub">Sign in to access your account</p>
         </div>
@@ -113,13 +113,13 @@
     </main>
   </div>
 
-  <script src="{{ url_for('static', filename='de_pwa.js') }}?v=14"></script>
-  <script src="{{ url_for('static', filename='offline_auth.js') }}?v=12"></script>
+  <script src="{{ asset('de_pwa.js') }}"></script>
+  <script src="{{ asset('offline_auth.js') }}"></script>
   <script>
   (function(){
     var notice = document.getElementById('login-offline-notice');
     if (notice && /Reconnect to sign in/i.test(notice.textContent || '')) {
-      window.location.replace('/static/offline_login.html?v=10');
+      window.location.replace({{ asset('offline_login.html')|tojson }});
       return;
     }
     var eye = document.getElementById('login-toggle-password');
@@ -158,7 +158,7 @@
         if (runSubmit()) return;
         /* Stale shells may request an older ?v=; retry canonical URL (SW serves aliases). */
         var s = document.createElement('script');
-        s.src = '/static/offline_auth.js?v=12';
+        s.src = {{ asset('offline_auth.js')|tojson }};
         s.onload = function () { if (!runSubmit() && notice) {
           notice.hidden = false;
           notice.textContent =

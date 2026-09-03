@@ -8,10 +8,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Settings | {{ pos_label|default('Restaurant') }} | Hotel Bell Elite</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=56">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=38">
+<link rel="stylesheet" href="{{ asset('de_workspace_shell.css') }}">
+<link rel="stylesheet" href="{{ asset('ep_form_listbox.css') }}">
+<link rel="stylesheet" href="{{ asset('hotel_date_picker.css') }}">
+<link rel="stylesheet" href="{{ asset('pos_settings.css') }}">
 <script>
 (function(){
   try{
@@ -27,9 +27,9 @@
 {% from 'partials/hotel_date_macros.html' import hotel_time_field %}
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=38">
+<link rel="stylesheet" href="{{ asset('ep_form_listbox.css') }}">
+<link rel="stylesheet" href="{{ asset('hotel_date_picker.css') }}">
+<link rel="stylesheet" href="{{ asset('pos_settings.css') }}">
 {% endif %}
 
 <div class="de-main-inner pos-settings-page" id="pos-settings-page" data-pos-settings data-settings-rev="invoice-v3" data-pos-outlet="{{ pos_outlet|default('restaurant') }}" data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}">
@@ -391,7 +391,7 @@
 
 </div>
 
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=64"></script>
+<script src="{{ asset('ep_form_listbox.js') }}"></script>
 <script>
 (function(global){
   'use strict';
@@ -439,9 +439,9 @@
   applySectionBoot(readStoredSection());
 })(window);
 </script>
-<script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=9"></script>
-<script src="{{ url_for('static', filename='pos_printers.js') }}?v=20"></script>
-<script src="{{ url_for('static', filename='pos_settings.js') }}?v=27"></script>
+<script src="{{ asset('hotel_date_picker.js') }}"></script>
+<script src="{{ asset('pos_printers.js') }}"></script>
+<script src="{{ asset('pos_settings.js') }}"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

@@ -9,12 +9,12 @@
 <title>Settings | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=13">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=29">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=56">
-<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=53">
-<link rel="stylesheet" href="{{ url_for('static', filename='settings_dashboard.css') }}?v=3">
+<link rel="stylesheet" href="{{ asset('sales_entry_dashboard.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_header.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_premium.css') }}">
+<link rel="stylesheet" href="{{ asset('de_workspace_shell.css') }}">
+<link rel="stylesheet" href="{{ asset('masters_dashboard.css') }}">
+<link rel="stylesheet" href="{{ asset('settings_dashboard.css') }}">
 <script>
 (function(){
   try{
@@ -28,11 +28,11 @@
 {% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=13">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=29">
-<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=53">
-<link rel="stylesheet" href="{{ url_for('static', filename='settings_dashboard.css') }}?v=3">
+<link rel="stylesheet" href="{{ asset('sales_entry_dashboard.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_header.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_premium.css') }}">
+<link rel="stylesheet" href="{{ asset('masters_dashboard.css') }}">
+<link rel="stylesheet" href="{{ asset('settings_dashboard.css') }}">
 {% endif %}
 <div class="main-wrapper" id="settings-page" data-settings>
   <header class="se-sales-header su-header md-header" id="se-sales-header">

@@ -11,11 +11,11 @@
 <title>Rooms | Hotel | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=56">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=79">
+<link rel="stylesheet" href="{{ asset('de_workspace_shell.css') }}">
+<link rel="stylesheet" href="{{ asset('hbe_kpi.css') }}">
+<link rel="stylesheet" href="{{ asset('ep_form_listbox.css') }}">
+<link rel="stylesheet" href="{{ asset('hotel_date_picker.css') }}">
+<link rel="stylesheet" href="{{ asset('hotel_rooms.css') }}">
 <script>
 (function(){
   try{
@@ -29,10 +29,10 @@
 {% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=79">
+<link rel="stylesheet" href="{{ asset('hbe_kpi.css') }}">
+<link rel="stylesheet" href="{{ asset('ep_form_listbox.css') }}">
+<link rel="stylesheet" href="{{ asset('hotel_date_picker.css') }}">
+<link rel="stylesheet" href="{{ asset('hotel_rooms.css') }}">
 {% endif %}
 
 <div class="de-main-inner hotel-rooms-page" id="hotel-rooms-page" data-hotel-rooms data-hotel-rooms-api="/hotel/api/rooms" data-customers-api="/hotel/api/customers" data-agencies-api="{{ url_for('list_agencies_api') }}" data-agencies="{{ agencies|default([])|tojson|e }}">
@@ -450,9 +450,9 @@
   </div>
 </div>
 
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
-<script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=9"></script>
-<script src="{{ url_for('static', filename='hotel_rooms.js') }}?v=100"></script>
+<script src="{{ asset('ep_form_listbox.js') }}"></script>
+<script src="{{ asset('hotel_date_picker.js') }}"></script>
+<script src="{{ asset('hotel_rooms.js') }}"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

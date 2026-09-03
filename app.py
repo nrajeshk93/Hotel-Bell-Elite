@@ -339,6 +339,7 @@ from asset_digest import (
     apply_no_store_cdn,
     cache_version,
     current_static_hash,
+    hashed_static_url,
     render_service_worker,
     rewrite_html_static_urls,
 )
@@ -375,6 +376,32 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = False
 # Versioned static files (?v=) can be cached; HTML/auth shells stay no-store.
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 604800
+
+# Templates must never be served from a stale compiled cache. Under gunicorn
+# there is no reloader, so a deploy that only touches templates would keep
+# rendering the old HTML until someone restarted the service.
+app.config["TEMPLATES_AUTO_RELOAD"] = True
+app.jinja_env.auto_reload = True
+
+
+@app.template_global("asset")
+def asset(filename):
+    """/static/<file>?v=<content-hash> stamped at render time.
+
+    Templates must use this instead of a hardcoded ?v=N pin: the number in a
+    hardcoded pin goes stale the moment the file changes, and only the
+    in-flight rewrite hook saved it. Unknown files fall back to the plain
+    /static path so a typo can never render an empty href.
+    """
+    name = str(filename or "").lstrip("/")
+    if name.startswith("static/"):
+        name = name[7:]
+    if not name:
+        return "/static/"
+    try:
+        return hashed_static_url(name, app.static_folder)
+    except Exception:
+        return "/static/%s" % name
 
 
 def _request_is_https():
@@ -14784,7 +14811,7 @@ def _cash_ledger_expense_rows(conn, company, date_from, date_to, location=None):
     placeholders = ",".join("?" for _ in outlets)
     rows = conn.execute(
         f"""SELECT e.id, e.location, e.sales_date, e.description, e.amount, e.expense_code,
-                   e.category, s.name AS supplier_name
+                   e.category, e.entry_kind, s.name AS supplier_name
             FROM sales_update_expenses e
             LEFT JOIN suppliers s ON s.id = e.supplier_id
             WHERE e.company = ?
@@ -14807,6 +14834,7 @@ def _cash_ledger_expense_rows(conn, company, date_from, date_to, location=None):
         amount = round_half_up(item.get("amount"), 2)
         if amount <= 0:
             continue
+        entry_kind = _normalize_ledger_entry_kind(item.get("entry_kind"), default=LEDGER_ENTRY_KIND_EXPENSE)
         desc = (item.get("description") or "").strip() or "Cash expense"
         code = (item.get("expense_code") or "").strip()
         entries.append(
@@ -14814,6 +14842,7 @@ def _cash_ledger_expense_rows(conn, company, date_from, date_to, location=None):
                 "id": f"expense-{item['id']}",
                 "source_id": item["id"],
                 "entry_type": CASH_LEDGER_ENTRY_EXPENSE,
+                "entry_kind": entry_kind,
                 "entry_date": item["sales_date"],
                 "location": item.get("location") or "",
                 "detail": item.get("location") or "",
@@ -16391,9 +16420,12 @@ def export_cash_ledger_report():
 
     def _write_cash_row(target_row, entry):
         entry_type = entry.get("entry_type") or ""
+        type_label = CASH_LEDGER_ENTRY_LABELS.get(entry_type, entry_type)
+        if entry_type == CASH_LEDGER_ENTRY_EXPENSE and entry.get("entry_kind") == "purchase":
+            type_label = "Purchase"
         values = (
             entry.get("entry_date") or "",
-            CASH_LEDGER_ENTRY_LABELS.get(entry_type, entry_type),
+            type_label,
             entry.get("detail") or "",
             entry.get("expense_code") or "",
             entry.get("description") or "",

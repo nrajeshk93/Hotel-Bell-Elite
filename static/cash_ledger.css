@@ -108,6 +108,10 @@ body.su-module .cl-type-pill--expense{
   color:#B45309;
   background:rgba(245,158,11,.14);
 }
+body.su-module .cl-type-pill--purchase{
+  color:#7C3AED;
+  background:rgba(139,92,246,.14);
+}
 body.su-module .cl-type-pill--transfer_out{
   color:#BE185D;
   background:rgba(219,39,119,.1);
