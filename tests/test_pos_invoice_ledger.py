@@ -1059,7 +1059,8 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         html = page.get_data(as_text=True)
         self.assertIn(f'id="pos-il-date-from" name="date_from" value="{day}"', html)
         self.assertIn(f'id="pos-il-date-to" name="date_to" value="{day}"', html)
-        self.assertIn("sales_date_range.js?v=18", html)
+        self.assertIn("sales_date_range.js?v=", html)
+        self.assertNotIn("sales_date_range.js?v=18", html)
 
         # Shared picker must commit first click as a complete single-day range.
         with open(

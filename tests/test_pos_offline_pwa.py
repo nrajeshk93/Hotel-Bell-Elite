@@ -321,8 +321,8 @@ class AssetDigestFreshnessTests(unittest.TestCase):
         fresh = client.get("/static/sales_report.css?v=%s" % live)
         self.assertEqual(fresh.status_code, 200)
         cc = (fresh.headers.get("Cache-Control") or "").lower()
-        self.assertIn("immutable", cc)
-        self.assertIn("max-age=31536000", cc)
+        self.assertIn("no-store", cc)
+        self.assertEqual(fresh.headers.get("CDN-Cache-Control"), "no-store")
         fresh.close()
 
         stale = client.get("/static/sales_report.css?v=stalehash")
@@ -331,6 +331,22 @@ class AssetDigestFreshnessTests(unittest.TestCase):
         self.assertIn("no-store", stale_cc)
         self.assertEqual(stale.headers.get("CDN-Cache-Control"), "no-store")
         stale.close()
+
+    def test_js_warmup_urls_are_rewritten_to_live_hash(self):
+        import asset_digest
+        import app as app_mod
+
+        asset_digest.reset_digest()
+        live = asset_digest.hashed_static_url(
+            "sales_report.css", app_mod.app.static_folder
+        )
+        client = app_mod.app.test_client()
+        resp = client.get("/static/de_workspace_transitions.js")
+        body = resp.get_data(as_text=True)
+        resp.close()
+        self.assertNotIn("/static/sales_report.css?v=19", body)
+        self.assertNotIn("sales_report.css?", body)
+        self.assertNotRegex(body, r"/static/[\w.-]+\.css\?v=\d+")
 
     def test_python_change_busts_cache_version(self):
         import asset_digest

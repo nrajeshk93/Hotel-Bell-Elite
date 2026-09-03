@@ -5397,18 +5397,13 @@ def _static_asset_cache(response):
         or path.endswith("sw.js")
     ):
         return response
+    # CSS/JS must never be pinned. Hashed URLs still change on edit; no-store
+    # stops Chrome/Cloudflare from keeping a previous body at that URL.
+    if path.endswith((".css", ".js", ".html", ".webmanifest", ".map")):
+        apply_no_store_cdn(response)
+        return response
     existing = (response.headers.get("Cache-Control") or "").lower()
     if "no-store" in existing:
-        return response
-    name = path[len("/static/") :]
-    requested_hash = (request.args.get("v") or "").strip()
-    live_hash = current_static_hash(name, app.static_folder) or ""
-    # Only the current content hash is immutable. A stale ?v= (or none) must
-    # not pin old CSS/JS in Chrome or Cloudflare — that is why incognito
-    # showed new code while a normal tab kept the previous layout.
-    if requested_hash and live_hash and requested_hash == live_hash:
-        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-        response.headers["CDN-Cache-Control"] = "public, max-age=31536000, immutable"
         return response
     apply_no_store_cdn(response)
     return response
@@ -5416,12 +5411,21 @@ def _static_asset_cache(response):
 
 @app.after_request
 def _hash_static_urls_in_html(response):
-    """Point HTML at content-hashed /static URLs so deploys cannot stick."""
-    if response.direct_passthrough:
+    """Point HTML and JS at content-hashed /static URLs so deploys cannot stick.
+    Workspace JS hardcodes ?v=19 style sheets; rewriting JS is what keeps
+    those warm-up lists on the live hash without a manual bump.
+    /sw.js is already rewritten in render_service_worker — do not hash it again.
+    """
+    path = request.path or ""
+    if path == "/sw.js":
         return response
     content_type = (response.content_type or "").lower()
-    if "text/html" not in content_type:
+    is_html = "text/html" in content_type
+    is_js = "javascript" in content_type or path.endswith(".js")
+    if not is_html and not is_js:
         return response
+    if response.direct_passthrough:
+        response.direct_passthrough = False
     try:
         body = response.get_data(as_text=True)
     except Exception:

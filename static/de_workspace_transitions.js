@@ -785,13 +785,7 @@
       var href = hrefMatch[1];
       if(!href || href.indexOf('/static/') === -1) continue;
       var exists = Array.from(document.querySelectorAll('link[rel="stylesheet"], link[rel="preload"][as="style"]')).some(function(el){
-        var current = el.getAttribute('href') || '';
-        if(current === href) return true;
-        try{
-          return new URL(current, window.location.href).pathname === new URL(href, window.location.href).pathname;
-        } catch(err){
-          return false;
-        }
+        return (el.getAttribute('href') || '') === href;
       });
       if(exists) continue;
       /* Apply as stylesheet (not preload-only) so soft-nav merge finds a ready sheet. */
@@ -3138,50 +3132,9 @@
       });
       prefetchRestaurantGroup();
       prefetchBarPosGroup();
-      /* Apply module CSS now so the first click does not wait on a cold sheet. */
-      [
-        '/static/masters_dashboard.css?v=56',
-        '/static/main_dashboard.css?v=32',
-        '/static/main_dashboard_analytics.css?v=15',
-        '/static/hbe_kpi.css?v=13',
-        '/static/sales_entry_dashboard.css?v=34',
-        '/static/sales_update_header.css?v=12',
-        '/static/sales_update_premium.css?v=29',
-        '/static/de_workspace_shell.css?v=56',
-        '/static/stores.css?v=131',
-        '/static/ep_form_listbox.css?v=29',
-        '/static/pos_tables.css?v=72',
-        '/static/pos_invoice.css?v=66',
-        '/static/purchase_ledger.css?v=57',
-        '/static/cash_ledger.css?v=26',
-        '/static/communication_hub.css?v=12',
-        '/static/communication_hub_promotion.css?v=1',
-        '/static/hotel_rooms.css?v=73',
-        '/static/hotel_reservations.css?v=46',
-        '/static/hotel_date_picker.css?v=9',
-        '/static/access_management_premium.css?v=32',
-        '/static/hbe_home_premium.css?v=20',
-        '/static/sales_report.css?v=19',
-        '/static/sales_date_range.css?v=2',
-        '/static/reports_page_scroll.css?v=5'
-      ].forEach(function(href){
-        try{
-          var exists = Array.from(document.head.querySelectorAll('link[rel="stylesheet"]')).some(function(el){
-            var current = el.getAttribute('href') || '';
-            if(current === href) return true;
-            try{
-              return new URL(current, window.location.href).pathname === new URL(href, window.location.href).pathname;
-            } catch(err){
-              return false;
-            }
-          });
-          if(exists) return;
-          var link = document.createElement('link');
-          link.rel = 'stylesheet';
-          link.href = href;
-          document.head.appendChild(link);
-        } catch(e){}
-      });
+      /* Module CSS is warmed from real page HTML (content-hashed URLs).
+         nginx serves this file from disk, so a hardcoded ?v= list would overlay
+         stale sheets on the live ones. Do not inject CSS from a baked URL list. */
     }, { timeout: 200 });
   }
 
