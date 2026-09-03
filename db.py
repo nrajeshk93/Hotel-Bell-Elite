@@ -6515,8 +6515,47 @@ def pos_invoice_settled_same_local_day(settled_at, today=None):
     return stamp[:10] == day
 
 
-def pos_invoice_can_resettle_same_day(invoice, today=None):
-    """Settled (non-cancelled) invoices may change payment modes until end of day."""
+SETTLEMENT_EDIT_HOURS = 4
+
+
+def _parse_local_datetime(stamp):
+    text = str(stamp or "").strip().replace("T", " ")
+    if not text:
+        return None
+    text = text[:19]
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def settlement_edit_open(settled_at, *, now=None, hours=SETTLEMENT_EDIT_HOURS):
+    """True when settlement happened within `hours` of now (local naive time)."""
+    settled = _parse_local_datetime(settled_at)
+    if not settled:
+        return False
+    current = now if isinstance(now, datetime) else datetime.now()
+    if getattr(current, "tzinfo", None) is not None:
+        current = current.replace(tzinfo=None)
+    delta = current - settled
+    return timedelta(0) <= delta <= timedelta(hours=int(hours or 0))
+
+
+def settlement_edit_same_local_day(settled_at, *, now=None):
+    """True when settlement happened on the same local calendar day as now."""
+    settled = _parse_local_datetime(settled_at)
+    if not settled:
+        return False
+    current = now if isinstance(now, datetime) else datetime.now()
+    if getattr(current, "tzinfo", None) is not None:
+        current = current.replace(tzinfo=None)
+    return settled.date() == current.date()
+
+
+def pos_invoice_can_resettle(invoice, now=None):
+    """Settled (non-cancelled) invoices may change payment modes until day-end."""
     if not invoice:
         return False
     status = str(invoice.get("status") or "").strip().lower() or "open"
@@ -6528,9 +6567,13 @@ def pos_invoice_can_resettle_same_day(invoice, today=None):
     )
     if not is_settled:
         return False
-    # Prefer settled_at; fall back to updated_at for legacy close-without-pay rows.
     stamp = settled_at or str(invoice.get("updated_at") or "").strip()
-    return pos_invoice_settled_same_local_day(stamp, today=today)
+    return settlement_edit_same_local_day(stamp, now=now)
+
+
+def pos_invoice_can_resettle_same_day(invoice, today=None):
+    """Back-compat alias for same-day POS settlement edits."""
+    return pos_invoice_can_resettle(invoice)
 
 
 def _remove_hotel_folio_charges_for_pos_invoice(conn, invoice_id):
@@ -6583,8 +6626,8 @@ def settle_pos_invoice(
     When any split uses room_transfer, hotel_room_id must reference an occupied
     hotel room; the room-transfer amount is posted onto that stay's folio.
 
-    Same-day resettlement: a bill already settled today may replace payment modes
-    until local midnight (does not re-run stock deduction / table free).
+    Settlement edit: a bill settled within the last 4 hours may replace payment
+    modes (does not re-run stock deduction / table free).
     """
     ensure_pos_schema(conn)
     try:
@@ -6615,7 +6658,7 @@ def settle_pos_invoice(
         if not stamp:
             full = get_pos_invoice(conn, invoice_id) or {}
             stamp = str(full.get("updated_at") or "").strip()
-        if not pos_invoice_settled_same_local_day(stamp, today=today):
+        if not settlement_edit_same_local_day(stamp):
             raise ValueError("This bill is already settled.")
         resettle = True
 
@@ -6649,7 +6692,7 @@ def settle_pos_invoice(
         _remove_hotel_folio_charges_for_pos_invoice(conn, invoice_id)
         if order_no:
             _retire_pos_room_transfer_invoice(
-                conn, order_no, reason="Settlement edited same day"
+                conn, order_no, reason="Settlement edited within 4 hours"
             )
 
     # Room transfer / cash settle must take a sequential series number, not
@@ -14521,6 +14564,25 @@ def _hotel_invoice_payment_rows_from_payload(payload, *, source=""):
     payments = stay.get("payments") or payload.get("payments") or []
     if isinstance(payments, list):
         rows.extend([p for p in payments if isinstance(p, dict)])
+    if rows:
+        return rows
+    method = _normalize_hotel_payment_method(
+        stay.get("paymentMethod") or stay.get("payment_method")
+    )
+    try:
+        amount = round(float(stay.get("advancePaid") or stay.get("checkInAdvancePaid") or 0), 2)
+    except (TypeError, ValueError):
+        amount = 0.0
+    if not method or amount <= 0.009:
+        return rows
+    stamp = _hotel_str(
+        stay.get("updatedAt")
+        or stay.get("updated_at")
+        or stay.get("invoiceGeneratedAt")
+        or stay.get("invoice_generated_at"),
+        40,
+    )
+    rows.append({"method": method, "amount": amount, "at": stamp})
     return rows
 
 
@@ -14672,6 +14734,16 @@ def _hotel_invoice_row_to_dict(row):
             item.get("status"), methods
         )
     stay = payload.get("stay") if isinstance(payload.get("stay"), dict) else {}
+    if not stay:
+        room_blob = payload.get("room") if isinstance(payload.get("room"), dict) else {}
+        stay = room_blob.get("stay") if isinstance(room_blob.get("stay"), dict) else {}
+    settled_stamps = []
+    for pay in _hotel_invoice_payment_rows_from_payload(
+        payload, source=item.get("source")
+    ):
+        if isinstance(pay, dict) and pay.get("at"):
+            settled_stamps.append(str(pay.get("at") or "").strip())
+    item["settled_at"] = max(settled_stamps) if settled_stamps else ""
     agency_name = _hotel_str(stay.get("agencyName") or stay.get("agency_name"), 160)
     item["agency_name"] = agency_name
     item["allow_credit"] = bool(agency_name)
@@ -15173,57 +15245,37 @@ def hotel_sales_entry_from_invoices(conn, sales_date):
 
 
 def pos_sales_entry_from_invoices(conn, outlet, sales_date):
-    """Build Restaurant/Bar Sales Entry totals from POS invoices for one day."""
+    """Build Restaurant/Bar Sales Entry totals from POS invoices for one day.
+
+    Uses the same generated-only set as Invoice Ledger so leftover provisional
+    drafts (SPC/{token}/{fy} after a sequential bill was minted) cannot inflate
+    cash / total sales.
+    """
     ensure_pos_schema(conn)
     outlet_key = normalize_pos_outlet(outlet)
     day = str(sales_date)[:10]
-
-    total_row = conn.execute(
-        """
-        SELECT COALESCE(SUM(i.grand_total), 0) AS amount
-        FROM pos_invoices i
-        WHERE i.is_active = 1
-          AND i.outlet = ?
-          AND i.order_date = ?
-          AND lower(COALESCE(i.status, 'open')) != 'cancelled'
-        """,
-        (outlet_key, day),
-    ).fetchone()
-    total_sales = float(total_row["amount"] if total_row else 0)
-
-    pay_rows = conn.execute(
-        """
-        SELECT p.payment_method AS payment_method,
-               COALESCE(SUM(p.amount), 0) AS amount
-        FROM pos_invoice_payments p
-        JOIN pos_invoices i ON i.id = p.invoice_id
-        WHERE i.is_active = 1
-          AND i.outlet = ?
-          AND i.order_date = ?
-          AND lower(COALESCE(i.status, 'open')) != 'cancelled'
-        GROUP BY p.payment_method
-        """,
-        (outlet_key, day),
-    ).fetchall()
-
-    cash = card = upi = room_credit = online_order = 0.0
-    for row in pay_rows:
-        amount = float(row["amount"] or 0)
-        if abs(amount) < 0.005:
+    invoices = list_pos_invoices(
+        conn,
+        date_from=day,
+        date_to=day,
+        outlet=outlet_key,
+        generated_only=True,
+    )
+    total_sales = cash = card = upi = room_credit = online_order = 0.0
+    for inv in invoices:
+        if str((inv or {}).get("status") or "open").strip().lower() == "cancelled":
             continue
-        key = _normalize_pos_payment_method(row["payment_method"])
-        if key == "cash":
-            cash += amount
-        elif key == "card":
-            card += amount
-        elif key == "upi":
-            upi += amount
-        elif key in ("room_transfer",):
-            room_credit += amount
-        elif key in ("swiggy", "zomato"):
-            online_order += amount
-        elif key == "bank_transfer":
-            card += amount
+        total_sales += float(inv.get("grand_total") or 0)
+        amounts = inv.get("payment_amounts")
+        if not isinstance(amounts, dict):
+            amounts = {}
+        cash += float(amounts.get("cash") or 0)
+        upi += float(amounts.get("upi") or 0)
+        card += float(amounts.get("card") or 0)
+        card += float(amounts.get("bank_transfer") or 0)
+        room_credit += float(amounts.get("room_transfer") or 0)
+        online_order += float(amounts.get("swiggy") or 0)
+        online_order += float(amounts.get("zomato") or 0)
 
     return {
         "total_sales": round(total_sales, 2),
@@ -19492,7 +19544,19 @@ def record_hotel_room_payment(conn, room_id, payment=None, payment_splits=None, 
         raise ValueError("Generate the invoice before recording payment.")
     combined_balance = _hotel_combined_checkout_balance(stay)
     if combined_balance <= 0.009:
-        raise ValueError("Balance due is already settled.")
+        probe = {
+            "status": "settled",
+            "updated_at": str(stay.get("updatedAt") or stay.get("updated_at") or ""),
+            "room": {"stay": stay},
+            "payments": stay.get("payments") or [],
+        }
+        if not hotel_invoice_can_resettle(probe):
+            raise ValueError("This bill is already settled.")
+        stay = _normalize_hotel_room_stay(_rewind_hotel_stay_settlement_payments(stay))
+        room["stay"] = stay
+        combined_balance = _hotel_combined_checkout_balance(stay)
+        if combined_balance <= 0.009:
+            raise ValueError("This bill is already settled.")
 
     allow_credit = _hotel_stay_has_agency(stay)
     agency_name = _hotel_bor_agency_name(stay)
@@ -19673,7 +19737,14 @@ def _record_pos_room_transfer_invoice_payment(
         float(item.get("balance_amount") or stay.get("balanceAmount") or 0), 2
     )
     if balance <= 0.009:
-        raise ValueError("Balance due is already settled.")
+        if not hotel_invoice_can_resettle(item):
+            raise ValueError("This bill is already settled.")
+        stay = _normalize_hotel_room_stay(_rewind_hotel_stay_settlement_payments(stay))
+        balance = round(
+            float(item.get("estimated_total") or stay.get("balanceAmount") or 0), 2
+        )
+        if balance <= 0.009:
+            raise ValueError("This bill is already settled.")
     stay["balanceAmount"] = balance
     stay["estimatedTotal"] = round(
         float(item.get("estimated_total") or balance), 2
@@ -19821,6 +19892,62 @@ def _record_pos_room_transfer_invoice_payment(
     }
 
 
+
+def _hotel_invoice_settlement_stamp(item):
+    """Latest payment time on a hotel ledger invoice, else updated_at when settled."""
+    if not isinstance(item, dict):
+        return ""
+    stamps = []
+    if item.get("settled_at"):
+        stamps.append(str(item.get("settled_at") or "").strip())
+    room = item.get("room") if isinstance(item.get("room"), dict) else {}
+    stays = []
+    if isinstance(room.get("stay"), dict):
+        stays.append(room.get("stay"))
+    if isinstance(item.get("stay"), dict):
+        stays.append(item.get("stay"))
+    for stay in stays:
+        for pay in list(stay.get("payments") or []):
+            if isinstance(pay, dict) and pay.get("at"):
+                stamps.append(str(pay.get("at") or "").strip())
+    for pay in list(item.get("payments") or []):
+        if isinstance(pay, dict) and pay.get("at"):
+            stamps.append(str(pay.get("at") or "").strip())
+    stamps = [s for s in stamps if s]
+    if stamps:
+        return max(stamps)
+    if str(item.get("status") or "").strip().lower() == "settled":
+        return str(item.get("updated_at") or item.get("invoice_generated_at") or "").strip()
+    return ""
+
+
+def hotel_invoice_can_resettle(item, now=None):
+    """Settled hotel invoices may change payment modes until day-end. All users."""
+    if not isinstance(item, dict):
+        return False
+    status = str(item.get("status") or "").strip().lower()
+    if status == "cancelled":
+        return False
+    balance = 0.0
+    try:
+        balance = float(item.get("balance_amount") or 0)
+    except (TypeError, ValueError):
+        balance = 0.0
+    settled = status == "settled" or balance <= 0.009
+    if not settled:
+        return False
+    return settlement_edit_same_local_day(_hotel_invoice_settlement_stamp(item), now=now)
+
+
+def _rewind_hotel_stay_settlement_payments(stay):
+    """Drop settlement payments so normalize() restores the pre-pay balance."""
+    stay = dict(stay or {})
+    stay["payments"] = []
+    stay["paymentMethod"] = ""
+    stay["paymentReference"] = ""
+    return stay
+
+
 def record_hotel_room_invoice_payment(
     conn, invoice_number, payment=None, payment_splits=None, note=""
 ):
@@ -19834,10 +19961,21 @@ def record_hotel_room_invoice_payment(
         raise ValueError("Invoice not found.")
     if (item.get("status") or "") == "cancelled":
         raise ValueError("Cancelled invoices cannot be settled.")
+    hotel_resettle = False
     if (item.get("status") or "") == "settled" or float(
         item.get("balance_amount") or 0
     ) <= 0.009:
-        raise ValueError("Balance due is already settled.")
+        if not hotel_invoice_can_resettle(item):
+            raise ValueError("This bill is already settled.")
+        hotel_resettle = True
+        room_payload = item.get("room") if isinstance(item.get("room"), dict) else {}
+        stay_payload = room_payload.get("stay") if isinstance(room_payload.get("stay"), dict) else {}
+        if stay_payload:
+            room_payload = dict(room_payload)
+            room_payload["stay"] = _rewind_hotel_stay_settlement_payments(stay_payload)
+            item = dict(item)
+            item["room"] = room_payload
+            item["balance_amount"] = None
 
     payload_source = HOTEL_INVOICE_SOURCE_HOTEL
     try:
@@ -19898,7 +20036,10 @@ def record_hotel_room_invoice_payment(
         raise ValueError("Invoice stay data is missing.")
     stay = _normalize_hotel_room_stay(stay)
     if float(stay.get("balanceAmount") or 0) <= 0.009:
-        raise ValueError("Balance due is already settled.")
+        if hotel_resettle:
+            stay = _normalize_hotel_room_stay(_rewind_hotel_stay_settlement_payments(stay))
+        if float(stay.get("balanceAmount") or 0) <= 0.009:
+            raise ValueError("This bill is already settled.")
     if not stay.get("invoiceGenerated") or not (
         stay.get("invoiceNumber") or stay.get("invoice_number")
     ):

@@ -3,7 +3,7 @@
 import os
 import tempfile
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from unittest import mock
 
 import db as db_mod
@@ -113,7 +113,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertEqual(len(body["invoice"]["lines"]), 2)
         self.assertEqual(body["invoice"]["grand_total"], 500)
 
-        page = self.client.get("/point-of-sale/invoice-ledger")
+        page = self.client.get("/point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01")
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
         self.assertIn("ORD-2607-0001", html)
@@ -188,7 +188,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertEqual(kpis_after["invoice_count"], 1)
         self.assertEqual(kpis_after["total_sales"], 200)
 
-        page2 = self.client.get("/point-of-sale/invoice-ledger")
+        page2 = self.client.get("/point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01")
         html2 = page2.get_data(as_text=True)
         self.assertIn("ORD-2607-0001", html2)
         self.assertIn("ORD-2607-0002", html2)
@@ -223,7 +223,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertTrue(any(r["id"] == draft_id for r in all_rows))
         self.assertFalse(any(r["id"] == draft_id for r in ledger_rows))
 
-        page = self.client.get("/point-of-sale/invoice-ledger")
+        page = self.client.get("/point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01")
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
         self.assertNotIn("SPC/B0FF39/26-27", html)
@@ -258,13 +258,13 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertTrue(any(r["id"] == draft_id for r in ledger_rows))
         self.assertEqual(kpis["invoice_count"], 1)
 
-        page2 = self.client.get("/point-of-sale/invoice-ledger")
+        page2 = self.client.get("/point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01")
         html2 = page2.get_data(as_text=True)
         self.assertIn(gen_no, html2)
         self.assertIn(f'data-invoice-id="{draft_id}"', html2)
         self.assertNotIn("SPC/B0FF39/26-27", html2)
 
-        export = self.client.get("/point-of-sale/invoice-ledger/report")
+        export = self.client.get("/point-of-sale/invoice-ledger/report?date_from=2000-01-01&date_to=2100-01-01")
         self.assertEqual(export.status_code, 200)
         from io import BytesIO
         from openpyxl import load_workbook
@@ -316,7 +316,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         close = self.client.post(f"/point-of-sale/api/invoices/{settled_id}/close")
         self.assertEqual(close.status_code, 200, close.get_data(as_text=True))
 
-        page = self.client.get("/point-of-sale/invoice-ledger")
+        page = self.client.get("/point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01")
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
 
@@ -358,20 +358,20 @@ class PosInvoiceLedgerTests(unittest.TestCase):
     def test_export_report(self):
         save = self.client.post("/point-of-sale/api/invoices", json=self._payload())
         self.assertEqual(save.status_code, 200)
-        export = self.client.get("/point-of-sale/invoice-ledger/report")
+        export = self.client.get("/point-of-sale/invoice-ledger/report?date_from=2000-01-01&date_to=2100-01-01")
         self.assertEqual(export.status_code, 200)
         self.assertIn(
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             export.content_type or "",
         )
         self.assertIn(b"PK", export.data[:4])
-        fy_start, today = db_mod.indian_fiscal_year_bounds()
+        from datetime import date as _date
         from reports import report_export_filename
 
         expected_name = report_export_filename(
             "Invoice Ledger - Restaurant",
-            date_from=fy_start,
-            date_to=today,
+            date_from=_date(2000, 1, 1),
+            date_to=_date(2100, 1, 1),
             date_filter_active=True,
         )
         self.assertIn(expected_name, export.headers.get("Content-Disposition") or "")
@@ -510,7 +510,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         settled = settle.get_json()["invoice"]
         self.assertEqual(settled.get("payment_mode_label"), "Cash + UPI")
 
-        page = self.client.get("/point-of-sale/invoice-ledger")
+        page = self.client.get("/point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01")
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
         self.assertIn("Cash + UPI", html)
@@ -599,7 +599,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
             kpis["payment_totals"]["room_transfer"], transfer_amt - 0.01
         )
 
-        export = self.client.get("/point-of-sale/invoice-ledger/report")
+        export = self.client.get("/point-of-sale/invoice-ledger/report?date_from=2000-01-01&date_to=2100-01-01")
         self.assertEqual(export.status_code, 200)
         from io import BytesIO
         from openpyxl import load_workbook
@@ -665,7 +665,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
             pending_label,
         )
 
-        pending_page = self.client.get("/point-of-sale/invoice-ledger")
+        pending_page = self.client.get("/point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01")
         self.assertEqual(pending_page.status_code, 200)
         pending_html = pending_page.get_data(as_text=True)
         self.assertIn(pending_label, pending_html)
@@ -687,7 +687,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         fb_no = gen.get_json()["room"]["stay"]["fbTransferInvoiceNumber"]
         self.assertTrue(str(fb_no).startswith("FBE/"))
 
-        generated_page = self.client.get("/point-of-sale/invoice-ledger")
+        generated_page = self.client.get("/point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01")
         self.assertEqual(generated_page.status_code, 200)
         generated_html = generated_page.get_data(as_text=True)
         expected = f"Room Transfer · 101 ({fb_no})"
@@ -715,7 +715,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
         invoice_id = saved.get_json()["invoice"]["id"]
 
-        page = self.client.get("/point-of-sale/invoice-ledger")
+        page = self.client.get("/point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01")
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
         self.assertIn("Unsettled", html)
@@ -758,7 +758,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         )
         self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
 
-        unsettled_page = self.client.get("/point-of-sale/invoice-ledger?settlement=unsettled")
+        unsettled_page = self.client.get("/point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01&settlement=unsettled")
         self.assertEqual(unsettled_page.status_code, 200)
         unsettled_html = unsettled_page.get_data(as_text=True)
         self.assertIn("ORD-FILT-OPEN", unsettled_html)
@@ -766,7 +766,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertIn('id="pos-il-settlement"', unsettled_html)
         self.assertIn("Un Settled", unsettled_html)
 
-        settled_page = self.client.get("/point-of-sale/invoice-ledger?settlement=settled")
+        settled_page = self.client.get("/point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01&settlement=settled")
         self.assertEqual(settled_page.status_code, 200)
         settled_html = settled_page.get_data(as_text=True)
         self.assertIn("ORD-FILT-PAID", settled_html)
@@ -798,7 +798,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         inv_b = second.get_json()["invoice"]
         combined = round(float(inv_a["grand_total"]) + float(inv_b["grand_total"]), 2)
 
-        page = self.client.get("/point-of-sale/invoice-ledger")
+        page = self.client.get("/point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01")
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
         self.assertIn('id="pos-il-select-all"', html)
@@ -860,7 +860,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         inv_b = second.get_json()["invoice"]
         combined = round(float(inv_a["grand_total"]) + float(inv_b["grand_total"]), 2)
 
-        page = self.client.get("/bar-point-of-sale/invoice-ledger")
+        page = self.client.get("/bar-point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01")
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
         self.assertIn('id="pos-il-select-all"', html)
@@ -933,7 +933,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertEqual(inv.get("payment_mode_label"), "Settled")
         self.assertEqual(inv.get("payment_modes") or [], [])
 
-        page = self.client.get("/point-of-sale/invoice-ledger")
+        page = self.client.get("/point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01")
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
         row_open = html.split(f'data-invoice-id="{inv["id"]}"', 1)[0].rsplit("<tr", 1)[-1]
@@ -991,7 +991,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         finally:
             conn.close()
 
-        page = self.client.get("/point-of-sale/invoice-ledger")
+        page = self.client.get("/point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01")
         self.assertEqual(page.status_code, 200)
 
         conn = db_mod.get_db()
@@ -1035,7 +1035,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertEqual(inv["status"], "closed")
 
         settled_page = self.client.get(
-            "/point-of-sale/invoice-ledger?settlement=settled"
+            "/point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01&settlement=settled"
         )
         self.assertEqual(settled_page.status_code, 200)
         html = settled_page.get_data(as_text=True)
@@ -1071,8 +1071,19 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertIn("rangePickStep", picker_js)
         self.assertIn("ignoreOutsideClickUntil", picker_js)
 
+    def _set_pos_settled_at(self, inv_id, stamp):
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                "UPDATE pos_invoices SET settled_at = ? WHERE id = ?",
+                (stamp, inv_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
     def test_same_day_settlement_can_be_edited(self):
-        """Settled today → Edit settlement; settle API accepts a same-day resettle."""
+        """Settled the same day stays editable; next day it is locked."""
         today = date.today().isoformat()
         created = self.client.post(
             "/point-of-sale/api/invoices",
@@ -1095,7 +1106,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
         self.assertEqual(settle.get_json()["invoice"]["status"], "closed")
 
-        page = self.client.get("/point-of-sale/invoice-ledger")
+        page = self.client.get("/point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01")
         html = page.get_data(as_text=True)
         block = html.split(f'data-invoice-id="{inv_id}"', 1)[1].split("</tr>", 1)[0]
         self.assertIn("pos-il-resettle-btn", block)
@@ -1114,22 +1125,78 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         methods = sorted(p.get("payment_method") for p in payments)
         self.assertEqual(methods, ["card", "upi"])
 
-        # Prior-day settlement cannot be edited.
-        conn = db_mod.get_db()
-        try:
-            conn.execute(
-                "UPDATE pos_invoices SET settled_at = '2020-01-01 12:00:00' WHERE id = ?",
-                (inv_id,),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+        now = datetime.now()
+        same_day = (now - timedelta(hours=5)).strftime("%Y-%m-%d %H:%M:%S")
+        self._set_pos_settled_at(inv_id, same_day)
+        still_ok = self.client.post(
+            f"/point-of-sale/api/invoices/{inv_id}/settle",
+            json={"payment_splits": [{"payment_method": "cash", "amount": 250}]},
+        )
+        self.assertEqual(still_ok.status_code, 200, still_ok.get_data(as_text=True))
+
+        previous_day = (now - timedelta(days=1)).strftime("%Y-%m-%d 23:59:00")
+        self._set_pos_settled_at(inv_id, previous_day)
         blocked = self.client.post(
             f"/point-of-sale/api/invoices/{inv_id}/settle",
             json={"payment_splits": [{"payment_method": "cash", "amount": 250}]},
         )
         self.assertEqual(blocked.status_code, 400)
         self.assertIn("already settled", (blocked.get_json() or {}).get("error", "").lower())
+
+    def test_bar_and_clerk_can_edit_settlement_same_day(self):
+        """Bar outlet and a non-admin clerk both get same-day settlement edit."""
+        today = date.today().isoformat()
+        created = self.client.post(
+            "/bar-point-of-sale/api/invoices",
+            json=self._payload(
+                order_no="BAR-RESETTLE-01",
+                total=180,
+                table="B1",
+                orderDate=today,
+                savedAt=today + " 12:00:00",
+                customerBill=True,
+            ),
+        )
+        self.assertEqual(created.status_code, 200, created.get_data(as_text=True))
+        inv_id = created.get_json()["invoice"]["id"]
+        settle = self.client.post(
+            f"/bar-point-of-sale/api/invoices/{inv_id}/settle",
+            json={"payment_splits": [{"payment_method": "cash", "amount": 180}]},
+        )
+        self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
+        self._set_pos_settled_at(
+            inv_id, (datetime.now() - timedelta(hours=5)).strftime("%Y-%m-%d %H:%M:%S")
+        )
+
+        page = self.client.get("/bar-point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01")
+        html = page.get_data(as_text=True)
+        block = html.split(f'data-invoice-id="{inv_id}"', 1)[1].split("</tr>", 1)[0]
+        self.assertIn("pos-il-resettle-btn", block)
+
+        clerk = {
+            "id": self.admin_id,
+            "username": "barclerk",
+            "full_name": "Bar Clerk",
+            "is_admin": False,
+            "is_active": True,
+            "dashboard_access": {"point_of_sale_bar"},
+            "point_of_sale_bar_access": set(),
+            "stores_access": set(),
+            "sales_analytics_access": set(),
+            "user_access": set(),
+            "payroll_access": set(),
+            "accounts_access": set(),
+        }
+        with mock.patch.object(self.app_mod, "get_current_user", return_value=clerk):
+            again = self.client.post(
+                f"/bar-point-of-sale/api/invoices/{inv_id}/settle",
+                json={"payment_splits": [{"payment_method": "upi", "amount": 180}]},
+            )
+            clerk_page = self.client.get("/bar-point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01")
+        self.assertEqual(again.status_code, 200, again.get_data(as_text=True))
+        clerk_html = clerk_page.get_data(as_text=True)
+        clerk_block = clerk_html.split(f'data-invoice-id="{inv_id}"', 1)[1].split("</tr>", 1)[0]
+        self.assertIn("pos-il-resettle-btn", clerk_block)
 
 
 if __name__ == "__main__":

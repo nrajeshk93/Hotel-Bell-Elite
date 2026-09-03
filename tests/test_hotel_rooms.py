@@ -4,7 +4,7 @@ import json
 import os
 import tempfile
 import unittest
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from unittest import mock
 
 import db as db_mod
@@ -2371,7 +2371,14 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertIn("de-nav-hotel-invoice-ledger", html)
         self.assertIn("de-nav-hotel-credit", html)
         self.assertIn("hil-invoice-listbox", html)
-        self.assertIn("hil-invoice-tabs", html)
+        # Invoice source is one compact dropdown (no panel/tab row).
+        self.assertIn('id="hil-invoice-list"', html)
+        self.assertIn('data-se-listbox-change="hilInvoiceChanged"', html)
+        self.assertNotIn("hil-invoice-tabs", html)
+        # Date range defaults to today (not the financial year).
+        _today_iso = date.today().isoformat()
+        self.assertIn('id="hil-date-from" name="date_from" value="%s"' % _today_iso, html)
+        self.assertIn('id="hil-date-to" name="date_to" value="%s"' % _today_iso, html)
         self.assertIn("Room Transfer", html)
         self.assertIn("hil-open-room-transfer", html)
         self.assertIn("/hotel/room-transfer-invoices", html)
@@ -3030,6 +3037,46 @@ class HotelRoomsTests(unittest.TestCase):
         generated_html = generated_only.get_data(as_text=True)
         self.assertIn("INV/26-27/4", generated_html)
         self.assertIn(f"Invoice Generated ({fb_no})", generated_html)
+
+    def test_cash_settled_fb_invoice_shows_resettle_action(self):
+        self._checkin_with_charges(advance=0)
+        conn = db_mod.get_db()
+        try:
+            result = db_mod.append_hotel_room_folio_charge(
+                conn,
+                "room-101",
+                amount=80,
+                kind="bar_room_transfer",
+                label="Bar Room Transfer · INV/26-27/4",
+                source="pos",
+                invoice_id="100",
+                order_no="INV/26-27/4",
+                outlet="bar",
+            )
+            db_mod.upsert_pos_room_transfer_invoice(
+                conn, result["room"], result["charge"]
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        stay = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]["stay"]
+        combined_due = float(stay["combinedBalanceDue"])
+        gen = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "generate_invoice",
+                "payment_splits": [{"method": "cash", "amount": combined_due}],
+            },
+        )
+        self.assertEqual(gen.status_code, 200, gen.get_data(as_text=True))
+        fb_no = gen.get_json()["room"]["stay"]["fbTransferInvoiceNumber"]
+        self.assertTrue(str(fb_no).startswith("FBE/"))
+
+        ledger_html = self.client.get("/hotel/invoice-ledger").get_data(as_text=True)
+        block = ledger_html.split(f'data-invoice-number="{fb_no}"', 1)[1].split("</tr>", 1)[0]
+        self.assertIn("hil-resettle-btn", block)
+        self.assertNotIn("hil-edit-btn", block)
 
     def test_invoice_ledger_settle_after_checkout(self):
         self._checkin_with_charges(advance=0)

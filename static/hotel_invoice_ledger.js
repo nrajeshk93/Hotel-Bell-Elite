@@ -755,9 +755,14 @@
     if (!opened) toast('Could not open payment dialog.');
   }
 
-  function openSettleFromRow(page, row) {
+  function openSettleFromRow(page, row, opts) {
     if (!row) return;
     if (isRoomTransferLedger(page) || isPosRoomTransferRow(row)) return;
+    opts = opts || {};
+    var resettle =
+      !!opts.resettle ||
+      row.getAttribute('data-can-resettle') === '1' ||
+      row.classList.contains('is-resettleable');
     var invoiceNumber = row.getAttribute('data-invoice-number') || '';
     if (!invoiceNumber) {
       toast('Invoice not found.');
@@ -786,14 +791,32 @@
           return;
         }
         var invoice = result.data.invoice || {};
+        var stay = (result.data.room && result.data.room.stay) || {};
         var balance = Number(
           invoice.balance_amount != null
             ? invoice.balance_amount
-            : (result.data.room.stay && result.data.room.stay.balanceAmount) || 0
+            : stay.balanceAmount || 0
         );
         if (!(balance > 0.009) || invoice.status === 'settled') {
-          toast('Invoice is already settled.');
-          return;
+          if (!resettle) {
+            toast('Invoice is already settled.');
+            return;
+          }
+          var estimated = Number(
+            invoice.estimated_total != null
+              ? invoice.estimated_total
+              : stay.estimatedTotal ||
+                row.getAttribute('data-estimated-total') ||
+                0
+          );
+          var checkInAdv = Number(
+            stay.checkInAdvancePaid || stay.check_in_advance_paid || 0
+          );
+          balance = Math.max(estimated - (checkInAdv > 0 ? checkInAdv : 0), 0);
+          if (!(balance > 0.009)) {
+            toast('Invoice is already settled.');
+            return;
+          }
         }
         var opened = global.openHotelSettleModal({
           room: result.data.room,
@@ -834,6 +857,16 @@
       if (viewBtn) {
         ev.preventDefault();
         openInvoice(page, viewBtn.getAttribute('data-invoice-number'), false);
+        return;
+      }
+      var resettleBtn = ev.target.closest('.hil-resettle-btn');
+      if (resettleBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        var resettleRow = resettleBtn.closest('tr.hil-row');
+        if (resettleRow && page.contains(resettleRow)) {
+          openSettleFromRow(page, resettleRow, { resettle: true });
+        }
         return;
       }
       var editBtn = ev.target.closest('.hil-edit-btn');
@@ -1111,6 +1144,14 @@
     if (!page || !row) return false;
     if (isRoomTransferLedger(page) || isPosRoomTransferRow(row)) return false;
     openSettleFromRow(page, row);
+    return false;
+  };
+  global.hilResettleClick = function (btn) {
+    var page = ledgerPageFrom(btn);
+    var row = btn && btn.closest ? btn.closest('tr.hil-row') : null;
+    if (!page || !row) return false;
+    if (isRoomTransferLedger(page) || isPosRoomTransferRow(row)) return false;
+    openSettleFromRow(page, row, { resettle: true });
     return false;
   };
   global.hilEditClick = function (btn) {

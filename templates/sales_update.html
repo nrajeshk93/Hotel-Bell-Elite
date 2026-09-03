@@ -1002,6 +1002,16 @@ SalesDateRangePicker.init({
       setSaveState(`Save failed: ${err.message}`, 'err');
     }
   }
+  async function flushPendingSave(location){
+    if (!guardEntryEditable(location)) return;
+    clearTimeout(saveTimer);
+    const validationMessage = salesEntryValidationMessage();
+    if (validationMessage) {
+      setSaveState(validationMessage, 'err');
+      return;
+    }
+    await savePettyCash();
+  }
   function scheduleSave(location){
     if (!guardEntryEditable(location)) return;
     clearTimeout(saveTimer);
@@ -1048,8 +1058,11 @@ SalesDateRangePicker.init({
       updateSalesEntries();
       scheduleSave(input.dataset.salesLocation);
     });
-    input.addEventListener('blur', () => {
-      scheduleSave(input.dataset.salesLocation);
+    input.addEventListener('change', () => {
+      flushPendingSave(input.dataset.salesLocation);
+    });
+    input.addEventListener('blur', async () => {
+      await flushPendingSave(input.dataset.salesLocation);
     });
   });
   inputs.forEach((input) => {

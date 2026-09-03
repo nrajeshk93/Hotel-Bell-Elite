@@ -311,6 +311,50 @@ class InvoiceSalesKpisTests(unittest.TestCase):
         self.assertEqual(bar["total_sales"], 50.0)
         self.assertEqual(bar["card"], 50.0)
 
+    def test_pos_sales_entry_skips_leftover_provisional_draft(self):
+        """Sequential generated bill stays; leftover SPC/{token}/{fy} draft does not."""
+        self._insert_pos(
+            order_no="SPC/2239/2026-27",
+            outlet=db_mod.POS_OUTLET_RESTAURANT,
+            order_date="2026-09-02",
+            grand_total=5208.0,
+            status="closed",
+            payments=[{"method": "cash", "amount": 5208.0}],
+        )
+        self._insert_pos(
+            order_no="SPC/1D5E59/26-27",
+            outlet=db_mod.POS_OUTLET_RESTAURANT,
+            order_date="2026-09-02",
+            grand_total=5208.0,
+            status="closed",
+            payments=[{"method": "cash", "amount": 5208.0}],
+        )
+        self._insert_pos(
+            order_no="INV/1951/2026-27",
+            outlet=db_mod.POS_OUTLET_BAR,
+            order_date="2026-09-02",
+            grand_total=352.0,
+            status="closed",
+            payments=[{"method": "upi", "amount": 352.0}],
+        )
+        self._insert_pos(
+            order_no="INV/5E650E/26-27",
+            outlet=db_mod.POS_OUTLET_BAR,
+            order_date="2026-09-02",
+            grand_total=363.0,
+            status="open",
+            payments=[],
+        )
+        self.conn.commit()
+        rest = db_mod.pos_sales_entry_from_invoices(
+            self.conn, "restaurant", "2026-09-02"
+        )
+        bar = db_mod.pos_sales_entry_from_invoices(self.conn, "bar", "2026-09-02")
+        self.assertEqual(rest["total_sales"], 5208.0)
+        self.assertEqual(rest["cash"], 5208.0)
+        self.assertEqual(bar["total_sales"], 352.0)
+        self.assertEqual(bar["upi"], 352.0)
+
 
 if __name__ == "__main__":
     unittest.main()

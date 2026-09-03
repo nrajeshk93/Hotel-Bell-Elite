@@ -186,6 +186,7 @@ from db import (
     settle_pos_invoice,
     settle_pos_invoices,
     pos_invoice_can_resettle_same_day,
+    hotel_invoice_can_resettle,
     sync_pos_floor_occupancy_from_open_orders,
     transfer_pos_invoice_table,
     merge_pos_invoice_tables,
@@ -2938,17 +2939,22 @@ def _render_credit_settlement_page(mode):
     )
 
 
-def _resolve_optional_filter_date_range(args, from_key, to_key, *, default_fy=False):
+def _resolve_optional_filter_date_range(args, from_key, to_key, *, default_fy=False, default_today=False):
     """Return (date_from, date_to, active).
 
     Missing both keys:
     - default_fy=False => no date filter (None, None, False)
+    - default_today=True => today only (active); wins over default_fy.
+      Standing preference: date controls default to today everywhere
+      except the Accounts module, which keeps the FY default.
     - default_fy=True  => current Indian FY start → today (active)
     """
     today = date.today()
     raw_from = (args.get(from_key) or "").strip()
     raw_to = (args.get(to_key) or "").strip()
     if not raw_from and not raw_to:
+        if default_today:
+            return today, today, True
         if default_fy:
             fy_start, ref = indian_fiscal_year_bounds(today)
             return fy_start, ref, True
@@ -4591,6 +4597,129 @@ def build_hotel_sales_entry_values(submitted_values=None):
         values.setdefault(key, 0.0)
         values[key] = parse_money(values.get(key))
     return values
+
+
+def _hotel_invoice_sales_day(invoice):
+    if not isinstance(invoice, dict):
+        return ""
+    for key in ("invoice_generated_at", "check_out_date", "updated_at"):
+        stamp = str(invoice.get(key) or "").strip()
+        if len(stamp) >= 10:
+            return stamp[:10]
+    return ""
+
+
+def _hotel_invoice_cash_amount(invoice):
+    if not isinstance(invoice, dict):
+        return 0.0
+    amounts = invoice.get("payment_amounts") if isinstance(invoice.get("payment_amounts"), dict) else {}
+    cash_amount = parse_money(amounts.get("cash"))
+    if cash_amount > 0:
+        return round_half_up(cash_amount, 2)
+    payment_modes = invoice.get("payment_modes") if isinstance(invoice.get("payment_modes"), list) else []
+    if payment_modes == ["cash"]:
+        estimated = parse_money(invoice.get("estimated_total"))
+        if estimated > 0:
+            return round_half_up(estimated, 2)
+    return 0.0
+
+
+def _sync_hotel_resettlement_actual_cash(conn, invoice_before, invoice_after, *, user=None):
+    try:
+        before_balance = float((invoice_before or {}).get("balance_amount") or 0)
+    except (TypeError, ValueError):
+        before_balance = 0.0
+    before_status = str((invoice_before or {}).get("status") or "").strip().lower()
+    if before_status != "settled" and before_balance > 0.009:
+        return False
+    sales_day = _hotel_invoice_sales_day(invoice_after) or _hotel_invoice_sales_day(invoice_before)
+    if not sales_day:
+        return False
+    delta = round_half_up(
+        _hotel_invoice_cash_amount(invoice_after) - _hotel_invoice_cash_amount(invoice_before),
+        2,
+    )
+    if abs(delta) <= 0.004:
+        return False
+
+    row = conn.execute(
+        """SELECT id, sales_entry_values, petty_cash_counts, petty_cash_total,
+                  cash_denomination_counts, created_by_user_id
+           FROM sales_updates
+           WHERE company = ? AND location = ? AND sales_date = ?""",
+        (DEFAULT_COMPANY, OUTLET_HOTEL, sales_day),
+    ).fetchone()
+
+    existing_values = {}
+    petty_cash_counts = {}
+    cash_denomination_counts = {}
+    created_by_user_id = None
+    if row:
+        try:
+            existing_values = json.loads(row["sales_entry_values"] or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            existing_values = {}
+        try:
+            petty_cash_counts = json.loads(row["petty_cash_counts"] or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            petty_cash_counts = {}
+        try:
+            cash_denomination_counts = json.loads(row["cash_denomination_counts"] or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            cash_denomination_counts = {}
+        created_by_user_id = row["created_by_user_id"]
+
+    sales_entries = build_hotel_sales_entry_values(existing_values)
+    sales_entries["actual_cash"] = round_half_up(
+        max(0.0, parse_money(sales_entries.get("actual_cash")) + delta),
+        2,
+    )
+    sales_entry_total = get_sales_entry_total(sales_entries)
+    petty_cash_total = get_denomination_total(petty_cash_counts)
+    user_id = (user or {}).get("id")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if row:
+        conn.execute(
+            """UPDATE sales_updates
+               SET sales_entry_values = ?, sales_entry_total = ?, petty_cash_counts = ?,
+                   petty_cash_total = ?, cash_denomination_counts = ?,
+                   updated_by_user_id = ?, updated_at = ?
+               WHERE id = ?""",
+            (
+                json.dumps(sales_entries),
+                sales_entry_total,
+                json.dumps(petty_cash_counts),
+                petty_cash_total,
+                json.dumps(cash_denomination_counts),
+                user_id,
+                now,
+                row["id"],
+            ),
+        )
+    else:
+        conn.execute(
+            """INSERT INTO sales_updates
+               (company, location, sales_date, sales_entry_values, sales_entry_total,
+                petty_cash_counts, petty_cash_total, cash_denomination_counts,
+                created_by_user_id, updated_by_user_id, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                DEFAULT_COMPANY,
+                OUTLET_HOTEL,
+                sales_day,
+                json.dumps(sales_entries),
+                sales_entry_total,
+                json.dumps(petty_cash_counts),
+                petty_cash_total,
+                json.dumps(cash_denomination_counts),
+                created_by_user_id if created_by_user_id is not None else user_id,
+                user_id,
+                now,
+                now,
+            ),
+        )
+    return True
 
 
 def load_sales_row(company, location, sales_date):
@@ -10772,8 +10901,9 @@ def _filter_hotel_invoice_rows_by_agency(rows, selected_agency):
 def _hotel_invoice_ledger_filters(args):
     """Parse hotel invoice ledger GET filters (shared by page + export)."""
     today = date.today()
+    # Dates default to today (not the financial year) — user preference.
     date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
-        args, "date_from", "date_to", default_fy=True
+        args, "date_from", "date_to", default_today=True
     )
     selected_status = (args.get("status") or "all").strip().lower()
     if selected_status not in ("all", "open", "settled", "cancelled"):
@@ -10835,6 +10965,9 @@ def hotel_invoice_ledger():
         conn.commit()
     finally:
         conn.close()
+
+    for inv in rows:
+        inv["ledger_can_resettle"] = hotel_invoice_can_resettle(inv)
 
     status_labels = {
         "all": "All statuses",
@@ -11308,6 +11441,7 @@ def hotel_invoice_ledger_api(invoice_number):
 )
 def hotel_invoice_ledger_settle_api(invoice_number):
     """Record payment for an open hotel invoice from the ledger settle modal."""
+    user = get_current_user() or {}
     data = request.get_json(silent=True) or {}
     payment = data.get("payment") if isinstance(data.get("payment"), dict) else None
     payment_splits = data.get("payment_splits") or data.get("paymentSplits")
@@ -11325,6 +11459,7 @@ def hotel_invoice_ledger_settle_api(invoice_number):
     try:
         ensure_hotel_rooms_schema(conn)
         try:
+            invoice_before = get_hotel_room_invoice(conn, invoice_number)
             result = record_hotel_room_invoice_payment(
                 conn,
                 invoice_number,
@@ -11334,6 +11469,13 @@ def hotel_invoice_ledger_settle_api(invoice_number):
                 else None,
                 note=note,
             )
+            if invoice_before and result.get("invoice"):
+                _sync_hotel_resettlement_actual_cash(
+                    conn,
+                    invoice_before,
+                    result.get("invoice"),
+                    user=user,
+                )
             conn.commit()
         except ValueError as exc:
             conn.rollback()
@@ -13144,8 +13286,9 @@ def point_of_sale_menu_export():
 def _pos_invoice_ledger_filters(args):
     """Parse invoice ledger GET filters (shared by page + export)."""
     today = date.today()
+    # Dates default to today (not the financial year) — user preference.
     date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
-        args, "date_from", "date_to", default_fy=True
+        args, "date_from", "date_to", default_today=True
     )
     query_date_from = date_from if date_filter_active else date(2000, 1, 1)
     query_date_to = date_to if date_filter_active else today
@@ -13231,10 +13374,8 @@ def point_of_sale_invoice_ledger():
             can_cancel and (not is_settled) and (not is_cancelled) and is_generated
         )
         inv["ledger_can_edit"] = can_edit and (not is_settled) and (not is_cancelled)
-        # All users: edit settlement modes until end of the settlement day.
-        inv["ledger_can_resettle"] = pos_invoice_can_resettle_same_day(
-            inv, today=filters["today"].isoformat()
-        )
+        # All users: edit settlement modes for 4 hours after settle.
+        inv["ledger_can_resettle"] = pos_invoice_can_resettle_same_day(inv)
 
     selected_order_type = filters["selected_order_type"]
     selected_order_type_label = "All"
