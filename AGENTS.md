@@ -16,6 +16,24 @@ pre-commit hook rather than by memory.
   root. Run `pytest tests` and not bare `pytest`.
 
 
+
+## Restaurant / Bar Tables: occupancy must not look like “cache”
+
+What staff call a “cache issue” on Tables is usually **stuck open bills** or a
+**client floor snapshot**, not Cloudflare.
+
+- At most **one** pre-invoice open dine-in bill per table (`customer_bill_sent=0`).
+  Enforced in `save_pos_invoice` and by unique index
+  `idx_pos_one_active_preinvoice_per_table`.
+- After **Generate Invoice**, the tile frees for the next party; that bill may
+  stay `status=open` until Settle — that is intentional. Do not create a second
+  pre-invoice open on the same table.
+- Online Tables first paint **must not** show Occupied from session/local
+  snapshot (`floorSnapshotForFirstPaint`); live `/api/floor` (`cache: no-store`)
+  is the source of truth. Offline may use the snapshot.
+- Never “fix” occupancy by only hard-refreshing — repair open invoices /
+  settle zombies, then refresh.
+
 ## Local `python app.py` (port 8002)
 
 - Keep `FLASK_DEBUG=0` in `.env` unless you explicitly want Flask’s auto-reloader.

@@ -1489,6 +1489,37 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(int(refreshed["T1"]["sent_qty"]), 2)
 
 
+
+    def test_cannot_open_second_preinvoice_bill_on_same_table(self):
+        """Foolproof: one active pre-invoice dine-in bill per table."""
+        first = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-FOOL-1", "T1", kot_send=False),
+        )
+        self.assertEqual(first.status_code, 200, first.get_data(as_text=True))
+        second = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-FOOL-2", "T1", kot_send=False),
+        )
+        self.assertIn(second.status_code, (400, 409), second.get_data(as_text=True))
+        body = second.get_json() or {}
+        err = (body.get("error") or body.get("message") or "").lower()
+        self.assertTrue(
+            "open bill" in err or "occupied" in err,
+            msg=body,
+        )
+        # Unique index present after schema ensure
+        conn = db_mod.get_db()
+        try:
+            rows = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
+                ("idx_pos_one_active_preinvoice_per_table",),
+            ).fetchall()
+            self.assertTrue(rows)
+        finally:
+            conn.close()
+
+
     def test_kot_cancel_print_wiring_in_static_sources(self):
         """Cancel KOT print path must exist; normal send/resend banners must stay."""
         printers = (Path(__file__).resolve().parents[1] / "static" / "pos_printers.js").read_text(

@@ -553,6 +553,36 @@
     return currentFloor;
   }
 
+  /**
+   * Online first paint must not show stale Occupied from session/local snapshot.
+   * Layout (areas/tables geometry) may paint instantly; occupancy waits for API.
+   * Offline keeps snapshot occupancy so staff can still work without network.
+   */
+  function floorSnapshotForFirstPaint(data) {
+    var base = data || emptyFloor();
+    if (!isNavigatorOnline()) {
+      return {
+        areas: base.areas || [],
+        tables: base.tables || []
+      };
+    }
+    var tables = (base.tables || []).map(function (t) {
+      if (!t || typeof t !== 'object') return t;
+      var copy = Object.assign({}, t);
+      var st = String(copy.status || '').trim().toLowerCase();
+      if (st === 'occupied') {
+        copy.status = 'available';
+        delete copy.customerName;
+        delete copy.customer_name;
+        delete copy.occupiedSince;
+        delete copy.occupied_since;
+        delete copy.guestName;
+      }
+      return copy;
+    });
+    return { areas: base.areas || [], tables: tables };
+  }
+
   function putFloor(data) {
     return fetch(FLOOR_API, {
       method: 'PUT',
@@ -4835,22 +4865,27 @@
     syncPosApiPaths();
     var root = document.getElementById('pos-tables-page');
     if (!root) return;
-    /* Soft-nav: paint last floor snapshot synchronously so Tables feels instant,
-       then refresh from SQLite API. Do not persist the cached merge — a later
-       API Available must win. Workflow (KOT/settle) unchanged. */
+    /* Soft-nav: paint layout instantly, but while online strip Occupied from
+       the snapshot so a client PC cannot flash yesterday's parties. Live
+       occupancy always comes from /api/floor (cache: no-store). Offline keeps
+       snapshot occupancy. Never persist the pre-API merge. */
     var cached = loadFloorDataCached();
-    if (cached && ((cached.tables && cached.tables.length) || (cached.areas && cached.areas.length))) {
-      paintTablesPage(root, cached);
+    var firstPaint = floorSnapshotForFirstPaint(cached);
+    if (firstPaint && ((firstPaint.tables && firstPaint.tables.length) || (firstPaint.areas && firstPaint.areas.length))) {
+      paintTablesPage(root, firstPaint);
     } else {
-      paintTablesPage(root, cached || { areas: [], tables: [] });
+      paintTablesPage(root, firstPaint || { areas: [], tables: [] });
     }
     var cacheGen = floorLoadGen;
-    mergePendingFloor(cached).then(function (merged) {
-      if (!root.isConnected) return;
-      if (cacheGen !== floorLoadGen) return;
-      currentFloor = merged;
-      paintTablesPage(root, merged);
-    });
+    /* Offline only: merge pending drafts onto the snapshot for first paint. */
+    if (!isNavigatorOnline()) {
+      mergePendingFloor(cached).then(function (merged) {
+        if (!root.isConnected) return;
+        if (cacheGen !== floorLoadGen) return;
+        currentFloor = merged;
+        paintTablesPage(root, merged);
+      });
+    }
     paintKotPendingBanner(currentKotPending);
     if (typeof global.initEpListboxes === 'function') {
       global.initEpListboxes();

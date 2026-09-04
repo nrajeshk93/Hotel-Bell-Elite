@@ -1790,6 +1790,56 @@ def ensure_pos_schema(conn):
         ON pos_invoices(outlet, order_date, is_active)
         """
     )
+    # Bulletproof: at most ONE pre-invoice open dine-in bill per table/outlet.
+    # Generated bills (customer_bill_sent=1) may stay open for Settle and are
+    # excluded — they no longer claim the floor tile.
+    # Repair any legacy duplicates before the unique index can be created.
+    dup_rows = cursor.execute(
+        """
+        SELECT outlet, lower(trim(table_label)) AS tkey, MAX(id) AS keep_id
+        FROM pos_invoices
+        WHERE is_active = 1
+          AND status = 'open'
+          AND order_type = 'dine_in'
+          AND COALESCE(customer_bill_sent, 0) = 0
+          AND trim(COALESCE(customer_bill_at, '')) = ''
+          AND trim(COALESCE(table_label, '')) != ''
+        GROUP BY outlet, lower(trim(table_label))
+        HAVING COUNT(*) > 1
+        """
+    ).fetchall()
+    for dup in dup_rows:
+        outlet_key = dup[0] if not hasattr(dup, "keys") else dup["outlet"]
+        tkey = dup[1] if not hasattr(dup, "keys") else dup["tkey"]
+        keep_id = int(dup[2] if not hasattr(dup, "keys") else dup["keep_id"])
+        cursor.execute(
+            f"""
+            UPDATE pos_invoices
+            SET status = 'closed',
+                updated_at = {SQL_NOW}
+            WHERE is_active = 1
+              AND status = 'open'
+              AND order_type = 'dine_in'
+              AND COALESCE(customer_bill_sent, 0) = 0
+              AND trim(COALESCE(customer_bill_at, '')) = ''
+              AND outlet = ?
+              AND lower(trim(table_label)) = ?
+              AND id != ?
+            """,
+            (outlet_key, tkey, keep_id),
+        )
+    cursor.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_pos_one_active_preinvoice_per_table
+        ON pos_invoices(outlet, lower(trim(table_label)))
+        WHERE is_active = 1
+          AND status = 'open'
+          AND order_type = 'dine_in'
+          AND COALESCE(customer_bill_sent, 0) = 0
+          AND trim(COALESCE(customer_bill_at, '')) = ''
+          AND trim(COALESCE(table_label, '')) != ''
+        """
+    )
 
     # Seed Bar floor once (never overwrite a saved Bar layout)
     bar_row = cursor.execute(
@@ -7751,6 +7801,15 @@ def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, ac
     # there. Editing an already-saved order (existing order_no) is a resume of
     # that same bill, so it is never blocked here.
     if not existing and table_label and order_type == "dine_in":
+        # DB truth first (survives desynced floor tiles / client snapshots).
+        prior = get_open_pos_invoice_for_table(conn, table_label, outlet)
+        if prior:
+            prior_no = prior.get("order_no") or prior.get("id") or ""
+            raise ValueError(
+                f'Table "{table_label}" already has an open bill'
+                + (f' ({prior_no}).' if prior_no else '.')
+                + ' Open that order, or settle/cancel it before starting a new one.'
+            )
         floor_status = _pos_floor_table_status(get_pos_floor_layout(conn, outlet), table_label)
         if floor_status == "occupied":
             raise ValueError(
