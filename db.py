@@ -17023,7 +17023,9 @@ def _hotel_num(value, default=0):
 
 _HOTEL_ID_DOC_NAME_RE = re.compile(
     r"^(?:"
-    r"[A-Za-z0-9._-]+\.(webp|pdf|jpe?g|png|heic|heif)"
+    r"[0-9a-f]{32}\.(webp|pdf|jpe?g|png|heic|heif)"
+    r"|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    r"\.(webp|pdf|jpe?g|png|heic|heif)"
     r"|[0-9a-f]{32}"
     r"|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
     r")$",
@@ -17032,12 +17034,23 @@ _HOTEL_ID_DOC_NAME_RE = re.compile(
 
 
 def _hotel_id_document_basename(value):
+    """Return UUID storage filename only — never human display labels."""
+    from urllib.parse import unquote
+
     text = str(value or "").strip().replace("\\", "/")
     text = text.split("?")[0].split("#")[0].rstrip("/")
     if text.endswith("/raw") or text.endswith("/content"):
         text = text.rsplit("/", 1)[0]
+    if "/id-documents/view/" in text:
+        text = text.split("/id-documents/view/")[-1]
+    elif "/id-documents/" in text:
+        text = text.split("/id-documents/")[-1]
     if "/" in text:
         text = text.split("/")[-1]
+    try:
+        text = unquote(text)
+    except Exception:
+        pass
     if not text or ".." in text:
         return ""
     if _HOTEL_ID_DOC_NAME_RE.match(text):
@@ -17046,9 +17059,10 @@ def _hotel_id_document_basename(value):
 
 
 def _hotel_id_document_view_path(name, path):
+    """Build view URL from UUID stored name only. Drop human-label paths."""
     stored = _hotel_id_document_basename(path) or _hotel_id_document_basename(name)
     if not stored:
-        return _hotel_str(path, 200)
+        return ""
     return "/hotel/api/id-documents/view/" + stored + "/raw"
 
 
@@ -17388,15 +17402,20 @@ def _normalize_hotel_room_stay(stay, tax_rates=None):
             stay.get("idDocumentName") or stay.get("id_document_name"), 120
         ),
         "idDocumentPath": _hotel_id_document_view_path(
-            stay.get("idDocumentName") or stay.get("id_document_name"),
+            stay.get("idDocumentStoredName")
+            or stay.get("id_document_stored_name")
+            or stay.get("idDocumentPath")
+            or stay.get("id_document_path"),
             stay.get("idDocumentPath") or stay.get("id_document_path"),
         ),
         "idDocumentMime": _hotel_str(
             stay.get("idDocumentMime") or stay.get("id_document_mime"), 60
         ),
-        "idDocumentStoredName": _hotel_str(
-            stay.get("idDocumentStoredName") or stay.get("id_document_stored_name"),
-            120,
+        "idDocumentStoredName": _hotel_id_document_basename(
+            stay.get("idDocumentStoredName")
+            or stay.get("id_document_stored_name")
+            or stay.get("idDocumentPath")
+            or stay.get("id_document_path")
         ),
         "additionalGuests": [],
         "agencyName": _hotel_str(stay.get("agencyName") or stay.get("agency_name"), 160),
@@ -17672,6 +17691,13 @@ def _normalize_hotel_room_stay(stay, tax_rates=None):
         out["invoiceTo"] = ""
         out["billingName"] = ""
 
+    # Fabricated ID document labels ("Guest Name.pdf") are not files.
+    if not out.get("idDocumentStoredName"):
+        out["idDocumentName"] = ""
+        out["idDocumentPath"] = ""
+        out["idDocumentMime"] = ""
+        out["idDocumentStoredName"] = ""
+
     extra_guests = stay.get("additionalGuests") or stay.get("additional_guests") or []
     cleaned_guests = []
     if isinstance(extra_guests, list):
@@ -17680,21 +17706,27 @@ def _normalize_hotel_room_stay(stay, tax_rates=None):
                 continue
             name = _hotel_str(item.get("name") or item.get("guestName"), 160)
             id_type = _hotel_str(item.get("idType") or item.get("id_type"), 40)
-            doc_name = _hotel_str(
-                item.get("idDocumentName") or item.get("id_document_name"), 120
+            doc_stored = _hotel_id_document_basename(
+                item.get("idDocumentStoredName")
+                or item.get("id_document_stored_name")
+                or item.get("idDocumentPath")
+                or item.get("id_document_path")
             )
             doc_path = _hotel_id_document_view_path(
-                doc_name,
+                doc_stored,
                 item.get("idDocumentPath") or item.get("id_document_path"),
             )
-            doc_mime = _hotel_str(
-                item.get("idDocumentMime") or item.get("id_document_mime"), 60
-            )
-            doc_stored = _hotel_str(
-                item.get("idDocumentStoredName")
-                or item.get("id_document_stored_name"),
-                120,
-            )
+            if not doc_stored:
+                doc_name = ""
+                doc_mime = ""
+                doc_path = ""
+            else:
+                doc_name = _hotel_str(
+                    item.get("idDocumentName") or item.get("id_document_name"), 120
+                )
+                doc_mime = _hotel_str(
+                    item.get("idDocumentMime") or item.get("id_document_mime"), 60
+                )
             if not name and not id_type and not doc_path:
                 continue
             cleaned_guests.append(

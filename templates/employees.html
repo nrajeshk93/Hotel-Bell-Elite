@@ -19,8 +19,8 @@
   }catch(e){}
 })();
 </script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+{% include 'partials/hbe_fonts.html' %}
+<script src="{{ asset('lucide.min.js') }}"></script>
 <link rel="stylesheet" href="{{ asset('sales_update_header.css') }}">
 <link rel="stylesheet" href="{{ asset('employees_premium.css') }}">
 <link rel="stylesheet" href="{{ asset('employees_list.css') }}">
@@ -32,8 +32,8 @@
 <link rel="stylesheet" href="{{ asset('sales_date_range.css') }}">
 {% endif %}
 {% include 'partials/employees_page_styles.html' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
-<script src="{{ url_for('static', filename='format_inr.js') }}"></script>
+<link rel="stylesheet" href="{{ asset('app_dates.css') }}">
+<script src="{{ asset('format_inr.js') }}"></script>
 </head>
 <body class="{{ de_soft_body_class }}">
 {% endif %}
@@ -85,8 +85,8 @@
 <link rel="stylesheet" href="{{ asset('sales_date_range.css') }}">
 {% endif %}
 {% include 'partials/employees_page_styles.html' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
-<script src="{{ url_for('static', filename='format_inr.js') }}"></script>
+<link rel="stylesheet" href="{{ asset('app_dates.css') }}">
+<script src="{{ asset('format_inr.js') }}"></script>
 {% endif %}
 <div class="main-wrapper"{% if mode is defined and mode == 'attendance_list' %} id="attendance-list-page"{% elif mode is not defined %} id="employees-page"{% endif %}>
 

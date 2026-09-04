@@ -2583,6 +2583,9 @@ def mark_attendance():
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({'error': message, 'locked': True}), 403
         return _permission_denied_response(message)
+    employee = conn.execute(
+        "SELECT emp_code, name FROM employees WHERE id=?", (emp_id,)
+    ).fetchone()
     rec = conn.execute(
         "SELECT status, updated_at FROM attendance WHERE employee_id=? AND date=?",
         (emp_id, att_date)
@@ -2605,6 +2608,11 @@ def mark_attendance():
             (emp_id, att_date, status)
         )
     conn.commit()
+    emp_ref = (employee["emp_code"] if employee else "") or str(emp_id)
+    activity_audit.set_activity_audit(
+        f"Mark attendance {emp_ref} · {att_date} · {status or 'clear'}",
+        entity_id=emp_ref,
+    )
     conn.close()
 
     # Return JSON for AJAX calls

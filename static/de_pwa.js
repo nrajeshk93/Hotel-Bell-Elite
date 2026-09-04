@@ -123,7 +123,8 @@
       if (window.__hbeSwReloaded) return;
       window.__hbeSwReloaded = true;
       try {
-        window.location.reload();
+        try{ if(typeof window.clearSoftNavPrefetch==='function') window.clearSoftNavPrefetch(); }catch(_e){}
+        location.reload();
       } catch (e) {}
     });
   }
@@ -157,6 +158,9 @@
           if (window.__hbeSwReloaded) return;
           window.__hbeSwReloaded = true;
           try {
+            if (typeof window.clearSoftNavPrefetch === 'function') {
+              window.clearSoftNavPrefetch();
+            }
             window.location.reload();
           } catch (e3) {}
         });

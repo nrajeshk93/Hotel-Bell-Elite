@@ -1,6 +1,6 @@
 /* Hotel Bell Elite — branded room stay invoice (A4 print preview)
  * Visual reference: navy #142A4A + gold #C89B3C, Inter, clean A4 layout. */
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+/* Inter via hbe_fonts.css / parent page — no Google Fonts */
 
 :root {
   --hri-navy: #142a4a;

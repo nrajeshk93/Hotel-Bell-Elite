@@ -1,0 +1,29 @@
+#!/bin/sh
+# Blocks a commit that reintroduces a hand-written static asset version.
+# Enable once per clone:  git config core.hooksPath .githooks
+set -e
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+if [ ! -x .venv/bin/pytest ]; then
+    echo "pre-commit: .venv/bin/pytest not found, skipping asset cache guard." >&2
+    exit 0
+fi
+
+echo "pre-commit: checking static asset cache-busting..."
+if ! PYTHONPATH=. .venv/bin/pytest tests/test_asset_cache_bust.py -q; then
+    cat >&2 <<'MSG'
+
+pre-commit: BLOCKED.
+
+A template hardcodes a static asset version (?v=NN), loads app JS from a
+public CDN (unpkg/jsdelivr/…), or soft-nav idle-prefetch policy regressed.
+
+Fix: use {{ asset('file.css') }}; vendor libraries under static/; keep heavy
+modules out of IDLE_PREFETCH_PATHS (see AGENTS.md).
+Do not edit the test to accept the pin.
+
+MSG
+    exit 1
+fi

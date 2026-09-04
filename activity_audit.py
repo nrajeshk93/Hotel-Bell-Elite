@@ -366,33 +366,28 @@ def set_activity_audit(summary: str, details: Any = None, entity_id: Any = None)
 
 
 _ACTIVITY_CODE_KEYS = (
-    "expense_code",
-    "order_no",
-    "pos_order_no",
-    "invoice_no",
-    "invoice_number",
-    "reservation_no",
-    "emp_code",
-    "employee_code",
-    "code",
+    "expense_code", "expenseCode", "order_no", "orderNo", "pos_order_no", "posOrderNo",
+    "invoice_no", "invoiceNo", "invoice_number", "invoiceNumber", "reservation_no",
+    "reservationNo", "emp_code", "empCode", "employee_code", "employeeCode", "code",
 )
 _ACTIVITY_ID_KEYS = (
-    "expense_id",
-    "invoice_id",
-    "emp_id",
-    "credit_id",
-    "user_id",
-    "role_id",
-    "item_id",
-    "category_id",
-    "room_id",
-    "payment_id",
-    "transfer_id",
-    "row_id",
-    "pending_bill_id",
-    "ticket_id",
-    "id",
+    "expense_id", "invoice_id", "emp_id", "credit_id", "creditId", "user_id", "userId",
+    "role_id", "roleId", "item_id", "itemId", "category_id", "categoryId", "room_id",
+    "roomId", "payment_id", "paymentId", "transfer_id", "transferId", "row_id",
+    "pending_bill_id", "pendingBillId", "ticket_id", "ticketId", "agency_id", "agencyId",
+    "supplier_id", "supplierId", "customer_id", "customerId", "table_label", "tableLabel",
+    "table", "id",
 )
+
+
+def _flatten_activity_payload(payload: dict) -> dict:
+    """Flatten one dict level so invoice/data wrappers are searchable."""
+    flat = dict(payload or {})
+    for value in list((payload or {}).values()):
+        if isinstance(value, dict):
+            for key, nested_value in value.items():
+                flat.setdefault(key, nested_value)
+    return flat
 
 
 def _request_activity_payload(req=None) -> dict:
@@ -416,7 +411,7 @@ def _request_activity_payload(req=None) -> dict:
         data = None
     if isinstance(data, dict):
         payload.update(data)
-    return payload
+    return _flatten_activity_payload(payload)
 
 
 def _first_payload_value(payload: dict, keys: tuple[str, ...]) -> Any:
@@ -424,7 +419,7 @@ def _first_payload_value(payload: dict, keys: tuple[str, ...]) -> Any:
         if key not in payload:
             continue
         value = payload.get(key)
-        if value is None:
+        if value is None or isinstance(value, (dict, list, tuple)):
             continue
         text = str(value).strip()
         if text:
@@ -433,14 +428,35 @@ def _first_payload_value(payload: dict, keys: tuple[str, ...]) -> Any:
 
 
 def activity_entity_id_from_request(req=None) -> Any:
-    payload = _request_activity_payload(req)
-    return _first_payload_value(payload, _ACTIVITY_CODE_KEYS + _ACTIVITY_ID_KEYS)
+    return _first_payload_value(
+        _request_activity_payload(req), _ACTIVITY_CODE_KEYS + _ACTIVITY_ID_KEYS
+    )
 
 
-def default_activity_summary(endpoint: str, meta: dict[str, str]) -> str:
+def activity_entity_id_from_response(response) -> Any:
+    """Extract a minted business reference from a successful JSON response."""
+    if response is None or getattr(response, "status_code", 500) >= 400:
+        return None
+    try:
+        data = response.get_json(silent=True)
+    except Exception:
+        data = None
+    if not isinstance(data, dict):
+        return None
+    return _first_payload_value(
+        _flatten_activity_payload(data), _ACTIVITY_CODE_KEYS + _ACTIVITY_ID_KEYS
+    )
+
+
+def format_activity_ref(value: Any) -> str:
+    return str(value).strip() if value is not None else ""
+
+
+def default_activity_summary(endpoint: str, meta: dict[str, str], entity_id=None) -> str:
     action = meta.get("action", "update")
     entity = (meta.get("entity_type") or "record").replace("_", " ")
-    entity_id = activity_entity_id_from_request()
+    if entity_id is None:
+        entity_id = activity_entity_id_from_request()
     label = normalize_endpoint(endpoint).replace("_", " ") or endpoint.replace("_", " ")
     if entity_id is not None:
         return f"{action.title()} {entity} {entity_id} ({label})"
@@ -598,7 +614,11 @@ def register_after_request(app, get_current_user_fn) -> None:
                 return response
             user = get_current_user_fn()
             entity_id = getattr(g, "audit_entity_id", None) or activity_entity_id_from_request()
-            summary = getattr(g, "audit_summary", None) or default_activity_summary(endpoint, meta)
+            if entity_id is None:
+                entity_id = activity_entity_id_from_response(response)
+            summary = getattr(g, "audit_summary", None)
+            if not summary:
+                summary = default_activity_summary(endpoint, meta, entity_id=entity_id)
             if entity_id is not None and str(entity_id) not in (summary or ""):
                 summary = f"{summary} {entity_id}".strip()
             details = getattr(g, "audit_details", None)

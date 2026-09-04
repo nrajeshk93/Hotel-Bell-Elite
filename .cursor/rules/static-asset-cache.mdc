@@ -1,0 +1,45 @@
+---
+description: Permanent cache, CDN, and soft-nav rules so deploys never stick or hang
+globs: templates/**/*.{html,jinja2},static/**/*.{js,css},app.py,asset_digest.py,AGENTS.md
+alwaysApply: true
+---
+
+# Static assets, CDNs, and soft-nav
+
+Several agents work on this repo. Follow these rules every time — they are also
+in `AGENTS.md` and enforced by `tests/test_asset_cache_bust.py` + `.githooks/pre-commit`.
+
+## Content-hashed static URLs
+
+- Templates: `{{ asset('file.css') }}` (or `url_for('static', ...)` — hashed via
+  `@app.url_defaults`).
+- NEVER hand-write `?v=34`, `?v=2`, `?ver=`, or `?t=<date>`. That pattern caused
+  repeated production incidents (`sales_report.css?v=19`, then ~847 pins).
+- JS string URLs in templates: `{{ asset('file.js')|tojson }}`.
+
+## No public CDN for app JS/CSS
+
+- Vendor libraries under `static/` and load with `asset()`. Lucide is
+  `static/lucide.min.js`.
+- Do not add `unpkg.com`, `jsdelivr`, `cdnjs`, or `@latest` script tags. They
+  hang entire modules (Payroll, Access Management) when the CDN stalls.
+- Google Fonts CSS with `display=swap` is fine; never pull JS from a font CDN.
+
+## Soft-nav HTML prefetch
+
+- Do not add heavy modules to `IDLE_PREFETCH_PATHS` (only `/home`,
+  `/main-dashboard`, `/master`, `/settings`, `/license`).
+- Restaurant/Bar Tables/Invoice/Menu shells must stay **prefetchable** for
+  instant open. Only mutation lists (invoice-ledger, sales-update, settings,
+  payroll, access, accounts, stores, communication) are live-only — never a
+  blanket `/point-of-sale` live-only prefix.
+- Soft-nav cache is build-bound via `syncSoftNavBuildId` / `/hbe-build.json`.
+- Keep `clearSoftNavPrefetch()` on SW/build-id reload paths in `de_pwa.js`.
+- After Home, `scheduleCriticalModuleWarm()` idle-warms Restaurant/Bar/Hotel.
+- Self-host fonts via `partials/hbe_fonts.html` / `hbe_login_fonts.html` — never
+  `fonts.googleapis.com`.
+
+## Guard
+
+If `tests/test_asset_cache_bust.py` fails, fix the template/JS — do not weaken
+the test.

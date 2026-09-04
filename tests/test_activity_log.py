@@ -93,6 +93,83 @@ class ActivityLogTests(unittest.TestCase):
         conn.close()
         return rows
 
+
+    def _login_admin_session(self):
+        with self.client.session_transaction() as sess:
+            sess[self.app_mod.AUTH_USER_SESSION_KEY] = self.admin_id
+
+    def _pos_payload(self, order_no, table="T1"):
+        return {
+            "orderNo": order_no, "orderType": "takeaway", "table": table,
+            "customerName": "Audit Guest",
+            "lines": [{"uid": "1", "name": "Tea", "rate": 50, "qty": 1}],
+            "totals": {"subtotal": 50, "total": 50},
+        }
+
+    def test_camel_case_order_no_default_summary_has_entity_id(self):
+        with self.app.test_request_context("/point-of-sale/api/invoices", method="POST", json={"orderNo": "ORD-AUDIT-1", "id": 9}):
+            entity_id = activity_audit.activity_entity_id_from_request()
+            summary = activity_audit.default_activity_summary(
+                "point_of_sale_api_invoices_save", {"action": "update", "entity_type": "invoice"}
+            )
+        self.assertEqual(entity_id, "ORD-AUDIT-1")
+        self.assertIn(entity_id, summary)
+
+    def test_response_extractor_prefers_nested_business_code(self):
+        with self.app.test_request_context():
+            response = self.app.response_class(
+                response='{"ok":true,"invoice":{"id":17,"order_no":"SPC/26-27/17"}}',
+                status=200, mimetype="application/json",
+            )
+            entity_id = activity_audit.activity_entity_id_from_response(response)
+        self.assertEqual(entity_id, "SPC/26-27/17")
+
+    def test_restaurant_and_bar_save_and_settle_log_order_no(self):
+        self._login_admin_session()
+        for base, order_no in (("/point-of-sale", "ORD-AUDIT-R"), ("/bar-point-of-sale", "ORD-AUDIT-B")):
+            saved = self.client.post(f"{base}/api/invoices", json=self._pos_payload(order_no))
+            self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+            invoice = saved.get_json()["invoice"]
+            row = self._activity_rows()[-1]
+            self.assertEqual(row["entity_id"], order_no)
+            self.assertIn(order_no, row["summary"])
+            settled = self.client.post(
+                f"{base}/api/invoices/{invoice['id']}/settle",
+                json={"payment_splits": [{"payment_method": "cash", "amount": invoice["grand_total"]}]},
+            )
+            self.assertEqual(settled.status_code, 200, settled.get_data(as_text=True))
+            row = self._activity_rows()[-1]
+            self.assertEqual(row["entity_id"], order_no)
+            self.assertIn(order_no, row["summary"])
+
+    def test_purchase_add_and_edit_log_expense_code(self):
+        self._login_admin_session()
+        conn = db_mod.get_db()
+        try:
+            cur = conn.execute("INSERT INTO suppliers (name, gst) VALUES (?, ?)", ("Audit Supplier", ""))
+            supplier_id = cur.lastrowid
+            conn.commit()
+        finally:
+            conn.close()
+        payload = {
+            "company": "HBE", "location": "Hotel", "date": "2026-09-03",
+            "description": "Audit purchase", "amount": 100, "payment_type": "credit",
+            "category": "grocery", "supplier_id": supplier_id, "invoice_number": "AUD-1",
+            "entry_kind": "purchase",
+        }
+        added = self.client.post("/accounts/purchase-ledger/add", json=payload)
+        self.assertEqual(added.status_code, 200, added.get_data(as_text=True))
+        body = added.get_json()
+        code = body["expense_code"]
+        self.assertEqual(self._activity_rows()[-1]["entity_id"], code)
+        edited = self.client.post(
+            "/accounts/purchase-ledger/edit", json={**payload, "id": body["expense_id"], "description": "Audit purchase edit"}
+        )
+        self.assertEqual(edited.status_code, 200, edited.get_data(as_text=True))
+        row = self._activity_rows()[-1]
+        self.assertEqual(row["entity_id"], code)
+        self.assertIn(code, row["summary"])
+
     def test_login_success_and_failure_create_activity_rows(self):
         with self.client.session_transaction() as sess:
             sess.clear()

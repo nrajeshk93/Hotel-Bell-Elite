@@ -4656,10 +4656,15 @@
     syncPosApiPaths();
     var root = document.getElementById('pos-tables-page');
     if (!root) return;
-    /* Soft-nav: paint cache first for speed, then refresh from SQLite API.
-       Do not persist the cached merge — a later API Available must win. */
+    /* Soft-nav: paint last floor snapshot synchronously so Tables feels instant,
+       then refresh from SQLite API. Do not persist the cached merge — a later
+       API Available must win. Workflow (KOT/settle) unchanged. */
     var cached = loadFloorDataCached();
-    paintTablesPage(root, cached);
+    if (cached && ((cached.tables && cached.tables.length) || (cached.areas && cached.areas.length))) {
+      paintTablesPage(root, cached);
+    } else {
+      paintTablesPage(root, cached || { areas: [], tables: [] });
+    }
     var cacheGen = floorLoadGen;
     mergePendingFloor(cached).then(function (merged) {
       if (!root.isConnected) return;

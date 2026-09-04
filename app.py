@@ -384,6 +384,27 @@ app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.jinja_env.auto_reload = True
 
 
+@app.url_defaults
+def _stamp_static_url_with_content_hash(endpoint, values):
+    """Make url_for('static', filename=...) hash itself.
+
+    Belt for the asset() brace: an agent (or a human) who writes the plain
+    url_for call still gets /static/foo.css?v=<hash>, so producing an
+    unversioned static URL is not something you have to remember not to do.
+    """
+    if endpoint != "static":
+        return
+    filename = values.get("filename")
+    if not filename or "v" in values:
+        return
+    try:
+        digest = current_static_hash(filename, app.static_folder)
+    except Exception:
+        return
+    if digest:
+        values["v"] = digest
+
+
 @app.template_global("asset")
 def asset(filename):
     """/static/<file>?v=<content-hash> stamped at render time.
@@ -6744,6 +6765,11 @@ def save_category_master():
     finally:
         conn.close()
 
+    category_ref = category_id_raw or payload.get("name")
+    activity_audit.set_activity_audit(
+        f"{'Update' if raw_id else 'Create'} category {category_ref} (category master save)",
+        entity_id=category_ref,
+    )
     redirect_kwargs = {"saved": "updated" if raw_id else "created"}
     if embed:
         redirect_kwargs["embed"] = 1
@@ -11509,6 +11535,21 @@ def hotel_invoice_ledger_settle_api(invoice_number):
             return jsonify({"ok": False, "error": str(exc)}), 400
     finally:
         conn.close()
+    inv = (result or {}).get("invoice") or {}
+    room = (result or {}).get("room") or {}
+    hotel_ref = (
+        inv.get("invoice_number")
+        or invoice_number
+        or room.get("room_id")
+        or room.get("id")
+    )
+    room_label = room.get("room_number") or room.get("room_id") or ""
+    activity_audit.set_activity_audit(
+        f"Settle hotel invoice {hotel_ref}"
+        + (f" · Room {room_label}" if room_label else "")
+        + " (hotel invoice ledger settle api)",
+        entity_id=hotel_ref,
+    )
     return jsonify(
         {
             "ok": True,
@@ -13700,6 +13741,24 @@ def point_of_sale_api_invoices_save():
         except Exception as exc:
             conn.rollback()
             return jsonify({"ok": False, "error": f"Could not save invoice: {exc}"}), 500
+        order_ref = saved.get("order_no") or saved.get("id")
+        table_ref = saved.get("table") or saved.get("table_label") or ""
+        item_names = [str(line.get("name") or "").strip() for line in (saved.get("lines") or [])]
+        item_text = ", ".join(name for name in item_names if name)[:180]
+        parts = [f"Update invoice {order_ref}"]
+        if table_ref:
+            parts.append(str(table_ref))
+        if item_text:
+            parts.append(item_text)
+        save_label = (
+            "bar point of sale api invoices save"
+            if outlet == "bar"
+            else "point of sale api invoices save"
+        )
+        activity_audit.set_activity_audit(
+            " · ".join(parts) + f" ({save_label})",
+            entity_id=order_ref,
+        )
         return jsonify({"ok": True, "invoice": saved})
     finally:
         conn.close()
@@ -13916,6 +13975,21 @@ def point_of_sale_api_invoice_settle(invoice_id):
         except ValueError as exc:
             conn.rollback()
             return jsonify({"ok": False, "error": str(exc)}), 400
+        order_ref = invoice.get("order_no") or invoice.get("id") or invoice_id
+        payment_label = invoice.get("payment_mode_label") or ""
+        amount = invoice.get("grand_total")
+        payment_text = f" · {payment_label}" if payment_label else ""
+        if amount not in (None, ""):
+            payment_text += f" · {amount}"
+        settle_label = (
+            "bar point of sale api invoice settle"
+            if outlet == "bar"
+            else "point of sale api invoice settle"
+        )
+        activity_audit.set_activity_audit(
+            f"Settle invoice {order_ref}{payment_text} ({settle_label})",
+            entity_id=order_ref,
+        )
         return jsonify({"ok": True, "invoice": invoice})
     finally:
         conn.close()
@@ -14056,6 +14130,21 @@ def point_of_sale_api_kot_tokens_reduce():
             return jsonify({"ok": False, "error": f"Could not save KOT changes: {exc}"}), 500
         tokens = list_pos_kot_tokens(conn, outlet)
         cancelled_count = sum(1 for inv in invoices if inv.get("cancelled"))
+        if invoices:
+            first = invoices[0]
+            order_ref = first.get("order_no") or first.get("id")
+            table_ref = first.get("table") or first.get("table_label") or ""
+            kot_label = (
+                "bar point of sale api kot tokens reduce"
+                if outlet == "bar"
+                else "point of sale api kot tokens reduce"
+            )
+            activity_audit.set_activity_audit(
+                f"Update KOT {order_ref}"
+                + (f" · {table_ref}" if table_ref else "")
+                + f" ({kot_label})",
+                entity_id=order_ref,
+            )
         return jsonify(
             {
                 "ok": True,
@@ -15886,6 +15975,10 @@ def purchase_ledger_add():
         conn.commit()
     finally:
         conn.close()
+    code = result.get("expense_code") or result.get("expense_id")
+    activity_audit.set_activity_audit(
+        f"Create purchase {code} (purchase ledger add)", entity_id=code
+    )
     return jsonify({"ok": True, **result})
 
 
@@ -16040,6 +16133,10 @@ def purchase_ledger_edit():
         conn.commit()
     finally:
         conn.close()
+    code = result.get("expense_code") or result.get("expense_id")
+    activity_audit.set_activity_audit(
+        f"Update purchase {code} (purchase ledger edit)", entity_id=code
+    )
     return jsonify({"ok": True, **result})
 
 
@@ -18048,6 +18145,10 @@ def save_sales_update():
             sales_entries["cash"] = round_half_up(cash_total, 2)
 
     totals = upsert_sales_row(user, company, location, sales_date, sales_entries, petty_cash_counts, cash_denomination_counts)
+    sales_ref = f"{location} · {sales_date}"
+    activity_audit.set_activity_audit(
+        f"Update sales {sales_ref} (sales update save)", entity_id=sales_ref
+    )
 
     return jsonify({
         "ok": True,
@@ -19865,6 +19966,10 @@ def save_supplier():
     finally:
         conn.close()
 
+    master_ref = saved_id or payload.get("name")
+    activity_audit.set_activity_audit(
+        f"{'Update' if supplier_id else 'Create'} supplier {master_ref} (supplier save)", entity_id=master_ref
+    )
     result_flag = "updated" if supplier_id else "created"
     redirect_kwargs = {"saved": result_flag}
     if embed:
@@ -20099,6 +20204,10 @@ def save_customer():
     finally:
         conn.close()
 
+    master_ref = saved_id or payload.get("first_name")
+    activity_audit.set_activity_audit(
+        f"{'Update' if customer_id else 'Create'} customer {master_ref} (customer save)", entity_id=master_ref
+    )
     result_flag = "updated" if customer_id else "created"
     redirect_kwargs = {"saved": result_flag}
     if is_embed_request():
@@ -20467,6 +20576,10 @@ def save_agency():
     finally:
         conn.close()
 
+    master_ref = saved_id or payload.get("name")
+    activity_audit.set_activity_audit(
+        f"{'Update' if agency_id else 'Create'} agency {master_ref} (agency save)", entity_id=master_ref
+    )
     result_flag = "updated" if agency_id else "created"
     redirect_kwargs = {"saved": result_flag}
     if is_embed_request():

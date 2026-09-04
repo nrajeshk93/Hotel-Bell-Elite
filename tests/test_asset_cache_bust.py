@@ -52,7 +52,154 @@ class TemplatePinTests(unittest.TestCase):
         )
 
 
+
+CDN_SCRIPT_PATTERNS = (
+    re.compile(r"""src=["']https?://[^"']*(?:unpkg\.com|cdn\.jsdelivr\.net|cdnjs\.cloudflare\.com|ajax\.googleapis\.com)""", re.I),
+    re.compile(r"""src=["']https?://[^"']*@latest[^"']*["']""", re.I),
+)
+
+
+class TemplateCdnScriptTests(unittest.TestCase):
+    def test_no_public_cdn_scripts_in_templates(self):
+        """App JS must be vendored under static/ and loaded via asset().
+
+        unpkg@latest Lucide hung Employee Payroll and Access Management when
+        the CDN stalled; soft-nav then looked like a cache bug.
+        """
+        offenders = []
+        for dirpath, dirs, files in os.walk(TEMPLATES_DIR):
+            dirs[:] = [d for d in dirs if d != "__pycache__"]
+            for fn in sorted(files):
+                if not fn.endswith(".html"):
+                    continue
+                path = os.path.join(dirpath, fn)
+                with io.open(path, encoding="utf-8") as fh:
+                    for lineno, line in enumerate(fh, 1):
+                        for pat in CDN_SCRIPT_PATTERNS:
+                            if pat.search(line):
+                                rel = os.path.relpath(path, PROJECT_ROOT)
+                                offenders.append(
+                                    "%s:%d: %s" % (rel, lineno, line.strip())
+                                )
+                                break
+        self.assertEqual(
+            offenders,
+            [],
+            "Public CDN <script> tags found. Vendor the file under static/ and "
+            "use {{ asset('file.js') }}:\n" + "\n".join(offenders),
+        )
+
+
+class SoftNavPrefetchPolicyTests(unittest.TestCase):
+    def test_idle_prefetch_is_light_hubs_only(self):
+        js_path = os.path.join(PROJECT_ROOT, "static", "de_workspace_transitions.js")
+        with io.open(js_path, encoding="utf-8") as fh:
+            src = fh.read()
+        # Extract the IDLE_PREFETCH_PATHS array body.
+        start = src.find("var IDLE_PREFETCH_PATHS = [")
+        self.assertGreaterEqual(start, 0, "IDLE_PREFETCH_PATHS missing")
+        end = src.find("];", start)
+        block = src[start:end]
+        forbidden = (
+            "/employees",
+            "/access-management",
+            "/point-of-sale",
+            "/hotel/rooms",
+            "/accounts",
+            "/stores/",
+            "/communication-hub",
+        )
+        for path in forbidden:
+            self.assertNotIn(
+                "'%s'" % path,
+                block,
+                "Do not idle-prefetch heavy module %s (see AGENTS.md)" % path,
+            )
+        for path in ("/home", "/main-dashboard", "/master", "/settings", "/license"):
+            self.assertIn("'%s'" % path, block)
+
+    def test_must_fetch_live_covers_payroll_and_access(self):
+        js_path = os.path.join(PROJECT_ROOT, "static", "de_workspace_transitions.js")
+        with io.open(js_path, encoding="utf-8") as fh:
+            src = fh.read()
+        self.assertIn("function mustFetchLiveSoftNavPath", src)
+        for needle in (
+            "/employees",
+            "/access-management",
+            "/point-of-sale/invoice-ledger",
+            "/accounts",
+            "/stores",
+            "/communication-hub",
+        ):
+            self.assertIn(needle, src, "mustFetchLiveSoftNavPath must mention %s" % needle)
+
+    def test_restaurant_shell_is_prefetchable(self):
+        """Blanket live-only on /point-of-sale made Restaurant wait on every open."""
+        js_path = os.path.join(PROJECT_ROOT, "static", "de_workspace_transitions.js")
+        with io.open(js_path, encoding="utf-8") as fh:
+            src = fh.read()
+        start = src.find("function mustFetchLiveSoftNavPath")
+        end = src.find("\n  function ", start + 10)
+        block = src[start:end]
+        self.assertNotIn(
+            "path === '/point-of-sale' || path.indexOf('/point-of-sale/') === 0",
+            block,
+        )
+        self.assertNotIn(
+            "path === '/bar-point-of-sale' || path.indexOf('/bar-point-of-sale/') === 0",
+            block,
+        )
+        self.assertIn("function syncSoftNavBuildId", src)
+        self.assertIn("function warmAssetsFromHtml", src)
+        self.assertIn("prefetchRestaurantGroup", src)
+
+
+
+class TemplateFontCdnTests(unittest.TestCase):
+    def test_no_google_fonts_in_templates_or_static_ui(self):
+        offenders = []
+        roots = (
+            TEMPLATES_DIR,
+            os.path.join(PROJECT_ROOT, "static"),
+        )
+        for root in roots:
+            for dirpath, dirs, files in os.walk(root):
+                dirs[:] = [d for d in dirs if d != "__pycache__"]
+                for fn in files:
+                    if not fn.endswith((".html", ".css", ".js")):
+                        continue
+                    path = os.path.join(dirpath, fn)
+                    with io.open(path, encoding="utf-8", errors="ignore") as fh:
+                        for lineno, line in enumerate(fh, 1):
+                            if "fonts.googleapis" in line or "fonts.gstatic" in line:
+                                rel = os.path.relpath(path, PROJECT_ROOT)
+                                offenders.append("%s:%d" % (rel, lineno))
+                                break
+        self.assertEqual(
+            offenders,
+            [],
+            "Google Fonts CDN found. Use partials/hbe_fonts.html / hbe_login_fonts.css:\n"
+            + "\n".join(offenders),
+        )
+
 class AssetHelperTests(unittest.TestCase):
+
+    def test_critical_module_warm_and_instant_shells(self):
+        js_path = os.path.join(PROJECT_ROOT, "static", "de_workspace_transitions.js")
+        with io.open(js_path, encoding="utf-8") as fh:
+            src = fh.read()
+        self.assertIn("function scheduleCriticalModuleWarm", src)
+        self.assertIn("function prefetchHotelGroup", src)
+        self.assertIn("function isInstantShellUrl", src)
+        self.assertIn("function warmAssetsFromHtml", src)
+        # Instant shells must include Restaurant Tables for lightning open.
+        start = src.find("function isInstantShellUrl")
+        end = src.find("\n  function ", start + 10)
+        block = src[start:end]
+        self.assertIn("'/point-of-sale'", block)
+        self.assertIn("'/hotel/rooms'", block)
+
+
     def setUp(self):
         import app as app_mod
 
@@ -100,6 +247,23 @@ class AssetHelperTests(unittest.TestCase):
             except OSError:
                 pass
             asset_digest.reset_digest()
+
+    def test_url_for_static_is_hashed_too(self):
+        # A plain url_for('static', ...) must be safe on its own, so nobody has
+        # to remember to reach for asset().
+        from flask import url_for
+
+        with self.app.test_request_context("/"):
+            url = url_for("static", filename="de_pwa.js")
+        expected = asset_digest.current_static_hash("de_pwa.js", self.static_dir)
+        self.assertEqual(url, "/static/de_pwa.js?v=%s" % expected)
+
+    def test_explicit_version_is_left_alone(self):
+        from flask import url_for
+
+        with self.app.test_request_context("/"):
+            url = url_for("static", filename="de_pwa.js", v="pinned")
+        self.assertEqual(url, "/static/de_pwa.js?v=pinned")
 
     def test_unknown_file_falls_back_to_plain_static_path(self):
         self.assertEqual(

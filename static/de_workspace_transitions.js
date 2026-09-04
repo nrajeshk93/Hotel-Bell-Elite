@@ -8,23 +8,12 @@
   var PREFETCH_TTL_MS = 90000;
   var PREFETCH_MAX = 48;
   var IDLE_PREFETCH_PATHS = [
+    /* Only light shell hubs. Heavy modules (POS, hotel rooms, accounts,
+       stores, access, payroll, communication) must never idle-prefetch —
+       a 90s soft-nav HTML snapshot after a deploy left pages spinning. */
     '/home',
     '/main-dashboard',
-    '/accounts',
-    '/accounts/purchase-ledger',
-    '/accounts/cash-ledger',
-    '/accounts/back-office-receipt',
     '/master',
-    '/stores/indent',
-    '/stores/orders',
-    '/point-of-sale',
-    '/point-of-sale/invoice',
-    '/hotel/rooms',
-    '/hotel/reservations',
-    '/communication-hub',
-    '/communication-hub/promotion',
-    '/access-management',
-    '/employees',
     '/settings',
     '/license'
   ];
@@ -35,6 +24,103 @@
   ];
   /** @type {Map<string, {html?: string, promise?: Promise<string>, ts: number}>} */
   var prefetchCache = new Map();
+  function clearSoftNavPrefetch(){
+    try{ prefetchCache.clear(); } catch(e){}
+  }
+  window.clearSoftNavPrefetch = clearSoftNavPrefetch;
+
+  /** Soft-nav HTML is only valid for the current app build. After a deploy the
+      content-hashed script URLs in a cached partial would be stale and the
+      page would load-then-open (or hang). Bind the cache to /hbe-build.json. */
+  var softNavBuildId = '';
+  var softNavBuildPollAt = 0;
+  function rememberSoftNavBuildId(id){
+    id = String(id || '').trim();
+    if(!id) return;
+    if(softNavBuildId && softNavBuildId !== id){
+      clearSoftNavPrefetch();
+    }
+    softNavBuildId = id;
+    try{ sessionStorage.setItem('hbe-soft-nav-build', id); } catch(e){}
+  }
+  function syncSoftNavBuildId(force){
+    var now = Date.now();
+    if(!force && softNavBuildPollAt && (now - softNavBuildPollAt) < 15000) return;
+    softNavBuildPollAt = now;
+    try{
+      var cached = sessionStorage.getItem('hbe-soft-nav-build') || '';
+      if(cached && !softNavBuildId) softNavBuildId = cached;
+    } catch(e){}
+    if(typeof fetch !== 'function') return;
+    fetch('/hbe-build.json', { cache: 'no-store', credentials: 'same-origin' })
+      .then(function(resp){ return resp && resp.ok ? resp.json() : null; })
+      .then(function(data){
+        if(data && data.cacheVersion) rememberSoftNavBuildId(data.cacheVersion);
+      })
+      .catch(function(){});
+  }
+  syncSoftNavBuildId(true);
+
+  function isInstantShellUrl(url){
+    try{
+      var path = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
+      return (
+        path === '/home' ||
+        path === '/main-dashboard' ||
+        path === '/point-of-sale' ||
+        path === '/bar-point-of-sale' ||
+        path === '/point-of-sale/invoice' ||
+        path === '/bar-point-of-sale/invoice' ||
+        path === '/point-of-sale/menu' ||
+        path === '/bar-point-of-sale/menu' ||
+        path === '/hotel/rooms' ||
+        path === '/hotel/reservations'
+      );
+    } catch(e){
+      return false;
+    }
+  }
+
+  function prefetchHotelGroup(){
+    if(!shouldSoftNavigate()) return;
+    syncSoftNavBuildId(false);
+    ['/hotel/rooms', '/hotel/reservations'].forEach(function(path){
+      try{
+        prefetchSoftNav(withSalesScope(new URL(path, window.location.origin).toString()));
+      } catch(e){}
+    });
+  }
+
+  var criticalWarmTimer = null;
+  var criticalWarmPass2 = null;
+  function scheduleCriticalModuleWarm(){
+    /* World-class open: warm Restaurant/Bar/Hotel shells in the background after
+       Home/Dashboard so the first click paints from cache (HTML + hashed JS).
+       Does not change settle/KOT/invoice workflows — prefetch only. */
+    if(!shouldSoftNavigate()) return;
+    function runWarm(){
+      try{ syncSoftNavBuildId(false); } catch(e0){}
+      try{ prefetchRestaurantGroup(); } catch(e1){}
+      try{ prefetchBarPosGroup(); } catch(e2){}
+      try{ prefetchHotelGroup(); } catch(e3){}
+    }
+    if(criticalWarmTimer){
+      try{ window.clearTimeout(criticalWarmTimer); } catch(e){}
+    }
+    criticalWarmTimer = window.setTimeout(runWarm, 180);
+    var ric = window.requestIdleCallback || null;
+    if(ric){
+      ric(function(){ runWarm(); }, { timeout: 900 });
+    }
+    if(!criticalWarmPass2){
+      criticalWarmPass2 = window.setTimeout(function(){
+        criticalWarmPass2 = null;
+        runWarm();
+      }, 1600);
+    }
+  }
+
+
   var softNavToken = 0;
   /** @type {AbortController|null} */
   var softNavAbort = null;
@@ -192,8 +278,46 @@
     }
   }
 
+  function warmAssetsFromHtml(html){
+    if(!html) return;
+    warmStylesheetsFromHtml(html);
+    var re = /<script[^>]+src=["']([^"']+)["'][^>]*>/gi;
+    var m;
+    while((m = re.exec(html))){
+      var src = m[1];
+      if(!src || src.indexOf('/static/') === -1) continue;
+      try{
+        if(document.querySelector('script[src="' + src + '"], link[rel="preload"][as="script"][href="' + src + '"]')) continue;
+        var pl = document.createElement('link');
+        pl.rel = 'preload';
+        pl.as = 'script';
+        pl.href = src;
+        document.head.appendChild(pl);
+      } catch(e){}
+    }
+  }
+
+  function warmPosShellAssets(outlet){
+    /* Prefer assets already stamped with the live content hash from a warm
+       soft-nav HTML snapshot — bare /static/foo.js would miss ?v=<hash>. */
+    try{
+      var paths = outlet === 'bar'
+        ? ['/bar-point-of-sale', '/bar-point-of-sale/invoice']
+        : ['/point-of-sale', '/point-of-sale/invoice'];
+      for(var i = 0; i < paths.length; i++){
+        var key = navCacheKey(withSalesScope(new URL(paths[i], window.location.origin).toString()));
+        var entry = prefetchCache.get(key);
+        if(entry && entry.html){
+          warmAssetsFromHtml(entry.html);
+          return;
+        }
+      }
+    } catch(e){}
+  }
+
   function prefetchRestaurantGroup(){
     if(!shouldSoftNavigate()) return;
+    syncSoftNavBuildId(false);
     var group = document.getElementById('de-nav-pos-group');
     if(!group) return;
     var links = group.querySelectorAll('a.de-nav-subitem[href]');
@@ -202,6 +326,7 @@
       if(!href || href.indexOf('javascript:') === 0) continue;
       prefetchSoftNav(withSalesScope(links[i].href || href));
     }
+    warmPosShellAssets('restaurant');
     // Warm Restaurant JSON + persist floor snapshot so first Tables soft-nav paints tiles.
     if(!window.__dePosApiWarm){
       window.__dePosApiWarm = true;
@@ -219,6 +344,7 @@
 
   function prefetchBarPosGroup(){
     if(!shouldSoftNavigate()) return;
+    syncSoftNavBuildId(false);
     var group = document.getElementById('de-nav-bar-pos-group');
     if(!group) return;
     var links = group.querySelectorAll('a.de-nav-subitem[href]');
@@ -227,6 +353,7 @@
       if(!href || href.indexOf('javascript:') === 0) continue;
       prefetchSoftNav(withSalesScope(links[i].href || href));
     }
+    warmPosShellAssets('bar');
     if(!window.__deBarPosApiWarm){
       window.__deBarPosApiWarm = true;
       warmPosFloorSnapshot(null, 'bar');
@@ -249,6 +376,9 @@
     }
     if(target.closest('#de-nav-bar-pos-group, #de-nav-bar-pos-toggle, #de-nav-bar-pos-sub')){
       prefetchBarPosGroup();
+    }
+    if(target.closest('#de-nav-hotel-group, #de-nav-hotel-toggle, #de-nav-hotel-sub')){
+      prefetchHotelGroup();
     }
     var link = target.closest('.de-sidebar a[href], .sidebar a[href], a[href]');
     if(!link) return;
@@ -694,24 +824,26 @@
   /** Lists that change after a write — never paint a hover-prefetch snapshot. */
   function mustFetchLiveSoftNavPath(path){
     path = String(path || '').replace(/\/$/, '') || '/';
-    return (
-      path === '/communication-hub' ||
-      path === '/communication-hub/promotion' ||
-      path === '/access-management/roles' ||
-      path === '/access-management/logs' ||
-      path === '/point-of-sale/invoice-ledger' ||
-      path === '/bar-point-of-sale/invoice-ledger' ||
-      path === '/hotel/invoice-ledger' ||
-      path === '/hotel/room-transfer-invoices' ||
-      path === '/hotel/credit' ||
-      path === '/credits' ||
-      path.indexOf('/credits/') === 0 ||
-      path === '/point-of-sale/settings' ||
-      path === '/bar-point-of-sale/settings' ||
-      path === '/hotel/settings' ||
-      /* Sales reports (agency billing, invoice sales, etc.) change as invoices settle. */
-      path.indexOf('/reports/sales/') === 0
-    );
+    /* Live-only lists (mutation / deploy hang risk). Shell pages like Restaurant
+       Tables, Invoice, Menu, and Hotel Rooms MUST stay prefetchable so soft-nav
+       is instant — floor/occupancy still refreshes from API after paint.
+       Keep this list in sync with AGENTS.md. */
+    if(path === '/employees' || path.indexOf('/employees/') === 0) return true;
+    if(path === '/attendance_overview' || path === '/attendance_date' || path.indexOf('/attendance/') === 0) return true;
+    if(path === '/credits' || path.indexOf('/credits/') === 0) return true;
+    if(path === '/sales_update/tips' || path === '/report') return true;
+    if(path === '/access-management' || path.indexOf('/access-management/') === 0) return true;
+    /* POS: only mutation-sensitive subpages — not Tables/Invoice/Menu shells. */
+    if(path === '/point-of-sale/invoice-ledger' || path === '/bar-point-of-sale/invoice-ledger') return true;
+    if(path === '/point-of-sale/sales-update' || path === '/bar-point-of-sale/sales-update') return true;
+    if(path === '/point-of-sale/settings' || path === '/bar-point-of-sale/settings') return true;
+    if(path === '/hotel/invoice-ledger' || path === '/hotel/room-transfer-invoices' || path === '/hotel/credit') return true;
+    if(path === '/hotel/settings') return true;
+    if(path === '/accounts' || path.indexOf('/accounts/') === 0) return true;
+    if(path === '/stores' || path.indexOf('/stores/') === 0) return true;
+    if(path === '/communication-hub' || path.indexOf('/communication-hub/') === 0) return true;
+    if(path.indexOf('/reports/sales/') === 0) return true;
+    return false;
   }
 
   function invalidatePrefetch(url){
@@ -764,9 +896,10 @@
     }
     prefetchCache.set(key, { html: html, ts: Date.now() });
     prunePrefetchCache();
-    /* Warm destination stylesheets early so soft-nav does not paint before CSS. */
+    /* Warm destination CSS + JS (content-hashed URLs) so Restaurant/Bar open
+       without sitting on the loading bar after an update. */
     try{
-      warmStylesheetsFromHtml(html);
+      warmAssetsFromHtml(html);
     } catch(e){}
   }
 
@@ -800,6 +933,7 @@
     if(!url || !shouldSoftNavigate()) return;
     if(isEmbedFragmentUrl(url)) return;
     if(isLogoutUrl(url)) return;
+    syncSoftNavBuildId(false);
     url = withSalesScope(url);
     url = urlWithPosSettingsSection(url);
     if(sameAppUrl(url, window.location.href)) return;
@@ -852,7 +986,20 @@
     }
   }
 
+
+  function isPayrollSoftNavPath(url){
+    /* Alias kept for call sites; live-only policy lives in mustFetchLiveSoftNavPath. */
+    try{
+      var path = new URL(url, window.location.href).pathname || '';
+      return mustFetchLiveSoftNavPath(path);
+    } catch(e){
+      return false;
+    }
+  }
+
   function takePrefetchedHtml(url){
+    syncSoftNavBuildId(false);
+    if(isPayrollSoftNavPath(url)) return null;
     var key = navCacheKey(url);
     var entry = prefetchCache.get(key);
     if(!entry){
@@ -2411,6 +2558,13 @@
             try{ history.replaceState({ deSoftNav: true }, '', syncUrl); } catch(err){}
           }
         }
+        /* Instant shells: hide the loading bar as soon as DOM is painted.
+           Scripts still run; POS paints floor from snapshot then refreshes API.
+           Workflow (settle/KOT) unchanged — only perceived wait is removed. */
+        if(isInstantShellUrl(url)){
+          markMainLoading(false);
+          hideSoftNavProgress();
+        }
         runScriptNodes(content.scripts, function(){
           if(!isCurrentSoftNav(navToken)) return;
           try{
@@ -2423,8 +2577,8 @@
             finishSoftNavUi(done, navToken);
             endSoftNavigatingClass();
             try{ playMainEnterReveal(curMain); } catch(eReveal){}
-            /* Re-warm common destinations after each open (prefetch is no longer one-shot). */
             try{ idlePrefetchSidebarDestinations(); } catch(e2){}
+            try{ scheduleCriticalModuleWarm(); } catch(e3){}
           }
         });
       };
@@ -2575,6 +2729,9 @@
   function softNavigate(url, done){
     var nav = beginSoftNavGeneration();
     setSoftNavFlag(true);
+    if(isPosTablesUrl(url)){
+      try{ warmPosFloorSnapshot(null, (String(url).indexOf('/bar-point-of-sale') >= 0) ? 'bar' : 'restaurant'); } catch(eWarm){}
+    }
     markMainLoading(true);
     /* First soft-nav in a session previously lacked this class until after reveal,
        so opacity:0 enter styles could still paint a plain box on first module open. */
@@ -2783,6 +2940,7 @@
       // Immediate sidebar feedback — old main stays visible until HTML arrives (no blank veil).
       try{ syncSidebarActiveFromUrl(url); } catch(e){}
       if(!prefetchHtmlReady(url)) showSoftNavProgress();
+      else if(isInstantShellUrl(url)) hideSoftNavProgress();
       softNavigate(url, hideSoftNavProgress);
       return;
     }
@@ -2969,6 +3127,7 @@
       try{ syncSidebarActiveFromUrl(url); } catch(e){}
     }
     if(!prefetchHtmlReady(url)) showSoftNavProgress();
+    else if(isInstantShellUrl(url)) hideSoftNavProgress();
     softNavigate(url, hideSoftNavProgress);
   };
   window.deInvalidateSoftNavCache = invalidatePrefetch;
@@ -3132,6 +3291,7 @@
       });
       prefetchRestaurantGroup();
       prefetchBarPosGroup();
+      prefetchHotelGroup();
       /* Module CSS is warmed from real page HTML (content-hashed URLs).
          nginx serves this file from disk, so a hardcoded ?v= list would overlay
          stale sheets on the live ones. Do not inject CSS from a baked URL list. */
@@ -3194,6 +3354,7 @@
     }catch(e){}
     syncMissingSidebarModules();
     idlePrefetchSidebarDestinations();
+    scheduleCriticalModuleWarm();
   }
 
   if(document.readyState === 'loading'){
