@@ -15,6 +15,13 @@ pre-commit hook rather than by memory.
 - `mobile_kivy/tests` is a separate app tree and fails to collect from the repo
   root. Run `pytest tests` and not bare `pytest`.
 
+
+## Local `python app.py` (port 8002)
+
+- Keep `FLASK_DEBUG=0` in `.env` unless you explicitly want Flask’s auto-reloader.
+- `FLASK_DEBUG=1` spawns **two** processes and constantly watches the project tree — that shows up in the terminal as repeated scanning.
+- Prefer `.venv/bin/python app.py` so `python-dotenv` loads `.env`.
+
 ## Static assets: never hand-write a version
 
 Production serves `/static/` from nginx (currently `no-store` / CDN bypass) with
@@ -28,6 +35,7 @@ nginx caching is ever re-enabled.
 - Never write `?v=<number>` yourself. This is the single most repeated
   production bug in this codebase; a hand-maintained version is stale the
   instant the file changes.
+- In JS source, never hardcode `?v=<number>` either — use a bare `/static/file.js` path (the HTML/JS rewrite stamps the live hash). `tests/test_asset_cache_bust.py` also guards this.
 - `tests/test_asset_cache_bust.py` enforces this. If it fails, fix the template,
   never the test.
 
@@ -89,3 +97,11 @@ loading bar every open.
 - The repository owner makes the commits. Do not commit, amend, or push unless
   explicitly asked.
 - Enable the shared hooks once per clone: `git config core.hooksPath .githooks`.
+
+## PWA offline / online
+- Service Worker Cache Storage: **static + offline shells only**. Never cache business/API JSON.
+- Floor + menu APIs are **NetworkOnly**; offline POS uses IndexedDB (`pos_offline.js`) + floor snapshots.
+- On `online`, `HbeOfflineSync.runReconnect` is the single path: `PURGE_DATA_CACHES` → flush outbox → refresh menu catalog → refetch floor → `hbe:online-sync`.
+- Keep floor snapshots if sync/floor fetch fails (never blank Tables).
+- Settle Bill stays online-only; offline banner must say so.
+

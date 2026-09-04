@@ -58,6 +58,7 @@ PRECACHE_STATIC = (
     "pos_invoice.css",
     "pos_invoice.js",
     "pos_offline.js",
+    "hbe_offline_sync.js",
     "ep_form_listbox.js",
     "de_workspace_nav.js",
     "de_workspace_transitions.js",

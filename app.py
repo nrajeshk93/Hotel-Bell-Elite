@@ -14151,6 +14151,7 @@ def point_of_sale_api_kot_tokens_reduce():
                 "updated_count": len(invoices),
                 "cancelled_count": cancelled_count,
                 "invoices": invoices,
+                "cancellations": result.get("cancellations") or [],
                 **tokens,
             }
         )

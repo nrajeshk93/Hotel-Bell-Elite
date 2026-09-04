@@ -168,8 +168,93 @@
       .catch(function () {});
   }
 
+
+  function askServiceWorker(type, timeoutMs) {
+    return new Promise(function (resolve) {
+      var worker =
+        (navigator.serviceWorker && navigator.serviceWorker.controller) || null;
+      if (!worker || typeof MessageChannel === 'undefined') {
+        resolve(false);
+        return;
+      }
+      var settled = false;
+      var channel = new MessageChannel();
+      var timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        resolve(false);
+      }, timeoutMs || 2500);
+      channel.port1.onmessage = function (event) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(!!(event && event.data && event.data.ok));
+      };
+      try {
+        worker.postMessage({ type: type }, [channel.port2]);
+      } catch (e) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(false);
+      }
+    });
+  }
+
+  function clearFloorSnapshots() {
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem('hbe_pos_floor_snapshot');
+        sessionStorage.removeItem('hbe_pos_floor_snapshot_bar');
+        sessionStorage.removeItem('hbe_pos_floor_snapshot_local');
+        sessionStorage.removeItem('hbe_pos_floor_snapshot_bar_local');
+      }
+    } catch (e) {}
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('hbe_pos_floor_snapshot');
+        localStorage.removeItem('hbe_pos_floor_snapshot_bar');
+      }
+    } catch (e2) {}
+  }
+
+  /**
+   * Offline→online: drop soft-nav HTML, SW runtime HTML/API leftovers, and
+   * floor snapshots so the next paint is from the live server + IndexedDB sync.
+   */
+  function onReconnectFresh() {
+    if (window.HbeOfflineSync && typeof window.HbeOfflineSync.runReconnect === 'function') {
+      return window.HbeOfflineSync.runReconnect({ source: 'de_pwa' });
+    }
+    /* Fallback if sync module not on this page (login shell). */
+    try {
+      if (typeof window.clearSoftNavPrefetch === 'function') {
+        window.clearSoftNavPrefetch();
+      }
+    } catch (e) {}
+    clearFloorSnapshots();
+    return askServiceWorker('PURGE_DATA_CACHES', 3000).finally(function () {
+      try {
+        window.dispatchEvent(
+          new CustomEvent('hbe:online-sync', { detail: { source: 'de_pwa' } })
+        );
+      } catch (e2) {}
+    });
+  }
+
+  function bindOnlineFreshSync() {
+    if (window.__hbeOnlineFreshBound) return;
+    window.__hbeOnlineFreshBound = true;
+    /* POS pages own reconnect via HbeOfflineSync.bind; elsewhere still purge. */
+    window.addEventListener('online', function () {
+      if (window.HbeOfflineSync && window.__hbeOfflineSyncBound) return;
+      onReconnectFresh();
+    });
+  }
+
   function register() {
     bindReloadOnUpdate();
+    bindOnlineFreshSync();
 
     navigator.serviceWorker
       .register('/sw.js', { scope: '/', updateViaCache: 'none' })
@@ -216,6 +301,7 @@
 
   window.__dePwaPruneStaleAppCaches = pruneStaleAppCaches;
   window.__dePwaPruneStalePosCaches = pruneStaleAppCaches;
+  window.__hbeOnReconnectFresh = onReconnectFresh;
 
   if (document.readyState === 'complete') {
     register();

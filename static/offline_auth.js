@@ -325,6 +325,13 @@
   function putCachedHtml(path, html) {
     if (!global.caches || !htmlLooksLikeAppShell(html)) return Promise.resolve(false);
     var key = String(path || HOME_PATH);
+    /* Only login/home shells — never stash reports/ledgers into SW cache. */
+    var allowed =
+      key === '/' ||
+      key === '/login' ||
+      key === HOME_PATH ||
+      key.indexOf('/static/offline_login.html') === 0;
+    if (!allowed) return Promise.resolve(false);
     return resolveAppCacheName()
       .then(function (name) {
         return caches.open(name || 'hbe-app-offline').then(function (cache) {
@@ -630,9 +637,9 @@
         event.preventDefault();
         event.stopPropagation();
         try {
-          global.location.replace('/static/offline_login.html?v=10');
+          global.location.replace('/static/offline_login.html');
         } catch (err) {
-          global.location.href = '/static/offline_login.html?v=10';
+          global.location.href = '/static/offline_login.html';
         }
       },
       true

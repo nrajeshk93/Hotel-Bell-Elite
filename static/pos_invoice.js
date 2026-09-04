@@ -593,7 +593,7 @@
     banner.hidden = !offline;
     if (offline) {
       banner.textContent =
-        'Offline — orders save on this device and sync when you are back online. Use HTTPS and install the app; open POS once online so menus stay available during brief disconnects.';
+        'Offline — Restaurant/Bar orders save on this device and sync when you reconnect. Settle Bill needs internet. Open POS once online so menus stay available offline.';
     }
   }
 
@@ -725,9 +725,28 @@
     offlineFlushBound = true;
     global.addEventListener('online', function () {
       updateOfflineBanner();
-      flushOfflineOutbox();
+      var run =
+        global.HbeOfflineSync && typeof global.HbeOfflineSync.runReconnect === 'function'
+          ? global.HbeOfflineSync.runReconnect({ source: 'pos-invoice' })
+          : flushOfflineOutbox();
+      Promise.resolve(run).then(function (summary) {
+        var page = document.getElementById('pos-invoice-page');
+        if (page) {
+          syncSelectedTableOrderFromServer(page);
+          if (typeof loadMenuCatalog === 'function') loadMenuCatalog(function () {});
+          updateSettleBillButton(page);
+        }
+        return summary;
+      });
+    });
+    global.addEventListener('hbe:online-sync', function () {
+      updateOfflineBanner();
       var page = document.getElementById('pos-invoice-page');
-      if (page) syncSelectedTableOrderFromServer(page);
+      if (page) {
+        syncSelectedTableOrderFromServer(page);
+        if (typeof loadMenuCatalog === 'function') loadMenuCatalog(function () {});
+        updateSettleBillButton(page);
+      }
     });
     global.addEventListener('offline', function () {
       updateOfflineBanner();
@@ -3933,12 +3952,22 @@
   function updateSettleBillButton(page) {
     var btn = $('#pos-inv-settle-bill', page) || $('#pos-inv-close-table', page);
     if (!btn) return;
-    btn.hidden = !(
+    var canShow = !!(
       state.invoiceGenerated &&
       state.invoiceId &&
       state.lines &&
       state.lines.length
     );
+    btn.hidden = !canShow;
+    var online = isBrowserOnline();
+    btn.disabled = !canShow || !online;
+    if (!online && canShow) {
+      btn.setAttribute('aria-disabled', 'true');
+      btn.title = 'Settle Bill needs an internet connection';
+    } else if (canShow) {
+      btn.removeAttribute('aria-disabled');
+      btn.title = 'Settle Bill';
+    }
   }
 
   function updateGenerateInvoiceButton(page) {

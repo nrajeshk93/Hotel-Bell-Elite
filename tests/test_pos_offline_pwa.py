@@ -48,7 +48,8 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("Only POS + precache shells", body)
         self.assertNotIn("Runtime network-first for page CSS/JS", body)
         self.assertIn("networkOnlyFloor", body)
-        self.assertIn("Occupancy may be slightly stale offline", body)
+        self.assertIn("PURGE_DATA_CACHES", body)
+        self.assertIn("NetworkOnly", body)
         self.assertIn("networkFirstHtml", body)
         self.assertIn("shouldCacheHtmlPath", body)
         self.assertIn('"/static/de_pwa.js":', body)
@@ -87,6 +88,14 @@ class AppShellPwaTests(unittest.TestCase):
         )
         self.assertIn("/point-of-sale/api/menu/items", body)
         self.assertIn("/point-of-sale/api/floor", body)
+        # Business/API JSON must not be written into Cache Storage.
+        nf = body[body.find("function networkFirst") : body.find("function putHtmlCache")]
+        self.assertNotIn("cache.put", nf)
+        floor_fn = body[
+            body.find("function networkOnlyFloor") : body.find("function networkFirst")
+        ]
+        self.assertNotIn("caches.match", floor_fn)
+        self.assertNotIn("cache.put", floor_fn)
 
     def test_offline_login_shell_is_public(self):
         resp = self.client.get("/static/offline_login.html")
@@ -161,6 +170,11 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("bindReloadOnUpdate", body)
         self.assertIn("setInterval(onVisible, 15000)", body)
         self.assertNotIn("navigator.onLine === false", body)
+        self.assertIn("PURGE_DATA_CACHES", body)
+        self.assertIn("onReconnectFresh", body)
+        self.assertIn("hbe:online-sync", body)
+        self.assertIn("bindOnlineFreshSync", body)
+        self.assertIn("HbeOfflineSync", body)
 
     def test_pos_offline_has_seven_day_prune(self):
         resp = self.client.get("/static/pos_offline.js")
@@ -280,6 +294,47 @@ class AppShellPwaTests(unittest.TestCase):
         precache = body.split("var PRECACHE")[1].split("var API_CACHE")[0]
         self.assertNotIn("'/home'", precache)
         self.assertNotIn("/point-of-sale/invoice", precache)
+
+
+class OfflineSyncOrchestratorTests(unittest.TestCase):
+    def test_orchestrator_module_is_public(self):
+        import app as app_mod
+
+        client = app_mod.app.test_client()
+        resp = client.get("/static/hbe_offline_sync.js")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_data(as_text=True)
+        resp.close()
+        self.assertIn("HbeOfflineSync", body)
+        self.assertIn("runReconnect", body)
+        self.assertIn("PURGE_DATA_CACHES", body)
+        self.assertIn("refreshMenuCatalog", body)
+        self.assertIn("refreshFloorFromServer", body)
+        self.assertIn("hbe:online-sync", body)
+        self.assertIn("PERIOD_MS", body)
+
+    def test_pos_pages_include_orchestrator(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for rel in (
+            "templates/point_of_sale_invoice.html",
+            "templates/point_of_sale.html",
+        ):
+            with open(os.path.join(root, rel), encoding="utf-8") as fh:
+                html = fh.read()
+            self.assertIn("hbe_offline_sync.js", html, rel)
+        with open(os.path.join(root, "asset_digest.py"), encoding="utf-8") as fh:
+            digest = fh.read()
+        self.assertIn('"hbe_offline_sync.js"', digest)
+
+    def test_offline_auth_only_caches_shell_paths(self):
+        path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "static", "offline_auth.js"
+        )
+        with open(path, encoding="utf-8") as fh:
+            js = fh.read()
+        self.assertIn("Only login/home shells", js)
+        self.assertIn("never stash reports", js)
+
 
 
 class AssetDigestFreshnessTests(unittest.TestCase):

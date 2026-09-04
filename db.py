@@ -6153,6 +6153,7 @@ def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, cre
         raise ValueError("Enter a reason for reducing or cancelling kitchen items.")
 
     updated = []
+    cancellations = []
     for invoice_id, line_map in by_invoice.items():
         invoice = get_pos_invoice(conn, invoice_id)
         if not invoice:
@@ -6166,6 +6167,7 @@ def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, cre
             raise ValueError("Only open invoices can be updated from Kitchen Order Tokens.")
 
         bill_sent = bool(invoice.get("customer_bill_sent"))
+        table_label = invoice.get("table") or invoice.get("table_label") or ""
         next_lines = []
         changed = False
         invoice_has_reduction = False
@@ -6226,6 +6228,22 @@ def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, cre
 
             invoice_has_reduction = True
             delta = old_sent - new_sent
+            cancellations.append(
+                {
+                    "invoice_id": invoice_id,
+                    "order_no": invoice.get("order_no") or "",
+                    "table": table_label,
+                    "table_label": table_label,
+                    "order_type": invoice.get("order_type") or "dine_in",
+                    "line_id": lid,
+                    "name": (line.get("name") or "").strip(),
+                    "variant": (line.get("variant") or "").strip(),
+                    "notes": (line.get("notes") or "").strip(),
+                    "outlet": normalize_pos_outlet(line.get("outlet")),
+                    "cancel_qty": _pos_money(delta),
+                    "reason": reason_text,
+                }
+            )
             new_qty = old_qty - delta
             if new_qty <= 1e-9:
                 changed = True
@@ -6252,7 +6270,6 @@ def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, cre
 
         if not changed:
             continue
-        table_label = invoice.get("table") or invoice.get("table_label") or ""
         if not next_lines:
             # Full kitchen cancel — void via cancel_pos_invoice so generated /
             # official numbers stay as status=cancelled (KOT report) and drafts soft-delete.
@@ -6342,6 +6359,7 @@ def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, cre
         "updated_count": len(updated),
         "cancelled_count": cancelled_count,
         "invoices": updated,
+        "cancellations": cancellations,
     }
 
 

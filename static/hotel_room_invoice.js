@@ -18,7 +18,7 @@
   var CGST_RATE = 0.025;
   var UGST_RATE = 0.025;
   var SGST_RATE = UGST_RATE;
-  var CSS_HREF = '/static/hotel_room_invoice.css?v=25';
+  var CSS_HREF = '/static/hotel_room_invoice.css';
 
   function absoluteAssetUrl(path) {
     var raw = String(path || '').trim();

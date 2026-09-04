@@ -221,6 +221,7 @@
     var when = opts.when instanceof Date ? opts.when : new Date();
     var items = Array.isArray(opts.items) ? opts.items : [];
     var isResend = !!opts.resend;
+    var isCancel = !!opts.cancel;
     var rule = kotRule();
     var lines = [
       kotCenter(meta.brand),
@@ -234,12 +235,23 @@
       'User : ' + meta.userLabel,
       rule
     ];
-    if (isResend) {
-      lines.push(kotCenter('REPRINT / RESEND'));
+    if (isCancel) {
+      lines.push(kotCenter('CANCEL / VOID'));
+      lines.push(rule);
+      lines.push(kotCenter('CANCEL ORDER TICKET'));
+      lines.push(rule);
+      if (opts.reason) {
+        lines.push('Reason : ' + String(opts.reason).trim());
+        lines.push(rule);
+      }
+    } else {
+      if (isResend) {
+        lines.push(kotCenter('REPRINT / RESEND'));
+        lines.push(rule);
+      }
+      lines.push(kotCenter('ORDER TICKET'));
       lines.push(rule);
     }
-    lines.push(kotCenter('ORDER TICKET'));
-    lines.push(rule);
     lines.push(kotPad('Items', 'Qty'));
     lines.push(rule);
     var totalQty = 0;
@@ -290,6 +302,7 @@
     var when = opts.when instanceof Date ? opts.when : new Date();
     var items = Array.isArray(opts.items) ? opts.items : [];
     var isResend = !!opts.resend;
+    var isCancel = !!opts.cancel;
     var rule = kotRule();
     var parts = [];
 
@@ -342,20 +355,40 @@
     line('Kitchen : ' + meta.kitchenLabel);
     line('User : ' + meta.userLabel);
     line(rule);
-    if (isResend) {
+    if (isCancel) {
+      center(true);
+      textStyle({ bold: true, doubleH: true });
+      line('CANCEL / VOID');
+      textStyle({ bold: true });
+      line('CANCEL ORDER TICKET');
+      textStyle({});
+      center(false);
+      line(rule);
+      if (opts.reason) {
+        line('Reason : ' + String(opts.reason).trim());
+        line(rule);
+      }
+    } else if (isResend) {
       center(true);
       textStyle({ bold: true });
       line('REPRINT / RESEND');
       textStyle({});
       center(false);
       line(rule);
+      center(true);
+      textStyle({ bold: true });
+      line('ORDER TICKET');
+      textStyle({});
+      center(false);
+      line(rule);
+    } else {
+      center(true);
+      textStyle({ bold: true });
+      line('ORDER TICKET');
+      textStyle({});
+      center(false);
+      line(rule);
     }
-    center(true);
-    textStyle({ bold: true });
-    line('ORDER TICKET');
-    textStyle({});
-    center(false);
-    line(rule);
     textStyle({ bold: true });
     line(kotPad('Items', 'Qty'));
     textStyle({});

@@ -14,6 +14,7 @@ Covers:
 """
 
 import os
+from pathlib import Path
 import tempfile
 import unittest
 from datetime import date, timedelta
@@ -1468,6 +1469,12 @@ class PosTableOccupancyTests(unittest.TestCase):
         body = reduce.get_json()
         self.assertTrue(body.get("ok"))
         self.assertEqual(int(body.get("updated_count") or 0), 1)
+        cancellations = body.get("cancellations") or []
+        self.assertEqual(len(cancellations), 1)
+        self.assertEqual(cancellations[0].get("name"), "Filter Coffee")
+        self.assertEqual(float(cancellations[0].get("cancel_qty") or 0), 1.0)
+        self.assertEqual(cancellations[0].get("reason"), "Guest changed mind on coffee")
+        self.assertIn(cancellations[0].get("outlet"), ("restaurant", "bar"))
 
         detail = self.client.get(f"/point-of-sale/api/invoices/{invoice_id}").get_json()
         inv = detail.get("invoice") or {}
@@ -1480,6 +1487,27 @@ class PosTableOccupancyTests(unittest.TestCase):
         refreshed = {t["name"]: t for t in (body.get("tables") or [])}
         self.assertIn("T1", refreshed)
         self.assertEqual(int(refreshed["T1"]["sent_qty"]), 2)
+
+
+    def test_kot_cancel_print_wiring_in_static_sources(self):
+        """Cancel KOT print path must exist; normal send/resend banners must stay."""
+        printers = (Path(__file__).resolve().parents[1] / "static" / "pos_printers.js").read_text(
+            encoding="utf-8"
+        )
+        tables = (Path(__file__).resolve().parents[1] / "static" / "pos_tables.js").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("CANCEL / VOID", printers)
+        self.assertIn("CANCEL ORDER TICKET", printers)
+        self.assertIn("var isCancel = !!opts.cancel", printers)
+        self.assertIn("function printKotCancelTickets", tables)
+        self.assertIn("printKotCancelTickets(cancellations)", tables)
+        # Normal send path must not force cancel
+        invoice_js = (Path(__file__).resolve().parents[1] / "static" / "pos_invoice.js").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("function printKotTicket", invoice_js)
+        self.assertNotIn("cancel: true", invoice_js)
 
     def test_kot_tokens_reduce_api_requires_kot_cancellation_access(self):
         save = self.client.post(

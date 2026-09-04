@@ -1,9 +1,9 @@
 /* Hotel Bell Elite — whole-app shell service worker.
- * Network-first everywhere we intercept so online stays fast/fresh.
- * Cache Storage is a fallback for offline + brief disconnects.
- * CACHE_VERSION is a content hash; activate drops every older cache name.
- * Floor APIs are never cached — occupancy must not go stale.
- * POS menu GETs stay network-first; mutation APIs are not intercepted. */
+ * Cache Storage is for STATIC assets + offline login/POS shells only.
+ * Business/API JSON is NetworkOnly — never written to Cache Storage.
+ * After reconnect, clients send PURGE_DATA_CACHES so HTML/API leftovers cannot
+ * paint over fresh server data. CACHE_VERSION drops older cache names on activate.
+ * Floor + menu APIs are NetworkOnly; mutation APIs are not intercepted. */
 /* CACHE_VERSION / PRECACHE / aliases are filled by asset_digest when Flask
  * serves /sw.js. Session HTML is not precached — only hashed static + offline login. */
 var CACHE_VERSION = '__HBE_CACHE_VERSION__';
@@ -12,7 +12,7 @@ var OFFLINE_AUTH_URL = '__HBE_OFFLINE_AUTH_URL__';
 var CRITICAL_STATIC_ALIASES = __HBE_CRITICAL_ALIASES__;
 var PRECACHE = __HBE_PRECACHE__;
 
-/* Menu catalog only — never floor (occupied status must not go stale). */
+/* Menu catalog APIs — intercepted as NetworkOnly (IndexedDB holds offline catalog). */
 var API_CACHE_PATHS = [
   '/point-of-sale/api/menu/items',
   '/point-of-sale/api/menu/categories',
@@ -88,6 +88,43 @@ self.addEventListener('message', function (event) {
     var port = event.ports && event.ports[0];
     if (port) {
       port.postMessage({ cacheVersion: CACHE_VERSION });
+    }
+    return;
+  }
+  /* Drop non-static runtime entries after reconnect so stale HTML/API cannot win. */
+  if (event.data.type === 'PURGE_DATA_CACHES') {
+    var done = caches.open(CACHE_VERSION).then(function (cache) {
+      return cache.keys().then(function (keys) {
+        return Promise.all(
+          keys.map(function (req) {
+            var path = '';
+            try {
+              path = new URL(req.url).pathname || '';
+            } catch (e) {
+              return cache.delete(req);
+            }
+            if (path.indexOf('/static/') === 0) return null;
+            if (path === '/sw.js') return null;
+            return cache.delete(req);
+          })
+        );
+      });
+    });
+    if (event.waitUntil) {
+      try {
+        event.waitUntil(done);
+      } catch (e2) {}
+    }
+    var reply = event.ports && event.ports[0];
+    if (reply) {
+      done.then(
+        function () {
+          reply.postMessage({ ok: true, type: 'PURGE_DATA_CACHES' });
+        },
+        function () {
+          reply.postMessage({ ok: false, type: 'PURGE_DATA_CACHES' });
+        }
+      );
     }
   }
 });
@@ -215,63 +252,32 @@ self.addEventListener('fetch', function (event) {
 });
 
 function networkOnlyFloor(req) {
-  /* GET: network-first with cache fallback so offline Tables can show layout.
-     Occupancy may be slightly stale offline — better than an empty floor. */
-  if (req.method && String(req.method).toUpperCase() !== 'GET') {
-    return fetch(req, { cache: 'no-store' })
-      .then(function (res) {
-        return res;
-      })
-      .catch(function () {
-        return Response.json(
-          { ok: false, error: 'offline', offline: true },
-          { status: 503 }
-        );
-      });
-  }
-  /* Do not cache occupancy. Offline Tables paints from the local snapshot + outbox. */
+  /* NetworkOnly — never read/write Cache Storage for occupancy.
+     Offline Tables paints from IndexedDB/session snapshot + outbox. */
   return fetch(req, { cache: 'no-store' })
     .then(function (res) {
       return res;
     })
     .catch(function () {
-      return caches.match(req).then(function (cached) {
-        if (cached) return cached;
-        try {
-          return caches.match(new URL(req.url).pathname).then(function (byPath) {
-            return (
-              byPath ||
-              Response.json(
-                { ok: false, error: 'offline', offline: true },
-                { status: 503 }
-              )
-            );
-          });
-        } catch (e2) {
-          return Response.json(
-            { ok: false, error: 'offline', offline: true },
-            { status: 503 }
-          );
-        }
-      });
+      return Response.json(
+        { ok: false, error: 'offline', offline: true },
+        { status: 503 }
+      );
     });
 }
 
 function networkFirst(req) {
-  return fetch(req)
+  /* Kept name for tests; behavior is NetworkOnly for business/API JSON.
+     Offline menu comes from IndexedDB catalog, not Cache Storage. */
+  return fetch(req, { cache: 'no-store' })
     .then(function (res) {
-      if (res && res.ok) {
-        var copy = res.clone();
-        caches.open(CACHE_VERSION).then(function (cache) {
-          cache.put(req, copy);
-        });
-      }
       return res;
     })
     .catch(function () {
-      return caches.match(req).then(function (cached) {
-        return cached || Response.json({ ok: false, error: 'offline', offline: true }, { status: 503 });
-      });
+      return Response.json(
+        { ok: false, error: 'offline', offline: true },
+        { status: 503 }
+      );
     });
 }
 
@@ -329,7 +335,7 @@ function syntheticOfflineLoginResponse() {
     '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<title>Hotel Bell Elite — Sign In</title>' +
-    '<link rel="stylesheet" href="/static/login_premium.css?v=12">' +
+    '<link rel="stylesheet" href="/static/login_premium.css">' +
     '</head><body class="login-page"><div class="login-shell"><main class="login-panel">' +
     '<div class="login-panel-card"><div class="login-panel-head">' +
     '<h2 class="login-panel-title">Hotel Bell Elite</h2>' +
@@ -341,7 +347,7 @@ function syntheticOfflineLoginResponse() {
     '<div class="form-group"><label for="password">Password</label>' +
     '<input type="password" id="password" name="password" autocomplete="current-password" required></div>' +
     '<button type="submit" class="login-btn">Sign In</button></form></div></main></div>' +
-    '<script src="/static/de_pwa.js?v=14"><\/script>' +
+    '<script src="/static/de_pwa.js"><\/script>' +
     '<script src="' +
     OFFLINE_AUTH_URL +
     '"><\/script>' +
@@ -432,8 +438,8 @@ function offlineNavigateFallback() {
 }
 
 function shouldCacheHtmlPath(pathname) {
-  /* Reports / Master / Unit Insight must not sit in Cache Storage.
-     Only shells needed for offline Sign In and POS. */
+  /* Offline shells only (Sign In + Home + POS). Never reports/ledgers.
+     PURGE_DATA_CACHES on reconnect removes these so online always refetches. */
   return (
     pathname === '/' ||
     pathname === '/login' ||

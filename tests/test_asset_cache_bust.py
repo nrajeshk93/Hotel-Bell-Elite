@@ -53,6 +53,34 @@ class TemplatePinTests(unittest.TestCase):
 
 
 
+    def test_no_numeric_version_pins_in_static_js(self):
+        """Hand-written ?v=NN in JS source goes stale; serve-time rewrite is only a belt.
+
+        Prefer bare /static/… paths so asset_digest stamps the live content hash.
+        """
+        offenders = []
+        static_dir = os.path.join(PROJECT_ROOT, "static")
+        pin = re.compile(r"\?v=\d+\b")
+        for dirpath, dirs, files in os.walk(static_dir):
+            dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "__pycache__")]
+            for fn in sorted(files):
+                if not fn.endswith(".js"):
+                    continue
+                path = os.path.join(dirpath, fn)
+                with io.open(path, encoding="utf-8", errors="ignore") as fh:
+                    for lineno, line in enumerate(fh, 1):
+                        if pin.search(line):
+                            rel = os.path.relpath(path, PROJECT_ROOT)
+                            offenders.append("%s:%d: %s" % (rel, lineno, line.strip()[:120]))
+        self.assertEqual(
+            offenders,
+            [],
+            "Numeric ?v= pins in static JS. Use bare /static/file.js so the "
+            "content-hash rewrite stamps the live digest (see AGENTS.md).",
+        )
+
+
+
 CDN_SCRIPT_PATTERNS = (
     re.compile(r"""src=["']https?://[^"']*(?:unpkg\.com|cdn\.jsdelivr\.net|cdnjs\.cloudflare\.com|ajax\.googleapis\.com)""", re.I),
     re.compile(r"""src=["']https?://[^"']*@latest[^"']*["']""", re.I),

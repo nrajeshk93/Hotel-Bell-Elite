@@ -24,7 +24,7 @@ class PosOfflineLocalOverlaySourceTests(unittest.TestCase):
         sw = _read("static", "sw.js")
         self.assertIn("__HBE_CACHE_VERSION__", sw)
         self.assertIn("__HBE_PRECACHE__", sw)
-        self.assertIn("Do not cache occupancy", sw)
+        self.assertIn("never read/write Cache Storage for occupancy", sw)
         self.assertIn("/point-of-sale/api/floor", sw)
         self.assertIn("/bar-point-of-sale/api/floor", sw)
         self.assertIn("/point-of-sale/api/menu/items", sw)
@@ -32,6 +32,9 @@ class PosOfflineLocalOverlaySourceTests(unittest.TestCase):
         floor_fn = sw[sw.find("function networkOnlyFloor") : sw.find("function networkFirst")]
         self.assertIn("cache: 'no-store'", floor_fn)
         self.assertNotIn("cache.put", floor_fn)
+        self.assertNotIn("caches.match", floor_fn)
+        nf = sw[sw.find("function networkFirst") : sw.find("function putHtmlCache")]
+        self.assertNotIn("cache.put", nf)
 
     def test_offline_store_exposes_overlay_helpers(self):
         js = _read("static", "pos_offline.js")
@@ -78,6 +81,8 @@ class PosOfflineLocalOverlaySourceTests(unittest.TestCase):
         self.assertIn("isNavigatorOnline", bind)
         self.assertIn("onPageVisible", bind)
         self.assertIn("pageshow", bind)
+        self.assertIn("hbe:online-sync", bind)
+        self.assertIn("onOnlineSync", bind)
         self.assertIn("currentFloor || readFloorSessionSnapshot()", bind)
         refresh_local = bind[
             bind.find("function refreshFromLocal") : bind.find("function refreshOccupancyFromServer")

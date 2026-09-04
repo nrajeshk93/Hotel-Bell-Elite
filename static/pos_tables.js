@@ -2559,7 +2559,7 @@
     opts = opts || {};
     var now = new Date();
     var orderNo = (token && (token.kot_no || token.order_no)) || '—';
-    var table = (token && token.name) || '—';
+    var table = (token && (token.name || token.table || token.table_label)) || '—';
     var totalCount = (allLines || lines || []).length;
     var selectedCount = (lines || []).length;
     var subsetNote =
@@ -2567,11 +2567,27 @@
         ? selectedCount + ' of ' + totalCount + ' items'
         : selectedCount + (selectedCount === 1 ? ' item' : ' items');
     var isBar = opts.menuOutlet === 'bar';
+    var isCancel = !!opts.cancel;
     var heading = isBar ? 'BAR ORDER TOKEN' : 'KITCHEN ORDER TOKEN';
+    if (isCancel) {
+      heading = isBar ? 'BAR CANCEL TOKEN' : 'KITCHEN CANCEL TOKEN';
+    }
     var foot = isBar ? '-- Resent for bar --' : '-- Resent for kitchen --';
+    if (isCancel) {
+      foot = isBar ? '-- Cancelled for bar --' : '-- Cancelled for kitchen --';
+    }
+    var banner = isCancel ? 'CANCEL / VOID' : 'REPRINT / RESEND';
+    var reason = String(opts.reason || (token && token.cancel_reason) || '').trim();
     var rows = (lines || [])
       .map(function (line) {
-        var qty = Number(line.sent_qty != null ? line.sent_qty : line.qty) || 0;
+        var qty =
+          Number(
+            line.cancel_qty != null
+              ? line.cancel_qty
+              : line.sent_qty != null
+                ? line.sent_qty
+                : line.qty
+          ) || 0;
         var note = String(line.notes || '').trim();
         return (
           '<tr><td class="qty">' +
@@ -2591,6 +2607,7 @@
       'body{font-family:"Courier New",monospace;padding:16px;color:#111;width:300px;margin:0 auto}' +
       'h1{font-size:16px;margin:0 0 4px;text-align:center;letter-spacing:.04em}' +
       '.banner{text-align:center;font-size:11px;font-weight:700;margin:0 0 8px;padding:4px;border:1px solid #333}' +
+      '.banner-cancel{border-color:#900;color:#900}' +
       '.meta{font-size:12px;margin-bottom:10px;border-bottom:1px dashed #333;padding-bottom:8px}' +
       '.meta div{display:flex;justify-content:space-between;margin:2px 0}' +
       'table{width:100%;border-collapse:collapse;font-size:13px}' +
@@ -2604,7 +2621,11 @@
       '<h1>' +
       heading +
       '</h1>' +
-      '<div class="banner">REPRINT / RESEND</div>' +
+      '<div class="banner' +
+      (isCancel ? ' banner-cancel' : '') +
+      '">' +
+      banner +
+      '</div>' +
       '<div class="meta">' +
       '<div><span>Order</span><span>' +
       escapeHtml(orderNo) +
@@ -2616,6 +2637,9 @@
       '<div><span>Items</span><span>' +
       escapeHtml(subsetNote) +
       '</span></div>' +
+      (reason
+        ? '<div><span>Reason</span><span>' + escapeHtml(reason) + '</span></div>'
+        : '') +
       '<div><span>Time</span><span>' +
       escapeHtml(now.toLocaleString()) +
       '</span></div>' +
@@ -2632,21 +2656,31 @@
 
   function buildKotTokenModel(token, lines, opts) {
     opts = opts || {};
+    var isCancel = !!opts.cancel;
     return {
       menuOutlet: opts.menuOutlet,
       orderNo: (token && (token.kot_no || token.order_no)) || '—',
       orderType: 'Dine In',
-      tableLabel: (token && token.name) || '—',
+      tableLabel: (token && (token.name || token.table || token.table_label)) || '—',
       when: new Date(),
       items: (lines || []).map(function (line) {
         return {
-          qty: Number(line.sent_qty != null ? line.sent_qty : line.qty) || 0,
+          qty:
+            Number(
+              line.cancel_qty != null
+                ? line.cancel_qty
+                : line.sent_qty != null
+                  ? line.sent_qty
+                  : line.qty
+            ) || 0,
           name: line.name,
           variant: line.variant,
           notes: line.notes
         };
       }),
-      resend: true
+      resend: !isCancel,
+      cancel: isCancel,
+      reason: String(opts.reason || (token && token.cancel_reason) || '').trim()
     };
   }
 
@@ -2659,6 +2693,114 @@
       return global.hbePosPrinterPrefs.formatKotTicketText(model);
     }
     return '';
+  }
+
+  function printKotCancelTickets(cancellations) {
+    try {
+      var rows = Array.isArray(cancellations) ? cancellations : [];
+      if (!rows.length) return;
+
+      var canAgent =
+        global.hbePosPrinterPrefs &&
+        typeof global.hbePosPrinterPrefs.printKotHtml === 'function';
+      if (!canAgent) {
+        toast(
+          'Kitchen quantities saved. Hotel Print Agent is required to print cancel KOTs.'
+        );
+        return;
+      }
+
+      /* Group by invoice + kitchen/bar so each printer gets one cancel slip. */
+      var groups = {};
+      rows.forEach(function (row) {
+        if (!row) return;
+        var cancelQty = Number(row.cancel_qty);
+        if (!isFinite(cancelQty) || cancelQty <= 0) return;
+        var menuOutlet = lineMenuOutlet(row);
+        var invoiceId = Number(row.invoice_id) || 0;
+        var key = invoiceId + '|' + menuOutlet;
+        if (!groups[key]) {
+          groups[key] = {
+            menuOutlet: menuOutlet,
+            invoiceId: invoiceId,
+            orderNo: row.order_no || '—',
+            table: row.table || row.table_label || '—',
+            reason: row.reason || '',
+            lines: []
+          };
+        }
+        groups[key].lines.push({
+          id: row.line_id,
+          name: row.name,
+          variant: row.variant,
+          notes: row.notes,
+          cancel_qty: cancelQty,
+          sent_qty: cancelQty,
+          qty: cancelQty,
+          outlet: menuOutlet
+        });
+        if (!groups[key].reason && row.reason) {
+          groups[key].reason = row.reason;
+        }
+      });
+
+      Object.keys(groups).forEach(function (key, idx) {
+        var group = groups[key];
+        if (!group.lines.length) return;
+        var token = {
+          invoice_id: group.invoiceId,
+          order_no: group.orderNo,
+          kot_no: group.orderNo,
+          name: group.table,
+          table: group.table,
+          cancel_reason: group.reason
+        };
+        var html = buildKotTokenHtml(token, group.lines, group.lines, {
+          menuOutlet: group.menuOutlet,
+          cancel: true,
+          reason: group.reason
+        });
+        var kot = buildKotTokenModel(token, group.lines, {
+          menuOutlet: group.menuOutlet,
+          cancel: true,
+          reason: group.reason
+        });
+        var text = '';
+        if (
+          global.hbePosPrinterPrefs &&
+          typeof global.hbePosPrinterPrefs.formatKotTicketText === 'function'
+        ) {
+          text = global.hbePosPrinterPrefs.formatKotTicketText(kot);
+        }
+        var jobId =
+          'kot-cancel-' +
+          group.menuOutlet +
+          '-' +
+          group.invoiceId +
+          '-' +
+          Date.now() +
+          '-' +
+          idx;
+        global.hbePosPrinterPrefs
+          .printKotHtml(html, {
+            menuOutlet: group.menuOutlet,
+            jobId: jobId,
+            kot: kot,
+            text: text,
+            allowBrowserFallback: false
+          })
+          .then(function (result) {
+            if (result && result.via === 'failed') {
+              toast(
+                (result.error && result.error.message) ||
+                  'Cancel KOT print failed. Open Hotel Print Agent and map Restaurant / Bar KOT.'
+              );
+            }
+          });
+      });
+    } catch (err) {
+      /* Printing is best-effort — quantity save already succeeded. */
+    }
   }
 
   function printKotTokenTicket(token, selectedLines, preOpenedWin) {
@@ -3136,18 +3278,31 @@
             return inv && inv.cancelled;
           }).length;
         }
+        var cancellations = (result.data && result.data.cancellations) || [];
+        if (cancellations.length) {
+          printKotCancelTickets(cancellations);
+        }
         var count = Number(result.data.updated_count) || changes.length;
         if (cancelled > 0 && cancelled >= count) {
           toast(
             cancelled === 1
-              ? 'Order cancelled — table is now available.'
-              : cancelled + ' orders cancelled — tables are now available.'
+              ? 'Order cancelled — cancel KOT sent; table is now available.'
+              : cancelled + ' orders cancelled — cancel KOTs sent; tables are now available.'
           );
         } else if (cancelled > 0) {
           toast(
             'Kitchen quantities updated; ' +
               cancelled +
-              (cancelled === 1 ? ' order cancelled.' : ' orders cancelled.')
+              (cancelled === 1 ? ' order cancelled.' : ' orders cancelled.') +
+              (cancellations.length ? ' Cancel KOT sent to kitchen/bar.' : '')
+          );
+        } else if (cancellations.length) {
+          toast(
+            count === 1
+              ? 'Kitchen quantities updated; cancel KOT sent.'
+              : 'Kitchen quantities updated on ' +
+                  count +
+                  ' orders; cancel KOT sent.'
           );
         } else {
           toast(
@@ -4639,10 +4794,32 @@
       }
       refreshFromLocal();
     }
+    function onOnlineSync(ev) {
+      if (!isNavigatorOnline()) return;
+      var detail = (ev && ev.detail) || {};
+      /* Keep local snapshot if sync/floor fetch failed — avoids blank Tables. */
+      if (detail && detail.floorOk === false) {
+        refreshFromLocal();
+        return;
+      }
+      if (detail && detail.floor && detail.floorOk) {
+        mergePendingFloor(detail.floor).then(function (merged) {
+          if (!root.isConnected) return;
+          currentFloor = merged;
+          paintTablesPage(root, merged);
+        });
+        return;
+      }
+      refreshOccupancyFromServer();
+    }
     if (api && typeof api.onChange === 'function') {
       api.onChange(function (msg) {
         var kind = msg && msg.kind;
         if (kind && kind !== 'floor' && kind !== 'invoice' && kind !== 'change') return;
+        if (isNavigatorOnline() && (kind === 'invoice' || kind === 'change')) {
+          refreshOccupancyFromServer();
+          return;
+        }
         refreshFromLocal();
       });
     }
@@ -4650,6 +4827,8 @@
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden) onPageVisible();
     });
+    global.addEventListener('online', onOnlineSync);
+    global.addEventListener('hbe:online-sync', onOnlineSync);
   }
 
   function initPosTablesPage() {
