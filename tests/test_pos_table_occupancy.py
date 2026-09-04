@@ -906,6 +906,34 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(pending["pending_item_count"], 0)
         self.assertEqual(pending["tables"], [])
 
+    def test_floor_kot_pending_drops_after_generate_invoice(self):
+        """Generate Invoice drops the bill from Pending Kitchen even with unsents."""
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-0033", "T1"),
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        pending = self.client.get("/point-of-sale/api/floor").get_json()["kot_pending"]
+        self.assertEqual(pending["pending_table_count"], 1)
+        self.assertEqual(pending["pending_item_count"], 1)
+        self.assertEqual(pending["tables"][0]["name"], "T1")
+        invoice_id = pending["tables"][0]["invoice_id"]
+
+        bill = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-0033", "T1", customerBill=True),
+        )
+        self.assertEqual(bill.status_code, 200, bill.get_data(as_text=True))
+        invoice = bill.get_json()["invoice"]
+        self.assertTrue(invoice.get("customer_bill_sent"))
+        self.assertEqual(invoice.get("status"), "open")
+
+        after = self.client.get("/point-of-sale/api/floor").get_json()["kot_pending"]
+        self.assertEqual(after["pending_table_count"], 0)
+        self.assertEqual(after["pending_item_count"], 0)
+        self.assertEqual(after["tables"], [])
+        self.assertFalse(any(t.get("invoice_id") == invoice_id for t in after["tables"]))
+
     def test_kot_pending_send_all(self):
         self.client.post("/point-of-sale/api/invoices", json=self._payload("ORD-2607-0060", "T1"))
         # Second table: free T3 first so a new dine-in bill can claim it.

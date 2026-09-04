@@ -5605,7 +5605,9 @@ def list_pos_kot_pending_summary(conn, outlet=POS_OUTLET_RESTAURANT):
 
     Includes tables with a plain save (kot_sent=0, sent_qty=0) and Occupied
     tables with later qty bumps — occupancy / kot_sent is intentionally not a
-    filter here.
+    filter here. After Generate Invoice (customer_bill_sent or customer_bill_at),
+    bills drop out of Pending Kitchen even if sent_qty was never marked; settle
+    can continue.
     """
     ensure_pos_schema(conn)
     outlet = normalize_pos_outlet(outlet)
@@ -5637,6 +5639,8 @@ def list_pos_kot_pending_summary(conn, outlet=POS_OUTLET_RESTAURANT):
           AND i.order_type = 'dine_in'
           AND i.outlet = ?
           AND TRIM(COALESCE(i.table_label, '')) != ''
+          AND COALESCE(i.customer_bill_sent, 0) = 0
+          AND TRIM(COALESCE(i.customer_bill_at, '')) = ''
         GROUP BY i.id, i.order_no, i.table_label, i.saved_at, i.updated_at, i.first_kot_at, i.kot_no
         ORDER BY i.id ASC
         """,

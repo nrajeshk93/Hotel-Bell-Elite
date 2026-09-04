@@ -28,6 +28,9 @@ What staff call a “cache issue” on Tables is usually **stuck open bills** or
 - After **Generate Invoice**, the tile frees for the next party; that bill may
   stay `status=open` until Settle — that is intentional. Do not create a second
   pre-invoice open on the same table.
+- After **Generate Invoice** (`customer_bill_sent` or `customer_bill_at`), the
+  bill drops out of Pending Kitchen even if `sent_qty` was never marked. Floor
+  occupancy / `kot_sent` still do not filter that list; Settle can continue.
 - Online Tables first paint **must not** show Occupied from session/local
   snapshot (`floorSnapshotForFirstPaint`); live `/api/floor` (`cache: no-store`)
   is the source of truth. Offline may use the snapshot.
