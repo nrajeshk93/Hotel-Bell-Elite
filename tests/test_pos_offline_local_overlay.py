@@ -43,12 +43,15 @@ class PosOfflineLocalOverlaySourceTests(unittest.TestCase):
             "searchSavedCustomers",
             "applyPendingToFloor",
             "orderHasServerInvoiceId",
+            "orderHasCustomerBill",
             "applyUnsyncedOrdersToFloorTables",
             "listDrafts",
             "notifyChange",
             "hbe-pos-local",
             "persistFloorSnapshot",
             "findPendingForTable",
+            "pickPendingResumeForTable",
+            "purgePendingForTable",
             "pendingOrders",
             "patchFloorOccupancy",
         ):
@@ -96,7 +99,34 @@ class PosOfflineLocalOverlaySourceTests(unittest.TestCase):
             js.find("function applyUnsyncedOrdersToFloorTables") : js.find("function applyPendingToFloor")
         ]
         self.assertIn("orderHasServerInvoiceId(order)", fn)
-        self.assertIn("customerBill", fn)
+        self.assertIn("orderHasCustomerBill(order)", fn)
+
+    def test_find_pending_aligns_with_floor_overlay_skips(self):
+        js = _read("static", "pos_offline.js")
+        fn = js[
+            js.find("function pickPendingResumeForTable") : js.find(
+                "function findPendingForTable"
+            )
+        ]
+        self.assertIn("orderHasServerInvoiceId(order)", fn)
+        self.assertIn("orderHasCustomerBill(order)", fn)
+
+    def test_invoice_online_by_table_miss_does_not_hydrate_local(self):
+        js = _read("static", "pos_invoice.js")
+        fn = js[
+            js.find("function resumeOrderForTable") : js.find(
+                "function invoiceFromOfflinePayload"
+            )
+        ]
+        self.assertIn("purgeLocalOrderDrafts", fn)
+        self.assertIn("onlyServerLinked", fn)
+        then_part = fn.split(".catch")[0]
+        self.assertNotIn("resumeOrderFromLocal", then_part)
+        self.assertIn("resumeOrderFromLocal", fn)
+        self.assertIn("purgePendingForTable", _read("static", "pos_offline.js"))
+        tables = _read("static", "pos_tables.js")
+        self.assertIn("purgeTableDraftsAfterGenerate", tables)
+        self.assertIn("purgePendingForTable", tables)
 
     def test_invoice_remembers_guest_and_resumes_local(self):
         js = _read("static", "pos_invoice.js")
@@ -244,6 +274,68 @@ class PosOccupancyOverlayBehaviorTests(unittest.TestCase):
         out = self._run_overlay(tables, orders)
         self.assertEqual(out[0]["status"], "available")
         self.assertEqual(out[0].get("customerName") or "", "")
+
+    def _run_pick_pending(self, orders, table, want="restaurant"):
+        if not self.node:
+            self.skipTest("node is not available")
+        helper = os.path.join(ROOT, "tests", "run_pos_occupancy_overlay.js")
+        js_path = os.path.join(ROOT, "static", "pos_offline.js")
+        payload = json.dumps(
+            {
+                "mode": "pickPending",
+                "orders": orders,
+                "table": table,
+                "want": want,
+            }
+        )
+        proc = subprocess.run(
+            [self.node, helper, js_path, payload],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            check=False,
+        )
+        if proc.returncode != 0:
+            self.fail("node pickPending helper failed: %s\n%s" % (proc.stderr, proc.stdout))
+        return json.loads(proc.stdout)
+
+    def test_draft_with_invoice_id_is_not_resume_candidate(self):
+        """Ghost cart: invoiceId + lines + customerBill false must not resume."""
+        orders = [
+            {
+                "invoiceId": 4412,
+                "_stamp": 2,
+                "payload": {
+                    "table": "Table 2",
+                    "customerName": "Rajesh",
+                    "orderType": "dine_in",
+                    "outlet": "restaurant",
+                    "customerBill": False,
+                    "lines": [{"name": "Tea"}, {"name": "Idli"}],
+                },
+            }
+        ]
+        hit = self._run_pick_pending(orders, "Table 2")
+        self.assertIsNone(hit)
+
+    def test_unsynced_draft_without_invoice_id_still_resumes(self):
+        orders = [
+            {
+                "invoiceId": None,
+                "localId": "local-unsynced-1",
+                "_stamp": 5,
+                "payload": {
+                    "table": "Table 2",
+                    "customerName": "Rajesh",
+                    "orderType": "dine_in",
+                    "outlet": "restaurant",
+                    "lines": [{"name": "Tea"}],
+                },
+            }
+        ]
+        hit = self._run_pick_pending(orders, "Table 2")
+        self.assertIsNotNone(hit)
+        self.assertEqual(hit.get("localId"), "local-unsynced-1")
 
 
 class PosOfflineLocalOverlayPageTests(unittest.TestCase):

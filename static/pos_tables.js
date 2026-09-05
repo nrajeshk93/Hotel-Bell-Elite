@@ -4145,6 +4145,70 @@
     }
   }
 
+  function ensureCustomerBillGenerated(invoice) {
+    /* Customer/cash bill print must run Generate Invoice semantics when the
+       row is still a pre-invoice (customer_bill_sent=0). Already-generated
+       and settled bills print as-is (no double-generate). */
+    if (!invoice || !invoice.id) {
+      return Promise.reject(new Error('Invoice not found.'));
+    }
+    var status = String(invoice.status || 'open').toLowerCase();
+    if (status === 'closed' || status === 'cancelled') {
+      return Promise.resolve(invoice);
+    }
+    if (invoice.customer_bill_sent || invoice.customerBillSent) {
+      return Promise.resolve(invoice);
+    }
+    return fetch(
+      resolvePosApiBase() +
+        '/api/invoices/' +
+        encodeURIComponent(invoice.id) +
+        '/generate-customer-bill',
+      {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: apiHeaders({ 'Content-Type': 'application/json' }),
+        body: '{}'
+      }
+    ).then(function (res) {
+      return res
+        .json()
+        .catch(function () {
+          return {};
+        })
+        .then(function (data) {
+          if (!res.ok || !data || !data.ok || !data.invoice) {
+            throw new Error(
+              (data && data.error) || 'Could not generate the customer bill.'
+            );
+          }
+          var generated = data.invoice;
+          return purgeTableDraftsAfterGenerate(generated).then(function () {
+            return generated;
+          });
+        });
+    });
+  }
+
+  function purgeTableDraftsAfterGenerate(invoice) {
+    var api = global.HbePosOffline;
+    if (!api || typeof api.purgePendingForTable !== 'function' || !invoice) {
+      return Promise.resolve({ removed: 0 });
+    }
+    var table = String(invoice.table_label || invoice.table || '').trim();
+    return api
+      .purgePendingForTable({
+        table: table,
+        tableLabel: table,
+        invoiceId: invoice.id,
+        orderNo: invoice.order_no || invoice.orderNo || '',
+        outlet: resolvePosOutlet()
+      })
+      .catch(function () {
+        return { removed: 0 };
+      });
+  }
+
   function printTodayInvoice(invoiceId, btn) {
     if (!invoiceId) return;
     if (btn) btn.disabled = true;
@@ -4163,11 +4227,18 @@
           toast((data && data.error) || 'Could not load invoice for printing.');
           return;
         }
-        printCustomerBillFromInvoice(data.invoice);
-        toast('Bill ready for ' + (data.invoice.order_no || 'order') + '.');
+        return ensureCustomerBillGenerated(data.invoice).then(function (invoice) {
+          printCustomerBillFromInvoice(invoice);
+          toast('Bill ready for ' + (invoice.order_no || 'order') + '.');
+          /* Floor / Pending Kitchen may have changed after generate. */
+          refreshFloorAfterMutation();
+          refreshTodayInvoicesList();
+        });
       })
-      .catch(function () {
-        toast('Could not print bill. Check your connection.');
+      .catch(function (err) {
+        toast(
+          (err && err.message) || 'Could not print bill. Check your connection.'
+        );
       })
       .then(function () {
         if (btn) btn.disabled = false;

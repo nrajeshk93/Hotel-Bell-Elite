@@ -1867,14 +1867,16 @@ body.su-module .st-stock-transfer-avail{
   font-variant-numeric:tabular-nums;
   text-align:center;
 }
-#st-stock-transfer-modal .st-stock-transfer-dest{
+#st-stock-transfer-modal .st-stock-transfer-dest,
+#st-stock-transfer-modal .st-stock-transfer-qty-mode{
   display:flex;
   flex-direction:column;
   align-items:flex-start;
   gap:6px;
   margin:0 0 14px;
 }
-#st-stock-transfer-modal .st-stock-transfer-dest > .se-filter-chip-label{
+#st-stock-transfer-modal .st-stock-transfer-dest > .se-filter-chip-label,
+#st-stock-transfer-modal .st-stock-transfer-qty-mode > .se-filter-chip-label{
   display:block;
   font:700 11px Inter,system-ui,sans-serif;
   color:var(--txt2,#4A5568);
@@ -1885,7 +1887,8 @@ body.su-module .st-stock-transfer-avail{
   content:' *';
   color:#DC2626;
 }
-#st-stock-transfer-modal .st-stock-transfer-dest-tabs .cp-view-tab:focus-visible{
+#st-stock-transfer-modal .st-stock-transfer-dest-tabs .cp-view-tab:focus-visible,
+#st-stock-transfer-modal .st-stock-transfer-qty-mode-tabs .cp-view-tab:focus-visible{
   outline:2px solid var(--acc,#2563EB);
   outline-offset:1px;
 }
@@ -1893,7 +1896,8 @@ body.su-module .st-stock-transfer-avail{
   opacity:.45;
   cursor:not-allowed;
 }
-#st-stock-transfer-modal .st-stock-transfer-dest-tabs.cp-view-tabs{
+#st-stock-transfer-modal .st-stock-transfer-dest-tabs.cp-view-tabs,
+#st-stock-transfer-modal .st-stock-transfer-qty-mode-tabs.cp-view-tabs{
   display:inline-flex;
   align-items:center;
   gap:4px;
@@ -1906,7 +1910,8 @@ body.su-module .st-stock-transfer-avail{
   border:1px solid var(--border,#E2E8F0);
   border-radius:12px;
 }
-#st-stock-transfer-modal .st-stock-transfer-dest-tabs .cp-view-tab{
+#st-stock-transfer-modal .st-stock-transfer-dest-tabs .cp-view-tab,
+#st-stock-transfer-modal .st-stock-transfer-qty-mode-tabs .cp-view-tab{
   display:inline-flex;
   align-items:center;
   justify-content:center;
@@ -1921,10 +1926,17 @@ body.su-module .st-stock-transfer-avail{
   cursor:pointer;
   white-space:nowrap;
 }
-#st-stock-transfer-modal .st-stock-transfer-dest-tabs .cp-view-tab.is-active{
+#st-stock-transfer-modal .st-stock-transfer-dest-tabs .cp-view-tab.is-active,
+#st-stock-transfer-modal .st-stock-transfer-qty-mode-tabs .cp-view-tab.is-active{
   background:#fff;
   color:var(--txt,#0F172A);
   box-shadow:0 1px 2px rgba(15,23,42,.08);
+}
+#st-stock-transfer-modal .st-stock-transfer-avail-note{
+  display:block;
+  margin-top:2px;
+  font:500 10px Inter,system-ui,sans-serif;
+  color:var(--txt3,#94A3B8);
 }
 #st-stock-transfer-modal .st-stock-transfer-box,
 body.su-module .modal-box.st-stock-transfer-box{

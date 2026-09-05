@@ -1135,3 +1135,91 @@
   .rdx-content { padding: 14px 14px 40px; }
   .rdx-hero h1 { font-size: 22px; }
 }
+
+
+/* Phone compact analytics — preserve desktop grids above */
+.rdx-content,
+.rdx-card,
+.rdx-grid-2,
+.rdx-grid-3,
+.rdx-chart,
+.rdx-chart-sales,
+.rdx-pm-chart,
+.rdx-heatmap-scroll{
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+@media (max-width: 640px) {
+  .rdx-content{
+    padding: 12px 12px 36px;
+  }
+  .rdx-sales-trend{
+    padding: 16px 14px 14px;
+    border-radius: 16px;
+  }
+  .rdx-st-title{
+    letter-spacing: 0.06em;
+  }
+  .rdx-st-stats{
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .rdx-st-stat{
+    padding: 12px 12px;
+  }
+  .rdx-st-stat-value{
+    font-size: 18px;
+  }
+  .rdx-chart-sales{
+    min-height: 240px;
+  }
+  .rdx-chart{
+    min-height: 220px;
+  }
+  .rdx-chart-sm{
+    min-height: 200px;
+  }
+  .rdx-co-leaderboard,
+  .rdx-sales-contrib,
+  .rdx-payment-mode{
+    padding: 16px 14px;
+    border-radius: 16px;
+  }
+  .rdx-pm-chart{
+    min-height: 220px;
+  }
+  .rdx-pm-kpi-value{
+    font-size: 28px;
+  }
+  .rdx-sales-heatmap-card{
+    padding: 14px;
+  }
+  .rdx-heatmap{
+    grid-template-columns: minmax(64px, max-content) repeat(7, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .rdx-sc-chart-wrap{
+    max-width: min(200px, 70vw);
+  }
+}
+
+@media (max-width: 430px) {
+  .rdx-content{
+    padding: 10px 10px 32px;
+  }
+  .rdx-st-stats{
+    grid-template-columns: 1fr;
+  }
+  .rdx-pm-kpis{
+    flex-direction: column;
+  }
+  .rdx-co-foot{
+    flex-direction: column;
+    gap: 6px;
+  }
+  .rdx-chart-sales{
+    min-height: 220px;
+  }
+}

@@ -1,7 +1,7 @@
 const fs = require("fs");
 const vm = require("vm");
 const src = fs.readFileSync(process.argv[2], "utf8");
-const input = JSON.parse(process.argv[3]);
+const input = JSON.parse(process.argv[3] || "{}");
 const store = {};
 const ctx = {
   console,
@@ -31,9 +31,23 @@ if (!api || typeof api.applyUnsyncedOrdersToFloorTables !== "function") {
   process.stderr.write("missing applyUnsyncedOrdersToFloorTables\n");
   process.exit(2);
 }
-const out = api.applyUnsyncedOrdersToFloorTables(
-  input.tables,
-  input.orders,
-  input.want || "restaurant"
-);
+const mode = input.mode || "overlay";
+let out;
+if (mode === "pickPending") {
+  if (typeof api.pickPendingResumeForTable !== "function") {
+    process.stderr.write("missing pickPendingResumeForTable\n");
+    process.exit(2);
+  }
+  out = api.pickPendingResumeForTable(
+    input.orders || [],
+    input.table || "",
+    input.want || "restaurant"
+  );
+} else {
+  out = api.applyUnsyncedOrdersToFloorTables(
+    input.tables,
+    input.orders,
+    input.want || "restaurant"
+  );
+}
 process.stdout.write(JSON.stringify(out));

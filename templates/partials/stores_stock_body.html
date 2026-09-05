@@ -167,6 +167,8 @@
                   data-item-name="{{ item.item_name or '' }}"
                   data-unit="{{ item.unit or '' }}"
                   data-qty="{{ qty }}"
+                  data-pack-label="{{ item.pack_label or '' }}"
+                  data-pack-qty-in-base="{{ item.pack_qty_in_base if item.pack_qty_in_base is not none else '' }}"
                   data-status="{{ status }}"
                   data-category="{{ (item.category_name or '')|lower }}"
                   data-price="{{ item.approximate_price if item.approximate_price is not none else '' }}"
@@ -202,7 +204,7 @@
           <div class="pl-empty">
             {% if stock_place|default('warehouse') == 'counter' %}
             <strong>Counter is empty</strong>
-            Transfer stock from Warehouse to Counter.
+            Transfer stock from Warehouse to Counter. When counter has stock, use Return to send unused qty back to Warehouse.
             {% else %}
             <strong>Warehouse is empty</strong>
             Receive a purchase into warehouse stock to add the first items.
@@ -269,4 +271,6 @@
       </article>
     </div>
   </div>
+
+  <script type="application/json" id="st-stock-product-packs">{{ stock_product_packs|default({})|tojson }}</script>
 </div>

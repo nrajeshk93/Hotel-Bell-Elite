@@ -196,6 +196,7 @@ from db import (
     soft_delete_pos_invoice,
     cancel_pos_invoice,
     reopen_pos_invoice_for_edit,
+    generate_pos_customer_bill,
     soft_delete_pos_menu_category,
     soft_delete_store_product_unit,
     soft_delete_pos_menu_item,
@@ -14170,6 +14171,54 @@ def point_of_sale_api_today_invoices():
         payload = list_pos_today_invoices(conn, outlet=outlet)
         conn.commit()
         return jsonify({"ok": True, **payload})
+    finally:
+        conn.close()
+
+
+
+@app.route("/point-of-sale/api/invoices/<int:invoice_id>/generate-customer-bill", methods=["POST"], endpoint="point_of_sale_api_invoice_generate_customer_bill")
+@app.route("/bar-point-of-sale/api/invoices/<int:invoice_id>/generate-customer-bill", methods=["POST"], endpoint="bar_point_of_sale_api_invoice_generate_customer_bill")
+def point_of_sale_api_invoice_generate_customer_bill(invoice_id):
+    """Generate Invoice semantics for customer/cash bill print (idempotent).
+
+    Sets customer_bill_sent, remints provisional order numbers, frees the floor
+    tile, and drops Pending Kitchen. Safe to call when already generated.
+    """
+    outlet = _pos_outlet_from_request()
+    user = get_current_user()
+    created_by = ""
+    if user:
+        created_by = (
+            str(user.get("full_name") or user.get("username") or user.get("id") or "").strip()
+        )
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        try:
+            existing = get_pos_invoice(conn, invoice_id)
+            if not existing or not _pos_invoice_belongs_to_outlet(existing, outlet):
+                return jsonify({"ok": False, "error": "Invoice not found."}), 404
+            invoice = generate_pos_customer_bill(
+                conn,
+                invoice_id,
+                created_by=created_by,
+                allow_kot_cancel=user_can_edit_kot_sent_lines(user, outlet),
+                actor_is_admin=bool(user and user.get("is_admin")),
+            )
+            sync_pos_floor_occupancy_from_open_orders(conn, outlet)
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        except Exception as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": f"Could not generate customer bill: {exc}"}), 500
+        order_ref = invoice.get("order_no") or invoice.get("id")
+        activity_audit.set_activity_audit(
+            f"Generate customer bill {order_ref} (point of sale api invoice generate customer bill)",
+            entity_id=order_ref,
+        )
+        return jsonify({"ok": True, "invoice": invoice})
     finally:
         conn.close()
 

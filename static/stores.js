@@ -13,6 +13,48 @@
     }
   }
 
+
+  function softRefreshStoresPaths(extraPaths) {
+    var paths = ['/stores/stock', '/stores/purchase-requests', '/stores/inward'];
+    if (extraPaths && extraPaths.length) {
+      for (var i = 0; i < extraPaths.length; i++) {
+        if (paths.indexOf(extraPaths[i]) === -1) paths.push(extraPaths[i]);
+      }
+    }
+    try {
+      if (typeof window.deInvalidateSoftNavCacheByPath === 'function') {
+        paths.forEach(function (p) {
+          try { window.deInvalidateSoftNavCacheByPath(p); } catch (e1) { /* ignore */ }
+        });
+      }
+    } catch (e2) { /* ignore */ }
+    var url = window.location.pathname + window.location.search;
+    if (typeof window.deSoftRefresh === 'function') {
+      window.deSoftRefresh(url);
+    } else {
+      stSoftNavigate(url);
+    }
+  }
+
+  function showStoresFlash(message, category) {
+    var msg = String(message || '').trim();
+    if (!msg) return;
+    var host = document.querySelector('.st-stock-page, .st-inward-page, .su-module main, body');
+    if (!host) host = document.body;
+    var el = document.createElement('div');
+    el.className = 'st-flash st-flash--' + (category === 'error' ? 'error' : 'ok');
+    el.setAttribute('data-st-flash-auto', '1');
+    el.textContent = msg;
+    if (host.firstChild) host.insertBefore(el, host.firstChild);
+    else host.appendChild(el);
+    window.setTimeout(function () {
+      try {
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+      } catch (e) { /* ignore */ }
+    }, 6000);
+  }
+
+
   window.stOutletChanged = function (root, value) {
     if (!root || !value) return;
     if (
@@ -51,6 +93,9 @@
         url.searchParams.delete('po');
         url.searchParams.delete('po_id');
         url.searchParams.delete('supplier_id');
+        url.searchParams.delete('transfer');
+        url.searchParams.delete('transfer_id');
+        url.searchParams.delete('transfer_no');
       }
       stSoftNavigate(url.pathname + url.search);
     } catch (e) {
@@ -2478,6 +2523,105 @@
   // Legacy alias — older soft-nav caches may still reference this name.
   window.stInwardIndentChanged = window.stInwardPoChanged;
 
+
+  window.stInwardTransferChanged = function (root, value) {
+    if (!root) return;
+    var endpoint = root.getAttribute('data-st-inward-endpoint') || '/stores/purchase-requests';
+    var outlet = root.getAttribute('data-st-inward-outlet') || '';
+    var view = root.getAttribute('data-st-inward-view') || 'transfers';
+    try {
+      var url = new URL(endpoint, window.location.origin);
+      if (outlet) url.searchParams.set('outlet', outlet);
+      if (view) url.searchParams.set('view', view);
+      url.searchParams.delete('indent');
+      url.searchParams.delete('po');
+      url.searchParams.delete('po_id');
+      url.searchParams.delete('supplier_id');
+      url.searchParams.delete('transfer');
+      url.searchParams.delete('transfer_no');
+      if (value) url.searchParams.set('transfer_id', value);
+      else url.searchParams.delete('transfer_id');
+      stSoftNavigate(url.pathname + url.search);
+    } catch (e) {
+      var qs = [];
+      if (outlet) qs.push('outlet=' + encodeURIComponent(outlet));
+      if (view) qs.push('view=' + encodeURIComponent(view));
+      if (value) qs.push('transfer_id=' + encodeURIComponent(value));
+      stSoftNavigate(endpoint + (qs.length ? ('?' + qs.join('&')) : ''));
+    }
+  };
+
+  function initStockTransferReceive() {
+    var actions = document.getElementById('st-inward-transfer-actions');
+    if (!actions || actions.getAttribute('data-st-bound') === '1') return;
+    actions.setAttribute('data-st-bound', '1');
+    var errEl = document.getElementById('st-inward-transfer-err');
+    function showTransferErr(msg) {
+      if (!errEl) return;
+      if (!msg) { errEl.style.display = 'none'; errEl.textContent = ''; return; }
+      errEl.textContent = msg;
+      errEl.style.display = '';
+    }
+    function postTransferAction(url, busyEl) {
+      if (!url) {
+        showTransferErr('Missing transfer endpoint.');
+        return;
+      }
+      showTransferErr('');
+      if (busyEl) busyEl.disabled = true;
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: '{}'
+      }).then(function (res) {
+        return res.json().then(function (data) {
+          return { ok: res.ok, data: data };
+        }).catch(function () {
+          return { ok: res.ok, data: {} };
+        });
+      }).then(function (result) {
+        if (!result.data || !result.data.ok) {
+          showTransferErr((result.data && result.data.error) || 'Could not update transfer.');
+          if (busyEl) busyEl.disabled = false;
+          return;
+        }
+        var msg = (result.data && result.data.message) || 'Transfer updated.';
+        try { sessionStorage.setItem('hbe.st.flash', JSON.stringify({ message: msg, category: 'ok' })); } catch (eFlash) {}
+        softRefreshStoresPaths(['/stores/stock', '/stores/purchase-requests', '/stores/inward']);
+      }).catch(function () {
+        showTransferErr('Could not update transfer.');
+        if (busyEl) busyEl.disabled = false;
+      });
+    }
+    var receiveBtn = document.getElementById('st-inward-transfer-receive');
+    var cancelBtn = document.getElementById('st-inward-transfer-cancel');
+    if (receiveBtn) {
+      receiveBtn.addEventListener('click', function () {
+        postTransferAction(actions.getAttribute('data-st-transfer-receive-url') || '', receiveBtn);
+      });
+    }
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', function () {
+        var no = actions.getAttribute('data-st-transfer-no') || 'this transfer';
+        if (!window.confirm('Cancel ' + no + '? Stock will not move.')) return;
+        postTransferAction(actions.getAttribute('data-st-transfer-cancel-url') || '', cancelBtn);
+      });
+    }
+  }
+
+  function consumeStoresFlash() {
+    var raw = '';
+    try { raw = sessionStorage.getItem('hbe.st.flash') || ''; sessionStorage.removeItem('hbe.st.flash'); } catch (e) { raw = ''; }
+    if (!raw) return;
+    try {
+      var payload = JSON.parse(raw);
+      showStoresFlash(payload.message || '', payload.category || 'ok');
+    } catch (e2) {
+      showStoresFlash(raw, 'ok');
+    }
+  }
+
+
   var DIRECT_DRAFT_PREFIX = 'hbe.st.inward.direct.draft:';
   var directDraftSaveTimer = 0;
   var directDraftLeaveObserver = null;
@@ -4633,8 +4777,8 @@
       event.preventDefault();
       var next = String(tab.getAttribute('data-value') || 'warehouse').toLowerCase();
       if (next !== 'counter') next = 'warehouse';
-      var input = document.getElementById('st-stock-place');
-      if (input) input.value = next;
+      // Do not mutate #st-stock-place before soft-nav completes — that raced with
+      // client filters and could hide the current place's rows (empty Counter).
       placeHost.querySelectorAll('.st-stock-place-tab').forEach(function (btn) {
         var on = String(btn.getAttribute('data-value') || '') === next;
         btn.classList.toggle('is-active', on);
@@ -4736,7 +4880,6 @@
       var needle = String((searchEl && searchEl.value) || '').trim();
       var category = getCategory();
       var status = getStatus();
-      var place = getPlace();
       var ranked = Array.from(table.querySelectorAll('tbody tr[data-sort-row]')).map(function (row) {
         var hay = row.getAttribute('data-search') || row.textContent || '';
         var score = needle ? window.hbeBestSearchScore([hay], needle) : 0;
@@ -4744,10 +4887,10 @@
         var categoryOk = category === 'all' || cat === category;
         var rowStatus = String(row.getAttribute('data-status') || '').toLowerCase();
         var statusOk = status === 'all' || rowStatus === status;
-        var rowPlace = String(row.getAttribute('data-place') || 'warehouse').toLowerCase();
-        var placeOk = rowPlace === place;
+        // Server already scopes rows to the selected place; do not re-filter by
+        // data-place (missing/stale attrs or pre-nav place flips hid Counter stock).
         var searchOk = !needle || score >= 0;
-        return { row: row, score: score, ok: searchOk && categoryOk && statusOk && placeOk };
+        return { row: row, score: score, ok: searchOk && categoryOk && statusOk };
       }).filter(function (entry) { return entry.ok; });
       if (needle) ranked.sort(function (a, b) { return b.score - a.score; });
       return ranked.map(function (entry) { return entry.row; });
@@ -4809,14 +4952,18 @@
 
       if (countEl) countEl.textContent = total + ' item' + (total === 1 ? '' : 's');
       var noMatch = total === 0 && (
-        !!needle || getCategory() !== 'all' || getStatus() !== 'all' || getPlace() === 'counter'
+        !!needle || getCategory() !== 'all' || getStatus() !== 'all'
       );
       if (emptyEl) {
         var titleEl = document.getElementById('st-stock-empty-title');
         var copyEl = document.getElementById('st-stock-empty-copy');
-        if (getPlace() === 'counter' && !needle && getCategory() === 'all' && getStatus() === 'all') {
-          if (titleEl) titleEl.textContent = 'No counter stock';
-          if (copyEl) copyEl.textContent = 'Transfer items from Warehouse to Counter.';
+        if (getPlace() === 'counter') {
+          if (titleEl) titleEl.textContent = noMatch ? 'No counter stock match' : 'No counter stock';
+          if (copyEl) {
+            copyEl.textContent = noMatch
+              ? 'Try a different search or filter. Unused counter stock can be returned to Warehouse.'
+              : 'Transfer items from Warehouse to Counter. Unused counter stock can be returned to Warehouse.';
+          }
         } else {
           if (titleEl) titleEl.textContent = 'No stock items match';
           if (copyEl) copyEl.textContent = 'Try a different search or filter.';
@@ -4861,11 +5008,32 @@
     var titleEl = document.getElementById('st-stock-transfer-title');
     var linesEl = document.getElementById('st-stock-transfer-lines');
     var submitEl = document.getElementById('st-stock-transfer-submit');
-    var selectAll = document.getElementById('st-stock-select-all');
-    var transferBtn = document.getElementById('st-stock-transfer-selected');
 
     function roundQty(n) {
       return Math.round((parseFloat(n) || 0) * 1000) / 1000;
+    }
+
+    function liveSelectAll() {
+      return document.getElementById('st-stock-select-all');
+    }
+
+    function liveTransferBtn() {
+      return document.getElementById('st-stock-transfer-selected');
+    }
+
+    function pagePlace() {
+      var el = document.getElementById('st-stock-place');
+      var fromInput = el ? String(el.value || '').toLowerCase() : '';
+      if (fromInput === 'counter' || fromInput === 'warehouse') return fromInput;
+      var fromPage = String(page.getAttribute('data-place') || 'warehouse').toLowerCase();
+      return fromPage === 'counter' ? 'counter' : 'warehouse';
+    }
+
+    function resolveTransferDirection(btn) {
+      var raw = btn ? String(btn.getAttribute('data-st-transfer') || '').trim().toLowerCase() : '';
+      if (raw === 'to_warehouse' || raw === 'to_counter') return raw;
+      // Soft-nav can recreate the button; fall back to the active stock place.
+      return pagePlace() === 'counter' ? 'to_warehouse' : 'to_counter';
     }
 
     function showErr(msg) {
@@ -4877,6 +5045,201 @@
     function closeModal() {
       modal.classList.remove('active');
       showErr('');
+    }
+
+    function selectedQtyMode() {
+      var hidden = document.getElementById('st-stock-transfer-qty-mode-value');
+      var key = String((hidden && hidden.value) || 'pack').trim().toLowerCase();
+      return key === 'total' ? 'total' : 'pack';
+    }
+
+    function setQtyMode(mode, opts) {
+      var key = mode === 'total' ? 'total' : 'pack';
+      var hidden = document.getElementById('st-stock-transfer-qty-mode-value');
+      var prev = selectedQtyMode();
+      if (hidden) hidden.value = key;
+      var tabs = modal.querySelectorAll('.st-stock-transfer-qty-mode-tabs .cp-view-tab');
+      tabs.forEach(function (tab) {
+        var on = String(tab.getAttribute('data-value') || '') === key;
+        tab.classList.toggle('is-active', on);
+        tab.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      if (!(opts && opts.skipRefresh) && prev !== key) {
+        refreshLinesForMode(key, { convert: true });
+      } else if (!(opts && opts.skipRefresh)) {
+        refreshLinesForMode(key, { convert: false });
+      }
+    }
+
+    function productPacksMap() {
+      var el = document.getElementById('st-stock-product-packs');
+      if (!el) return {};
+      try {
+        var data = JSON.parse(el.textContent || '{}');
+        return data && typeof data === 'object' ? data : {};
+      } catch (err) {
+        return {};
+      }
+    }
+
+    function normalizePackUnit(unit) {
+      var s = String(unit || '').trim().toLowerCase();
+      if (!s) return '';
+      if (s === 'ml' || s === 'mls' || s === 'milliliter' || s === 'milliliters' || s === 'millilitre' || s === 'millilitres') {
+        return 'ml';
+      }
+      if (s === 'ltr' || s === 'l' || s === 'litre' || s === 'liter' || s === 'liters' || s === 'litres') {
+        return 'liter';
+      }
+      if (s === 'gram' || s === 'grams' || s === 'g') return 'g';
+      if (s === 'kilogram' || s === 'kilograms' || s === 'kgs' || s === 'kg') return 'kg';
+      return s;
+    }
+
+    function parseQtyFromPackLabel(label, stockUnit) {
+      var text = String(label || '').trim();
+      var match = /^([\d.]+)\s+(.+)$/.exec(text);
+      if (!match) return 0;
+      var qty = roundQty(match[1]);
+      if (!(qty > 0)) return 0;
+      var labelUnit = String(match[2] || '').trim();
+      var stockNorm = normalizePackUnit(stockUnit);
+      var labelNorm = normalizePackUnit(labelUnit);
+      if (stockNorm && labelNorm && stockNorm !== labelNorm) return 0;
+      return qty;
+    }
+
+    function resolvePackForRow(row) {
+      var packLabel = String(row.getAttribute('data-pack-label') || '').trim();
+      var packQtyRaw = String(row.getAttribute('data-pack-qty-in-base') || '').trim();
+      var packQty = packQtyRaw !== '' ? roundQty(packQtyRaw) : 0;
+      if (packLabel && packQty > 0) {
+        return { label: packLabel, qty: packQty };
+      }
+      var name = String(row.getAttribute('data-item-name') || '').trim().toLowerCase();
+      var unit = String(row.getAttribute('data-unit') || '').trim().toLowerCase();
+      var outlet = String(row.getAttribute('data-outlet') || '').trim().toLowerCase();
+      var map = productPacksMap();
+      var entry = null;
+      if (name && outlet && unit) entry = map[name + '|' + outlet + '|' + unit];
+      if ((!entry || !entry.label) && name && unit) entry = map[name + '|' + unit] || entry;
+      if ((!entry || !entry.label) && name && unit) entry = map[name + '|both|' + unit] || entry;
+      if ((!entry || !entry.label) && name) entry = map[name] || entry;
+      if (entry && typeof entry === 'object') {
+        var mapLabel = String(entry.label || entry.pack_label || '').trim();
+        var mapQty = roundQty(entry.qty_in_base != null ? entry.qty_in_base : entry.qty);
+        if (mapLabel) packLabel = mapLabel;
+        if (mapQty > 0) packQty = mapQty;
+      }
+      if (packLabel && !(packQty > 0)) {
+        packQty = parseQtyFromPackLabel(packLabel, unit || String(row.getAttribute('data-unit') || ''));
+      }
+      if (!(packQty > 0)) packQty = 0;
+      return { label: packLabel || '', qty: packQty };
+    }
+
+    function linePackQty(line) {
+      var raw = line && line.getAttribute('data-pack-qty-in-base');
+      if (raw == null || String(raw).trim() === '') return 0;
+      var n = roundQty(raw);
+      return n > 0 ? n : 0;
+    }
+
+    function lineUsesPack(line, mode) {
+      if (mode !== 'pack') return false;
+      return linePackQty(line) > 0 && String(line.getAttribute('data-pack-label') || '').trim() !== '';
+    }
+
+    function packAvailCount(baseAvail, packQty) {
+      if (!(packQty > 0)) return 0;
+      return Math.floor((roundQty(baseAvail) + 1e-9) / packQty);
+    }
+
+    function formatPackAvail(packs, packLabel) {
+      var label = String(packLabel || '').trim();
+      var suffix = /pack$/i.test(label) ? label : (label ? label + ' pack' : 'pack');
+      return packs + ' × ' + suffix;
+    }
+
+    function refreshLinesForMode(mode, opts) {
+      if (!linesEl) return;
+      var convert = !!(opts && opts.convert);
+      Array.from(linesEl.querySelectorAll('.st-stock-transfer-line')).forEach(function (line) {
+        var baseAvail = roundQty(line.getAttribute('data-base-available') || '0');
+        var baseUnit = String(line.getAttribute('data-unit') || '').trim();
+        var packLabel = String(line.getAttribute('data-pack-label') || '').trim();
+        var packQty = linePackQty(line);
+        var usePack = lineUsesPack(line, mode);
+        var availEl = line.querySelector('.st-stock-transfer-avail');
+        var qtyInput = line.querySelector('.st-stock-transfer-line-qty');
+        var unitEl = line.querySelector('.st-stock-transfer-qty-unit');
+        var prevMode = String(line.getAttribute('data-line-mode') || 'total');
+        var enteredRaw = qtyInput ? String(qtyInput.value || '').trim() : '';
+        var entered = enteredRaw !== '' ? roundQty(enteredRaw) : null;
+        var avail;
+        var unitLabel;
+        var step;
+        var availText;
+
+        if (usePack) {
+          avail = packAvailCount(baseAvail, packQty);
+          unitLabel = packLabel;
+          step = '1';
+          availText = formatPackAvail(avail, packLabel);
+        } else {
+          avail = baseAvail;
+          unitLabel = baseUnit;
+          step = '0.01';
+          availText = String(avail) + (baseUnit ? ' ' + baseUnit : '');
+        }
+
+        line.setAttribute('data-available', String(avail));
+        line.setAttribute('data-line-mode', usePack ? 'pack' : 'total');
+
+        if (availEl) {
+          availEl.textContent = '';
+          availEl.appendChild(document.createTextNode(availText));
+          if (mode === 'pack' && !usePack) {
+            availEl.appendChild(document.createElement('br'));
+            var noteEl = document.createElement('span');
+            noteEl.className = 'st-stock-transfer-avail-note';
+            noteEl.textContent = 'No pack — using base unit';
+            availEl.appendChild(noteEl);
+          }
+        }
+
+        if (qtyInput) {
+          qtyInput.max = String(avail);
+          qtyInput.step = step;
+          qtyInput.min = '0';
+          if (convert && entered != null && entered >= 0) {
+            var nextVal = entered;
+            if (prevMode === 'pack' && !usePack && packQty > 0) {
+              nextVal = roundQty(entered * packQty);
+            } else if (prevMode === 'total' && usePack && packQty > 0) {
+              nextVal = Math.floor((entered / packQty) + 1e-9);
+            } else if (prevMode === 'pack' && usePack) {
+              nextVal = Math.floor(entered + 1e-9);
+            }
+            if (nextVal - avail > 0.0001) nextVal = avail;
+            if (nextVal <= 0) {
+              qtyInput.value = '';
+            } else {
+              qtyInput.value = String(roundQty(nextVal));
+            }
+          }
+          if (qtyInput.value !== '') clampQtyInput(qtyInput);
+        }
+        if (unitEl) {
+          unitEl.textContent = unitLabel;
+          unitEl.style.display = unitLabel ? '' : 'none';
+        } else if (unitLabel && qtyInput && qtyInput.parentNode) {
+          var span = document.createElement('span');
+          span.className = 'st-stock-transfer-qty-unit';
+          span.textContent = unitLabel;
+          qtyInput.parentNode.appendChild(span);
+        }
+      });
     }
 
     function clampQtyInput(input) {
@@ -4925,11 +5288,13 @@
       }
       var rows = selectableRows();
       var selected = checkedRows();
+      var selectAll = liveSelectAll();
       if (selectAll) {
         selectAll.disabled = rows.length === 0;
         selectAll.checked = rows.length > 0 && selected.length === rows.length;
         selectAll.indeterminate = selected.length > 0 && selected.length < rows.length;
       }
+      var transferBtn = liveTransferBtn();
       if (transferBtn) transferBtn.disabled = selected.length === 0;
     }
 
@@ -4976,17 +5341,26 @@
       if (submitEl) submitEl.textContent = toCounter ? 'Transfer' : 'Return';
       syncDestLabels(toCounter);
       setToOutlet('');
+      setQtyMode('pack', { skipRefresh: true });
       if (linesEl) {
         linesEl.innerHTML = rows.map(function (row, idx) {
           var name = String(row.getAttribute('data-item-name') || '').trim();
           var unit = String(row.getAttribute('data-unit') || '').trim();
           var outlet = String(row.getAttribute('data-outlet') || '').trim();
           var avail = roundQty(row.getAttribute('data-qty') || '0');
+          var resolved = resolvePackForRow(row);
+          var packLabel = resolved.label || '';
+          var packQty = resolved.qty > 0 ? resolved.qty : 0;
+          var packQtyRaw = packQty > 0 ? String(packQty) : '';
           return (
             '<tr class="st-stock-transfer-line" data-outlet="' + escapeHtml(outlet) +
             '" data-item-name="' + escapeHtml(name) +
             '" data-unit="' + escapeHtml(unit) +
-            '" data-available="' + avail + '">' +
+            '" data-base-available="' + avail +
+            '" data-available="' + avail +
+            '" data-pack-label="' + escapeHtml(packLabel) +
+            '" data-pack-qty-in-base="' + escapeHtml(packQtyRaw) +
+            '" data-line-mode="total">' +
             '<td class="st-stock-transfer-item">' + escapeHtml(name) + '</td>' +
             '<td class="st-stock-transfer-avail">' + avail + (unit ? ' ' + escapeHtml(unit) : '') + '</td>' +
             '<td class="st-stock-transfer-qty-cell">' +
@@ -4997,6 +5371,7 @@
           );
         }).join('');
       }
+      refreshLinesForMode('pack', { convert: false });
       showErr('');
       modal.classList.add('active');
       var destBtn = document.getElementById('st-stock-transfer-dest-restaurant');
@@ -5029,7 +5404,7 @@
         event.preventDefault();
         var rows = checkedRows();
         if (!rows.length) return;
-        openModal(rows, String(btn.getAttribute('data-st-transfer') || 'to_counter'));
+        openModal(rows, resolveTransferDirection(btn));
       });
     }
 
@@ -5049,6 +5424,11 @@
         if (destTab && modal.contains(destTab)) {
           e.preventDefault();
           setToOutlet(String(destTab.getAttribute('data-value') || ''));
+        }
+        var modeTab = e.target && e.target.closest ? e.target.closest('.st-stock-transfer-qty-mode-tabs .cp-view-tab') : null;
+        if (modeTab && modal.contains(modeTab)) {
+          e.preventDefault();
+          setQtyMode(String(modeTab.getAttribute('data-value') || 'pack'));
         }
       });
       modal.addEventListener('input', function (e) {
@@ -5071,21 +5451,32 @@
         for (var i = 0; i < lineNodes.length; i++) {
           var node = lineNodes[i];
           var qtyInput = node.querySelector('.st-stock-transfer-line-qty');
-          var qty = roundQty(qtyInput && qtyInput.value);
-          if (qty <= 0) continue;
-          var avail = roundQty(node.getAttribute('data-available') || '0');
+          var entered = roundQty(qtyInput && qtyInput.value);
+          if (entered <= 0) continue;
+          var modeAvail = roundQty(node.getAttribute('data-available') || '0');
           var name = String(node.getAttribute('data-item-name') || '').trim();
           var unit = String(node.getAttribute('data-unit') || '').trim();
-          if (qty - avail > 0.0001) {
+          if (entered - modeAvail > 0.0001) {
             showErr('Qty for ' + name + (unit ? ' (' + unit + ')' : '') + ' cannot exceed available stock.');
             if (qtyInput) qtyInput.focus();
             return;
           }
+          var lineMode = String(node.getAttribute('data-line-mode') || 'total');
+          var packQty = linePackQty(node);
+          var baseQty = entered;
+          if (lineMode === 'pack' && packQty > 0) {
+            baseQty = roundQty(entered * packQty);
+          }
+          var baseAvail = roundQty(node.getAttribute('data-base-available') || '0');
+          if (baseQty - baseAvail > 0.0001) {
+            baseQty = baseAvail;
+          }
+          if (baseQty <= 0) continue;
           items.push({
             outlet: String(node.getAttribute('data-outlet') || '').trim(),
             item_name: name,
             unit: unit,
-            qty: qty
+            qty: baseQty
           });
         }
         if (!items.length) {
@@ -5121,14 +5512,17 @@
         }).then(function (result) {
           syncSubmitEnabled();
           if (!result.data || !result.data.ok) {
-            showErr((result.data && result.data.error) || 'Could not transfer stock.');
+            showErr((result.data && result.data.error) || 'Could not create transfer.');
             return;
           }
           closeModal();
-          stSoftNavigate(window.location.pathname + window.location.search);
+          var msg = (result.data && result.data.message)
+            || ('Created ' + ((result.data && result.data.transfer_no) || 'transfer') + '. Receive under Stock Inward → Transfers.');
+          try { sessionStorage.setItem('hbe.st.flash', JSON.stringify({ message: msg, category: 'ok' })); } catch (eFlash) {}
+          softRefreshStoresPaths(['/stores/stock', '/stores/purchase-requests', '/stores/inward']);
         }).catch(function () {
           syncSubmitEnabled();
-          showErr('Could not transfer stock.');
+          showErr('Could not create transfer.');
         });
       });
     }
@@ -5147,9 +5541,11 @@
     initProductMasterDelete();
     initProductPackRowToggle();
     initIndentListSearch();
-    initStockSearch();
     initStockPlaceTabs();
     initStockTransferModal();
+    initStockTransferReceive();
+    consumeStoresFlash();
+    initStockSearch();
     if (typeof window.initStockAudit === 'function') window.initStockAudit();
     syncIndentLineTotals(document.getElementById('st-indent-form'));
     syncIndentSendButtons();

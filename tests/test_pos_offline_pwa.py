@@ -176,6 +176,18 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("bindOnlineFreshSync", body)
         self.assertIn("HbeOfflineSync", body)
 
+
+    def test_de_pwa_does_not_hard_reload_from_build_json_mismatch(self):
+        """Build digest flips while editing; reload-from-mismatch caused refresh loops."""
+        resp = self.client.get("/static/de_pwa.js")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_data(as_text=True)
+        self.assertIn("hbe-build.json", body)
+        self.assertIn("Intentionally no location.reload()", body)
+        # Still reloads once after a new SW claims — but not on localhost/LAN.
+        self.assertIn("Localhost / LAN", body)
+        self.assertIn("controllerchange", body)
+
     def test_pos_offline_has_seven_day_prune(self):
         resp = self.client.get("/static/pos_offline.js")
         self.assertEqual(resp.status_code, 200)

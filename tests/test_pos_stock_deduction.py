@@ -241,7 +241,7 @@ class PosStockDeductionTests(unittest.TestCase):
         self.assertAlmostEqual(self._on_hand(place="warehouse"), 5.0, places=3)
         self.assertEqual(len(self._sale_movements(invoice_id)), 1)
 
-    def test_insufficient_stock_partial_deduct_does_not_block_close(self):
+    def test_insufficient_stock_full_deduct_into_negative_does_not_block_close(self):
         conn = db_mod.get_db()
         try:
             conn.execute(
@@ -265,13 +265,49 @@ class PosStockDeductionTests(unittest.TestCase):
         close = self.client.post(f"/point-of-sale/api/invoices/{invoice_id}/close")
         self.assertEqual(close.status_code, 200)
         self.assertEqual(close.get_json()["invoice"]["status"], "closed")
-        # Needed 0.3 kg; only 0.1 available → clamp to zero on hand.
-        self.assertAlmostEqual(self._on_hand(), 0.0, places=3)
+        self.assertTrue(close.get_json()["invoice"].get("stock_deducted_at"))
+        # Needed 0.3 kg; only 0.1 on hand → full deduct to -0.2 (never clamp).
+        self.assertAlmostEqual(self._on_hand(), -0.2, places=3)
         self.assertAlmostEqual(self._on_hand(place="warehouse"), 5.0, places=3)
         moves = self._sale_movements(invoice_id)
         self.assertEqual(len(moves), 1)
         self.assertEqual(moves[0]["place"], "counter")
-        self.assertAlmostEqual(float(moves[0]["qty_delta"]), -0.1, places=3)
+        self.assertAlmostEqual(float(moves[0]["qty_delta"]), -0.3, places=3)
+
+    def test_missing_counter_row_creates_negative_and_movement(self):
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                """
+                DELETE FROM store_stock_items
+                WHERE outlet = 'restaurant' AND place = 'counter'
+                  AND lower(item_name) = lower('Strawberry Ice Cream')
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.assertIsNone(self._on_hand())
+
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-STOCK-0003B", qty=2),
+        )
+        invoice_id = saved.get_json()["invoice"]["id"]
+
+        close = self.client.post(f"/point-of-sale/api/invoices/{invoice_id}/close")
+        self.assertEqual(close.status_code, 200)
+        self.assertEqual(close.get_json()["invoice"]["status"], "closed")
+        self.assertTrue(close.get_json()["invoice"].get("stock_deducted_at"))
+        # No counter row → insert at -0.3 kg with a sale movement.
+        self.assertAlmostEqual(self._on_hand(), -0.3, places=3)
+        self.assertAlmostEqual(self._on_hand(place="warehouse"), 5.0, places=3)
+        moves = self._sale_movements(invoice_id)
+        self.assertEqual(len(moves), 1)
+        self.assertEqual(moves[0]["place"], "counter")
+        self.assertEqual(moves[0]["movement_type"], "sale")
+        self.assertAlmostEqual(float(moves[0]["qty_delta"]), -0.3, places=3)
 
     def test_missing_recipe_still_closes_without_crash(self):
         conn = db_mod.get_db()

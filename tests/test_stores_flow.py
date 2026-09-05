@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import tempfile
 import unittest
 from datetime import datetime, timedelta
@@ -1842,6 +1843,7 @@ class StoresFlowTests(unittest.TestCase):
         self.assertEqual(approved.status_code, 200)
         self.assertIn(b"Indent Approved", approved.data)
         self.assertIn(b"Without Indent Approval", approved.data)
+        self.assertIn(b"Transfers", approved.data)
         self.assertIn(b'id="st-inward-indent-listbox"', approved.data)
         self.assertIn(b"Purchase Order", approved.data)
         self.assertIn(b"Select purchase order", approved.data)
@@ -3307,6 +3309,157 @@ class StoresFlowTests(unittest.TestCase):
             return int(row["id"])
         finally:
             conn.close()
+
+
+    def test_stock_transfer_pending_then_inward_receive(self):
+        """Transfer creates pending TRF with no qty change; receive moves stock once."""
+        conn = db_mod.get_db()
+        try:
+            db_mod.ensure_stores_schema(conn)
+            conn.execute(
+                """
+                INSERT INTO store_stock_items
+                    (outlet, place, item_name, unit, qty_on_hand, updated_at)
+                VALUES
+                    ('restaurant', 'warehouse', 'TransferTomato', 'kg', 20.0, datetime('now','localtime')),
+                    ('restaurant', 'counter', 'TransferTomato', 'kg', 1.0, datetime('now','localtime'))
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        create = self.client.post(
+            "/stores/stock/transfer",
+            json={
+                "direction": "to_counter",
+                "to_outlet": "restaurant",
+                "note": "Kitchen prep",
+                "items": [
+                    {
+                        "outlet": "restaurant",
+                        "item_name": "TransferTomato",
+                        "unit": "kg",
+                        "qty": 5,
+                    }
+                ],
+            },
+        )
+        self.assertEqual(create.status_code, 200, create.data)
+        payload = create.get_json()
+        self.assertTrue(payload.get("ok"))
+        self.assertEqual(payload.get("status"), "pending")
+        transfer_no = payload.get("transfer_no") or ""
+        transfer_id = int(payload.get("id") or 0)
+        self.assertTrue(transfer_no.startswith("TRF-"))
+        self.assertGreater(transfer_id, 0)
+
+        conn = db_mod.get_db()
+        try:
+            wh = conn.execute(
+                """
+                SELECT qty_on_hand FROM store_stock_items
+                WHERE outlet = 'restaurant' AND place = 'warehouse'
+                  AND item_name = 'TransferTomato' AND unit = 'kg'
+                """
+            ).fetchone()
+            ct = conn.execute(
+                """
+                SELECT qty_on_hand FROM store_stock_items
+                WHERE outlet = 'restaurant' AND place = 'counter'
+                  AND item_name = 'TransferTomato' AND unit = 'kg'
+                """
+            ).fetchone()
+            self.assertAlmostEqual(float(wh["qty_on_hand"]), 20.0)
+            self.assertAlmostEqual(float(ct["qty_on_hand"]), 1.0)
+            row = conn.execute(
+                "SELECT status, note FROM store_stock_transfers WHERE id = ?",
+                (transfer_id,),
+            ).fetchone()
+            self.assertEqual(row["status"], "pending")
+            self.assertEqual(row["note"], "Kitchen prep")
+            lines = conn.execute(
+                "SELECT qty_base FROM store_stock_transfer_lines WHERE transfer_id = ?",
+                (transfer_id,),
+            ).fetchall()
+            self.assertEqual(len(lines), 1)
+            self.assertAlmostEqual(float(lines[0]["qty_base"]), 5.0)
+            mov = conn.execute(
+                """
+                SELECT COUNT(*) AS c FROM store_stock_movements
+                WHERE ref_type = 'stock_transfer' AND ref_id = ?
+                """,
+                (transfer_id,),
+            ).fetchone()
+            self.assertEqual(int(mov["c"]), 0)
+        finally:
+            conn.close()
+
+        page = self.client.get(
+            f"/stores/purchase-requests?outlet=restaurant&view=transfers&transfer_id={transfer_id}"
+        )
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(transfer_no.encode(), page.data)
+        self.assertIn(b"Verify &amp; Receive", page.data)
+        self.assertIn(b"st-inward-transfer-listbox", page.data)
+
+        receive = self.client.post(f"/stores/stock/transfers/{transfer_id}/receive")
+        self.assertEqual(receive.status_code, 200, receive.data)
+        recv = receive.get_json()
+        self.assertTrue(recv.get("ok"))
+        self.assertEqual(recv.get("status"), "received")
+
+        conn = db_mod.get_db()
+        try:
+            wh = conn.execute(
+                """
+                SELECT qty_on_hand FROM store_stock_items
+                WHERE outlet = 'restaurant' AND place = 'warehouse'
+                  AND item_name = 'TransferTomato' AND unit = 'kg'
+                """
+            ).fetchone()
+            ct = conn.execute(
+                """
+                SELECT qty_on_hand FROM store_stock_items
+                WHERE outlet = 'restaurant' AND place = 'counter'
+                  AND item_name = 'TransferTomato' AND unit = 'kg'
+                """
+            ).fetchone()
+            self.assertAlmostEqual(float(wh["qty_on_hand"]), 15.0)
+            self.assertAlmostEqual(float(ct["qty_on_hand"]), 6.0)
+            status = conn.execute(
+                "SELECT status FROM store_stock_transfers WHERE id = ?",
+                (transfer_id,),
+            ).fetchone()["status"]
+            self.assertEqual(status, "received")
+            mov = conn.execute(
+                """
+                SELECT COUNT(*) AS c FROM store_stock_movements
+                WHERE ref_type = 'stock_transfer' AND ref_id = ?
+                """,
+                (transfer_id,),
+            ).fetchone()
+            self.assertEqual(int(mov["c"]), 2)
+        finally:
+            conn.close()
+
+        again = self.client.post(f"/stores/stock/transfers/{transfer_id}/receive")
+        self.assertEqual(again.status_code, 400)
+        again_payload = again.get_json()
+        self.assertFalse(again_payload.get("ok"))
+        self.assertIn("already received", (again_payload.get("error") or "").lower())
+
+    def test_stock_transfer_create_uses_soft_refresh_in_js(self):
+        js = Path(__file__).resolve().parents[1].joinpath("static", "stores.js").read_text()
+        self.assertIn("softRefreshStoresPaths", js)
+        self.assertIn("deSoftRefresh", js)
+        self.assertIn("deInvalidateSoftNavCacheByPath", js)
+        self.assertIn("'/stores/stock'", js)
+        self.assertIn(
+            "softRefreshStoresPaths(['/stores/stock', '/stores/purchase-requests', '/stores/inward'])",
+            js,
+        )
+
 
     def test_stock_audit_seeds_and_zero_variance_verify(self):
         self._seed_stock_item(qty=10.0)

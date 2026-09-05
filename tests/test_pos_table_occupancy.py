@@ -934,6 +934,53 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(after["tables"], [])
         self.assertFalse(any(t.get("invoice_id") == invoice_id for t in after["tables"]))
 
+    def test_generate_customer_bill_api_sets_flag_frees_table_drops_pending(self):
+        """Print/generate-customer-bill path matches Generate Invoice semantics."""
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-CashPrint-01", "T1"),
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        invoice_id = saved.get_json()["invoice"]["id"]
+        self.assertEqual(self._floor_status("T1"), "occupied")
+        pending = self.client.get("/point-of-sale/api/floor").get_json()["kot_pending"]
+        self.assertEqual(pending["pending_table_count"], 1)
+        self.assertFalse(saved.get_json()["invoice"].get("customer_bill_sent"))
+
+        gen = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice_id}/generate-customer-bill"
+        )
+        self.assertEqual(gen.status_code, 200, gen.get_data(as_text=True))
+        invoice = gen.get_json()["invoice"]
+        self.assertTrue(invoice.get("customer_bill_sent"))
+        self.assertTrue((invoice.get("customer_bill_at") or "").strip())
+        self.assertEqual(invoice.get("status"), "open")
+        self.assertEqual(self._floor_status("T1"), "available")
+
+        after = self.client.get("/point-of-sale/api/floor").get_json()["kot_pending"]
+        self.assertEqual(after["pending_table_count"], 0)
+        self.assertEqual(after["pending_item_count"], 0)
+        self.assertEqual(after["tables"], [])
+
+        # Idempotent — second call must not error or reopen the tile.
+        again = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice_id}/generate-customer-bill"
+        )
+        self.assertEqual(again.status_code, 200, again.get_data(as_text=True))
+        self.assertTrue(again.get_json()["invoice"].get("customer_bill_sent"))
+        self.assertEqual(self._floor_status("T1"), "available")
+        still = self.client.get("/point-of-sale/api/floor").get_json()["kot_pending"]
+        self.assertEqual(still["pending_table_count"], 0)
+
+    def test_generate_customer_bill_api_wiring_in_static_sources(self):
+        """Tables cash/print must POST generate-customer-bill before printing."""
+        tables = (
+            Path(__file__).resolve().parents[1] / "static" / "pos_tables.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn("function ensureCustomerBillGenerated", tables)
+        self.assertIn("/generate-customer-bill", tables)
+        self.assertIn("ensureCustomerBillGenerated(data.invoice)", tables)
+
     def test_kot_pending_send_all(self):
         self.client.post("/point-of-sale/api/invoices", json=self._payload("ORD-2607-0060", "T1"))
         # Second table: free T3 first so a new dine-in bill can claim it.

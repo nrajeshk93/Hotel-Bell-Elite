@@ -868,6 +868,11 @@
   }
 
   function toggleDeSidebarPin(){
+    /* Phone drawer: header pin is the open/close control (≤760 shell pattern). */
+    if(window.innerWidth <= 760){
+      toggleDeSidebar();
+      return;
+    }
     document.body.classList.toggle('sb-off');
     localStorage.setItem('sb-collapsed', document.body.classList.contains('sb-off') ? '1' : '0');
     setDeSidebarExpanded(false);

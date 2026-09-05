@@ -38,7 +38,7 @@
 </article>
 {% else %}
 {% set inward_view = inward_view|default('approved') %}
-<section class="st-indent-page st-inward-page{% if inward_view == 'direct' %} st-inward-page--direct{% endif %}" id="st-inward-page" data-st-inward data-st-inward-view="{{ inward_view }}">
+<section class="st-indent-page st-inward-page{% if inward_view == 'direct' %} st-inward-page--direct{% elif inward_view == 'transfers' %} st-inward-page--transfers{% endif %}" id="st-inward-page" data-st-inward data-st-inward-view="{{ inward_view }}">
   <form
     method="post"
     action="{{ url_for('stores_purchase_requests', outlet=selected_outlet, view=inward_view) }}"
@@ -140,6 +140,81 @@
       </button>
     </div>
     {% endif %}
+    {% endif %}
+
+    {% elif inward_view == 'transfers' %}
+    {# —— Pending stock transfers —— #}
+    {% if selected_transfer %}
+    <article class="st-card st-inward-card st-inward-transfer">
+      <div class="st-card-head st-inward-card-head">
+        <div class="st-card-title-wrap">
+          <span class="st-card-icon st-card-icon--success" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+          </span>
+          <div>
+            <h2 class="st-card-title">Transfer {{ selected_transfer.transfer_no }}</h2>
+            <p class="st-card-sub">
+              {{ selected_transfer.route_label|default('') }}
+              {% if selected_transfer.note %} · {{ selected_transfer.note }}{% endif %}
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="st-card-body st-inward-table-wrap">
+        {% if selected_transfer_lines %}
+        <div class="st-detail-table-wrap">
+          <table class="st-detail-table st-inward-table" aria-label="Transfer lines">
+            <thead>
+              <tr>
+                <th scope="col">Item</th>
+                <th scope="col">Outlet</th>
+                <th scope="col">Qty</th>
+                <th scope="col">Unit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for line in selected_transfer_lines %}
+              <tr>
+                <td>{{ line.item_name }}</td>
+                <td>{{ line.outlet }}</td>
+                <td>{{ line.qty_base }}</td>
+                <td>{{ line.unit }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="pl-empty">This transfer has no lines.</div>
+        {% endif %}
+      </div>
+    </article>
+    <div class="st-sticky-actions st-inward-actions" id="st-inward-transfer-actions"
+         data-st-transfer-receive-url="{{ transfer_receive_url }}"
+         data-st-transfer-cancel-url="{{ transfer_cancel_url }}"
+         data-st-transfer-id="{{ selected_transfer.id }}"
+         data-st-transfer-no="{{ selected_transfer.transfer_no }}">
+      <button type="button" class="st-btn st-btn--secondary" id="st-inward-transfer-cancel">Cancel transfer</button>
+      <button type="button" class="st-btn st-btn--primary" id="st-inward-transfer-receive">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+        Verify &amp; Receive
+      </button>
+    </div>
+    <div id="st-inward-transfer-err" class="st-flash st-flash--error" style="display:none;" role="alert"></div>
+    {% else %}
+    <article class="st-card st-inward-card">
+      <div class="st-card-body">
+        <div class="pl-empty">
+          {% if pending_transfers %}
+          <strong>Select a Transfer ID</strong>
+          Choose a pending transfer next to Outlet to review lines and receive stock.
+          {% else %}
+          <strong>No pending transfers</strong>
+          Create a transfer from Store → Transfer / Return, then receive it here.
+          {% endif %}
+        </div>
+      </div>
+    </article>
     {% endif %}
 
     {% elif selected_po or selected_indent %}

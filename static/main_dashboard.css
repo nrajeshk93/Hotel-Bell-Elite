@@ -755,3 +755,130 @@ body.main-dashboard-module #main-dashboard-page .rdx-sales-trend,
 body.main-dashboard-module #main-dashboard-page .rdx-payment-mode {
   margin-bottom: 16px;
 }
+
+
+/* Phone compact — do not remove desktop layouts above */
+body.su-module #md-filter-form .md-date-range-host .an-range-wrap{
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  flex-shrink: 1;
+}
+body.su-module #md-filter-form .md-date-range-host .an-range-trigger{
+  min-width: 0 !important;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+body.main-dashboard-module #main-dashboard-page,
+body.main-dashboard-module #main-dashboard-page .main-wrapper,
+body.main-dashboard-module #main-dashboard-page > .rdx-content{
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+@media (max-width: 640px) {
+  body.su-module #md-filter-form.sr-topbar-filters{
+    gap: 10px;
+  }
+  body.su-module #md-filter-form .md-period-field{
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  body.su-module #md-filter-form .md-period-pills{
+    width: 100%;
+  }
+  body.su-module #md-filter-form .md-period-pill{
+    flex: 1 1 auto;
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 12px;
+    text-align: center;
+  }
+  body.su-module #md-filter-form .pl-header-field-listbox.se-filter-chip--listbox,
+  body.su-module #md-filter-form .md-date-range-host.pl-header-field{
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+  }
+
+  body.main-dashboard-module #main-dashboard-page > header.se-sales-header.su-header{
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  body.main-dashboard-module #main-dashboard-page > .rdx-content.content.se-content{
+    padding: 12px 12px 36px;
+  }
+  body.main-dashboard-module #main-dashboard-page .rdx-kpi-grid{
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  body.main-dashboard-module #main-dashboard-page .rdx-co-leaderboard,
+  body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib{
+    padding: 16px;
+    border-radius: 16px;
+  }
+  body.main-dashboard-module #main-dashboard-page .rdx-top-items{
+    padding: 14px 14px 12px;
+  }
+  body.main-dashboard-module #main-dashboard-page .rdx-top-items .rdx-card-head{
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  body.main-dashboard-module #main-dashboard-page .rdx-ti-sort{
+    margin-left: 0;
+    width: 100%;
+  }
+  body.main-dashboard-module #main-dashboard-page .rdx-ti-sort-btn{
+    flex: 1 1 auto;
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+  body.main-dashboard-module #main-dashboard-page .rdx-ti-cols,
+  body.main-dashboard-module #main-dashboard-page .rdx-ti-row{
+    grid-template-columns: minmax(0, 1.5fr) minmax(64px, 0.65fr) minmax(56px, 0.55fr);
+    gap: 8px;
+  }
+  body.main-dashboard-module #main-dashboard-page .rdx-ti-name{
+    font-size: 13px;
+  }
+  body.main-dashboard-module #main-dashboard-page .rdx-ti-sale{
+    font-size: 14px;
+  }
+  body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top #rdx-chart-dow{
+    min-height: 200px;
+    height: 200px;
+  }
+}
+
+@media (max-width: 430px) {
+  body.main-dashboard-module #main-dashboard-page > header.se-sales-header.su-header{
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  body.main-dashboard-module #main-dashboard-page > .rdx-content.content.se-content{
+    padding: 10px 10px 32px;
+  }
+  body.su-module #md-filter-form .md-period-pill{
+    padding: 10px 8px;
+    font-size: 11px;
+  }
+  body.main-dashboard-module #main-dashboard-page .rdx-ti-cols{
+    display: none;
+  }
+  body.main-dashboard-module #main-dashboard-page .rdx-ti-row{
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "product sale"
+      "product qty";
+    row-gap: 4px;
+    column-gap: 10px;
+  }
+  body.main-dashboard-module #main-dashboard-page .rdx-ti-product{ grid-area: product; }
+  body.main-dashboard-module #main-dashboard-page .rdx-ti-sale{ grid-area: sale; align-self: end; }
+  body.main-dashboard-module #main-dashboard-page .rdx-ti-qty{ grid-area: qty; text-align: right; }
+}

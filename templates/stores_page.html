@@ -260,7 +260,7 @@
           <div class="st-inward-mode-tabs">
             <span class="se-filter-chip-label" aria-hidden="true">Mode</span>
             <div class="cp-view-tabs st-inward-view-tabs" role="tablist" aria-label="Stock inward mode">
-              {% for view_key, view_label in inward_list_views|default([('approved', 'Indent Approved'), ('direct', 'Without Indent Approval')]) %}
+              {% for view_key, view_label in inward_list_views|default([('approved', 'Indent Approved'), ('direct', 'Without Indent Approval'), ('transfers', 'Transfers')]) %}
               <a class="cp-view-tab{% if inward_view == view_key %} is-active{% endif %}"
                  href="{{ url_for('stores_purchase_requests', outlet=selected_outlet, view=view_key) }}"
                  role="tab"
@@ -424,6 +424,58 @@
             </div>
           </div>
           {% endif %}
+
+          {% if page_key == 'purchase_requests' and not detail and (inward_view|default('approved')) == 'transfers' %}
+          {% set selected_transfer = selected_transfer|default(none) %}
+          {% set pending_transfers = pending_transfers|default([]) %}
+          <div
+            class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-inward-indent-listbox st-inward-transfer-listbox"
+            data-se-listbox
+            data-se-listbox-change="stInwardTransferChanged"
+            data-st-inward-endpoint="{{ url_for('stores_purchase_requests') }}"
+            data-st-inward-outlet="{{ selected_outlet }}"
+            data-st-inward-view="transfers"
+            id="st-inward-transfer-listbox"
+          >
+            <span class="se-filter-chip-label" id="st-inward-transfer-label">Transfer ID</span>
+            <div class="se-filter-chip-control">
+              <input type="hidden" id="st-inward-transfer" value="{{ selected_transfer.id if selected_transfer else '' }}">
+              <button
+                type="button"
+                class="se-filter-chip-trigger"
+                id="st-inward-transfer-trigger"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                aria-controls="st-inward-transfer-list"
+                aria-labelledby="st-inward-transfer-label st-inward-transfer-value"
+              >
+                <span class="se-filter-chip-value{% if not selected_transfer %} is-placeholder{% endif %}" id="st-inward-transfer-value">
+                  {% if selected_transfer %}{{ selected_transfer.transfer_no }}{% else %}Select transfer…{% endif %}
+                </span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="st-inward-transfer-list" role="listbox" aria-labelledby="st-inward-transfer-label" hidden>
+              <div class="ep-listbox-options">
+                <button type="button" class="se-filter-listbox-option{% if not selected_transfer %} is-selected{% endif %}" role="option" data-value="" data-label="Select transfer…" aria-selected="{{ 'true' if not selected_transfer else 'false' }}">Select transfer…</button>
+                {% for tr in pending_transfers %}
+                <button
+                  type="button"
+                  class="se-filter-listbox-option{% if selected_transfer and selected_transfer.id == tr.id %} is-selected{% endif %}"
+                  role="option"
+                  data-value="{{ tr.id }}"
+                  data-label="{{ tr.transfer_no }}"
+                  data-outlet="{{ tr.from_outlet }}"
+                  aria-selected="{{ 'true' if selected_transfer and selected_transfer.id == tr.id else 'false' }}"
+                >{{ tr.transfer_no }} · {{ tr.route_label|default('') }}</button>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+          {% endif %}
+
         </form>
         {% endif %}
       </div>
@@ -478,6 +530,14 @@
         <div class="cp-view-tabs st-stock-transfer-dest-tabs" role="tablist" aria-labelledby="st-stock-transfer-dest-label" aria-required="true">
           <button type="button" class="cp-view-tab" role="tab" data-value="restaurant" id="st-stock-transfer-dest-restaurant" aria-selected="false">Restaurant Counter</button>
           <button type="button" class="cp-view-tab" role="tab" data-value="bar" id="st-stock-transfer-dest-bar" aria-selected="false">Bar Counter</button>
+        </div>
+      </div>
+      <div class="st-stock-transfer-qty-mode" id="st-stock-transfer-qty-mode">
+        <span class="se-filter-chip-label" id="st-stock-transfer-qty-mode-label">Qty by</span>
+        <input type="hidden" id="st-stock-transfer-qty-mode-value" name="qty_mode" value="pack">
+        <div class="cp-view-tabs st-stock-transfer-qty-mode-tabs" role="tablist" aria-labelledby="st-stock-transfer-qty-mode-label">
+          <button type="button" class="cp-view-tab is-active" role="tab" data-value="pack" id="st-stock-transfer-mode-pack" aria-selected="true">Pack</button>
+          <button type="button" class="cp-view-tab" role="tab" data-value="total" id="st-stock-transfer-mode-total" aria-selected="false">Total</button>
         </div>
       </div>
       <div class="st-stock-transfer-table-wrap">

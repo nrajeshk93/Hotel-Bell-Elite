@@ -593,11 +593,15 @@ _STORES_ENDPOINT_GROUPS = {
         "stores_confirm_stock_inward_expense",
         "stores_confirm_direct_stock_inward_expense",
         "stores_save_expense_category",
+        "stores_stock_transfer_receive",
+        "stores_stock_transfer_cancel",
     },
     "stock": {
         "stores_stock",
         "stores_stock_export",
         "stores_stock_transfer",
+        "stores_stock_transfer_receive",
+        "stores_stock_transfer_cancel",
     },
     "stock_audit": {
         "stores_stock_audit",

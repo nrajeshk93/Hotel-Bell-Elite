@@ -1531,6 +1531,7 @@ def _adjust_stock(
     place,
     unit_cost=None,
     allow_shortfall=False,
+    allow_negative=False,
 ):
     """Adjust on-hand qty and write a stock movement.
 
@@ -1538,7 +1539,10 @@ def _adjust_stock(
     the movement row are all keyed by outlet + place + name + unit.
 
     Returns the qty_delta actually applied (may be clamped when allow_shortfall
-    is True). Returns 0.0 when nothing was written (no row / zero delta).
+    is True and allow_negative is False). When allow_negative is True, the full
+    qty_delta is applied even if on-hand goes below zero, and a missing row with
+    a negative delta is inserted at that negative qty. Returns 0.0 when nothing
+    was written (zero delta, or shortfall clamp with nothing on hand).
     """
     place = _normalize_stock_place(place)
     try:
@@ -1559,10 +1563,10 @@ def _adjust_stock(
     if existing:
         on_hand = float(existing["qty_on_hand"] or 0)
         new_qty = on_hand + qty_delta
-        if new_qty < -0.0001:
+        if new_qty < -0.0001 and not allow_negative:
             if not allow_shortfall:
                 raise ValueError(f"Not enough stock for {item_name} ({unit}).")
-            # Deduct only what exists; do not block the caller (e.g. POS sale).
+            # Deduct only what exists; do not block the caller.
             qty_delta = -on_hand
             new_qty = 0.0
             if abs(qty_delta) < 0.0001:
@@ -1576,7 +1580,7 @@ def _adjust_stock(
             (round(new_qty, 3), item_name, unit, _now(), existing["id"]),
         )
     else:
-        if qty_delta < 0:
+        if qty_delta < 0 and not allow_negative:
             if not allow_shortfall:
                 raise ValueError(f"Not enough stock for {item_name} ({unit}).")
             return 0.0
@@ -1914,11 +1918,13 @@ def reverse_stock_for_deleted_purchase_expense(
 def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None):
     """Deduct recipe ingredients for a closed POS invoice (idempotent).
 
-    Matches ingredients to ``store_stock_items`` by outlet + product name +
-    product default unit (after converting recipe qty). Shortfalls and missing
-    recipes/stock rows are skipped with logging — never raises for business
-    cases. Marks ``pos_invoices.stock_deducted_at`` so re-close / reprint does
-    not double-deduct.
+    Matches ingredients to counter ``store_stock_items`` by outlet + product
+    name + product default unit (after converting recipe qty). Full recipe qty
+    is always deducted (``allow_negative``) — counter stock may go below zero
+    and missing counter rows are created negative. Menus without recipes,
+    unit mismatches, and missing product names are skipped with logging only —
+    never raises into POS close/settle. Marks ``pos_invoices.stock_deducted_at``
+    so re-close / reprint does not double-deduct.
     """
     ensure_pos_schema(conn)
     ensure_stores_schema(conn)
@@ -2071,12 +2077,13 @@ def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None):
             ref_id=invoice_id,
             notes=f"POS sale {order_no}",
             user_id=user_id,
-            allow_shortfall=True,
+            allow_negative=True,
         )
         if abs(applied) < 0.0001:
+            # Unexpected with allow_negative; log and continue without blocking POS.
             skipped.append(
                 {
-                    "reason": "no_stock",
+                    "reason": "no_movement",
                     "outlet": outlet,
                     "item_name": name,
                     "unit": unit,
@@ -2084,7 +2091,7 @@ def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None):
                 }
             )
             logger.info(
-                "POS stock deduct: no on-hand stock for %s (%s) outlet=%s needed=%.4f invoice %s",
+                "POS stock deduct: no movement for %s (%s) outlet=%s needed=%.4f invoice %s",
                 name,
                 unit,
                 outlet,
@@ -2092,28 +2099,6 @@ def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None):
                 order_no,
             )
             continue
-        shortfall = round(need_qty - abs(applied), 4)
-        if shortfall > 0.0001:
-            skipped.append(
-                {
-                    "reason": "partial",
-                    "outlet": outlet,
-                    "item_name": name,
-                    "unit": unit,
-                    "needed": round(need_qty, 4),
-                    "applied": round(abs(applied), 4),
-                    "shortfall": shortfall,
-                }
-            )
-            logger.info(
-                "POS stock deduct: partial %s (%s) outlet=%s applied=%.4f needed=%.4f invoice %s",
-                name,
-                unit,
-                outlet,
-                abs(applied),
-                need_qty,
-                order_no,
-            )
         deducted.append(
             {
                 "outlet": outlet,
@@ -4922,7 +4907,11 @@ def _load_pending_po_indents(conn, outlet: str) -> list[dict[str, Any]]:
 def _default_pack_from_product_variants(
     variants: list[dict[str, Any]] | None,
 ) -> tuple[str, float | None]:
-    """First active Product Master pack label + qty_in_base, or empty."""
+    """First active Product Master pack label + qty_in_base, or empty.
+
+    If qty_in_base is missing/0 but the label looks like ``750 mL``, parse the
+    numeric qty from the label so Transfer Pack mode still works.
+    """
     for variant in variants or []:
         label = str((variant or {}).get("label") or "").strip()
         if not label:
@@ -4934,8 +4923,86 @@ def _default_pack_from_product_variants(
             qty_num = None
         if qty_num is not None and qty_num <= 0:
             qty_num = None
+        if qty_num is None:
+            match = re.match(r"^([\d.]+)\s+(.+)$", label)
+            if match:
+                try:
+                    parsed = float(match.group(1))
+                except (TypeError, ValueError):
+                    parsed = None
+                if parsed is not None and parsed > 0:
+                    qty_num = parsed
         return label, qty_num
     return "", None
+
+
+def _build_stock_product_packs_map(conn) -> dict[str, dict[str, Any]]:
+    """Product Master pack lookup for Transfer UI (soft-nav / stale-row fallback).
+
+    Keys (lowercase): ``name``, ``name|unit``, ``name|outlet|unit`` (including
+    ``both``). When several products share a name key, prefer ones that have an
+    active pack with qty_in_base > 0.
+    """
+    products = conn.execute(
+        """
+        SELECT id, name, outlet, default_unit
+        FROM store_products
+        WHERE is_active = 1
+        ORDER BY id
+        """
+    ).fetchall()
+    if not products:
+        return {}
+    product_rows = [dict(row) for row in products]
+    variants_by_product = _load_variants_by_product_ids(
+        conn, [int(row["id"]) for row in product_rows]
+    )
+    out: dict[str, dict[str, Any]] = {}
+
+    def _entry_has_pack(entry: dict[str, Any] | None) -> bool:
+        if not entry:
+            return False
+        label = str(entry.get("label") or "").strip()
+        try:
+            qty = float(entry.get("qty_in_base") or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+        return bool(label) and qty > 0
+
+    def _put(key: str, entry: dict[str, Any], has_pack: bool) -> None:
+        if not key:
+            return
+        existing = out.get(key)
+        if existing is None:
+            out[key] = entry
+            return
+        if has_pack and not _entry_has_pack(existing):
+            out[key] = entry
+
+    for product in product_rows:
+        name = str(product.get("name") or "").strip().lower()
+        if not name:
+            continue
+        unit = str(product.get("default_unit") or "").strip().lower()
+        outlet = str(product.get("outlet") or "").strip().lower() or "both"
+        pack_label, pack_qty = _default_pack_from_product_variants(
+            variants_by_product.get(int(product["id"])) or []
+        )
+        if not pack_label:
+            continue
+        try:
+            qty_num = float(pack_qty) if pack_qty is not None else 0.0
+        except (TypeError, ValueError):
+            qty_num = 0.0
+        if qty_num < 0:
+            qty_num = 0.0
+        entry = {"label": pack_label, "qty_in_base": qty_num}
+        has_pack = qty_num > 0
+        _put(name, entry, has_pack)
+        if unit:
+            _put(f"{name}|{unit}", entry, has_pack)
+            _put(f"{name}|{outlet}|{unit}", entry, has_pack)
+    return out
 
 
 def _load_po_supplier_groups(conn, indent_id: int) -> dict[str, Any]:
@@ -7192,6 +7259,8 @@ def _parse_inward_view(raw: Any) -> str:
     value = str(raw or "").strip().lower()
     if value == "direct":
         return "direct"
+    if value in ("transfers", "transfer"):
+        return "transfers"
     return "approved"
 
 
@@ -7296,6 +7365,11 @@ def stores_purchase_requests():
     indent_view_data: list[dict[str, Any]] = []
     product_catalog: list[dict[str, Any]] = []
     direct_outlet_unset = False
+    pending_transfers: list[dict[str, Any]] = []
+    selected_transfer = None
+    selected_transfer_lines: list[dict[str, Any]] = []
+    transfer_receive_url = ""
+    transfer_cancel_url = ""
 
     conn = get_db()
     expense_categories = app_module.EXPENSE_CATEGORIES
@@ -7310,7 +7384,59 @@ def stores_purchase_requests():
         expense_categories = _sync_product_categories_into_expense_categories(conn)
         conn.commit()
 
-        if inward_view == "direct":
+        if inward_view == "transfers":
+            pending_transfers = _load_pending_stock_transfers(conn, outlet)
+            selected_transfer_id = 0
+            try:
+                selected_transfer_id = int(
+                    request.args.get("transfer_id")
+                    or request.form.get("transfer_id")
+                    or request.args.get("transfer")
+                    or 0
+                )
+            except (TypeError, ValueError):
+                selected_transfer_id = 0
+            selected_transfer_no = str(
+                request.args.get("transfer_no") or request.form.get("transfer_no") or ""
+            ).strip()
+            if selected_transfer_id:
+                for row in pending_transfers:
+                    if int(row.get("id") or 0) == selected_transfer_id:
+                        selected_transfer = row
+                        break
+            if selected_transfer is None and selected_transfer_no:
+                for row in pending_transfers:
+                    if str(row.get("transfer_no") or "") == selected_transfer_no:
+                        selected_transfer = row
+                        break
+            if selected_transfer is None and len(pending_transfers) == 1:
+                selected_transfer = pending_transfers[0]
+            if selected_transfer is not None:
+                detail, lines = _load_stock_transfer_detail(
+                    conn, int(selected_transfer["id"])
+                )
+                if detail and str(detail.get("status") or "") == "pending":
+                    selected_transfer = detail
+                    selected_transfer["route_label"] = _stock_transfer_route_label(
+                        detail.get("from_outlet") or "",
+                        detail.get("from_place") or "",
+                        detail.get("to_outlet") or "",
+                        detail.get("to_place") or "",
+                    )
+                    selected_transfer_lines = lines
+                    transfer_receive_url = url_for(
+                        "stores_stock_transfer_receive",
+                        transfer_id=int(detail["id"]),
+                    )
+                    transfer_cancel_url = url_for(
+                        "stores_stock_transfer_cancel",
+                        transfer_id=int(detail["id"]),
+                    )
+                else:
+                    selected_transfer = None
+                    selected_transfer_lines = []
+            inward_confirm_url = ""
+        elif inward_view == "direct":
             write_outlet = _parse_outlet(outlet) if outlet and outlet != "both" else ""
             direct_outlet_unset = not bool(write_outlet)
             if write_outlet:
@@ -7451,6 +7577,7 @@ def stores_purchase_requests():
         inward_list_views=[
             ("approved", "Indent Approved"),
             ("direct", "Without Indent Approval"),
+            ("transfers", "Transfers"),
         ],
         approved_indents=approved_indents,
         generated_purchase_orders=generated_purchase_orders,
@@ -7462,6 +7589,11 @@ def stores_purchase_requests():
         indent_view_data=indent_view_data,
         product_catalog=product_catalog,
         direct_outlet_unset=direct_outlet_unset,
+        pending_transfers=pending_transfers,
+        selected_transfer=selected_transfer,
+        selected_transfer_lines=selected_transfer_lines,
+        transfer_receive_url=transfer_receive_url,
+        transfer_cancel_url=transfer_cancel_url,
         suppliers=suppliers,
         expense_categories=expense_categories,
         expense_payment_types=app_module.EXPENSE_PAYMENT_TYPES,
@@ -8310,12 +8442,15 @@ def _enrich_stock_items(
     *,
     inward_costs: dict[tuple[str, str, str], float] | None = None,
 ) -> list[dict[str, Any]]:
-    """Attach category + unit price for Stock display (inward WAC preferred)."""
+    """Attach category + unit price for Stock display (inward WAC preferred).
+
+    Also attaches Product Master default pack (label + qty_in_base) for transfer UI.
+    """
     if not items:
         return items
     products = conn.execute(
         """
-        SELECT p.name, p.outlet, p.default_unit, p.approximate_price,
+        SELECT p.id, p.name, p.outlet, p.default_unit, p.approximate_price,
                c.name AS category_name
         FROM store_products p
         LEFT JOIN store_product_categories c
@@ -8331,6 +8466,7 @@ def _enrich_stock_items(
         by_name.setdefault(key, []).append(dict(row))
 
     costs = inward_costs or {}
+    matched_product_ids: list[int] = []
     for item in items:
         name_key = (item.get("item_name") or "").strip().lower()
         unit_key = (item.get("unit") or "").strip().lower()
@@ -8352,8 +8488,16 @@ def _enrich_stock_items(
                     break
             if match:
                 break
+        item["_matched_product_id"] = None
         if match:
             item["category_name"] = match.get("category_name") or ""
+            try:
+                pid = int(match.get("id")) if match.get("id") is not None else None
+            except (TypeError, ValueError):
+                pid = None
+            item["_matched_product_id"] = pid
+            if pid is not None:
+                matched_product_ids.append(pid)
         else:
             item.setdefault("category_name", "")
 
@@ -8371,6 +8515,20 @@ def _enrich_stock_items(
             item.setdefault("approximate_price", None)
             item.setdefault("approximate_price_display", "")
             item.setdefault("price_source", None)
+
+    variants_by_product = _load_variants_by_product_ids(
+        conn, list(dict.fromkeys(matched_product_ids))
+    )
+    for item in items:
+        pid = item.pop("_matched_product_id", None)
+        pack_label = ""
+        pack_qty: float | None = None
+        if pid is not None:
+            pack_label, pack_qty = _default_pack_from_product_variants(
+                variants_by_product.get(pid) or []
+            )
+        item["pack_label"] = pack_label or ""
+        item["pack_qty_in_base"] = pack_qty
     return items
 
 
@@ -8590,6 +8748,7 @@ def stores_stock():
             [dict(row) for row in items],
             inward_costs=inward_costs,
         )
+        stock_product_packs = _build_stock_product_packs_map(conn)
         movements = conn.execute(
             f"""
             SELECT m.*, u.full_name AS created_by_name
@@ -8627,6 +8786,7 @@ def stores_stock():
         stock_has_inward_prices=has_inward_prices,
         stock_export_url=stock_export_url,
         stock_transfer_url=transfer_url,
+        stock_product_packs=stock_product_packs,
         movements=[dict(row) for row in movements],
     )
 
@@ -8743,6 +8903,8 @@ def _apply_stock_transfer_line(
     qty: float,
     notes: str,
     user_id: int | None,
+    ref_id: int | None = None,
+    ref_type: str = "stock_transfer",
 ) -> None:
     on_hand = _stock_qty_on_hand(conn, from_outlet, from_place, item_name, unit)
     if qty - on_hand > 0.0001:
@@ -8758,8 +8920,8 @@ def _apply_stock_transfer_line(
         unit=unit,
         qty_delta=-qty,
         movement_type="transfer",
-        ref_type="stock_transfer",
-        ref_id=None,
+        ref_type=ref_type,
+        ref_id=ref_id,
         notes=notes,
         user_id=user_id,
     )
@@ -8771,8 +8933,8 @@ def _apply_stock_transfer_line(
         unit=unit,
         qty_delta=qty,
         movement_type="transfer",
-        ref_type="stock_transfer",
-        ref_id=None,
+        ref_type=ref_type,
+        ref_id=ref_id,
         notes=notes,
         user_id=user_id,
     )
@@ -8798,9 +8960,183 @@ def _stock_transfer_route_label(from_outlet: str, from_place: str, to_outlet: st
     )
 
 
+def _stock_transfer_direction_key(from_place: str, to_place: str) -> str:
+    if from_place == STOCK_PLACE_WAREHOUSE and to_place == STOCK_PLACE_COUNTER:
+        return "to_counter"
+    if from_place == STOCK_PLACE_COUNTER and to_place == STOCK_PLACE_WAREHOUSE:
+        return "to_warehouse"
+    return f"{from_place}_to_{to_place}"
+
+
+def _load_pending_stock_transfers(conn, outlet: str | None = None) -> list[dict[str, Any]]:
+    """Pending TRF docs for Stock Inward Transfers picker."""
+    outlet_key = _parse_outlet_filter(outlet) if outlet is not None else "both"
+    params: list[Any] = ["pending"]
+    outlet_sql = ""
+    if outlet_key in OUTLET_KEYS:
+        outlet_sql = " AND (t.from_outlet = ? OR t.to_outlet = ?)"
+        params.extend([outlet_key, outlet_key])
+    rows = conn.execute(
+        f"""
+        SELECT t.*,
+               (SELECT COUNT(*) FROM store_stock_transfer_lines l WHERE l.transfer_id = t.id) AS line_count
+        FROM store_stock_transfers t
+        WHERE t.status = ?{outlet_sql}
+        ORDER BY t.created_at DESC, t.id DESC
+        LIMIT 200
+        """,
+        params,
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        item["route_label"] = _stock_transfer_route_label(
+            item.get("from_outlet") or "",
+            item.get("from_place") or "",
+            item.get("to_outlet") or "",
+            item.get("to_place") or "",
+        )
+        item["direction_label"] = (
+            "Transfer to Counter"
+            if item.get("direction") == "to_counter"
+            else "Return to Warehouse"
+            if item.get("direction") == "to_warehouse"
+            else item.get("direction") or "Transfer"
+        )
+        out.append(item)
+    return out
+
+
+def _load_stock_transfer_detail(conn, transfer_id: int) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    row = conn.execute(
+        "SELECT * FROM store_stock_transfers WHERE id = ?",
+        (transfer_id,),
+    ).fetchone()
+    if not row:
+        return None, []
+    transfer = dict(row)
+    transfer["route_label"] = _stock_transfer_route_label(
+        transfer.get("from_outlet") or "",
+        transfer.get("from_place") or "",
+        transfer.get("to_outlet") or "",
+        transfer.get("to_place") or "",
+    )
+    lines = conn.execute(
+        """
+        SELECT * FROM store_stock_transfer_lines
+        WHERE transfer_id = ?
+        ORDER BY sort_order, id
+        """,
+        (transfer_id,),
+    ).fetchall()
+    return transfer, [dict(line) for line in lines]
+
+
+def _receive_stock_transfer(conn, transfer_id: int, user_id: int | None) -> dict[str, Any]:
+    transfer, lines = _load_stock_transfer_detail(conn, transfer_id)
+    if not transfer:
+        raise ValueError("Transfer not found.")
+    status = str(transfer.get("status") or "").strip().lower()
+    if status == "received":
+        raise ValueError("This transfer was already received.")
+    if status == "cancelled":
+        raise ValueError("This transfer was cancelled.")
+    if status != "pending":
+        raise ValueError("Only pending transfers can be received.")
+    if not lines:
+        raise ValueError("This transfer has no items.")
+    from_place = transfer["from_place"]
+    to_place = transfer["to_place"]
+    to_outlet = transfer["to_outlet"]
+    note = str(transfer.get("note") or "").strip()
+    for line in lines:
+        on_hand = _stock_qty_on_hand(
+            conn,
+            line["outlet"],
+            from_place,
+            line["item_name"],
+            line["unit"],
+        )
+        qty = float(line["qty_base"] or 0)
+        if qty - on_hand > 0.0001:
+            raise ValueError(
+                f"Not enough {_stock_place_label(from_place).lower()} stock "
+                f"for {line['item_name']} ({line['unit']})."
+            )
+    for line in lines:
+        qty = float(line["qty_base"] or 0)
+        route = _stock_transfer_route_label(
+            line["outlet"], from_place, to_outlet, to_place
+        )
+        movement_note = f"{route}: {note}" if note else route
+        movement_note = f"{transfer['transfer_no']} · {movement_note}"
+        _apply_stock_transfer_line(
+            conn,
+            from_outlet=line["outlet"],
+            to_outlet=to_outlet,
+            from_place=from_place,
+            to_place=to_place,
+            item_name=line["item_name"],
+            unit=line["unit"],
+            qty=qty,
+            notes=movement_note,
+            user_id=user_id,
+            ref_id=int(transfer["id"]),
+            ref_type="stock_transfer",
+        )
+    now = _now()
+    cur = conn.execute(
+        """
+        UPDATE store_stock_transfers
+        SET status = 'received', received_by = ?, received_at = ?
+        WHERE id = ? AND status = 'pending'
+        """,
+        (user_id, now, transfer_id),
+    )
+    if int(cur.rowcount or 0) < 1:
+        raise ValueError("This transfer was already received.")
+    return {
+        "id": int(transfer["id"]),
+        "transfer_no": transfer["transfer_no"],
+        "status": "received",
+        "count": len(lines),
+        "message": f"Received {transfer['transfer_no']} — stock moved.",
+    }
+
+
+def _cancel_stock_transfer(conn, transfer_id: int, user_id: int | None) -> dict[str, Any]:
+    transfer, _lines = _load_stock_transfer_detail(conn, transfer_id)
+    if not transfer:
+        raise ValueError("Transfer not found.")
+    status = str(transfer.get("status") or "").strip().lower()
+    if status == "received":
+        raise ValueError("Received transfers cannot be cancelled.")
+    if status == "cancelled":
+        raise ValueError("This transfer is already cancelled.")
+    if status != "pending":
+        raise ValueError("Only pending transfers can be cancelled.")
+    now = _now()
+    cur = conn.execute(
+        """
+        UPDATE store_stock_transfers
+        SET status = 'cancelled', cancelled_by = ?, cancelled_at = ?
+        WHERE id = ? AND status = 'pending'
+        """,
+        (user_id, now, transfer_id),
+    )
+    if int(cur.rowcount or 0) < 1:
+        raise ValueError("This transfer can no longer be cancelled.")
+    return {
+        "id": int(transfer["id"]),
+        "transfer_no": transfer["transfer_no"],
+        "status": "cancelled",
+        "message": f"Cancelled {transfer['transfer_no']}.",
+    }
+
+
 @stores_bp.route("/stores/stock/transfer", methods=["POST"])
 def stores_stock_transfer():
-    """Move qty between warehouse and counter for the same outlet+item+unit."""
+    """Create a pending stock transfer (TRF-…). Stock moves only on Inward receive."""
     user = _get_user() if _get_user else None
     if not user:
         return jsonify({"ok": False, "error": "You must be logged in."}), 401
@@ -8809,6 +9145,7 @@ def stores_stock_transfer():
     if not places:
         return jsonify({"ok": False, "error": "Choose transfer direction."}), 400
     from_place, to_place = places
+    direction = _stock_transfer_direction_key(from_place, to_place)
     lines, line_error = _stock_transfer_lines_from_payload(data)
     if line_error:
         return jsonify({"ok": False, "error": line_error}), 400
@@ -8817,6 +9154,7 @@ def stores_stock_transfer():
     if dest_error:
         return jsonify({"ok": False, "error": dest_error}), 400
     note = str(data.get("note") or data.get("notes") or "").strip()
+    from_outlet = fallback_outlet
     conn = get_db()
     try:
         ensure_stores_schema(conn)
@@ -8838,22 +9176,44 @@ def stores_stock_transfer():
                         ),
                     }
                 ), 400
-        for line in lines:
-            route = _stock_transfer_route_label(
-                line["outlet"], from_place, to_outlet, to_place
-            )
-            movement_note = f"{route}: {note}" if note else route
-            _apply_stock_transfer_line(
-                conn,
-                from_outlet=line["outlet"],
-                to_outlet=to_outlet,
-                from_place=from_place,
-                to_place=to_place,
-                item_name=line["item_name"],
-                unit=line["unit"],
-                qty=line["qty"],
-                notes=movement_note,
-                user_id=user.get("id"),
+        transfer_no = _next_doc_no(
+            conn, "store_stock_transfers", "transfer_no", "TRF", from_outlet
+        )
+        cur = conn.execute(
+            """
+            INSERT INTO store_stock_transfers
+                (transfer_no, direction, from_outlet, from_place, to_outlet, to_place,
+                 status, note, created_by, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+            """,
+            (
+                transfer_no,
+                direction,
+                from_outlet,
+                from_place,
+                to_outlet,
+                to_place,
+                note,
+                user.get("id"),
+                _now(),
+            ),
+        )
+        transfer_id = int(cur.lastrowid)
+        for idx, line in enumerate(lines):
+            conn.execute(
+                """
+                INSERT INTO store_stock_transfer_lines
+                    (transfer_id, outlet, item_name, unit, qty_base, sort_order)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    transfer_id,
+                    line["outlet"],
+                    line["item_name"],
+                    line["unit"],
+                    round(float(line["qty"]), 3),
+                    idx,
+                ),
             )
         conn.commit()
         first = lines[0]
@@ -8861,12 +9221,21 @@ def stores_stock_transfer():
             first["outlet"], from_place, to_outlet, to_place
         )
         if len(lines) == 1:
-            message = f"Transferred {first['qty']:g} {first['unit']} ({route})."
+            message = (
+                f"Created {transfer_no} for {first['qty']:g} {first['unit']} ({route}). "
+                "Receive it under Stock Inward → Transfers."
+            )
         else:
-            message = f"Transferred {len(lines)} items to {_outlet_label(to_outlet)} {_stock_place_label(to_place)}."
+            message = (
+                f"Created {transfer_no} with {len(lines)} items ({route}). "
+                "Receive it under Stock Inward → Transfers."
+            )
         return jsonify(
             {
                 "ok": True,
+                "id": transfer_id,
+                "transfer_no": transfer_no,
+                "status": "pending",
                 "outlet": first["outlet"],
                 "to_outlet": to_outlet,
                 "item_name": first["item_name"],
@@ -8892,8 +9261,56 @@ def stores_stock_transfer():
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception:
         conn.rollback()
-        logger.exception("stock transfer failed")
-        return jsonify({"ok": False, "error": "Could not transfer stock."}), 500
+        logger.exception("stock transfer create failed")
+        return jsonify({"ok": False, "error": "Could not create transfer."}), 500
+    finally:
+        conn.close()
+
+
+@stores_bp.route("/stores/stock/transfers/<int:transfer_id>/receive", methods=["POST"])
+def stores_stock_transfer_receive(transfer_id: int):
+    """Verify & receive a pending transfer — moves stock and marks received."""
+    user = _get_user() if _get_user else None
+    if not user:
+        return jsonify({"ok": False, "error": "You must be logged in."}), 401
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        result = _receive_stock_transfer(conn, int(transfer_id), user.get("id"))
+        conn.commit()
+        result["ok"] = True
+        return jsonify(result)
+    except ValueError as exc:
+        conn.rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception:
+        conn.rollback()
+        logger.exception("stock transfer receive failed")
+        return jsonify({"ok": False, "error": "Could not receive transfer."}), 500
+    finally:
+        conn.close()
+
+
+@stores_bp.route("/stores/stock/transfers/<int:transfer_id>/cancel", methods=["POST"])
+def stores_stock_transfer_cancel(transfer_id: int):
+    """Cancel a pending transfer (no stock movement)."""
+    user = _get_user() if _get_user else None
+    if not user:
+        return jsonify({"ok": False, "error": "You must be logged in."}), 401
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        result = _cancel_stock_transfer(conn, int(transfer_id), user.get("id"))
+        conn.commit()
+        result["ok"] = True
+        return jsonify(result)
+    except ValueError as exc:
+        conn.rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception:
+        conn.rollback()
+        logger.exception("stock transfer cancel failed")
+        return jsonify({"ok": False, "error": "Could not cancel transfer."}), 500
     finally:
         conn.close()
 

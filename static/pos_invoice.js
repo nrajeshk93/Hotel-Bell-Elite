@@ -467,6 +467,51 @@
     return state.localId;
   }
 
+  /**
+   * Drop IndexedDB drafts/outbox leftovers for this table/invoice/localId.
+   * Clears every matching localId (not only the current session) so Available
+   * table clicks cannot hydrate a post-Generate ghost cart.
+   */
+  function purgeLocalOrderDrafts(page, invoice, extra) {
+    extra = extra || {};
+    var api = offlineApi();
+    if (!api || typeof api.purgePendingForTable !== 'function') {
+      return Promise.resolve({ removed: 0 });
+    }
+    var table = String(
+      extra.table ||
+        (invoice && (invoice.table_label || invoice.table)) ||
+        state.tableForOrder ||
+        state.resumeTableValue ||
+        (page && fieldValue('pos-inv-table', page)) ||
+        ''
+    ).trim();
+    var invoiceId =
+      extra.invoiceId != null
+        ? extra.invoiceId
+        : (invoice && invoice.id) || state.invoiceId || null;
+    var localId =
+      extra.localId != null ? extra.localId : state.localId || '';
+    var orderNo =
+      extra.orderNo != null
+        ? extra.orderNo
+        : (invoice && invoice.order_no) || state.orderNo || '';
+    return api
+      .purgePendingForTable({
+        table: table,
+        tableLabel: table,
+        invoiceId: invoiceId,
+        localId: localId,
+        orderNo: orderNo,
+        outlet: resolvePosOutlet(),
+        onlyServerLinked: !!extra.onlyServerLinked,
+        onlyWithInvoiceId: !!extra.onlyWithInvoiceId
+      })
+      .catch(function () {
+        return { removed: 0 };
+      });
+  }
+
   function indianFiscalYearLabel(d) {
     var dt = d instanceof Date ? d : new Date();
     var year = dt.getFullYear();
@@ -3232,6 +3277,7 @@
           }
           finishCustomerBill(result.data.invoice);
           mirrorDraft(page, payload);
+          purgeLocalOrderDrafts(page, result.data.invoice);
         })
         .catch(function () {
           return queueOfflineSave(page, payload, {
@@ -3746,7 +3792,16 @@
           hydrateFromInvoice(page, data.invoice, { silent: !!opts.silent });
           return;
         }
-        return resumeOrderFromLocal(page, name, opts);
+        /* Online miss: server has no open pre-invoice. Do not hydrate leftover
+           IndexedDB drafts that still carry a server invoiceId (ghost cart).
+           Purge those, then blank via notFound. True offline resumes stay on catch. */
+        return purgeLocalOrderDrafts(page, null, {
+          table: name,
+          onlyServerLinked: true
+        }).then(function () {
+          if (typeof opts.notFound === 'function') opts.notFound();
+          return null;
+        });
       })
       .catch(function () {
         return resumeOrderFromLocal(page, name, opts);
@@ -4080,6 +4135,14 @@
       if (page && floorTablesCache) applyFloorTablesToUi(page, floorTablesCache);
       refreshFloorTables(page, { preserveTable: table });
     }
+    /* Online generate: purge every local draft for this table/invoice.
+       Offline generate: only drop leftovers that already have a server invoiceId —
+       keep the customerBill draft/outbox so it can still sync. */
+    if (invoice && invoice.id) {
+      purgeLocalOrderDrafts(page, invoice, { table: table });
+    } else {
+      purgeLocalOrderDrafts(page, null, { table: table, onlyWithInvoiceId: true });
+    }
   }
 
   /** Reset the on-screen session to a fresh, blank order — used after Settle
@@ -4214,6 +4277,7 @@
             ? 'Bill settled. ' + table + ' is now available.'
             : 'Bill settled successfully.'
         );
+        purgeLocalOrderDrafts(page, settledInvoice, { table: table });
         resetOrderSession(page);
         if (headerBtn) headerBtn.disabled = false;
         updateSettleBillButton(page);
@@ -5300,6 +5364,12 @@
         (page && fieldValue('pos-inv-table', page)) ||
         ''
     ).trim();
+    purgeLocalOrderDrafts(page, null, {
+      table: table,
+      invoiceId: state.invoiceId,
+      localId: state.localId,
+      orderNo: state.orderNo
+    });
     state.invoiceId = null;
     state.orderNo = '';
     state.localId = '';

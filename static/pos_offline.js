@@ -432,6 +432,128 @@
     });
   }
 
+  function rowInvoiceId(row) {
+    var payload = (row && row.payload) || {};
+    return String(
+      (row && row.invoiceId) || payload.invoiceId || payload.invoice_id || ""
+    ).trim();
+  }
+
+  function rowTableLabel(row) {
+    var payload = (row && row.payload) || {};
+    return String(payload.table || payload.table_label || "").trim().toLowerCase();
+  }
+
+  function rowOutlet(row, fallback) {
+    var payload = (row && row.payload) || {};
+    return normalizeOutlet(payload.outlet || payload.posOutlet) || fallback || "";
+  }
+
+  /**
+   * Purge IndexedDB drafts (+ outbox) for a table and/or invoiceId/localId.
+   * Matches ANY provided key so Generate Invoice can clear every leftover
+   * localId for that table, not only the current session id.
+   * onlyServerLinked: when true, only remove rows with invoiceId or customerBill
+   * (ghost leftovers) and keep true offline-unsynced drafts.
+   */
+  function purgePendingForTable(opts) {
+    opts = opts || {};
+    var tableNeedle = String(opts.table || opts.tableLabel || "")
+      .trim()
+      .toLowerCase();
+    var invoiceNeedle = String(opts.invoiceId || "").trim();
+    var localNeedle = String(opts.localId || "").trim();
+    var orderNeedle = String(opts.orderNo || "")
+      .trim()
+      .toLowerCase();
+    var wantOutlet = normalizeOutlet(opts.outlet) || "";
+    var onlyServerLinked = !!opts.onlyServerLinked;
+    var onlyWithInvoiceId = !!opts.onlyWithInvoiceId;
+    if (!tableNeedle && !invoiceNeedle && !localNeedle && !orderNeedle) {
+      return Promise.resolve({ drafts: 0, outbox: 0, removed: 0 });
+    }
+    function matches(row) {
+      if (!row) return false;
+      var payload = row.payload || {};
+      var hasInvoice = orderHasServerInvoiceId({
+        invoiceId: row.invoiceId,
+        payload: payload
+      });
+      var linked = hasInvoice || orderHasCustomerBill({ payload: payload });
+      if (onlyWithInvoiceId && !hasInvoice) return false;
+      if (onlyServerLinked && !linked) return false;
+      if (localNeedle && String(row.localId || "").trim() === localNeedle) {
+        return true;
+      }
+      if (invoiceNeedle && rowInvoiceId(row) === invoiceNeedle) return true;
+      if (orderNeedle) {
+        var on = String(payload.orderNo || payload.order_no || "")
+          .trim()
+          .toLowerCase();
+        if (on && on === orderNeedle) return true;
+      }
+      if (tableNeedle) {
+        if (rowTableLabel(row) !== tableNeedle) return false;
+        if (wantOutlet) {
+          var out = rowOutlet(row, wantOutlet);
+          if (out !== wantOutlet) return false;
+        }
+        return true;
+      }
+      return false;
+    }
+    return Promise.all([
+      withStore(STORE_DRAFTS, "readwrite", function (store) {
+        return idbReq(store.getAll()).then(function (rows) {
+          var removed = 0;
+          var ops = [];
+          (rows || []).forEach(function (row) {
+            if (!matches(row)) return;
+            removed += 1;
+            ops.push(idbReq(store.delete(row.localId)));
+          });
+          return Promise.all(ops).then(function () {
+            return removed;
+          });
+        });
+      }).catch(function () {
+        return 0;
+      }),
+      withStore(STORE_OUTBOX, "readwrite", function (store) {
+        return idbReq(store.getAll()).then(function (rows) {
+          var removed = 0;
+          var ops = [];
+          (rows || []).forEach(function (row) {
+            if (!matches(row)) return;
+            removed += 1;
+            ops.push(idbReq(store.delete(row.id)));
+          });
+          return Promise.all(ops).then(function () {
+            return removed;
+          });
+        });
+      }).catch(function () {
+        return 0;
+      })
+    ]).then(function (counts) {
+      var summary = {
+        drafts: counts[0] || 0,
+        outbox: counts[1] || 0,
+        removed: (counts[0] || 0) + (counts[1] || 0)
+      };
+      if (summary.removed) {
+        notifyChange("invoice", {
+          purged: true,
+          table: tableNeedle,
+          invoiceId: invoiceNeedle,
+          localId: localNeedle,
+          orderNo: orderNeedle
+        });
+      }
+      return summary;
+    });
+  }
+
   function updateOutboxError(id, attempts, lastError) {
     return withStore(STORE_OUTBOX, 'readwrite', function (store) {
       return idbReq(store.get(id)).then(function (row) {
@@ -796,33 +918,56 @@
     });
   }
 
-  function findPendingForTable(tableName, outlet) {
-    var needle = String(tableName || "").trim().toLowerCase();
-    var want = normalizeOutlet(outlet) || currentOutlet();
-    if (!needle) return Promise.resolve(null);
-    return pendingOrders().then(function (orders) {
-      var hit = null;
-      orders.forEach(function (order) {
-        var payload = order.payload || {};
-        var ot = String(payload.orderType || payload.order_type || "dine_in").toLowerCase();
-        if (ot !== "dine_in") return;
-        if (!!(payload.customerBill || payload.customer_bill)) return;
-        var table = String(payload.table || payload.table_label || "").trim().toLowerCase();
-        if (table !== needle) return;
-        var out = normalizeOutlet(payload.outlet || payload.posOutlet) || want;
-        if (out !== want) return;
-        if (!hit || order._stamp >= hit._stamp) hit = order;
-      });
-      return hit;
-    });
-  }
-
   /** True when a local draft/outbox row already has a server invoice id. */
   function orderHasServerInvoiceId(order) {
     if (!order || typeof order !== "object") return false;
     var payload = order.payload || {};
     var id = order.invoiceId || payload.invoiceId || payload.invoice_id;
     return String(id || "").trim() !== "";
+  }
+
+  /** True when the local row was marked Generate Invoice / customer bill. */
+  function orderHasCustomerBill(order) {
+    if (!order || typeof order !== "object") return false;
+    var payload = order.payload || {};
+    return !!(payload.customerBill || payload.customer_bill);
+  }
+
+  /**
+   * Sync filter used by findPendingForTable (and tests): unsynced dine-in only.
+   * Align with floor overlay — skip server invoiceId OR customerBill leftovers.
+   */
+  function pickPendingResumeForTable(orders, tableName, outlet) {
+    var needle = String(tableName || "").trim().toLowerCase();
+    var want = normalizeOutlet(outlet) || currentOutlet();
+    if (!needle) return null;
+    var hit = null;
+    (orders || []).forEach(function (order) {
+      var payload = order.payload || {};
+      var ot = String(payload.orderType || payload.order_type || "dine_in").toLowerCase();
+      if (ot !== "dine_in") return;
+      if (orderHasServerInvoiceId(order)) return;
+      if (orderHasCustomerBill(order)) return;
+      var table = String(payload.table || payload.table_label || "").trim().toLowerCase();
+      if (table !== needle) return;
+      var out = normalizeOutlet(payload.outlet || payload.posOutlet) || want;
+      if (out !== want) return;
+      if (!hit || order._stamp >= hit._stamp) hit = order;
+    });
+    return hit;
+  }
+
+  /**
+   * Resume candidate for a table: unsynced dine-in drafts only.
+   * Align with floor overlay — skip rows that already have a server invoiceId
+   * or customerBill (Generate Invoice leftovers must not hydrate a ghost cart).
+   */
+  function findPendingForTable(tableName, outlet) {
+    var needle = String(tableName || "").trim();
+    if (!needle) return Promise.resolve(null);
+    return pendingOrders().then(function (orders) {
+      return pickPendingResumeForTable(orders, needle, outlet);
+    });
   }
 
   /**
@@ -852,7 +997,7 @@
     Object.keys(byTable).forEach(function (key) {
       var order = byTable[key];
       var payload = order.payload || {};
-      var bill = !!(payload.customerBill || payload.customer_bill);
+      var bill = orderHasCustomerBill(order);
       var guest = String(payload.customerName || payload.customer_name || "").trim();
       tables.forEach(function (t) {
         if (String(t.name || "").trim().toLowerCase() !== key) return;
@@ -1072,8 +1217,11 @@
     readFloorSnapshot: readFloorSnapshot,
     pendingOrders: pendingOrders,
     findPendingForTable: findPendingForTable,
+    pickPendingResumeForTable: pickPendingResumeForTable,
+    purgePendingForTable: purgePendingForTable,
     applyPendingToFloor: applyPendingToFloor,
     orderHasServerInvoiceId: orderHasServerInvoiceId,
+    orderHasCustomerBill: orderHasCustomerBill,
     applyUnsyncedOrdersToFloorTables: applyUnsyncedOrdersToFloorTables,
     patchFloorOccupancy: patchFloorOccupancy,
     rememberCustomer: rememberCustomer,

@@ -1264,6 +1264,17 @@
           var row = page.querySelector(
             'tr.pos-il-row[data-invoice-id="' + invoiceId + '"]'
           );
+          var tableLabel = row
+            ? String(row.getAttribute('data-table') || '').trim()
+            : '';
+          var offline = global.HbePosOffline;
+          if (offline && typeof offline.purgePendingForTable === 'function') {
+            offline.purgePendingForTable({
+              table: tableLabel,
+              invoiceId: invoiceId,
+              orderNo: orderNo
+            });
+          }
           if (row && resultMode === 'deleted') {
             row.remove();
             updateVisibleCount(page);

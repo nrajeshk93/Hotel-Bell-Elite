@@ -8309,6 +8309,105 @@ def reopen_pos_invoice_for_edit(conn, invoice_id):
     return get_pos_invoice(conn, invoice_id)
 
 
+def _pos_invoice_as_customer_bill_payload(invoice):
+    """Rebuild a save_pos_invoice payload from a stored invoice (Generate Invoice)."""
+    inv = invoice or {}
+    lines_out = []
+    for line in inv.get("lines") or []:
+        if not isinstance(line, dict):
+            continue
+        lines_out.append(
+            {
+                "uid": line.get("uid") or line.get("line_uid") or "",
+                "menuId": line.get("menu_item_id")
+                if line.get("menu_item_id") is not None
+                else line.get("menuId"),
+                "name": line.get("name") or "",
+                "variant": line.get("variant") or "",
+                "rate": line.get("rate"),
+                "qty": line.get("qty"),
+                "kotSentQty": line.get("sent_qty")
+                if line.get("sent_qty") is not None
+                else line.get("kotSentQty"),
+                "notes": line.get("notes") or "",
+            }
+        )
+    return {
+        "invoiceId": inv.get("id"),
+        "orderNo": inv.get("order_no") or "",
+        "savedAt": inv.get("saved_at") or "",
+        "orderDate": inv.get("order_date") or "",
+        "orderType": inv.get("order_type") or "dine_in",
+        "table": inv.get("table_label") or inv.get("table") or "",
+        "captain": inv.get("captain") or "",
+        "customerName": inv.get("customer_name") or "",
+        "customerMobile": inv.get("customer_mobile") or "",
+        "notes": inv.get("notes") or "",
+        "discountType": inv.get("discount_type") or "pct",
+        "discountValue": inv.get("discount_value"),
+        "serviceType": inv.get("service_type") or "pct",
+        "serviceValue": inv.get("service_value"),
+        "tipAmount": inv.get("tip_amount"),
+        "couponCode": inv.get("coupon_code") or "",
+        "discountLineUids": inv.get("discount_line_uids") or [],
+        "discountReason": inv.get("discount_reason") or "",
+        "taxCgstPct": inv.get("tax_cgst_pct"),
+        "taxUgstPct": inv.get("tax_ugst_pct"),
+        "outlet": inv.get("outlet"),
+        "customerBill": True,
+        "lines": lines_out,
+        "totals": {
+            "subtotal": inv.get("subtotal"),
+            "discount": inv.get("discount"),
+            "gst": inv.get("gst"),
+            "vat": inv.get("vat"),
+            "service": inv.get("service"),
+            "tip": inv.get("tip"),
+            "roundOff": inv.get("round_off"),
+            "total": inv.get("grand_total"),
+        },
+    }
+
+
+def generate_pos_customer_bill(
+    conn,
+    invoice_id,
+    *,
+    created_by="",
+    allow_kot_cancel=False,
+    actor_is_admin=False,
+):
+    """Run Generate Invoice for an existing open bill (print / cash bill path).
+
+    Idempotent when customer_bill_sent is already set. Remints provisional hex
+    order numbers, frees the dine-in floor tile, and drops Pending Kitchen.
+    """
+    ensure_pos_schema(conn)
+    try:
+        invoice_id = int(invoice_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid invoice id.") from exc
+    invoice = get_pos_invoice(conn, invoice_id)
+    if not invoice:
+        raise ValueError("Invoice not found.")
+    status = str(invoice.get("status") or "open").strip().lower() or "open"
+    if status == "cancelled":
+        raise ValueError("Cancelled invoices cannot generate a customer bill.")
+    if status == "closed":
+        # Already settled — nothing to generate; caller may still print.
+        return invoice
+    if bool(invoice.get("customer_bill_sent")):
+        return invoice
+    payload = _pos_invoice_as_customer_bill_payload(invoice)
+    return save_pos_invoice(
+        conn,
+        payload,
+        created_by=created_by,
+        allow_kot_cancel=allow_kot_cancel,
+        actor_is_admin=actor_is_admin,
+    )
+
+
 def pos_invoice_is_ledger_generated(invoice, outlet=None):
     """True for Invoice Ledger rows: Generate Invoice ran, or order_no is non-provisional.
 
@@ -10228,6 +10327,54 @@ def ensure_stores_schema(conn):
         CREATE INDEX IF NOT EXISTS idx_store_stock_audit_lines_audit
         ON store_stock_audit_lines(audit_id, status, id)
     """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_stock_transfers (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            transfer_no   TEXT    NOT NULL UNIQUE,
+            direction     TEXT    NOT NULL,
+            from_outlet   TEXT    NOT NULL,
+            from_place    TEXT    NOT NULL,
+            to_outlet     TEXT    NOT NULL,
+            to_place      TEXT    NOT NULL,
+            status        TEXT    NOT NULL DEFAULT 'pending',
+            note          TEXT    NOT NULL DEFAULT '',
+            created_by    INTEGER,
+            created_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            received_by   INTEGER,
+            received_at   TEXT,
+            cancelled_by  INTEGER,
+            cancelled_at  TEXT,
+            FOREIGN KEY (created_by) REFERENCES users(id),
+            FOREIGN KEY (received_by) REFERENCES users(id),
+            FOREIGN KEY (cancelled_by) REFERENCES users(id)
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_stock_transfers_status
+        ON store_stock_transfers(status, created_at DESC)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_stock_transfers_outlets
+        ON store_stock_transfers(from_outlet, to_outlet, status)
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_stock_transfer_lines (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            transfer_id   INTEGER NOT NULL,
+            outlet        TEXT    NOT NULL,
+            item_name     TEXT    NOT NULL,
+            unit          TEXT    NOT NULL DEFAULT 'pcs',
+            qty_base      REAL    NOT NULL DEFAULT 0,
+            sort_order    INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (transfer_id) REFERENCES store_stock_transfers(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_stock_transfer_lines_transfer
+        ON store_stock_transfer_lines(transfer_id, sort_order, id)
+    """)
+
     _seed_store_place_demo(cursor, migrated_place=migrated_stock_place)
     conn.commit()
 

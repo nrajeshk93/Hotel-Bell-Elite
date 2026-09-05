@@ -28,9 +28,15 @@ What staff call a “cache issue” on Tables is usually **stuck open bills** or
 - After **Generate Invoice**, the tile frees for the next party; that bill may
   stay `status=open` until Settle — that is intentional. Do not create a second
   pre-invoice open on the same table.
+- Available table click must not resume IndexedDB drafts with a server
+  `invoiceId` / after an online by-table miss — purge those leftovers; only
+  offline-unsynced drafts (no `invoiceId`) may hydrate locally.
 - After **Generate Invoice** (`customer_bill_sent` or `customer_bill_at`), the
   bill drops out of Pending Kitchen even if `sent_qty` was never marked. Floor
   occupancy / `kot_sent` still do not filter that list; Settle can continue.
+- Customer / cash bill **print** (Tables → Today’s Invoices Print, etc.) must
+  run the same Generate Invoice path: set `customer_bill_sent`, remint provisional
+  hex order numbers, free the floor tile, drop Pending Kitchen. Settle later is OK.
 - Online Tables first paint **must not** show Occupied from session/local
   snapshot (`floorSnapshotForFirstPaint`); live `/api/floor` (`cache: no-store`)
   is the source of truth. Offline may use the snapshot.
@@ -102,6 +108,8 @@ loading bar every open.
   as the DOM paints; POS still paints floor from snapshot then hits the API.
 - App UI fonts are self-hosted (`hbe_fonts.css` / `hbe_login_fonts.css`). Do not
   reintroduce `fonts.googleapis.com` in templates.
+
+- **Stock transfer** creates a pending `TRF-…` document (no qty change); receive under **Stock Inward → Transfers** to move stock and soft-refresh Stock/Inward (`deSoftRefresh` + invalidate `/stores/stock` / inward paths).
 
 ## Deploying
 

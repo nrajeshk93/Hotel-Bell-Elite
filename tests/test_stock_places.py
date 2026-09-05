@@ -1,6 +1,7 @@
 """Warehouse vs Counter stock ledgers: inward, transfer, Store page, audit, export."""
 
 import io
+import json
 import os
 import tempfile
 import unittest
@@ -247,6 +248,161 @@ class StockPlaceTests(unittest.TestCase):
         self.assertAlmostEqual(self._qty("restaurant", "Tomato", "kg", "warehouse"), 2.0)
         self.assertAlmostEqual(self._qty("restaurant", "Tomato", "kg", "counter"), 0.0)
 
+    def test_transfer_counter_to_warehouse(self):
+        self._insert_stock(
+            outlet="restaurant",
+            place="counter",
+            item_name="Tomato",
+            unit="kg",
+            qty=8.0,
+        )
+        self._insert_stock(
+            outlet="restaurant",
+            place="warehouse",
+            item_name="Tomato",
+            unit="kg",
+            qty=1.0,
+        )
+        res = self.client.post(
+            "/stores/stock/transfer",
+            json={
+                "outlet": "restaurant",
+                "item_name": "Tomato",
+                "unit": "kg",
+                "qty": 3,
+                "direction": "to_warehouse",
+                "to_outlet": "restaurant",
+            },
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        payload = res.get_json()
+        self.assertTrue(payload.get("ok"))
+        self.assertEqual(payload.get("from_place"), "counter")
+        self.assertEqual(payload.get("to_place"), "warehouse")
+        self.assertAlmostEqual(self._qty("restaurant", "Tomato", "kg", "counter"), 5.0)
+        self.assertAlmostEqual(self._qty("restaurant", "Tomato", "kg", "warehouse"), 4.0)
+
+    def test_transfer_counter_to_warehouse_over_qty_returns_400(self):
+        self._insert_stock(
+            outlet="restaurant",
+            place="counter",
+            item_name="Cream",
+            unit="liter",
+            qty=2.0,
+        )
+        self._insert_stock(
+            outlet="restaurant",
+            place="warehouse",
+            item_name="Cream",
+            unit="liter",
+            qty=50.0,
+        )
+        res = self.client.post(
+            "/stores/stock/transfer",
+            json={
+                "direction": "to_warehouse",
+                "to_outlet": "restaurant",
+                "items": [
+                    {
+                        "outlet": "restaurant",
+                        "item_name": "Cream",
+                        "unit": "liter",
+                        "qty": 5,
+                    }
+                ],
+            },
+        )
+        self.assertEqual(res.status_code, 400)
+        body = res.get_json() or {}
+        self.assertFalse(body.get("ok"))
+        self.assertIn("counter", (body.get("error") or "").lower())
+        # Warehouse stock must not be returnable from the counter direction.
+        self.assertAlmostEqual(self._qty("restaurant", "Cream", "liter", "counter"), 2.0)
+        self.assertAlmostEqual(self._qty("restaurant", "Cream", "liter", "warehouse"), 50.0)
+
+    def test_transfer_counter_to_warehouse_respects_pos_deduction(self):
+        """Return qty is capped to counter on-hand after POS sale deduction."""
+        self._insert_stock(
+            outlet="restaurant",
+            place="counter",
+            item_name="Strawberry Ice Cream",
+            unit="kg",
+            qty=5.0,
+        )
+        self._insert_stock(
+            outlet="restaurant",
+            place="warehouse",
+            item_name="Strawberry Ice Cream",
+            unit="kg",
+            qty=10.0,
+        )
+        # Simulate POS close deducting from counter (same place as deduct_stock_for_pos_invoice).
+        conn = db_mod.get_db()
+        try:
+            self.stores_mod._adjust_stock(
+                conn,
+                outlet="restaurant",
+                place=self.stores_mod.STOCK_PLACE_COUNTER,
+                item_name="Strawberry Ice Cream",
+                unit="kg",
+                qty_delta=-0.3,
+                movement_type="sale",
+                ref_type="pos_invoice",
+                ref_id=999001,
+                notes="POS sale test",
+                user_id=self.admin_id,
+                allow_shortfall=True,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        self.assertAlmostEqual(
+            self._qty("restaurant", "Strawberry Ice Cream", "kg", "counter"), 4.7
+        )
+        self.assertAlmostEqual(
+            self._qty("restaurant", "Strawberry Ice Cream", "kg", "warehouse"), 10.0
+        )
+
+        too_much = self.client.post(
+            "/stores/stock/transfer",
+            json={
+                "direction": "counter_to_warehouse",
+                "to_outlet": "restaurant",
+                "outlet": "restaurant",
+                "item_name": "Strawberry Ice Cream",
+                "unit": "kg",
+                "qty": 4.8,
+            },
+        )
+        self.assertEqual(too_much.status_code, 400)
+        self.assertFalse((too_much.get_json() or {}).get("ok"))
+        self.assertAlmostEqual(
+            self._qty("restaurant", "Strawberry Ice Cream", "kg", "counter"), 4.7
+        )
+        self.assertAlmostEqual(
+            self._qty("restaurant", "Strawberry Ice Cream", "kg", "warehouse"), 10.0
+        )
+
+        ok = self.client.post(
+            "/stores/stock/transfer",
+            json={
+                "direction": "to_warehouse",
+                "to_outlet": "restaurant",
+                "outlet": "restaurant",
+                "item_name": "Strawberry Ice Cream",
+                "unit": "kg",
+                "qty": 4.7,
+            },
+        )
+        self.assertEqual(ok.status_code, 200, ok.get_data(as_text=True))
+        self.assertTrue((ok.get_json() or {}).get("ok"))
+        self.assertAlmostEqual(
+            self._qty("restaurant", "Strawberry Ice Cream", "kg", "counter"), 0.0
+        )
+        self.assertAlmostEqual(
+            self._qty("restaurant", "Strawberry Ice Cream", "kg", "warehouse"), 14.7
+        )
+
     def test_batch_transfer_custom_qtys(self):
         self._insert_stock(
             outlet="restaurant",
@@ -380,6 +536,12 @@ class StockPlaceTests(unittest.TestCase):
         self.assertIn(b'data-place="counter"', counter.data)
         self.assertIn(b"Return", counter.data)
         self.assertIn(b'data-st-transfer="to_warehouse"', counter.data)
+        self.assertIn(b'data-qty="2.0"', counter.data)
+
+        empty_counter = self.client.get("/stores/stock?outlet=bar&place=counter")
+        self.assertEqual(empty_counter.status_code, 200)
+        self.assertIn(b"Counter is empty", empty_counter.data)
+        self.assertIn(b"Return", empty_counter.data)
         self.assertIn(b'id="st-stock-transfer-lines"', counter.data)
         self.assertIn(b'id="st-stock-transfer-to-outlet"', warehouse.data)
         self.assertIn(b'id="st-stock-transfer-to-outlet" name="to_outlet" value=""', warehouse.data)
@@ -397,6 +559,15 @@ class StockPlaceTests(unittest.TestCase):
             b'id="st-stock-transfer-submit" disabled',
             warehouse.data,
         )
+        self.assertIn(b'id="st-stock-transfer-qty-mode"', warehouse.data)
+        self.assertIn(b'id="st-stock-transfer-mode-pack"', warehouse.data)
+        self.assertIn(b'id="st-stock-transfer-mode-total"', warehouse.data)
+        self.assertIn(
+            b'id="st-stock-transfer-mode-pack" aria-selected="true"',
+            warehouse.data,
+        )
+        self.assertIn(b'data-pack-label=', counter.data)
+        self.assertIn(b'data-pack-qty-in-base=', counter.data)
 
     def test_export_respects_place(self):
         self._insert_stock(
@@ -489,7 +660,208 @@ class StockPlaceTests(unittest.TestCase):
         self.assertAlmostEqual(self._qty("restaurant", "Tomato", "kg", "counter"), 3.0)
         self.assertAlmostEqual(self._qty("restaurant", "Tomato", "kg", "warehouse"), 10.0)
 
+    def _insert_product_with_pack(self, *, name, unit, outlet, pack_label, pack_qty_in_base):
+        conn = db_mod.get_db()
+        try:
+            db_mod.ensure_stores_schema(conn)
+            category = conn.execute(
+                "SELECT id FROM store_product_categories WHERE is_active = 1 ORDER BY id LIMIT 1"
+            ).fetchone()
+            if category is None:
+                conn.execute(
+                    """
+                    INSERT INTO store_product_categories (name, is_active, sort_order)
+                    VALUES ('Dairy', 1, 1)
+                    """
+                )
+                category_id = conn.execute(
+                    "SELECT id FROM store_product_categories WHERE name = 'Dairy'"
+                ).fetchone()["id"]
+            else:
+                category_id = category["id"]
+            cur = conn.execute(
+                """
+                INSERT INTO store_products
+                    (category_id, name, default_unit, outlet, approximate_price, is_active, sort_order)
+                VALUES (?, ?, ?, ?, 100, 1, 10)
+                """,
+                (category_id, name, unit, outlet),
+            )
+            product_id = cur.lastrowid
+            conn.execute(
+                """
+                INSERT INTO store_product_variants
+                    (product_id, label, qty_in_base, approximate_price, sort_order, is_active)
+                VALUES (?, ?, ?, 50, 10, 1)
+                """,
+                (product_id, pack_label, pack_qty_in_base),
+            )
+            conn.commit()
+            return int(product_id)
+        finally:
+            conn.close()
+
+    def test_stock_page_includes_default_pack_attrs(self):
+        self._insert_product_with_pack(
+            name="Amul Cheese",
+            unit="gram",
+            outlet="restaurant",
+            pack_label="500 gram",
+            pack_qty_in_base=500.0,
+        )
+        self._insert_stock(
+            outlet="restaurant",
+            place="warehouse",
+            item_name="Amul Cheese",
+            unit="gram",
+            qty=1000.0,
+        )
+        self._insert_stock(
+            outlet="restaurant",
+            place="warehouse",
+            item_name="Loose Spice",
+            unit="kg",
+            qty=3.0,
+        )
+        page = self.client.get("/stores/stock?outlet=restaurant&place=warehouse")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn('data-item-name="Amul Cheese"', html)
+        self.assertIn('data-pack-label="500 gram"', html)
+        self.assertIn('data-pack-qty-in-base="500', html)
+        self.assertIn('data-item-name="Loose Spice"', html)
+        # No product master pack → empty pack attrs, transfer still allowed as base qty.
+        self.assertRegex(
+            html,
+            r'data-item-name="Loose Spice"[^>]*data-pack-label=""[^>]*data-pack-qty-in-base=""',
+        )
+
+    def test_stock_page_embeds_product_packs_json_for_transfer(self):
+        """Product Master packs are embedded so Transfer works even if row attrs are stale."""
+        self._insert_product_with_pack(
+            name="100 Pipers",
+            unit="ml",
+            outlet="bar",
+            pack_label="750 mL",
+            pack_qty_in_base=750.0,
+        )
+        self._insert_stock(
+            outlet="bar",
+            place="warehouse",
+            item_name="100 Pipers",
+            unit="ml",
+            qty=750.0,
+        )
+        page = self.client.get("/stores/stock?outlet=bar&place=warehouse")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn('id="st-stock-product-packs"', html)
+        self.assertIn('data-pack-label="750 mL"', html)
+        self.assertIn('data-pack-qty-in-base="750', html)
+        start = html.find('id="st-stock-product-packs"')
+        self.assertGreaterEqual(start, 0)
+        open_tag = html.find('>', start)
+        close_tag = html.find('</script>', open_tag)
+        payload = html[open_tag + 1:close_tag].strip()
+        packs = json.loads(payload)
+        self.assertIsInstance(packs, dict)
+        # name / name|unit / name|outlet|unit keys
+        for key in ("100 pipers", "100 pipers|ml", "100 pipers|bar|ml"):
+            self.assertIn(key, packs, msg=f"missing pack map key {key}")
+            entry = packs[key]
+            self.assertEqual(entry.get("label"), "750 mL")
+            self.assertAlmostEqual(float(entry.get("qty_in_base")), 750.0)
+
+    def test_default_pack_parses_qty_from_label_when_missing(self):
+        label, qty = self.stores_mod._default_pack_from_product_variants(
+            [{"label": "750 mL", "qty_in_base": 0}]
+        )
+        self.assertEqual(label, "750 mL")
+        self.assertAlmostEqual(qty, 750.0)
+        label2, qty2 = self.stores_mod._default_pack_from_product_variants(
+            [{"label": "Half bottle", "qty_in_base": None}]
+        )
+        self.assertEqual(label2, "Half bottle")
+        self.assertIsNone(qty2)
+
+    def test_transfer_api_still_accepts_base_qty_for_packed_item(self):
+        """UI Pack mode converts to base before POST; API remains base-unit qty."""
+        self._insert_product_with_pack(
+            name="Amul Cheese",
+            unit="gram",
+            outlet="restaurant",
+            pack_label="500 gram",
+            pack_qty_in_base=500.0,
+        )
+        self._insert_stock(
+            outlet="restaurant",
+            place="warehouse",
+            item_name="Amul Cheese",
+            unit="gram",
+            qty=1000.0,
+        )
+        # Pack mode entering 1 pack → JS sends 500 base.
+        resp = self.client.post(
+            "/stores/stock/transfer",
+            json={
+                "direction": "to_counter",
+                "to_outlet": "restaurant",
+                "items": [
+                    {
+                        "outlet": "restaurant",
+                        "item_name": "Amul Cheese",
+                        "unit": "gram",
+                        "qty": 500,
+                    }
+                ],
+            },
+        )
+        self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
+        body = resp.get_json()
+        self.assertTrue(body.get("ok"))
+        self.assertAlmostEqual(float(body.get("qty")), 500.0)
+        self.assertAlmostEqual(self._qty("restaurant", "Amul Cheese", "gram", "warehouse"), 500.0)
+        self.assertAlmostEqual(self._qty("restaurant", "Amul Cheese", "gram", "counter"), 500.0)
+
+        # 100 Pipers: 1 × 750 mL pack resolves to 750 base units on the wire.
+        self._insert_product_with_pack(
+            name="100 Pipers",
+            unit="ml",
+            outlet="bar",
+            pack_label="750 mL",
+            pack_qty_in_base=750.0,
+        )
+        self._insert_stock(
+            outlet="bar",
+            place="warehouse",
+            item_name="100 Pipers",
+            unit="ml",
+            qty=750.0,
+        )
+        resp2 = self.client.post(
+            "/stores/stock/transfer",
+            json={
+                "direction": "to_counter",
+                "to_outlet": "bar",
+                "items": [
+                    {
+                        "outlet": "bar",
+                        "item_name": "100 Pipers",
+                        "unit": "ml",
+                        "qty": 750,
+                    }
+                ],
+            },
+        )
+        self.assertEqual(resp2.status_code, 200, resp2.get_data(as_text=True))
+        body2 = resp2.get_json()
+        self.assertTrue(body2.get("ok"))
+        self.assertAlmostEqual(float(body2.get("qty")), 750.0)
+        self.assertAlmostEqual(self._qty("bar", "100 Pipers", "ml", "warehouse"), 0.0)
+        self.assertAlmostEqual(self._qty("bar", "100 Pipers", "ml", "counter"), 750.0)
+
     def test_schema_rebuild_moves_existing_on_hand_to_warehouse(self):
+
         conn = db_mod.get_db()
         try:
             conn.execute("DROP TABLE store_stock_items")

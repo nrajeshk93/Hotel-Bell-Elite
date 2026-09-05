@@ -1503,15 +1503,48 @@ body.de-open.sb-off #ep-workspace.de-module .de-sb-pin-btn svg{
     top:0;
     left:0;
     bottom:0;
-    width:var(--de-sidebar-expanded);
-    min-width:var(--de-sidebar-expanded);
-    max-width:var(--de-sidebar-expanded);
-    margin-right:0;
+    /* Fixed drawer: do not reserve rail width in the flex shell. */
+    flex:0 0 0!important;
+    width:var(--de-sidebar-expanded)!important;
+    min-width:0!important;
+    max-width:var(--de-sidebar-expanded)!important;
+    margin-right:0!important;
     transform:translateX(calc(-1 * (var(--de-sidebar-expanded) + 12px)));
     z-index:50;
     padding-top:env(safe-area-inset-top, 0px);
     padding-bottom:env(safe-area-inset-bottom, 0px);
     padding-left:env(safe-area-inset-left, 0px);
+    box-shadow:8px 0 28px rgba(15,23,42,.18);
+  }
+  /* Header pin becomes the phone drawer control (hidden on desktop by design). */
+  #main-app.de-module .de-sb-pin-btn,
+  #ep-workspace.de-module .de-sb-pin-btn,
+  #dashboard.de-module .de-sb-pin-btn,
+  #main-app.de-module .sb-pin-btn.de-sb-pin-btn,
+  #ep-workspace.de-module .sb-pin-btn.de-sb-pin-btn,
+  #dashboard.de-module .sb-pin-btn.de-sb-pin-btn{
+    display:inline-flex!important;
+    align-items:center;
+    justify-content:center;
+    width:44px;
+    height:44px;
+    min-width:44px;
+    min-height:44px;
+    box-sizing:border-box;
+  }
+  #main-app.de-module .de-main-wrapper,
+  #ep-workspace.de-module .de-main-wrapper,
+  #dashboard.de-module .de-main-wrapper{
+    min-width:0;
+    max-width:100%;
+    overflow-x:hidden;
+  }
+  #main-app.de-module .de-app-shell,
+  #ep-workspace.de-module .de-app-shell,
+  #dashboard.de-module .de-app-shell{
+    min-width:0;
+    max-width:100%;
+    overflow-x:hidden;
   }
 #main-app.de-module .de-sidebar.open,#ep-workspace.de-module .de-sidebar.open,#dashboard.de-module .de-sidebar.open{transform:translateX(0);}
 #main-app.de-module .de-main-wrapper,

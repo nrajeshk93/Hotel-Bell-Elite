@@ -121,6 +121,22 @@
         return;
       }
       if (window.__hbeSwReloaded) return;
+      /* Localhost / LAN: skip forced reload — digests change often during
+         edits and would otherwise refresh the tab in a loop. Prod keeps one
+         reload when a new worker claims. */
+      try {
+        var host = (window.location && window.location.hostname) || '';
+        if (
+          host === 'localhost' ||
+          host === '127.0.0.1' ||
+          host === '0.0.0.0' ||
+          host.indexOf('192.168.') === 0 ||
+          host.indexOf('10.') === 0
+        ) {
+          hadController = true;
+          return;
+        }
+      } catch (eHost) {}
       window.__hbeSwReloaded = true;
       try {
         try{ if(typeof window.clearSoftNavPrefetch==='function') window.clearSoftNavPrefetch(); }catch(_e){}
@@ -130,6 +146,10 @@
   }
 
   function checkForUpdate(reg) {
+    /* Never hard-reload from build.json alone. While static files change,
+       cacheVersion flips every request and a reload-before-SW-activates loop
+       refreshes the app forever. Only ask the SW to update; one reload happens
+       from controllerchange after the new worker claims (bindReloadOnUpdate). */
     if (reg && typeof reg.update === 'function') {
       try {
         reg.update();
@@ -153,16 +173,12 @@
           try {
             if (reg && reg.update) reg.update();
           } catch (e2) {}
-          var path = (window.location && window.location.pathname) || '';
-          if (path === '/' || path === '/login') return;
-          if (window.__hbeSwReloaded) return;
-          window.__hbeSwReloaded = true;
-          try {
-            if (typeof window.clearSoftNavPrefetch === 'function') {
-              window.clearSoftNavPrefetch();
-            }
-            window.location.reload();
-          } catch (e3) {}
+          if (reg && reg.waiting) {
+            try {
+              reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            } catch (e3) {}
+          }
+          /* Intentionally no location.reload() here. */
         });
       })
       .catch(function () {});
