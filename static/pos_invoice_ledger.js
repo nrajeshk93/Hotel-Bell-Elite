@@ -668,7 +668,10 @@
     setViewedInvoice(null);
   }
 
+  var _printViewedBillBusy = false;
+
   function printViewedBill() {
+    if (_printViewedBillBusy) return;
     var invoice = getViewedInvoice();
     if (!invoice) {
       toast('Load a bill before printing.');
@@ -693,7 +696,7 @@
 
     if (!canAgent) {
       if (printBillViaBrowserFrame()) {
-        toast('Print Agent unavailable — opened browser print.');
+        toast('Print Agent unavailable — opened browser print of the digital bill.');
         return;
       }
       toast(
@@ -708,6 +711,7 @@
       '-' +
       Date.now();
 
+    _printViewedBillBusy = true;
     var printPromise = Promise.resolve();
     if (typeof global.HotelPrintAgent.ensurePaired === 'function') {
       printPromise = global.HotelPrintAgent.ensurePaired(true).catch(function () {
@@ -722,29 +726,38 @@
           jobId: jobId,
           invoice: invoice,
           userLabel: String((invoice && invoice.created_by) || '').trim(),
-          allowBrowserFallback: false
+          allowBrowserFallback: true,
+          browserPrint: function () {
+            printBillViaBrowserFrame();
+          }
         });
       })
       .then(function (result) {
+        _printViewedBillBusy = false;
+        if (result && result.via === 'agent' && result.viaRaster) {
+          toast('Sent to printer.');
+          return;
+        }
         if (result && result.via === 'agent') {
           toast('Sent to printer.');
+          return;
+        }
+        if (result && result.via === 'browser') {
+          toast('Opened browser print of the digital bill.');
           return;
         }
         var errMsg =
           (result && result.error && result.error.message) ||
           'Bill print failed. Open Hotel Print Agent and map the Invoice printer.';
-        if (printBillViaBrowserFrame()) {
-          toast(errMsg + ' Opened browser print as fallback.');
-          return;
-        }
         toast(errMsg);
       })
       .catch(function (err) {
+        _printViewedBillBusy = false;
         var msg =
           (err && err.message) ||
           'Bill print failed. Check Hotel Print Agent.';
         if (printBillViaBrowserFrame()) {
-          toast(msg + ' Opened browser print as fallback.');
+          toast(msg + ' Opened browser print of the digital bill.');
           return;
         }
         toast(msg);

@@ -793,8 +793,9 @@
    */
   function canvasToEscPosRasterBands(canvas, opts) {
     opts = opts || {};
-    /* 80mm heads are typically 512–576 dots; 384 crushed letter spacing on paper. */
-    var maxWidth = opts.maxWidth || 576;
+    /* Most 80mm ESC/POS heads are 512 dots (Epson). 576 was scaled down on
+       production printers and crushed spaces (BLENDERS PRIDE → BLENDERSPRIDE). */
+    var maxWidth = opts.maxWidth || 512;
     var bandHeight = opts.bandHeight || 1200;
     var threshold = opts.threshold != null ? opts.threshold : 168;
     if (!canvas || !canvas.width || !canvas.height) return '';
@@ -888,7 +889,26 @@
       return Promise.reject(new Error('invoice required'));
     }
 
-    var THERMAL_DOTS = 576;
+    var THERMAL_DOTS = 512;
+
+    function injectThermalCaptureCss(doc) {
+      if (!doc || !doc.head) return null;
+      try {
+        var style = doc.createElement('style');
+        style.setAttribute('data-hbe-thermal-capture', '1');
+        /* Extra tracking so spaces survive 1-bit + printer-side scaling. */
+        style.textContent =
+          'body,.bill-sheet{letter-spacing:0.06em !important;word-spacing:0.14em !important;' +
+          '-webkit-font-smoothing:none !important;font-smooth:never !important}' +
+          '.brand,.meta,.totals,.user,table.items td,table.items th,' +
+          'table.receipts-table td,table.receipts-table th,.addr,.gst-no{' +
+          'letter-spacing:0.06em !important;word-spacing:0.14em !important}';
+        doc.head.appendChild(style);
+        return style;
+      } catch (e) {
+        return null;
+      }
+    }
 
     function captureTarget(doc, target, ownedIframe) {
       var bodyStyle =
@@ -896,12 +916,32 @@
           ? doc.defaultView.getComputedStyle(doc.body)
           : null;
       var scrollW = (target && target.scrollWidth) || 340;
-      var scale = Math.max(1.5, THERMAL_DOTS / Math.max(1, scrollW));
+      /* Exact target width — avoid capture-wider-then-squash (crushes spaces). */
+      var scale = THERMAL_DOTS / Math.max(1, scrollW);
+      /* Clone into an off-screen host so View iframe letter-spacing is unchanged. */
+      var host = null;
+      var captureEl = target;
+      try {
+        host = doc.createElement('div');
+        host.setAttribute('data-hbe-thermal-host', '1');
+        host.style.cssText =
+          'position:fixed;left:-12000px;top:0;width:' +
+          scrollW +
+          'px;background:#fff;z-index:-1;';
+        var clone = target.cloneNode(true);
+        host.appendChild(clone);
+        doc.body.appendChild(host);
+        injectThermalCaptureCss(doc);
+        captureEl = clone;
+      } catch (eClone) {
+        injectThermalCaptureCss(doc);
+        captureEl = target;
+      }
       // #region agent log
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'A,B,D',location:'pos_printers.js:renderCustomerBillRasterEscPos',message:'html2canvas target metrics',data:{source:opts.captureSource||'offscreen',hasHtml2canvas:typeof global.html2canvas==='function',tag:target&&target.tagName,scrollWidth:scrollW,offsetWidth:target&&target.offsetWidth,clientWidth:target&&target.clientWidth,scrollHeight:target&&target.scrollHeight,bodyWidth:bodyStyle&&bodyStyle.width,bodyFont:bodyStyle&&bodyStyle.fontFamily,captureScale:scale,thermalDots:THERMAL_DOTS},timestamp:Date.now()})}).catch(function(){});
+      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'F',location:'pos_printers.js:renderCustomerBillRasterEscPos',message:'html2canvas target metrics',data:{source:opts.captureSource||'offscreen',hasHtml2canvas:typeof global.html2canvas==='function',tag:captureEl&&captureEl.tagName,scrollWidth:scrollW,offsetWidth:target&&target.offsetWidth,clientWidth:target&&target.clientWidth,scrollHeight:target&&target.scrollHeight,bodyWidth:bodyStyle&&bodyStyle.width,bodyFont:bodyStyle&&bodyStyle.fontFamily,captureScale:scale,thermalDots:THERMAL_DOTS,usedClone:!!host},timestamp:Date.now()})}).catch(function(){});
       // #endregion
       return global
-        .html2canvas(target, {
+        .html2canvas(captureEl, {
           backgroundColor: '#ffffff',
           scale: scale,
           useCORS: true,
@@ -912,9 +952,17 @@
           windowWidth: Math.max(380, scrollW + 40)
         })
         .then(function (canvas) {
+          try {
+            if (host && host.parentNode) host.parentNode.removeChild(host);
+            var injected = doc.querySelector('style[data-hbe-thermal-capture="1"]');
+            if (injected && injected.parentNode) injected.parentNode.removeChild(injected);
+          } catch (eClean) {}
           // #region agent log
-          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'A,B,D',location:'pos_printers.js:html2canvas-result',message:'html2canvas canvas size',data:{canvasW:canvas&&canvas.width,canvasH:canvas&&canvas.height,source:opts.captureSource||'offscreen'},timestamp:Date.now()})}).catch(function(){});
+          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'F',location:'pos_printers.js:html2canvas-result',message:'html2canvas canvas size',data:{canvasW:canvas&&canvas.width,canvasH:canvas&&canvas.height,source:opts.captureSource||'offscreen'},timestamp:Date.now()})}).catch(function(){});
           // #endregion
+          if (!canvas || !canvas.width || !canvas.height) {
+            throw new Error('empty html2canvas result');
+          }
           if (ownedIframe && ownedIframe.parentNode) {
             try {
               ownedIframe.parentNode.removeChild(ownedIframe);
@@ -923,13 +971,21 @@
           var escpos = canvasToEscPosRasterBands(canvas, {
             maxWidth: THERMAL_DOTS,
             bandHeight: 1200,
-            threshold: 168
+            threshold: 155
           });
           // #region agent log
-          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'D',location:'pos_printers.js:escpos-built',message:'escpos payload built',data:{escposLen:escpos?escpos.length:0,widthBytes:Math.floor(THERMAL_DOTS/8),thermalDots:THERMAL_DOTS},timestamp:Date.now()})}).catch(function(){});
+          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'F',location:'pos_printers.js:escpos-built',message:'escpos payload built',data:{escposLen:escpos?escpos.length:0,widthBytes:Math.floor(THERMAL_DOTS/8),thermalDots:THERMAL_DOTS},timestamp:Date.now()})}).catch(function(){});
           // #endregion
           if (!escpos) throw new Error('empty bill raster');
           return escpos;
+        })
+        .catch(function (err) {
+          try {
+            if (host && host.parentNode) host.parentNode.removeChild(host);
+            var injected2 = doc.querySelector('style[data-hbe-thermal-capture="1"]');
+            if (injected2 && injected2.parentNode) injected2.parentNode.removeChild(injected2);
+          } catch (eClean2) {}
+          throw err;
         });
     }
 
@@ -1266,10 +1322,13 @@
     return parts.join('');
   }
 
+  var _billPrintInFlight = false;
+
   /**
    * Silent invoice/bill print via Hotel Print Agent (billing role).
    * Prefers a full View-bill raster (Noto Sans digits) so thermal “6” matches
-   * the iframe preview. Falls back to text/logo ESC/POS, then plain text.
+   * the iframe preview. On agent failure, prefers browser print of the digital
+   * bill over text ESC/POS (text does not match the View layout).
    * Set opts.allowBrowserFallback = true to open Chrome print as a last resort.
    */
   function printInvoiceHtml(html, opts) {
@@ -1288,23 +1347,43 @@
               'Print Agent did not print. Open Hotel Print Agent and map the Invoice printer.'
             );
       if (allowBrowser) {
-        browserPrint();
+        try {
+          browserPrint();
+        } catch (e) {}
         return { via: 'browser', error: error };
       }
       return { via: 'failed', error: error };
     }
 
+    if (_billPrintInFlight) {
+      // #region agent log
+      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'C',location:'pos_printers.js:printInvoiceHtml',message:'print blocked — already in flight',data:{},timestamp:Date.now()})}).catch(function(){});
+      // #endregion
+      return Promise.resolve({
+        via: 'failed',
+        error: new Error('Print already in progress.')
+      });
+    }
+    _billPrintInFlight = true;
+
+    function finish(result) {
+      _billPrintInFlight = false;
+      return result;
+    }
+
     if (!html && !invoice) {
-      return Promise.resolve(fail(new Error('Nothing to print.')));
+      return Promise.resolve(finish(fail(new Error('Nothing to print.'))));
     }
     if (
       typeof global.HotelPrintAgent !== 'object' ||
       typeof global.HotelPrintAgent.print !== 'function'
     ) {
       return Promise.resolve(
-        fail(
-          new Error(
-            'Print Agent is not loaded. Refresh the page, or open Hotel Print Agent on this PC.'
+        finish(
+          fail(
+            new Error(
+              'Print Agent is not loaded. Refresh the page, or open Hotel Print Agent on this PC.'
+            )
           )
         )
       );
@@ -1399,8 +1478,30 @@
         });
     }
 
-    if (!invoice) {
+    /** Prefer exact digital browser print over text ESC/POS (mismatched glyphs). */
+    function digitalOrTextFallback(err, hadGoodRaster) {
+      // #region agent log
+      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'C',location:'pos_printers.js:printInvoiceHtml',message:'fallback decision',data:{hadGoodRaster:!!hadGoodRaster,allowBrowser:allowBrowser,err:String(err&&err.message||err||'')},timestamp:Date.now()})}).catch(function(){});
+      // #endregion
+      if (allowBrowser || hadGoodRaster) {
+        try {
+          browserPrint();
+        } catch (e) {}
+        if (allowBrowser || typeof opts.browserPrint === 'function') {
+          return {
+            via: 'browser',
+            error: err && err.message ? err : new Error(String(err || 'print failed')),
+            hadRaster: !!hadGoodRaster
+          };
+        }
+      }
       return sendLogoTextFallback();
+    }
+
+    if (!invoice) {
+      return sendLogoTextFallback().then(finish, function (err) {
+        return finish(fail(err));
+      });
     }
 
     return renderCustomerBillRasterEscPos(invoice, {
@@ -1411,9 +1512,9 @@
         var b64 = toBase64Binary(rasterEscPos);
         if (!b64) {
           // #region agent log
-          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'pre-fix',hypothesisId:'C',location:'pos_printers.js:printInvoiceHtml',message:'empty raster b64 -> text fallback',data:{},timestamp:Date.now()})}).catch(function(){});
+          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'C',location:'pos_printers.js:printInvoiceHtml',message:'empty raster b64 -> digital/text fallback',data:{},timestamp:Date.now()})}).catch(function(){});
           // #endregion
-          return sendLogoTextFallback();
+          return digitalOrTextFallback(new Error('empty bill raster'), false);
         }
         // #region agent log
         fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'C',location:'pos_printers.js:printInvoiceHtml',message:'sending raster escpos job',data:{b64Len:b64.length,role:role},timestamp:Date.now()})}).catch(function(){});
@@ -1436,17 +1537,14 @@
             return result;
           })
           .catch(function (err) {
-            // #region agent log
-            fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'pre-fix',hypothesisId:'C',location:'pos_printers.js:printInvoiceHtml',message:'raster job failed -> text fallback',data:{err:String(err&&err.message||err||'')},timestamp:Date.now()})}).catch(function(){});
-            // #endregion
-            return sendLogoTextFallback();
+            return digitalOrTextFallback(err, true);
           });
       })
       .catch(function (err) {
-        // #region agent log
-        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'pre-fix',hypothesisId:'C',location:'pos_printers.js:printInvoiceHtml',message:'raster render rejected -> text fallback',data:{err:String(err&&err.message||err||'')},timestamp:Date.now()})}).catch(function(){});
-        // #endregion
-        return sendLogoTextFallback();
+        return digitalOrTextFallback(err, false);
+      })
+      .then(finish, function (err) {
+        return finish(fail(err));
       });
   }
 
