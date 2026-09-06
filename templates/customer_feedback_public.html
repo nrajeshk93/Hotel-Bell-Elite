@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Guest feedback{% if invite and invite.customer_name %} - {{ invite.customer_name }}{% endif %}</title>
+{% include 'partials/hbe_fonts.html' %}
+<style>
+  :root{
+    --ink:#0F172A;
+    --muted:#64748B;
+    --line:#E2E8F0;
+    --accent:#2563EB;
+    --star:#F59E0B;
+    --bg:#F8FAFC;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    min-height:100vh;
+    font-family:'Inter','Segoe UI',system-ui,sans-serif;
+    color:var(--ink);
+    background:
+      radial-gradient(1200px 500px at 10% -10%, #DBEAFE 0%, transparent 55%),
+      radial-gradient(900px 420px at 100% 0%, #FEF3C7 0%, transparent 50%),
+      var(--bg);
+  }
+  .wrap{
+    max-width:440px;
+    margin:0 auto;
+    padding:32px 18px 48px;
+  }
+  .card{
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:22px 20px 24px;
+    box-shadow:0 10px 30px rgba(15,23,42,0.06);
+  }
+  h1{
+    margin:0 0 6px;
+    font-size:1.45rem;
+    line-height:1.25;
+  }
+  .sub{
+    margin:0 0 18px;
+    color:var(--muted);
+    font-size:0.95rem;
+    line-height:1.45;
+  }
+  .err{
+    margin:0 0 14px;
+    padding:10px 12px;
+    border-radius:10px;
+    background:#FEF2F2;
+    color:#B91C1C;
+    font-size:0.9rem;
+  }
+  .ok{
+    margin:0;
+    padding:18px 8px;
+    text-align:center;
+  }
+  .ok h2{margin:0 0 8px;font-size:1.25rem}
+  .ok p{margin:0;color:var(--muted);line-height:1.45}
+  fieldset{
+    border:0;
+    margin:0 0 14px;
+    padding:0;
+  }
+  legend,label.lbl{
+    display:block;
+    font-size:0.78rem;
+    font-weight:700;
+    letter-spacing:0.03em;
+    text-transform:uppercase;
+    color:#475569;
+    margin-bottom:8px;
+  }
+  .stars{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+  .stars input{position:absolute;opacity:0;pointer-events:none}
+  .stars label{
+    width:44px;
+    height:44px;
+    border-radius:12px;
+    border:1px solid var(--line);
+    display:grid;
+    place-items:center;
+    cursor:pointer;
+    color:#CBD5E1;
+    font-size:1.35rem;
+    background:#fff;
+    transition:border-color .15s, color .15s, background .15s;
+  }
+  .stars input:checked + label,
+  .stars label:hover{
+    color:var(--star);
+    border-color:#FCD34D;
+    background:#FFFBEB;
+  }
+  .stars input:focus-visible + label{
+    outline:2px solid var(--accent);
+    outline-offset:2px;
+  }
+  textarea{
+    width:100%;
+    min-height:110px;
+    border:1px solid #D1D5DB;
+    border-radius:12px;
+    padding:12px;
+    font:inherit;
+    resize:vertical;
+  }
+  .row{
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr;
+    gap:8px;
+    margin-bottom:14px;
+  }
+  @media (max-width:420px){
+    .row{grid-template-columns:1fr}
+  }
+  .mini select{
+    width:100%;
+    height:40px;
+    border:1px solid #D1D5DB;
+    border-radius:10px;
+    padding:0 10px;
+    font:inherit;
+    background:#fff;
+  }
+  button[type=submit]{
+    width:100%;
+    height:46px;
+    border:0;
+    border-radius:12px;
+    background:var(--accent);
+    color:#fff;
+    font:inherit;
+    font-weight:700;
+    cursor:pointer;
+  }
+  button[type=submit]:hover{filter:brightness(0.96)}
+  .brand{
+    margin-top:16px;
+    text-align:center;
+    color:#94A3B8;
+    font-size:0.8rem;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      {% if error %}
+      <p class="err">{{ error }}</p>
+      {% endif %}
+
+      {% if thank_you or done %}
+      <div class="ok">
+        <h2>{% if thank_you %}Thank you{% else %}Already submitted{% endif %}</h2>
+        <p>{% if thank_you %}Your feedback helps us improve every stay and meal.{% else %}This link has already been used. Thank you again.{% endif %}</p>
+      </div>
+      {% elif invite %}
+      <h1>How was your experience?</h1>
+      <p class="sub">
+        {% if invite.customer_name %}Hi {{ invite.customer_name }} - {% endif %}
+        Please rate your visit. This takes under a minute.
+      </p>
+      <form method="post" action="{{ url_for('customer_feedback_public', token=invite.token) }}">
+        <fieldset>
+          <legend>Overall rating *</legend>
+          <div class="stars">
+            {% for n in range(1, 6) %}
+            <input type="radio" name="rating" id="r{{ n }}" value="{{ n }}" required{% if n == 5 %} checked{% endif %}>
+            <label for="r{{ n }}" title="{{ n }} star{{ 's' if n != 1 else '' }}">?</label>
+            {% endfor %}
+          </div>
+        </fieldset>
+        <div class="row">
+          <label class="mini">
+            <span class="lbl">Service</span>
+            <select name="service_rating">
+              <option value="">-</option>
+              {% for n in range(1, 6) %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="mini">
+            <span class="lbl">Food</span>
+            <select name="food_rating">
+              <option value="">-</option>
+              {% for n in range(1, 6) %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="mini">
+            <span class="lbl">Ambience</span>
+            <select name="ambience_rating">
+              <option value="">-</option>
+              {% for n in range(1, 6) %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+            </select>
+          </label>
+        </div>
+        <label class="lbl" for="comment">Comment</label>
+        <textarea id="comment" name="comment" maxlength="2000" placeholder="What went well? What can we improve?"></textarea>
+        <div style="height:14px"></div>
+        <button type="submit">Submit feedback</button>
+      </form>
+      {% endif %}
+    </div>
+    <p class="brand">Hotel Bell Elite</p>
+  </div>
+</body>
+</html>

@@ -164,9 +164,67 @@
   align-items: start;
 }
 
-.rdx-grid-dow-top {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: start;
+.rdx-grid-top-items {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  align-items: stretch;
+}
+
+.rdx-grid-heatmap-payment {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  align-items: stretch;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.rdx-grid-heatmap-payment > .rdx-card,
+.rdx-grid-top-items > .rdx-card {
+  min-width: 0;
+  max-width: 100%;
+  width: auto;
+  align-self: stretch;
+}
+
+/* Half-width payment card: chart on top, Digital/Cash KPIs in a row */
+.rdx-grid-heatmap-payment > .rdx-payment-mode {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+}
+
+.rdx-grid-heatmap-payment > .rdx-payment-mode .rdx-pm-body {
+  grid-template-columns: 1fr;
+  gap: 14px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rdx-grid-heatmap-payment > .rdx-payment-mode .rdx-pm-chart-col,
+.rdx-grid-heatmap-payment > .rdx-payment-mode .rdx-chart-ltr-mask,
+.rdx-grid-heatmap-payment > .rdx-payment-mode .rdx-pm-chart {
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.rdx-grid-heatmap-payment > .rdx-payment-mode .rdx-pm-chart {
+  min-height: 200px;
+}
+
+.rdx-grid-heatmap-payment > .rdx-payment-mode .rdx-pm-kpis {
+  flex-direction: row;
+  align-items: stretch;
+}
+
+.rdx-grid-heatmap-payment > .rdx-payment-mode .rdx-pm-kpi {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.rdx-grid-heatmap-payment > .rdx-sales-heatmap-card {
+  overflow: hidden;
+  margin-bottom: 0;
 }
 
 .rdx-sales-heatmap-card {
@@ -468,8 +526,17 @@
 
 @media (max-width: 1100px) {
   .rdx-grid-dow-heat,
-  .rdx-grid-dow-top {
-    grid-template-columns: 1fr;
+  .rdx-grid-top-items,
+  .rdx-grid-heatmap-payment {
+    grid-template-columns: 1fr !important;
+  }
+
+  .rdx-grid-heatmap-payment > .rdx-payment-mode .rdx-pm-body {
+    grid-template-columns: minmax(0, 3fr) minmax(120px, 1fr);
+  }
+
+  .rdx-grid-heatmap-payment > .rdx-payment-mode .rdx-pm-kpis {
+    flex-direction: column;
   }
 }
 
@@ -1431,7 +1498,7 @@
 }
 
 @media (max-width: 1100px) {
-  .rdx-grid-2,
+  .rdx-grid-2:not(.rdx-grid-top-items):not(.rdx-grid-heatmap-payment):not(.rdx-grid-dow-heat),
   .rdx-grid-3 { grid-template-columns: 1fr; }
 }
 

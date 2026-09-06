@@ -1187,6 +1187,9 @@
       if(path === '/communication-hub/promotion'){
         return !!main.querySelector('#ch-promotion-page, [data-communication-hub-promotion]');
       }
+      if(path === '/communication-hub/feedback'){
+        return !!main.querySelector('#ch-feedback-page, [data-communication-hub-feedback]');
+      }
 
       /* Home / masters / reports / access */
       if(path === '/home') return !!main.querySelector('#dashboard-home-panel, .db-home');
@@ -3191,6 +3194,9 @@
     }
     if(typeof window.initPromotionPage === 'function'){
       window.initPromotionPage();
+    }
+    if(typeof window.initFeedbackPage === 'function'){
+      window.initFeedbackPage();
     }
     if(typeof window.initPosSettingsPage === 'function'){
       window.initPosSettingsPage();

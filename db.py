@@ -2638,6 +2638,23 @@ POS_MENU_MARGIN_HEALTHY_PCT = 60.0
 POS_MENU_MARGIN_MODERATE_PCT = 30.0
 
 
+_POS_COUNT_PACK_UNITS = frozenset(
+    {
+        "pcs",
+        "dozen",
+        "bottle",
+        "can",
+        "pack",
+        "case",
+        "unit",
+        "nos",
+        "no",
+        "ea",
+        "each",
+    }
+)
+
+
 def _normalize_pos_menu_unit(unit):
     """Normalize product/recipe unit aliases for cost conversion."""
     u = str(unit or "").strip().lower()
@@ -2647,11 +2664,17 @@ def _normalize_pos_menu_unit(unit):
         return "ml"
     if u in ("bottle", "bottles", "btl", "btls"):
         return "bottle"
+    if u in ("can", "cans"):
+        return "can"
+    if u in ("pack", "packs", "pkt", "pkts", "packet", "packets"):
+        return "pack"
+    if u in ("case", "cases"):
+        return "case"
     if u in ("gram", "grams"):
         return "g"
     if u in ("kilogram", "kilograms", "kgs"):
         return "kg"
-    if u in ("pc", "piece", "pieces"):
+    if u in ("pc", "piece", "pieces", "nos", "no", "ea", "each", "unit", "units"):
         return "pcs"
     return u or "pcs"
 
@@ -2678,11 +2701,14 @@ def _qty_in_product_units(qty, recipe_unit, product_unit):
     if pu in ("liter", "ml") and ru in ("liter", "ml"):
         ml = amount * 1000.0 if ru == "liter" else amount
         return ml / 1000.0 if pu == "liter" else ml
-    # Count family
+    # Dozen ↔ pieces
     if pu in ("pcs", "dozen") and ru in ("pcs", "dozen"):
         pieces = amount * 12.0 if ru == "dozen" else amount
         return pieces / 12.0 if pu == "dozen" else pieces
-    # Same unit (bunch, bottle, pack, case, …)
+    # Bar packaging counts (bottle ↔ can ↔ pack ↔ pcs) are 1:1 for sold units
+    if pu in _POS_COUNT_PACK_UNITS and ru in _POS_COUNT_PACK_UNITS:
+        return amount
+    # Same unit (bunch, …)
     if pu == ru:
         return amount
     return None
@@ -3955,6 +3981,8 @@ def soft_delete_store_product_unit(conn, unit_id):
         (int(unit_id),),
     )
     return True
+
+
 
 
 def list_store_products_lite(conn, *, outlets=None, q=""):
@@ -8874,7 +8902,13 @@ def list_pos_unit_insights_raw(
     outlet=None,
     settlement=None,
 ):
-    """Fetch invoice line × recipe rows for Unit Insight aggregation."""
+    """Fetch invoice line × recipe rows for Unit Insight aggregation.
+
+    Prefer ``pos_menu_recipe_lines``. When a sold menu item has no recipe but is
+    linked to Product Master (``pos_menu_items.product_id``), fall back to
+    1 × product default unit per menu qty — so bar bottles (breezers, etc.)
+    still appear the same way Menu Insights shows them as sold.
+    """
     ensure_pos_schema(conn)
     ensure_stores_schema(conn)
     clauses, params = _pos_menu_sales_invoice_clauses(
@@ -8885,8 +8919,9 @@ def list_pos_unit_insights_raw(
         category_id=None,
     )
     clauses.append("l.menu_item_id IS NOT NULL")
-    clauses.append("r.product_id IS NOT NULL")
     where = " AND ".join(clauses)
+    recipe_clauses = list(clauses) + ["r.product_id IS NOT NULL"]
+    recipe_where = " AND ".join(recipe_clauses)
     rows = conn.execute(
         f"""
         SELECT
@@ -8895,14 +8930,37 @@ def list_pos_unit_insights_raw(
             p.default_unit AS default_unit,
             l.qty AS line_qty,
             r.qty AS recipe_qty,
-            r.unit AS recipe_unit
+            r.unit AS recipe_unit,
+            'recipe' AS source
         FROM pos_invoice_lines l
         JOIN pos_invoices i ON i.id = l.invoice_id
         JOIN pos_menu_recipe_lines r ON r.menu_item_id = l.menu_item_id
         JOIN store_products p ON p.id = r.product_id AND p.is_active = 1
+        WHERE {recipe_where}
+
+        UNION ALL
+
+        SELECT
+            p.id AS product_id,
+            p.name AS product_name,
+            p.default_unit AS default_unit,
+            l.qty AS line_qty,
+            1 AS recipe_qty,
+            p.default_unit AS recipe_unit,
+            'menu_product' AS source
+        FROM pos_invoice_lines l
+        JOIN pos_invoices i ON i.id = l.invoice_id
+        JOIN pos_menu_items m ON m.id = l.menu_item_id
+        JOIN store_products p ON p.id = m.product_id AND p.is_active = 1
         WHERE {where}
+          AND m.product_id IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1
+              FROM pos_menu_recipe_lines r2
+              WHERE r2.menu_item_id = l.menu_item_id
+          )
         """,
-        params,
+        params + params,
     ).fetchall()
     return [dict(row) for row in rows]
 
@@ -8924,13 +8982,23 @@ def aggregate_pos_unit_insights(raw_rows):
         if line_qty <= 0:
             continue
         default_unit = str(row.get("default_unit") or "").strip() or "pcs"
+        recipe_unit = str(row.get("recipe_unit") or "").strip() or default_unit
         per_portion = _qty_in_product_units(
             row.get("recipe_qty"),
-            row.get("recipe_unit"),
+            recipe_unit,
             default_unit,
         )
+        # Display unit: Product Master when conversion works; otherwise recipe
+        # packaging (e.g. bottle sold against a product wrongly marked liter).
+        unit_label = default_unit
         if per_portion is None:
-            continue
+            try:
+                per_portion = float(row.get("recipe_qty") or 0)
+            except (TypeError, ValueError):
+                continue
+            if per_portion <= 0:
+                continue
+            unit_label = recipe_unit or default_unit
         need = per_portion * line_qty
         if need <= 0:
             continue
@@ -8938,7 +9006,7 @@ def aggregate_pos_unit_insights(raw_rows):
             totals[product_id] = {
                 "product_id": product_id,
                 "product_name": str(row.get("product_name") or "").strip() or "Product",
-                "default_unit": default_unit,
+                "default_unit": unit_label,
                 "units_sold": 0.0,
             }
         totals[product_id]["units_sold"] += need
@@ -8973,7 +9041,7 @@ def list_pos_unit_insights(
     outlet=None,
     settlement=None,
 ):
-    """Ingredient-wise units sold from POS invoices × menu recipes."""
+    """Ingredient-wise units sold from recipes, or menu-linked products."""
     raw_rows = list_pos_unit_insights_raw(
         conn,
         date_from=date_from,
@@ -8986,13 +9054,14 @@ def list_pos_unit_insights(
 
 _UNIT_INSIGHT_KPI_META = {
     "bottle": ("Bottles sold", "bottle", "orange"),
+    "can": ("Cans sold", "can", "orange"),
     "ml": ("ML sold", "ml", "blue"),
     "liter": ("Liters sold", "L", "blue"),
     "kg": ("KG sold", "kg", "purple"),
     "g": ("Grams sold", "g", "purple"),
     "pcs": ("Pieces sold", "pcs", "purple"),
 }
-_UNIT_INSIGHT_KPI_ORDER = ("bottle", "ml", "liter", "kg", "g", "pcs")
+_UNIT_INSIGHT_KPI_ORDER = ("bottle", "can", "ml", "liter", "kg", "g", "pcs")
 
 
 def pos_unit_insights_kpis(rows):
@@ -10357,6 +10426,15 @@ def ensure_stores_schema(conn):
     """)
     _seed_store_product_units(cursor)
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_product_brands (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            is_active  INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS store_products (
             id                 INTEGER PRIMARY KEY AUTOINCREMENT,
             category_id        INTEGER NOT NULL,
@@ -10383,6 +10461,10 @@ def ensure_stores_schema(conn):
         cursor.execute(
             "ALTER TABLE store_products ADD COLUMN approximate_price REAL"
         )
+    if "brand_id" not in product_cols:
+        cursor.execute(
+            "ALTER TABLE store_products ADD COLUMN brand_id INTEGER"
+        )
     for preferred_col in (
         "preferred_supplier_1_id",
         "preferred_supplier_2_id",
@@ -10403,6 +10485,10 @@ def ensure_stores_schema(conn):
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_store_products_active_price
         ON store_products(is_active, approximate_price)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_products_brand
+        ON store_products(brand_id, is_active)
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS store_product_variants (
@@ -11190,7 +11276,56 @@ def ensure_communication_hub_schema(conn):
         ON wa_promo_recipients(campaign_id, id)
         """
     )
+    ensure_customer_feedback_schema(conn)
     ensure_whatsapp_outbound_quota_schema(conn)
+
+
+def ensure_customer_feedback_schema(conn):
+    """Customer feedback invites (shareable links) and submitted responses."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS customer_feedback_invites (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            token          TEXT    NOT NULL UNIQUE,
+            customer_name  TEXT    NOT NULL DEFAULT '',
+            phone_e164     TEXT    NOT NULL DEFAULT '',
+            source         TEXT    NOT NULL DEFAULT 'manual',
+            outlet         TEXT    NOT NULL DEFAULT '',
+            note           TEXT    NOT NULL DEFAULT '',
+            status         TEXT    NOT NULL DEFAULT 'open',
+            created_by     INTEGER,
+            created_at     TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            submitted_at   TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS customer_feedback_responses (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            invite_id      INTEGER NOT NULL UNIQUE,
+            rating         INTEGER NOT NULL,
+            service_rating INTEGER,
+            food_rating    INTEGER,
+            ambience_rating INTEGER,
+            comment        TEXT    NOT NULL DEFAULT '',
+            submitted_at   TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (invite_id) REFERENCES customer_feedback_invites(id) ON DELETE CASCADE
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_customer_feedback_invites_created
+        ON customer_feedback_invites(created_at DESC, id DESC)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_customer_feedback_responses_submitted
+        ON customer_feedback_responses(submitted_at DESC, id DESC)
+        """
+    )
 
 
 def ensure_whatsapp_outbound_quota_schema(conn):

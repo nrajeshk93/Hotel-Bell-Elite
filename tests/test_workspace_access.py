@@ -461,6 +461,10 @@ class WorkspaceAccessTests(unittest.TestCase):
             get_endpoint_communication_hub_submodule("communication_hub_promotion"),
             "promotion",
         )
+        self.assertEqual(
+            get_endpoint_communication_hub_submodule("communication_hub_feedback"),
+            "feedback",
+        )
         self.assertEqual(get_endpoint_master_submodule("customer_master"), "customer")
         self.assertEqual(get_endpoint_master_submodule("category_master"), "category")
         self.assertEqual(get_endpoint_master_submodule("unit_master"), "unit")

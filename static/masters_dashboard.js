@@ -374,6 +374,9 @@
         if (inject.querySelector('#um-unit-modal') && typeof global.initUnitMasterPage === 'function') {
           global.initUnitMasterPage();
         }
+        if (inject.querySelector('#bm-brand-modal') && typeof global.initBrandMasterPage === 'function') {
+          global.initBrandMasterPage();
+        }
         if (inject.querySelector('#emp-main-table') && typeof global.initEmpMasterTableSort === 'function') {
           global.initEmpMasterTableSort();
         }
@@ -676,6 +679,28 @@
       } else {
         categoryModal.classList.remove('active');
         categoryModal.setAttribute('aria-hidden', 'true');
+      }
+      return;
+    }
+    var unitModal = document.getElementById('um-unit-modal');
+    if (unitModal && unitModal.classList.contains('active')) {
+      e.preventDefault();
+      if (typeof global.closeUnitMasterModal === 'function') {
+        global.closeUnitMasterModal({ navigate: true, reset: true });
+      } else {
+        unitModal.classList.remove('active');
+        unitModal.setAttribute('aria-hidden', 'true');
+      }
+      return;
+    }
+    var brandModal = document.getElementById('bm-brand-modal');
+    if (brandModal && brandModal.classList.contains('active')) {
+      e.preventDefault();
+      if (typeof global.closeBrandMasterModal === 'function') {
+        global.closeBrandMasterModal({ navigate: true, reset: true });
+      } else {
+        brandModal.classList.remove('active');
+        brandModal.setAttribute('aria-hidden', 'true');
       }
       return;
     }

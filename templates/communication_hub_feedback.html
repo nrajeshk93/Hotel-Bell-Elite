@@ -1,0 +1,161 @@
+{% set de_soft_body_class = 'de-open su-module communication-hub-module ch-feedback-module' %}
+{% set de_soft_page_title = 'Feedback | Communication Hub | Hotel Bell Elite' %}
+{% if not is_partial_main %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Feedback | Communication Hub | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+{% include 'partials/hbe_fonts.html' %}
+<link rel="stylesheet" href="{{ asset('sales_entry_dashboard.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_header.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_premium.css') }}">
+<link rel="stylesheet" href="{{ asset('de_workspace_shell.css') }}">
+<link rel="stylesheet" href="{{ asset('communication_hub.css') }}">
+<link rel="stylesheet" href="{{ asset('communication_hub_feedback.css') }}">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module communication-hub-module ch-feedback-module">
+{% endif %}
+{% include 'partials/de_workspace_shell_open.html' %}
+{% if is_partial_main %}
+{% include 'partials/hbe_fonts.html' %}
+<link rel="stylesheet" href="{{ asset('sales_entry_dashboard.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_header.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_premium.css') }}">
+<link rel="stylesheet" href="{{ asset('communication_hub.css') }}">
+<link rel="stylesheet" href="{{ asset('communication_hub_feedback.css') }}">
+{% endif %}
+
+<div class="main-wrapper" id="ch-feedback-page"
+     data-communication-hub-feedback
+     data-summary-url="{{ url_for('communication_hub_api_feedback_summary') }}"
+     data-responses-url="{{ url_for('communication_hub_api_feedback_responses') }}"
+     data-invite-url="{{ url_for('communication_hub_api_feedback_invite_create') }}">
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          {% include 'partials/su_page_back.html' with context %}
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <h1>Feedback</h1>
+          </div>
+        </div>
+      </div>
+      <div class="su-header-tools ch-header-tools">
+        <button type="button" class="btn btn-primary" id="ch-fb-create-link">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          <span>New feedback link</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <section class="content se-content ch-content ch-fb-content">
+    <div id="ch-fb-error" class="staff-credit-error" hidden></div>
+
+    <div class="ch-fb-kpis" id="ch-fb-kpis" aria-live="polite">
+      <div class="ch-fb-kpi">
+        <div class="ch-fb-kpi-label">Responses</div>
+        <div class="ch-fb-kpi-value" data-kpi="responses">-</div>
+      </div>
+      <div class="ch-fb-kpi">
+        <div class="ch-fb-kpi-label">Average rating</div>
+        <div class="ch-fb-kpi-value" data-kpi="avg">-</div>
+      </div>
+      <div class="ch-fb-kpi">
+        <div class="ch-fb-kpi-label">Response rate</div>
+        <div class="ch-fb-kpi-value" data-kpi="rate">-</div>
+      </div>
+      <div class="ch-fb-kpi">
+        <div class="ch-fb-kpi-label">This month</div>
+        <div class="ch-fb-kpi-value" data-kpi="month">-</div>
+      </div>
+    </div>
+
+    <div class="ch-fb-panels">
+      <div class="ch-fb-panel">
+        <h2 class="ch-fb-panel-title">Rating mix</h2>
+        <div class="ch-fb-dist" id="ch-fb-dist"></div>
+      </div>
+      <div class="ch-fb-panel ch-fb-panel--link">
+        <h2 class="ch-fb-panel-title">Create link</h2>
+        <p class="ch-fb-help">Generate a private link to send the guest (WhatsApp, SMS, or email). When they submit, analytics update here.</p>
+        <form id="ch-fb-invite-form" class="ch-fb-invite-form" autocomplete="off">
+          <label class="ch-fb-field">
+            <span>Guest name</span>
+            <input type="text" name="customer_name" id="ch-fb-name" maxlength="200" placeholder="Optional">
+          </label>
+          <label class="ch-fb-field">
+            <span>Mobile</span>
+            <input type="tel" name="phone" id="ch-fb-phone" maxlength="20" placeholder="Optional">
+          </label>
+          <label class="ch-fb-field">
+            <span>Source</span>
+            <select name="source" id="ch-fb-source">
+              <option value="manual">Manual</option>
+              <option value="hotel">Hotel</option>
+              <option value="restaurant">Restaurant</option>
+              <option value="bar">Bar</option>
+              <option value="whatsapp">WhatsApp</option>
+            </select>
+          </label>
+          <button type="submit" class="btn btn-primary" id="ch-fb-invite-submit">Create link</button>
+        </form>
+        <div class="ch-fb-link-result" id="ch-fb-link-result" hidden>
+          <label class="ch-fb-field">
+            <span>Share this URL</span>
+            <div class="ch-fb-link-row">
+              <input type="text" id="ch-fb-link-url" readonly>
+              <button type="button" class="btn" id="ch-fb-copy-link">Copy</button>
+            </div>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="ch-fb-panel ch-fb-panel--table">
+      <div class="ch-fb-table-head">
+        <h2 class="ch-fb-panel-title">Recent feedback</h2>
+        <button type="button" class="btn" id="ch-fb-refresh">Refresh</button>
+      </div>
+      <div class="ch-fb-table-wrap">
+        <table class="ch-fb-table">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Guest</th>
+              <th>Rating</th>
+              <th>Source</th>
+              <th>Comment</th>
+            </tr>
+          </thead>
+          <tbody id="ch-fb-rows">
+            <tr class="ch-fb-empty"><td colspan="5">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script src="{{ asset('communication_hub_feedback.js') }}"></script>
+{% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
+</body>
+</html>
+{% endif %}

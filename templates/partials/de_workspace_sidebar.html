@@ -228,6 +228,9 @@
         {% if has_communication_hub_access('promotion') %}
         <a class="de-nav-subitem{% if communication_hub_open and communication_hub_view == 'promotion' %} is-active{% endif %}" id="de-nav-communication-hub-promotion" href="{{ url_for('communication_hub_promotion') }}"{% if communication_hub_open and communication_hub_view == 'promotion' %} aria-current="page"{% endif %}>Promotion</a>
         {% endif %}
+        {% if has_communication_hub_access('feedback') %}
+        <a class="de-nav-subitem{% if communication_hub_open and communication_hub_view == 'feedback' %} is-active{% endif %}" id="de-nav-communication-hub-feedback" href="{{ url_for('communication_hub_feedback') }}"{% if communication_hub_open and communication_hub_view == 'feedback' %} aria-current="page"{% endif %}>Feedback</a>
+        {% endif %}
       </div>
     </div>
     {% endif %}

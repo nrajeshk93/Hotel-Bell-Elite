@@ -74,6 +74,7 @@ _HOTEL_SUBMODULES = (
 _COMMUNICATION_HUB_SUBMODULES = (
     {"key": "inbox", "label": "Inbox"},
     {"key": "promotion", "label": "Promotion"},
+    {"key": "feedback", "label": "Feedback"},
 )
 
 _MASTER_SUBMODULES = (
@@ -81,6 +82,7 @@ _MASTER_SUBMODULES = (
     {"key": "agency", "label": "Agency Master"},
     {"key": "category", "label": "Category Master"},
     {"key": "unit", "label": "Unit Master"},
+    {"key": "brand", "label": "Brand Master"},
 )
 
 _REPORTS_SUBMODULES = (
@@ -558,6 +560,12 @@ _COMMUNICATION_HUB_ENDPOINT_GROUPS = {
         "communication_hub_api_promotion_preview",
         "communication_hub_api_promotion_send",
     },
+    "feedback": {
+        "communication_hub_feedback",
+        "communication_hub_api_feedback_summary",
+        "communication_hub_api_feedback_responses",
+        "communication_hub_api_feedback_invite_create",
+    },
 }
 _COMMUNICATION_HUB_ENDPOINTS = set().union(*_COMMUNICATION_HUB_ENDPOINT_GROUPS.values())
 
@@ -645,6 +653,11 @@ _MASTER_ENDPOINT_GROUPS = {
         "save_unit_master",
         "delete_unit_master",
     },
+    "brand": {
+        "brand_master",
+        "save_brand_master",
+        "delete_brand_master",
+    },
 }
 _MASTER_ENDPOINTS = set().union(*_MASTER_ENDPOINT_GROUPS.values()) | {"master"}
 
@@ -725,6 +738,7 @@ _PUBLIC_ENDPOINTS = {
     "mobile_ota_apk",
     "mobile_shell_ota_manifest",
     "mobile_shell_ota_apk",
+    "customer_feedback_public",
 }
 
 _OUTLET_WRITE_ENDPOINTS = {
@@ -1507,6 +1521,20 @@ def user_can_access_unit_master(user):
     return False
 
 
+def user_can_access_brand_master(user):
+    """Brand Master via Master hub or Stores Product Master."""
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
+    if user_can_access_master_submodule(user, "brand"):
+        return True
+    if user_can_access_stores_submodule(user, "product_master"):
+        return True
+    return False
+
+
+
 def dashboard_access_list(user):
     if not user:
         return []
@@ -1808,6 +1836,8 @@ def user_can_access_endpoint_master(user, endpoint):
         return user_can_access_category_master(user)
     if submodule == "unit":
         return user_can_access_unit_master(user)
+    if submodule == "brand":
+        return user_can_access_brand_master(user)
     return user_can_access_master_submodule(user, submodule)
 
 
@@ -2312,6 +2342,8 @@ def role_summary_for_ui(role):
         "accounts_labels": list(role.get("accounts_labels") or []),
         "stores_labels": list(role.get("stores_labels") or []),
     }
+
+
 
 
 def ensure_access_roles_schema(conn):

@@ -370,22 +370,20 @@ body.main-dashboard-module #main-dashboard-page .rdx-grid-2 {
   gap: 16px;
 }
 
-/* Restaurant + Bar top sellers: same outline size; heatmap stays under Restaurant */
-body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top {
+/* Restaurant + Bar top sellers: equal two-column row */
+body.main-dashboard-module #main-dashboard-page .rdx-grid-top-items {
   align-items: stretch;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-rows: auto auto;
-  grid-template-areas:
-    "rest bar"
-    "heat .";
+  grid-template-rows: auto;
+  grid-template-areas: "rest bar";
 }
 
-body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > * {
+body.main-dashboard-module #main-dashboard-page .rdx-grid-top-items > * {
   min-width: 0;
   max-width: 100%;
 }
 
-body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-items[data-md-ti-outlet="restaurant"] {
+body.main-dashboard-module #main-dashboard-page .rdx-grid-top-items > .rdx-top-items[data-md-ti-outlet="restaurant"] {
   grid-area: rest;
   width: 100%;
   max-width: 100%;
@@ -399,18 +397,7 @@ body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-ite
   overflow: hidden;
 }
 
-body.main-dashboard-module #main-dashboard-page .rdx-sales-heatmap-card {
-  grid-area: heat;
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  align-self: stretch;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-}
-
-body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-items[data-md-ti-outlet="bar"] {
+body.main-dashboard-module #main-dashboard-page .rdx-grid-top-items > .rdx-top-items[data-md-ti-outlet="bar"] {
   grid-area: bar;
   height: auto;
   align-self: stretch;
@@ -420,30 +407,94 @@ body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-ite
   width: 100%;
 }
 
-body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-items > .rdx-card-head {
+body.main-dashboard-module #main-dashboard-page .rdx-grid-top-items > .rdx-top-items > .rdx-card-head {
   flex: 0 0 auto;
 }
 
-body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-items .rdx-ti-list {
+body.main-dashboard-module #main-dashboard-page .rdx-grid-top-items > .rdx-top-items .rdx-ti-list {
   flex: 1 1 auto;
   min-height: 0;
 }
 
+/* Heatmap + Payment mode: equal half-width pair */
+body.main-dashboard-module #main-dashboard-page .rdx-grid-heatmap-payment {
+  display: grid;
+  align-items: stretch;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: "heat pay";
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-grid-heatmap-payment > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-grid-heatmap-payment > .rdx-sales-heatmap-card {
+  grid-area: heat;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
+  margin-bottom: 0;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-grid-heatmap-payment > .rdx-payment-mode {
+  grid-area: pay;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  margin-bottom: 0;
+}
+
 @media (max-width: 1100px) {
-  body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top {
+  body.main-dashboard-module #main-dashboard-page .rdx-grid-top-items {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: none;
     grid-template-areas:
       "rest"
-      "bar"
-      "heat";
+      "bar";
     align-items: start;
   }
 
-  body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-items {
+  body.main-dashboard-module #main-dashboard-page .rdx-grid-top-items > .rdx-top-items {
     height: auto;
     align-self: stretch;
   }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-grid-heatmap-payment {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "heat"
+      "pay";
+    align-items: start;
+  }
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-grid-heatmap-payment > .rdx-payment-mode .rdx-pm-body {
+  grid-template-columns: 1fr;
+  gap: 14px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-grid-heatmap-payment > .rdx-payment-mode .rdx-pm-kpis {
+  flex-direction: row;
+  align-items: stretch;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-grid-heatmap-payment > .rdx-payment-mode .rdx-pm-kpi {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 body.main-dashboard-module #main-dashboard-page .rdx-sales-heatmap-card .rdx-heatmap-scroll {

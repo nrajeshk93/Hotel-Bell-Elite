@@ -1174,6 +1174,18 @@
     });
   }
 
+  function paymentModeChartWidth(card, mask) {
+    var col = (card && card.querySelector('.rdx-pm-chart-col')) || card;
+    var host = mask || col;
+    var hostW = host ? Math.floor(host.getBoundingClientRect().width) : 0;
+    var colW = col ? Math.floor(col.getBoundingClientRect().width) : 0;
+    var cardW = card ? Math.floor(card.getBoundingClientRect().width) : 0;
+    var w = Math.max(hostW, colW, 0);
+    if (cardW > 0) w = Math.min(w || cardW, cardW);
+    if (!w) w = 240;
+    return Math.max(160, Math.min(w, cardW || w));
+  }
+
   function paintPaymentModeChart(stack) {
     var card = document.querySelector('[data-md-payment-mode]');
     var mask = card && card.querySelector('[data-md-pm-chart-mask]');
@@ -1184,13 +1196,17 @@
     }
 
     mask.style.width = '100%';
+    mask.style.maxWidth = '100%';
+    el.style.width = '100%';
+    el.style.minWidth = '0';
+    el.style.maxWidth = '100%';
     remountPaymentModeChart(digitalCashOption(stack));
 
-    var fullW = Math.max(Math.floor(mask.getBoundingClientRect().width), 280);
-    var fullH = Math.max(el.clientHeight || 0, 260);
+    var fullW = paymentModeChartWidth(card, mask);
+    var fullH = Math.max(el.clientHeight || 0, 200);
     el.style.width = fullW + 'px';
-    el.style.minWidth = fullW + 'px';
-    el.style.maxWidth = fullW + 'px';
+    el.style.minWidth = '0';
+    el.style.maxWidth = '100%';
 
     var inst = typeof echarts !== 'undefined' ? echarts.getInstanceByDom(el) : null;
     if (inst) {
@@ -1209,15 +1225,11 @@
     var el = document.getElementById('rdx-chart-digital-cash');
     if (!mask || !el) return;
 
-    var fullW = parseInt(el.style.width, 10);
-    if (!fullW) {
-      var col = card.querySelector('.rdx-pm-chart-col') || card;
-      fullW = Math.max(Math.floor(col.getBoundingClientRect().width), 280);
-      el.style.width = fullW + 'px';
-      el.style.minWidth = fullW + 'px';
-      el.style.maxWidth = fullW + 'px';
-    }
-    var fullH = Math.max(el.clientHeight || 0, 260);
+    var fullW = paymentModeChartWidth(card, mask);
+    el.style.width = fullW + 'px';
+    el.style.minWidth = '0';
+    el.style.maxWidth = '100%';
+    var fullH = Math.max(el.clientHeight || 0, 200);
     var inst = typeof echarts !== 'undefined' ? echarts.getInstanceByDom(el) : null;
     if (inst) {
       try { inst.resize({ width: fullW, height: fullH }); } catch (e) {}

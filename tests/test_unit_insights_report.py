@@ -196,6 +196,239 @@ class UnitInsightsReportDbTests(unittest.TestCase):
         self.assertIsNotNone(paneer)
         self.assertAlmostEqual(float(paneer["units_sold"]), 0.4)
 
+    def test_menu_product_fallback_when_no_recipe(self):
+        """Bar bottles linked in Product Master but without recipe still count."""
+        cat_id = self.conn.execute(
+            "SELECT category_id FROM store_products WHERE id = ?",
+            (self.product_id,),
+        ).fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO store_products
+                (category_id, name, default_unit, outlet, approximate_price, is_active, sort_order)
+            VALUES (?, 'Breezer Peach', 'bottle', 'bar', 180, 1, 4)
+            """,
+            (cat_id,),
+        )
+        breezer_id = self.conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO pos_menu_items
+                (category_id, product_id, name, code, variant, rate, sort_order, is_active, outlet)
+            VALUES (?, ?, 'Breezer Peach', 'BR1', 'Regular', 220, 3, 1, 'bar')
+            """,
+            (self.menu_cat_id, breezer_id),
+        )
+        breezer_menu_id = self.conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        # Intentionally no pos_menu_recipe_lines — Menu Insights still shows sales.
+        self.conn.execute(
+            """
+            INSERT INTO pos_invoices
+                (order_no, saved_at, order_date, outlet, status, is_active,
+                 customer_name, customer_mobile, subtotal, grand_total,
+                 created_at, updated_at)
+            VALUES ('UIR-BR', '2026-08-01 18:00:00', '2026-08-01', 'bar', 'open', 1,
+                    'Guest', '9000000099', 440, 440,
+                    datetime('now','localtime'), datetime('now','localtime'))
+            """
+        )
+        invoice_id = self.conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO pos_invoice_lines
+                (invoice_id, menu_item_id, name, variant, rate, qty, line_total, sort_order)
+            VALUES (?, ?, 'Breezer Peach', 'Regular', 220, 2, 440, 1)
+            """,
+            (invoice_id, breezer_menu_id),
+        )
+        self.conn.execute(
+            """
+            INSERT INTO pos_invoice_payments
+                (invoice_id, payment_method, amount, payment_date, created_at)
+            VALUES (?, 'cash', 440, '2026-08-01', datetime('now','localtime'))
+            """,
+            (invoice_id,),
+        )
+        self.conn.commit()
+
+        rows = db_mod.list_pos_unit_insights(
+            self.conn,
+            date_from="2026-08-01",
+            date_to="2026-08-01",
+            outlet="bar",
+            settlement="settled",
+        )
+        breezer = next((r for r in rows if r["product_name"] == "Breezer Peach"), None)
+        self.assertIsNotNone(breezer)
+        self.assertEqual(breezer["units_sold"], 2.0)
+        self.assertEqual(breezer["units_sold_display"], "2 bottle")
+
+    def test_recipe_takes_precedence_over_menu_product_link(self):
+        """Do not double-count when recipe lines exist alongside product_id."""
+        self._insert_invoice(order_no="UIR-3b", qty=2, settled=True)
+        raw = db_mod.list_pos_unit_insights_raw(
+            self.conn,
+            date_from="2026-08-01",
+            date_to="2026-08-01",
+            outlet="bar",
+            settlement="settled",
+        )
+        sources = {row.get("source") for row in raw}
+        self.assertEqual(sources, {"recipe"})
+        rows = db_mod.list_pos_unit_insights(
+            self.conn,
+            date_from="2026-08-01",
+            date_to="2026-08-01",
+            outlet="bar",
+            settlement="settled",
+        )
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["units_sold"], 2.0)
+
+    def test_bottle_vs_liter_recipe_still_counts(self):
+        """Breezer-style recipes (1 bottle) against product default liter must not drop."""
+        cat_id = self.conn.execute(
+            "SELECT category_id FROM store_products WHERE id = ?",
+            (self.product_id,),
+        ).fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO store_products
+                (category_id, name, default_unit, outlet, approximate_price, is_active, sort_order)
+            VALUES (?, 'Breezer Jamaican', 'liter', 'bar', 180, 1, 5)
+            """,
+            (cat_id,),
+        )
+        breezer_id = self.conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO pos_menu_items
+                (category_id, product_id, name, code, variant, rate, sort_order, is_active, outlet)
+            VALUES (?, ?, 'BREEZER JAMAICAN', 'BRJ', 'Regular', 220, 4, 1, 'bar')
+            """,
+            (self.menu_cat_id, breezer_id),
+        )
+        breezer_menu_id = self.conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO pos_menu_recipe_lines (menu_item_id, product_id, qty, unit, sort_order)
+            VALUES (?, ?, 1, 'bottle', 1)
+            """,
+            (breezer_menu_id, breezer_id),
+        )
+        self.conn.execute(
+            """
+            INSERT INTO pos_invoices
+                (order_no, saved_at, order_date, outlet, status, is_active,
+                 customer_name, customer_mobile, subtotal, grand_total,
+                 created_at, updated_at)
+            VALUES ('UIR-BR2', '2026-08-01 18:00:00', '2026-08-01', 'bar', 'open', 1,
+                    'Guest', '9000000088', 880, 880,
+                    datetime('now','localtime'), datetime('now','localtime'))
+            """
+        )
+        invoice_id = self.conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO pos_invoice_lines
+                (invoice_id, menu_item_id, name, variant, rate, qty, line_total, sort_order)
+            VALUES (?, ?, 'BREEZER JAMAICAN', 'Regular', 220, 4, 880, 1)
+            """,
+            (invoice_id, breezer_menu_id),
+        )
+        self.conn.execute(
+            """
+            INSERT INTO pos_invoice_payments
+                (invoice_id, payment_method, amount, payment_date, created_at)
+            VALUES (?, 'cash', 880, '2026-08-01', datetime('now','localtime'))
+            """,
+            (invoice_id,),
+        )
+        self.conn.commit()
+
+        rows = db_mod.list_pos_unit_insights(
+            self.conn,
+            date_from="2026-08-01",
+            date_to="2026-08-01",
+            outlet="bar",
+            settlement="settled",
+        )
+        breezer = next((r for r in rows if r["product_name"] == "Breezer Jamaican"), None)
+        self.assertIsNotNone(breezer)
+        self.assertEqual(breezer["units_sold"], 4.0)
+        self.assertEqual(breezer["units_sold_display"], "4 bottle")
+
+    def test_bottle_vs_can_recipe_counts(self):
+        cat_id = self.conn.execute(
+            "SELECT category_id FROM store_products WHERE id = ?",
+            (self.product_id,),
+        ).fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO store_products
+                (category_id, name, default_unit, outlet, approximate_price, is_active, sort_order)
+            VALUES (?, 'Budwiser Magnum Can', 'CAN', 'bar', 200, 1, 6)
+            """,
+            (cat_id,),
+        )
+        can_id = self.conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO pos_menu_items
+                (category_id, product_id, name, code, variant, rate, sort_order, is_active, outlet)
+            VALUES (?, ?, 'BUDWISER MAGNUM CAN', 'BM1', 'Regular', 250, 5, 1, 'bar')
+            """,
+            (self.menu_cat_id, can_id),
+        )
+        can_menu_id = self.conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO pos_menu_recipe_lines (menu_item_id, product_id, qty, unit, sort_order)
+            VALUES (?, ?, 1, 'bottle', 1)
+            """,
+            (can_menu_id, can_id),
+        )
+        self.conn.execute(
+            """
+            INSERT INTO pos_invoices
+                (order_no, saved_at, order_date, outlet, status, is_active,
+                 customer_name, customer_mobile, subtotal, grand_total,
+                 created_at, updated_at)
+            VALUES ('UIR-CAN', '2026-08-01 18:00:00', '2026-08-01', 'bar', 'open', 1,
+                    'Guest', '9000000077', 500, 500,
+                    datetime('now','localtime'), datetime('now','localtime'))
+            """
+        )
+        invoice_id = self.conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO pos_invoice_lines
+                (invoice_id, menu_item_id, name, variant, rate, qty, line_total, sort_order)
+            VALUES (?, ?, 'BUDWISER MAGNUM CAN', 'Regular', 250, 2, 500, 1)
+            """,
+            (invoice_id, can_menu_id),
+        )
+        self.conn.execute(
+            """
+            INSERT INTO pos_invoice_payments
+                (invoice_id, payment_method, amount, payment_date, created_at)
+            VALUES (?, 'cash', 500, '2026-08-01', datetime('now','localtime'))
+            """,
+            (invoice_id,),
+        )
+        self.conn.commit()
+
+        rows = db_mod.list_pos_unit_insights(
+            self.conn,
+            date_from="2026-08-01",
+            date_to="2026-08-01",
+            outlet="bar",
+            settlement="settled",
+        )
+        can = next((r for r in rows if r["product_name"] == "Budwiser Magnum Can"), None)
+        self.assertIsNotNone(can)
+        self.assertEqual(can["units_sold"], 2.0)
+
     def test_settlement_filter_excludes_unsettled(self):
         self._insert_invoice(order_no="UIR-3", qty=2, settled=False)
         rows = db_mod.list_pos_unit_insights(

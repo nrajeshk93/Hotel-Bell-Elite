@@ -103,6 +103,8 @@ When unpkg / the network stalls, the page never finishes.
 here either (a) paints pre-deploy HTML or (b) makes Restaurant wait on a
 loading bar every open.
 
+- **Modal backdrop dismiss:** overlay/backdrop click closes the same as Cancel (content clicks must not); keep this on masters modals, confirm dialogs, ep-/st-modals, and settle dialogs.
+
 - `IDLE_PREFETCH_PATHS` may only list light hubs: `/home`, `/main-dashboard`,
   `/master`, `/settings`, `/license`.
 - **Prefetch** Restaurant/Bar shells (`/point-of-sale`, `/point-of-sale/invoice`,

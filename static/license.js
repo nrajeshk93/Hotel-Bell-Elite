@@ -118,6 +118,12 @@
         closeModal(modal);
       });
     });
+    if (modal && modal.getAttribute('data-lic-backdrop-bound') !== '1') {
+      modal.setAttribute('data-lic-backdrop-bound', '1');
+      modal.addEventListener('click', function (ev) {
+        if (ev.target === modal) closeModal(modal);
+      });
+    }
 
     var form = qs(root, '[data-lic-update-form]');
     if (!form) return;

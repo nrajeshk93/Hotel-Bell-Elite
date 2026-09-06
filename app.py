@@ -6995,6 +6995,9 @@ def delete_unit_master():
     return redirect(url_for("unit_master", **redirect_kwargs))
 
 
+
+
+
 @app.route("/reports")
 def reports():
     """Cross-module reports hub — view and download module reports."""

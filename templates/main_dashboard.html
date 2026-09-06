@@ -307,42 +307,7 @@
       </article>
     </div>
 
-    <article class="rdx-card rdx-card-full rdx-payment-mode" data-md-payment-mode>
-      <h2 class="rdx-pm-title">Payment mode analysis</h2>
-      <div class="rdx-pm-body">
-        <div class="rdx-pm-chart-col">
-          <div class="rdx-pm-legend" aria-hidden="true">
-            <span class="rdx-pm-legend-item rdx-pm-legend-digital"><span class="rdx-pm-swatch"></span>Digital (%)</span>
-            <span class="rdx-pm-legend-item rdx-pm-legend-cash"><span class="rdx-pm-swatch"></span>Cash (%)</span>
-          </div>
-          <div class="rdx-chart-ltr-mask" data-md-pm-chart-mask>
-            <div class="rdx-pm-chart" id="rdx-chart-digital-cash"></div>
-          </div>
-        </div>
-        <div class="rdx-pm-kpis">
-          <div class="rdx-pm-kpi rdx-pm-kpi-digital" style="--rdx-pm-i: 0">
-            <div class="rdx-pm-kpi-label">Digital</div>
-            <div class="rdx-pm-kpi-value" data-md-pm-value data-value="{{ dashboard.payment_mode.digital_pct }}">{{ dashboard.payment_mode.digital_pct }}%</div>
-            {% if dashboard.payment_mode.digital_trend != 0 %}
-            <div class="rdx-pm-kpi-trend {% if dashboard.payment_mode.digital_trend > 0 %}up{% else %}down{% endif %}">
-              {% if dashboard.payment_mode.digital_trend > 0 %}▲{% else %}▼{% endif %} {{ dashboard.payment_mode.digital_trend | abs }}%
-            </div>
-            {% endif %}
-          </div>
-          <div class="rdx-pm-kpi rdx-pm-kpi-cash" style="--rdx-pm-i: 1">
-            <div class="rdx-pm-kpi-label">Cash</div>
-            <div class="rdx-pm-kpi-value" data-md-pm-value data-value="{{ dashboard.payment_mode.cash_pct }}">{{ dashboard.payment_mode.cash_pct }}%</div>
-            {% if dashboard.payment_mode.cash_trend != 0 %}
-            <div class="rdx-pm-kpi-trend {% if dashboard.payment_mode.cash_trend > 0 %}up{% else %}down{% endif %}">
-              {% if dashboard.payment_mode.cash_trend > 0 %}▲{% else %}▼{% endif %} {{ dashboard.payment_mode.cash_trend | abs }}%
-            </div>
-            {% endif %}
-          </div>
-        </div>
-      </div>
-    </article>
-
-    <div class="rdx-grid-2 rdx-grid-dow-top">
+    <div class="rdx-grid-2 rdx-grid-top-items">
       <article class="rdx-card rdx-top-items" data-md-top-items data-md-ti-outlet="restaurant">
         <div class="rdx-card-head">
           <div>
@@ -373,18 +338,6 @@
           {% endfor %}
         </div>
       </article>
-      <article class="rdx-card rdx-sales-heatmap-card" data-md-sales-heatmap>
-        <div class="rdx-card-head"><div><h2>Sales heatmap (daily)</h2><p>Daily intensity across weeks</p></div></div>
-        <div class="rdx-heatmap-scroll">
-          <div class="rdx-heatmap" id="rdx-sales-heatmap" aria-label="Daily sales heatmap"></div>
-        </div>
-        <div class="rdx-heatmap-legend" aria-hidden="true">
-          <span class="rdx-heatmap-legend-label">Low sales</span>
-          <span class="rdx-heatmap-legend-bar"></span>
-          <span class="rdx-heatmap-legend-label">High sales</span>
-        </div>
-        <div class="rdx-heatmap-tooltip" id="rdx-heatmap-tooltip" role="tooltip" hidden></div>
-      </article>
       <article class="rdx-card rdx-top-items" data-md-top-items data-md-ti-outlet="bar">
         <div class="rdx-card-head">
           <div>
@@ -413,6 +366,55 @@
           {% else %}
           <p class="rdx-ti-empty">No menu sales in this period.</p>
           {% endfor %}
+        </div>
+      </article>
+    </div>
+
+    <div class="rdx-grid-2 rdx-grid-heatmap-payment" data-md-heatmap-payment-row>
+      <article class="rdx-card rdx-sales-heatmap-card" data-md-sales-heatmap>
+        <div class="rdx-card-head"><div><h2>Sales heatmap (daily)</h2><p>Daily intensity across weeks</p></div></div>
+        <div class="rdx-heatmap-scroll">
+          <div class="rdx-heatmap" id="rdx-sales-heatmap" aria-label="Daily sales heatmap"></div>
+        </div>
+        <div class="rdx-heatmap-legend" aria-hidden="true">
+          <span class="rdx-heatmap-legend-label">Low sales</span>
+          <span class="rdx-heatmap-legend-bar"></span>
+          <span class="rdx-heatmap-legend-label">High sales</span>
+        </div>
+        <div class="rdx-heatmap-tooltip" id="rdx-heatmap-tooltip" role="tooltip" hidden></div>
+      </article>
+      <article class="rdx-card rdx-payment-mode" data-md-payment-mode>
+        <h2 class="rdx-pm-title">Payment mode analysis</h2>
+        <div class="rdx-pm-body">
+          <div class="rdx-pm-chart-col">
+            <div class="rdx-pm-legend" aria-hidden="true">
+              <span class="rdx-pm-legend-item rdx-pm-legend-digital"><span class="rdx-pm-swatch"></span>Digital (%)</span>
+              <span class="rdx-pm-legend-item rdx-pm-legend-cash"><span class="rdx-pm-swatch"></span>Cash (%)</span>
+            </div>
+            <div class="rdx-chart-ltr-mask" data-md-pm-chart-mask>
+              <div class="rdx-pm-chart" id="rdx-chart-digital-cash"></div>
+            </div>
+          </div>
+          <div class="rdx-pm-kpis">
+            <div class="rdx-pm-kpi rdx-pm-kpi-digital" style="--rdx-pm-i: 0">
+              <div class="rdx-pm-kpi-label">Digital</div>
+              <div class="rdx-pm-kpi-value" data-md-pm-value data-value="{{ dashboard.payment_mode.digital_pct }}">{{ dashboard.payment_mode.digital_pct }}%</div>
+              {% if dashboard.payment_mode.digital_trend != 0 %}
+              <div class="rdx-pm-kpi-trend {% if dashboard.payment_mode.digital_trend > 0 %}up{% else %}down{% endif %}">
+                {% if dashboard.payment_mode.digital_trend > 0 %}▲{% else %}▼{% endif %} {{ dashboard.payment_mode.digital_trend | abs }}%
+              </div>
+              {% endif %}
+            </div>
+            <div class="rdx-pm-kpi rdx-pm-kpi-cash" style="--rdx-pm-i: 1">
+              <div class="rdx-pm-kpi-label">Cash</div>
+              <div class="rdx-pm-kpi-value" data-md-pm-value data-value="{{ dashboard.payment_mode.cash_pct }}">{{ dashboard.payment_mode.cash_pct }}%</div>
+              {% if dashboard.payment_mode.cash_trend != 0 %}
+              <div class="rdx-pm-kpi-trend {% if dashboard.payment_mode.cash_trend > 0 %}up{% else %}down{% endif %}">
+                {% if dashboard.payment_mode.cash_trend > 0 %}▲{% else %}▼{% endif %} {{ dashboard.payment_mode.cash_trend | abs }}%
+              </div>
+              {% endif %}
+            </div>
+          </div>
         </div>
       </article>
     </div>

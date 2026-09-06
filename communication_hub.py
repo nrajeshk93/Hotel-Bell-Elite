@@ -791,9 +791,11 @@ def send_conversation_attachment(
 def register_communication_hub(app, *, pop_auth_notice, get_user):
     _bind_helpers(pop_auth_notice=pop_auth_notice, get_user=get_user)
 
+    from feedback import register_feedback
     from promotion import register_promotion
 
     register_promotion(app, pop_auth_notice=pop_auth_notice, get_user=get_user)
+    register_feedback(app, pop_auth_notice=pop_auth_notice, get_user=get_user)
 
     def _page_render(**kwargs):
         kwargs.setdefault("auth_notice", _pop_auth_notice() if _pop_auth_notice else None)
