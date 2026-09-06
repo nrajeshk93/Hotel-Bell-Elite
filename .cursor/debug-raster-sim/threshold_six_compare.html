@@ -1,0 +1,81 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+@font-face{font-family:"Noto Sans";font-weight:400;src:url("../../static/fonts/noto-sans-latin-400-normal.woff2") format("woff2")}
+@font-face{font-family:"Noto Sans";font-weight:700;src:url("../../static/fonts/noto-sans-latin-700-normal.woff2") format("woff2")}
+@font-face{font-family:"Noto Sans";font-weight:800;src:url("../../static/fonts/noto-sans-latin-800-normal.woff2") format("woff2")}
+@font-face{font-family:"Inter";font-weight:400;src:url("../../static/fonts/inter-latin-400-normal.woff2") format("woff2")}
+@font-face{font-family:"Inter";font-weight:700;src:url("../../static/fonts/inter-latin-700-normal.woff2") format("woff2")}
+@font-face{font-family:"Inter";font-weight:800;src:url("../../static/fonts/inter-latin-800-normal.woff2") format("woff2")}
+@font-face{font-family:"Manrope";font-weight:700;src:url("../../static/fonts/manrope-latin-700-normal.woff2") format("woff2")}
+body{margin:16px;background:#fff}
+.row{display:flex;gap:28px;margin-bottom:24px;align-items:flex-end}
+.cell{text-align:center}
+.label{font:12px monospace;margin-bottom:6px}
+.g{line-height:1;-webkit-font-smoothing:none;font-smooth:never;letter-spacing:0.04em;color:#000}
+</style></head><body>
+<div class="row">
+  <div class="cell"><div class="label">Noto 800</div><div class="g" style='font:800 96px "Noto Sans"'>6</div></div>
+  <div class="cell"><div class="label">Inter 800</div><div class="g" style='font:800 96px "Inter"'>6</div></div>
+  <div class="cell"><div class="label">Manrope 700</div><div class="g" style='font:700 96px "Manrope"'>6</div></div>
+</div>
+<div class="row">
+  <div class="cell"><div class="label">Noto700 amt</div><div class="g" style='font:700 48px "Noto Sans"'>₹660.00</div></div>
+  <div class="cell"><div class="label">Inter800 amt</div><div class="g" style='font:800 48px "Inter"'>₹660.00</div></div>
+</div>
+<canvas id="out" style="border:1px solid #ccc;margin-top:12px"></canvas>
+<script>
+(async function () {
+  await document.fonts.ready;
+  await Promise.all([
+    document.fonts.load('800 96px "Noto Sans"'),
+    document.fonts.load('800 96px "Inter"'),
+    document.fonts.load('700 96px "Manrope"')
+  ]);
+  var faces = [
+    {fam: 'Noto Sans', wt: 800, label: 'Noto'},
+    {fam: 'Inter', wt: 800, label: 'Inter'},
+    {fam: 'Manrope', wt: 700, label: 'Manrope'}
+  ];
+  var scale = 4, outW = 40, outH = 56, gap = 16;
+  var hiW = outW * scale, hiH = outH * scale;
+  var canvas = document.getElementById('out');
+  canvas.width = (outW + gap) * faces.length;
+  canvas.height = outH * 2 + 36;
+  var ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  for (var i = 0; i < faces.length; i++) {
+    var f = faces[i];
+    var hi = document.createElement('canvas');
+    hi.width = hiW; hi.height = hiH;
+    var h = hi.getContext('2d');
+    h.fillStyle = '#fff'; h.fillRect(0, 0, hiW, hiH);
+    h.fillStyle = '#000';
+    h.font = f.wt + ' ' + Math.round(44 * scale) + 'px "' + f.fam + '"';
+    h.textBaseline = 'middle';
+    h.fillText('6', Math.round(6 * scale), Math.round(hiH / 2));
+    var img = h.getImageData(0, 0, hiW, hiH);
+    var p = img.data;
+    for (var k = 0; k < p.length; k += 4) {
+      var lum = 0.299 * p[k] + 0.587 * p[k + 1] + 0.114 * p[k + 2];
+      var v = p[k + 3] > 128 && lum < 175 ? 0 : 255;
+      p[k] = p[k + 1] = p[k + 2] = v;
+      p[k + 3] = 255;
+    }
+    h.putImageData(img, 0, 0);
+    var lo = document.createElement('canvas');
+    lo.width = outW; lo.height = outH;
+    var l = lo.getContext('2d');
+    l.imageSmoothingEnabled = false;
+    l.drawImage(hi, 0, 0, outW, outH);
+    var x = i * (outW + gap);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(hi, x, 0, outW, outH);
+    ctx.drawImage(lo, x, outH + 18, outW, outH);
+    ctx.fillStyle = '#111';
+    ctx.font = '11px monospace';
+    ctx.fillText(f.label + ' thr', x, outH - 2);
+    ctx.fillText(f.label + ' NN', x, outH * 2 + 14);
+  }
+  window.__ready = true;
+})();
+</script></body></html>

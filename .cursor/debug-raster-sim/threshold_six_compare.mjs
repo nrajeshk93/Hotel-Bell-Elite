@@ -1,0 +1,16 @@
+import { createRequire } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import path from 'node:path';
+const require = createRequire(import.meta.url);
+const puppeteer = require('puppeteer-core');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const HTML = path.join(__dirname, 'threshold_six_compare.html');
+const browser = await puppeteer.launch({executablePath: CHROME, headless: 'new', args: ['--allow-file-access-from-files','--disable-web-security','--no-sandbox']});
+const page = await browser.newPage();
+await page.setViewport({ width: 1000, height: 700, deviceScaleFactor: 2 });
+await page.goto(pathToFileURL(HTML).href, { waitUntil: 'networkidle0', timeout: 60000 });
+await page.waitForFunction(() => window.__ready === true, { timeout: 20000 });
+await page.screenshot({ path: path.join(__dirname, 'threshold_six_page.png'), fullPage: true });
+console.log('wrote threshold_six_page.png');
+await browser.close();

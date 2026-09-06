@@ -788,16 +788,58 @@
   }
 
   /**
-   * Convert a canvas to centered ESC/POS raster bands + cut.
-   * Uses Noto Sans glyphs from the View HTML (clear upright “6”), not printer text font.
+   * Convert a canvas to left-aligned ESC/POS raster bands + cut.
+   * Uses View HTML glyphs (Noto Sans + ink stroke during capture), not printer text font.
+   * 6-tip preservation: threshold at hi-res (supersampled) → nearest-neighbor
+   * downscale to THERMAL_DOTS. Soft bilinear shrink first would round the
+   * pointed Noto “6” tip into a bent/closed top after 1-bit.
    */
+
+  /**
+   * After hi-res 1-bit: extend dark tip 1px up-right on thin terminals without
+   * globally thickening strokes. Only fills white pixels whose lower-left
+   * neighbor is black and that sit on a thin upper edge (few blacks below-left).
+   */
+  function tipSharpenUpperRight(imageData, w, h) {
+    var px = imageData.data;
+    function isBlack(x, y) {
+      if (x < 0 || y < 0 || x >= w || y >= h) return false;
+      return px[(y * w + x) * 4] < 128;
+    }
+    function setBlack(x, y) {
+      var i = (y * w + x) * 4;
+      px[i] = px[i + 1] = px[i + 2] = 0;
+      px[i + 3] = 255;
+    }
+    var add = [];
+    for (var y = 1; y < h - 1; y++) {
+      for (var x = 1; x < w - 1; x++) {
+        if (isBlack(x, y)) continue;
+        /* Candidate white pixel sitting upper-right of a black run tip. */
+        if (!isBlack(x - 1, y + 1)) continue;
+        if (isBlack(x + 1, y) || isBlack(x, y - 1)) continue;
+        /* Thin tip: lower-left is black, but not a thick blob (avoid fattening). */
+        var nearby = 0;
+        if (isBlack(x - 1, y)) nearby++;
+        if (isBlack(x, y + 1)) nearby++;
+        if (isBlack(x - 1, y - 1)) nearby++;
+        if (isBlack(x + 1, y + 1)) nearby++;
+        if (nearby >= 3) continue;
+        if (!isBlack(x - 1, y) && !isBlack(x, y + 1)) continue;
+        add.push(x, y);
+      }
+    }
+    for (var k = 0; k < add.length; k += 2) setBlack(add[k], add[k + 1]);
+  }
+
   function canvasToEscPosRasterBands(canvas, opts) {
     opts = opts || {};
     /* 80mm heads here print ~512 dots. 576 crushed spaces; 384 upscaled and
        went soft/illegible on production (2026-09-06 14:06 photo). */
     var maxWidth = opts.maxWidth || 512;
     var bandHeight = opts.bandHeight || 1200;
-    var threshold = opts.threshold != null ? opts.threshold : 168;
+    /* ~180–190: keep thin Noto strokes (incl. digit 6 tip) black at hi-res. */
+    var threshold = opts.threshold != null ? opts.threshold : 185;
     if (!canvas || !canvas.width || !canvas.height) return '';
 
     var srcW = canvas.width;
@@ -807,10 +849,33 @@
     if (tw < 8) tw = 8;
     var th = Math.max(1, Math.round((srcH * tw) / srcW));
 
-    // #region agent log
-    fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix-512ss',hypothesisId:'H',location:'pos_printers.js:canvasToEscPosRasterBands',message:'raster scale dims',data:{srcW:srcW,srcH:srcH,tw:tw,th:th,maxWidth:maxWidth,scaleX:tw/srcW,scaleY:th/srcH,threshold:threshold},timestamp:Date.now()})}).catch(function(){});
-    // #endregion
 
+    /* 1) Threshold at supersampled size so the pointed “6” tip stays black. */
+    var hi = document.createElement('canvas');
+    hi.width = srcW;
+    hi.height = srcH;
+    var hctx = hi.getContext('2d');
+    if (!hctx) return '';
+    hctx.fillStyle = '#ffffff';
+    hctx.fillRect(0, 0, srcW, srcH);
+    hctx.drawImage(canvas, 0, 0);
+    var hiData = hctx.getImageData(0, 0, srcW, srcH);
+    var px = hiData.data;
+    for (var i = 0; i < px.length; i += 4) {
+      var lum = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+      var v = px[i + 3] > 128 && lum < threshold ? 0 : 255;
+      px[i] = px[i + 1] = px[i + 2] = v;
+      px[i + 3] = 255;
+    }
+    hctx.putImageData(hiData, 0, 0);
+
+    /* Optional: 1px upper-right tip sharpen on dark runs (digit 6 tip only-ish). */
+    if (opts.tipSharpen !== false) {
+      tipSharpenUpperRight(hiData, srcW, srcH);
+      hctx.putImageData(hiData, 0, 0);
+    }
+
+    /* 2) Nearest-neighbor downscale — do not re-blur the 1-bit tip. */
     var scaled = document.createElement('canvas');
     scaled.width = tw;
     scaled.height = th;
@@ -818,11 +883,11 @@
     if (!sctx) return '';
     sctx.fillStyle = '#ffffff';
     sctx.fillRect(0, 0, tw, th);
-    sctx.imageSmoothingEnabled = true;
+    sctx.imageSmoothingEnabled = false;
     try {
-      sctx.imageSmoothingQuality = 'high';
+      sctx.imageSmoothingQuality = 'low';
     } catch (e) {}
-    sctx.drawImage(canvas, 0, 0, tw, th);
+    sctx.drawImage(hi, 0, 0, tw, th);
 
     var ESC = '\x1b';
     var GS = '\x1d';
@@ -830,9 +895,10 @@
     parts.push(ESC + '@');
     /* Left-align full-width raster (no firmware center-stretch). */
     parts.push(ESC + 'a\x00');
+    /* Already 1-bit; mid threshold keeps NN black/white crisp. */
     for (var y0 = 0; y0 < th; y0 += bandHeight) {
       var bh = Math.min(bandHeight, th - y0);
-      parts.push(imageDataToGsV0(sctx.getImageData(0, y0, tw, bh), tw, bh, threshold));
+      parts.push(imageDataToGsV0(sctx.getImageData(0, y0, tw, bh), tw, bh, 128));
     }
     parts.push('\n\n');
     parts.push(GS + 'V\x01');
@@ -853,6 +919,23 @@
               return null;
             })
           : Promise.resolve();
+      /* Thermal capture tries Consolas per Rajesh (load before html2canvas). */
+      if (doc && doc.fonts && typeof doc.fonts.load === 'function') {
+        fontsReady = Promise.all([
+          fontsReady,
+          doc.fonts.load('400 12.5px Consolas').catch(function () {
+            return null;
+          }),
+          doc.fonts.load('700 12.5px Consolas').catch(function () {
+            return null;
+          }),
+          doc.fonts.load('800 12.5px Consolas').catch(function () {
+            return null;
+          })
+        ]).catch(function () {
+          return null;
+        });
+      }
       var pending = 0;
       var imgs = (doc && doc.images) || [];
       for (var i = 0; i < imgs.length; i++) {
@@ -876,35 +959,57 @@
   }
 
   /**
-   * Render the Spice View-bill HTML to ESC/POS raster so digits match Noto Sans
-   * (thermal text font makes “6” look like “0”).
+   * Render the Spice View-bill HTML to ESC/POS raster (Consolas + ink stroke so
+   * digit “6” tip stays distinct; thermal text font makes “6” look like “0”).
    * Prefers the on-screen View iframe when open so paper matches the digital copy.
+   * Thermal capture tries Consolas per Rajesh. Capture uses crisp font smoothing;
+   * bands threshold-at-hires → NN downscale so the pointed upward “6” tip is not
+   * bent by anti-alias + bilinear shrink.
    */
   function renderCustomerBillRasterEscPos(invoice, opts) {
     opts = opts || {};
     if (typeof global.html2canvas !== 'function') {
       return Promise.reject(new Error('html2canvas unavailable'));
     }
-    if (!invoice && !opts.sourceDocument) {
-      return Promise.reject(new Error('invoice required'));
+    if (!invoice && !opts.sourceDocument && !opts.html) {
+      return Promise.reject(new Error('invoice or bill HTML required'));
     }
 
     /* Sweet spot for these printers: 512. 384 (logo width) upscales soft; 576 crushes. */
     var THERMAL_DOTS = 512;
-    var CAPTURE_SUPERSAMPLE = 2;
+    /* 4× + ink stroke keeps Consolas 6 tip (up-right) through 1-bit. */
+    var CAPTURE_SUPERSAMPLE = 4;
 
     function injectThermalCaptureCss(doc) {
       if (!doc || !doc.head) return null;
       try {
+        /* Thermal capture tries Consolas per Rajesh. Ink stroke preserves thin tip.
+         * No Consolas TTF vendored under static/fonts/ — family name only so Chrome
+         * uses system/Office Consolas when present (do not @font-face missing URLs).
+         * If Consolas-Regular.ttf / Consolas-Bold.ttf are later copied from local
+         * Office/User fonts, @font-face them from /static/fonts/. */
         var style = doc.createElement('style');
         style.setAttribute('data-hbe-thermal-capture', '1');
-        /* Widen word gaps so they survive 1-bit + any mild paper scale. */
+        /* Capture Consolas + ink stroke: tip survives threshold (SS4 / thr ~185).
+         * Thermal capture tries Consolas per Rajesh. */
         style.textContent =
-          'body,.bill-sheet{letter-spacing:0.04em !important;word-spacing:0.28em !important;' +
-          '-webkit-font-smoothing:antialiased !important}' +
+          'body,.bill-sheet{font-family:Consolas,monospace !important;' +
+          'letter-spacing:0.04em !important;word-spacing:0.28em !important;' +
+          /* Crisp glyphs for capture: antialiased tips soft-round after threshold. */
+          '-webkit-font-smoothing:none !important;font-smooth:never !important;' +
+          '-webkit-text-stroke:0.35px #000;paint-order:stroke fill;' +
+          'text-shadow:0 0 0.25px #000}' +
           '.brand,.meta,.totals,.user,table.items td,table.items th,' +
-          'table.receipts-table td,table.receipts-table th,.addr,.gst-no{' +
-          'letter-spacing:0.04em !important;word-spacing:0.28em !important}';
+          'table.receipts-table td,table.receipts-table th,.addr,.gst-no,' +
+          '.cancelled-watermark span{font-family:Consolas,monospace !important;' +
+          'letter-spacing:0.04em !important;word-spacing:0.28em !important;' +
+          '-webkit-text-stroke:0.35px #000;paint-order:stroke fill;' +
+          'text-shadow:0 0 0.25px #000}' +
+          /* Heavier grand/amounts so the tip stays 1–2px black after threshold. */
+          '.totals .grand,table.items td.amt,table.receipts-table td.amt,' +
+          '.totals td,.totals th{font-weight:800 !important;' +
+          '-webkit-text-stroke:0.4px #000;paint-order:stroke fill;' +
+          'text-shadow:0 0 0.3px #000}';
         doc.head.appendChild(style);
         return style;
       } catch (e) {
@@ -920,34 +1025,42 @@
     }
 
     function captureTarget(doc, target, ownedIframe) {
-      var bodyStyle =
-        doc && doc.body && doc.defaultView
-          ? doc.defaultView.getComputedStyle(doc.body)
-          : null;
       var scrollW = (target && target.scrollWidth) || 340;
-      /* 2× supersample then downscale to THERMAL_DOTS — keeps thin spaces as gray. */
+      /* Supersample capture; bands threshold at hi-res then NN-downscale (6 tip). */
       var scale =
         (THERMAL_DOTS * CAPTURE_SUPERSAMPLE) / Math.max(1, scrollW);
       injectThermalCaptureCss(doc);
-      // #region agent log
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix-512ss',hypothesisId:'H',location:'pos_printers.js:renderCustomerBillRasterEscPos',message:'html2canvas target metrics',data:{source:opts.captureSource||'offscreen',hasHtml2canvas:typeof global.html2canvas==='function',tag:target&&target.tagName,scrollWidth:scrollW,offsetWidth:target&&target.offsetWidth,clientWidth:target&&target.clientWidth,scrollHeight:target&&target.scrollHeight,bodyWidth:bodyStyle&&bodyStyle.width,bodyFont:bodyStyle&&bodyStyle.fontFamily,captureScale:scale,thermalDots:THERMAL_DOTS,supersample:CAPTURE_SUPERSAMPLE,usedClone:false},timestamp:Date.now()})}).catch(function(){});
-      // #endregion
-      return global
-        .html2canvas(target, {
-          backgroundColor: '#ffffff',
-          scale: scale,
-          useCORS: true,
-          allowTaint: true,
-          logging: false,
-          imageTimeout: 2500,
-          width: Math.max(320, scrollW),
-          windowWidth: Math.max(380, scrollW + 40)
+      var fontsWait = Promise.resolve();
+      if (doc && doc.fonts && typeof doc.fonts.load === 'function') {
+        fontsWait = Promise.all([
+          doc.fonts.load('400 12.5px Consolas').catch(function () {
+            return null;
+          }),
+          doc.fonts.load('700 12.5px Consolas').catch(function () {
+            return null;
+          }),
+          doc.fonts.load('800 15px Consolas').catch(function () {
+            return null;
+          })
+        ]).catch(function () {
+          return null;
+        });
+      }
+      return fontsWait
+        .then(function () {
+          return global.html2canvas(target, {
+            backgroundColor: '#ffffff',
+            scale: scale,
+            useCORS: true,
+            allowTaint: true,
+            logging: false,
+            imageTimeout: 2500,
+            width: Math.max(320, scrollW),
+            windowWidth: Math.max(380, scrollW + 40)
+          });
         })
         .then(function (canvas) {
           cleanupThermalCapture(doc);
-          // #region agent log
-          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix-512ss',hypothesisId:'H',location:'pos_printers.js:html2canvas-result',message:'html2canvas canvas size',data:{canvasW:canvas&&canvas.width,canvasH:canvas&&canvas.height,source:opts.captureSource||'offscreen'},timestamp:Date.now()})}).catch(function(){});
-          // #endregion
           if (!canvas || !canvas.width || !canvas.height) {
             throw new Error('empty html2canvas result');
           }
@@ -959,22 +1072,8 @@
           var escpos = canvasToEscPosRasterBands(canvas, {
             maxWidth: THERMAL_DOTS,
             bandHeight: 1200,
-            threshold: 160
+            threshold: 185
           });
-          // #region agent log
-          try {
-            global.__HBE_RASTER_META__ = {
-              thermalDots: THERMAL_DOTS,
-              canvasW: canvas && canvas.width,
-              canvasH: canvas && canvas.height,
-              widthBytes: Math.floor(THERMAL_DOTS / 8),
-              supersample: CAPTURE_SUPERSAMPLE,
-              source: opts.captureSource || 'offscreen',
-              at: Date.now()
-            };
-          } catch (eMeta) {}
-          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix-512ss',hypothesisId:'H',location:'pos_printers.js:escpos-built',message:'escpos payload built',data:{escposLen:escpos?escpos.length:0,widthBytes:Math.floor(THERMAL_DOTS/8),thermalDots:THERMAL_DOTS,canvasW:canvas&&canvas.width,supersample:CAPTURE_SUPERSAMPLE},timestamp:Date.now()})}).catch(function(){});
-          // #endregion
           if (!escpos) throw new Error('empty bill raster');
           return escpos;
         })
@@ -1001,16 +1100,22 @@
       }
     } catch (eView) {}
 
-    if (typeof global.buildPosCustomerBillHtml !== 'function') {
-      return Promise.reject(new Error('bill HTML builder unavailable'));
-    }
-
     var billOpts = {
       outlet: opts.outlet || (invoice && invoice.outlet),
       userLabel: opts.userLabel || opts.user_label || ''
     };
-    var html = global.buildPosCustomerBillHtml(invoice, billOpts);
-    opts.captureSource = 'offscreen';
+    var html = opts.html ? String(opts.html) : '';
+    if (!html) {
+      if (typeof global.buildPosCustomerBillHtml !== 'function') {
+        return Promise.reject(new Error('bill HTML builder unavailable'));
+      }
+      if (!invoice) {
+        return Promise.reject(new Error('invoice required for offscreen bill raster'));
+      }
+      /* buildPosCustomerBillHtml embeds View fonts; capture CSS forces Consolas. */
+      html = global.buildPosCustomerBillHtml(invoice, billOpts);
+    }
+    opts.captureSource = html && opts.html ? 'opts-html' : 'offscreen';
 
     return new Promise(function (resolve, reject) {
       var iframe = document.createElement('iframe');
@@ -1047,9 +1152,6 @@
         })
         .then(resolve)
         .catch(function (err) {
-          // #region agent log
-          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'C',location:'pos_printers.js:raster-fail',message:'raster render failed',data:{err:String(err&&err.message||err||'')},timestamp:Date.now()})}).catch(function(){});
-          // #endregion
           try {
             if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
           } catch (e3) {}
@@ -1321,10 +1423,12 @@
 
   /**
    * Silent invoice/bill print via Hotel Print Agent (billing role).
-   * Prefers a full View-bill raster (Noto Sans digits) so thermal “6” matches
-   * the iframe preview. On agent failure, prefers browser print of the digital
-   * bill over text ESC/POS (text does not match the View layout).
-   * Set opts.allowBrowserFallback = true to open Chrome print as a last resort.
+   * Customer bills are raster-only to match digital Noto View: html2canvas of the
+   * Spice/View HTML → ~512-dot GS v 0 bands. Text ESC/POS
+   * (sendLogoTextFallback / formatCustomerBillEscPos) is disabled for this path —
+   * printer built-in fonts do not match the digital invoice.
+   * On raster failure: surface a clear error; browser print only when
+   * opts.allowBrowserFallback is already true. KOT/kitchen tickets keep text ESC/POS.
    */
   function printInvoiceHtml(html, opts) {
     opts = opts || {};
@@ -1345,18 +1449,16 @@
         try {
           browserPrint();
         } catch (e) {}
-        return { via: 'browser', error: error };
+        return { via: 'browser', error: error, viaRaster: false };
       }
-      return { via: 'failed', error: error };
+      return { via: 'failed', error: error, viaRaster: false };
     }
 
     if (_billPrintInFlight) {
-      // #region agent log
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'C',location:'pos_printers.js:printInvoiceHtml',message:'print blocked — already in flight',data:{},timestamp:Date.now()})}).catch(function(){});
-      // #endregion
       return Promise.resolve({
         via: 'failed',
-        error: new Error('Print already in progress.')
+        error: new Error('Print already in progress.'),
+        viaRaster: false
       });
     }
     _billPrintInFlight = true;
@@ -1390,130 +1492,38 @@
       });
     }
 
-    function sendTextEscPosJob(logoRaster) {
-      var text = '';
-      var escposB64 = '';
-      if (invoice) {
-        try {
-          text = formatCustomerBillText(invoice, {
-            outlet: opts.outlet,
-            userLabel: opts.userLabel || opts.user_label || ''
-          });
-        } catch (e) {
-          text = '';
-        }
-        try {
-          escposB64 = toBase64Binary(
-            formatCustomerBillEscPos(invoice, {
-              outlet: opts.outlet,
-              logoRaster: logoRaster || '',
-              userLabel: opts.userLabel || opts.user_label || ''
-            })
-          );
-        } catch (e2) {
-          escposB64 = '';
-        }
-      }
-
-      var job = {
-        printerRole: role,
-        documentType: opts.documentType || 'receipt',
-        copies: opts.copies || 1,
-        jobId: opts.jobId || undefined,
-        idempotencyKey: opts.idempotencyKey || opts.jobId || undefined
-      };
-      if (escposB64) {
-        job.contentType = 'escpos';
-        job.contentEncoding = 'base64';
-        job.content = escposB64;
-      } else if (text) {
-        job.contentType = 'text';
-        job.contentEncoding = 'utf8';
-        job.content = String(text);
-      } else if (html) {
-        job.contentType = 'html';
-        job.contentEncoding = 'utf8';
-        job.content = html;
-      } else {
-        return Promise.resolve(fail(new Error('Nothing to print.')));
-      }
-
-      return sendAgentJob(job).catch(function (err) {
-        if (job.contentType === 'escpos' && text) {
-          return sendAgentJob({
-            printerRole: role,
-            documentType: opts.documentType || 'receipt',
-            contentType: 'text',
-            contentEncoding: 'utf8',
-            content: String(text),
-            copies: opts.copies || 1,
-            jobId: (opts.jobId || 'inv') + '-txt',
-            idempotencyKey:
-              (opts.idempotencyKey || opts.jobId || '') + '-txt' || undefined
-          })
-            .then(function (result) {
-              result.fallback = 'text';
-              return result;
-            })
-            .catch(function (err2) {
-              return fail(err2 || err);
-            });
-        }
-        return fail(err);
-      });
-    }
-
-    function sendLogoTextFallback() {
-      return loadReceiptLogoEscPos(opts.outlet || (invoice && invoice.outlet) || '')
-        .catch(function () {
-          return '';
-        })
-        .then(function (logoRaster) {
-          return sendTextEscPosJob(logoRaster);
-        });
-    }
-
-    /** Prefer exact digital browser print over text ESC/POS (mismatched glyphs). */
-    function digitalOrTextFallback(err, hadGoodRaster) {
-      // #region agent log
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'C',location:'pos_printers.js:printInvoiceHtml',message:'fallback decision',data:{hadGoodRaster:!!hadGoodRaster,allowBrowser:allowBrowser,err:String(err&&err.message||err||'')},timestamp:Date.now()})}).catch(function(){});
-      // #endregion
-      if (allowBrowser || hadGoodRaster) {
+    /**
+     * Customer invoice path never falls back to text ESC/POS (mismatched glyphs).
+     * Optional browser print only when allowBrowserFallback was already requested.
+     */
+    function rasterOnlyFailure(err) {
+      var msg =
+        (err && err.message) ||
+        'Could not print customer bill as View raster (Noto HTML). Open View bill and retry, or check html2canvas.';
+      var error = err && err.message ? err : new Error(msg);
+      if (allowBrowser) {
         try {
           browserPrint();
         } catch (e) {}
-        if (allowBrowser || typeof opts.browserPrint === 'function') {
-          return {
-            via: 'browser',
-            error: err && err.message ? err : new Error(String(err || 'print failed')),
-            hadRaster: !!hadGoodRaster
-          };
-        }
+        return {
+          via: 'browser',
+          error: error,
+          viaRaster: false
+        };
       }
-      return sendLogoTextFallback();
-    }
-
-    if (!invoice) {
-      return sendLogoTextFallback().then(finish, function (err) {
-        return finish(fail(err));
-      });
+      return { via: 'failed', error: error, viaRaster: false };
     }
 
     return renderCustomerBillRasterEscPos(invoice, {
       outlet: opts.outlet,
-      userLabel: opts.userLabel || opts.user_label || ''
+      userLabel: opts.userLabel || opts.user_label || '',
+      html: html || ''
     })
       .then(function (rasterEscPos) {
         var b64 = toBase64Binary(rasterEscPos);
         if (!b64) {
-          // #region agent log
-          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'C',location:'pos_printers.js:printInvoiceHtml',message:'empty raster b64 -> digital/text fallback',data:{},timestamp:Date.now()})}).catch(function(){});
-          // #endregion
-          return digitalOrTextFallback(new Error('empty bill raster'), false);
+          return rasterOnlyFailure(new Error('empty bill raster'));
         }
-        // #region agent log
-        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'C',location:'pos_printers.js:printInvoiceHtml',message:'sending raster escpos job',data:{b64Len:b64.length,role:role},timestamp:Date.now()})}).catch(function(){});
-        // #endregion
         return sendAgentJob({
           printerRole: role,
           documentType: opts.documentType || 'receipt',
@@ -1525,18 +1535,15 @@
           idempotencyKey: opts.idempotencyKey || opts.jobId || undefined
         })
           .then(function (result) {
-            // #region agent log
-            fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'C',location:'pos_printers.js:printInvoiceHtml',message:'raster job accepted',data:{via:result&&result.via,viaRaster:true},timestamp:Date.now()})}).catch(function(){});
-            // #endregion
             result.viaRaster = true;
             return result;
           })
           .catch(function (err) {
-            return digitalOrTextFallback(err, true);
+            return rasterOnlyFailure(err);
           });
       })
       .catch(function (err) {
-        return digitalOrTextFallback(err, false);
+        return rasterOnlyFailure(err);
       })
       .then(finish, function (err) {
         return finish(fail(err));

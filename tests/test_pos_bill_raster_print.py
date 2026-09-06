@@ -1,11 +1,22 @@
-"""Wiring checks for View-bill raster thermal printing (clear Noto digits)."""
+"""Wiring checks for View-bill raster thermal printing (Noto + ink stroke for digit 6)."""
 
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _print_invoice_html_body(src: str) -> str:
+    m = re.search(
+        r"function printInvoiceHtml\(html, opts\)\s*\{(.*?)\n  function ",
+        src,
+        flags=re.S,
+    )
+    assert m, "printInvoiceHtml function body not found"
+    return m.group(1)
 
 
 class PosBillRasterPrintWiringTests(unittest.TestCase):
@@ -32,8 +43,55 @@ class PosBillRasterPrintWiringTests(unittest.TestCase):
         self.assertIn("renderCustomerBillRasterEscPos(invoice", src)
         self.assertIn("viaRaster", src)
         self.assertIn("renderCustomerBillRasterEscPos: renderCustomerBillRasterEscPos", src)
+        self.assertIn("THERMAL_DOTS = 512", src)
+        self.assertIn("CAPTURE_SUPERSAMPLE", src)
+        self.assertIn("pos-il-bill-frame", src)
+        self.assertIn("doc.fonts.ready", src)
+        self.assertIn("doc.fonts.load", src)
+
+    def test_customer_bill_print_is_raster_only_no_text_fallback(self):
+        """Restaurant/bar customer invoices must not silently print text ESC/POS."""
+        src = (ROOT / "static" / "pos_printers.js").read_text(encoding="utf-8")
+        self.assertIn("Customer bills are raster-only", src)
+        body = _print_invoice_html_body(src)
+        self.assertIn("renderCustomerBillRasterEscPos", body)
+        self.assertIn("viaRaster = true", body)
+        self.assertIn("rasterOnlyFailure", body)
+        # Text ESC/POS silent fallback must not be wired for this document type.
+        self.assertNotIn("sendLogoTextFallback", body)
+        self.assertNotIn("formatCustomerBillEscPos", body)
+        self.assertNotIn("sendTextEscPosJob", body)
+        self.assertNotIn("formatCustomerBillText", body)
+        # Browser print only when allowBrowserFallback is already true.
+        self.assertIn("allowBrowserFallback", src[
+            src.find("function printInvoiceHtml") : src.find("function applyToPanel")
+        ])
+        self.assertIn("if (allowBrowser)", body)
+
+    def test_thermal_capture_css_crisp_and_nn_downscale(self):
+        """Digit-6 tip: Consolas + ink stroke + crisp + threshold-at-hires → nearest-neighbor."""
+        src = (ROOT / "static" / "pos_printers.js").read_text(encoding="utf-8")
+        self.assertIn("-webkit-font-smoothing:none", src)
+        self.assertIn("font-smooth:never", src)
+        self.assertNotIn("-webkit-font-smoothing:antialiased", src)
+        self.assertIn("imageSmoothingEnabled = false", src)
+        self.assertIn("nearest-neighbor", src)
+        self.assertIn("6-tip preservation", src)
+        self.assertIn("threshold at hi-res", src)
+        self.assertIn("CAPTURE_SUPERSAMPLE = 4", src)
+        # Thermal capture tries Consolas per Rajesh; ink stroke preserves thin tip.
+        self.assertIn("font-family:Consolas,monospace", src)
+        self.assertIn("doc.fonts.load('400 12.5px Consolas')", src)
+        self.assertIn("doc.fonts.load('700 12.5px Consolas')", src)
+        self.assertIn("doc.fonts.load('800 15px Consolas')", src)
+        self.assertIn("-webkit-text-stroke:0.35px #000", src)
+        self.assertIn("paint-order:stroke fill", src)
+        self.assertIn("text-shadow:0 0 0.25px #000", src)
+        self.assertIn(".totals .grand", src)
+        self.assertIn("tipSharpenUpperRight", src)
 
     def test_ledger_passes_created_by_user_label(self):
+
         src = (ROOT / "static" / "pos_invoice_ledger.js").read_text(encoding="utf-8")
         self.assertIn("userLabel: String((invoice && invoice.created_by)", src)
 
