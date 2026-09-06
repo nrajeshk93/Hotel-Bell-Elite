@@ -165,14 +165,17 @@ def build_sales_heatmap(daily_series, date_from, date_to):
     }
 
 
-def payment_mode_pct(digital, cash):
+def payment_mode_pct(digital, cash, credit=0):
     dig = float(digital or 0)
     cash_v = float(cash or 0)
-    total = dig + cash_v
+    credit_v = float(credit or 0)
+    total = dig + cash_v + credit_v
     if total <= 0:
-        return 0.0, 0.0
+        return 0.0, 0.0, 0.0
     dig_pct = round(dig / total * 100, 1)
-    return dig_pct, round(100.0 - dig_pct, 1)
+    cash_pct = round(cash_v / total * 100, 1)
+    credit_pct = round(max(0.0, 100.0 - dig_pct - cash_pct), 1)
+    return dig_pct, cash_pct, credit_pct
 
 
 def sparkline_series_from_values(dates, values):
@@ -364,3 +367,164 @@ def build_top_selling_items(rows, limit=5, sort_by="qty"):
     for i, item in enumerate(out, start=1):
         item["rank"] = i
     return out
+
+
+def _flow_pct(part, whole):
+    try:
+        p = float(part or 0)
+        w = float(whole or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    if w <= 0:
+        return 0.0
+    return round(p / w * 100, 1)
+
+
+def _flow_category_rows(rows, *, total_revenue, color, top_n=5, other_key="other", other_name="Other"):
+    """Normalize category rows and keep top N + rolled-up Other for Sankey."""
+    try:
+        limit = max(0, int(top_n))
+    except (TypeError, ValueError):
+        limit = 5
+    out = []
+    for row in rows or []:
+        try:
+            amount = round(float(row.get("amount") or 0), 2)
+        except (TypeError, ValueError):
+            amount = 0.0
+        if amount <= 0:
+            continue
+        key = str(row.get("key") or "").strip() or "other"
+        name = str(row.get("name") or key).strip() or key
+        out.append(
+            {
+                "key": key,
+                "name": name,
+                "amount": amount,
+                "amount_compact": inr_compact(amount),
+                "pct_of_revenue": _flow_pct(amount, total_revenue),
+                "color": color,
+            }
+        )
+    out.sort(key=lambda item: (-float(item["amount"]), item["name"].casefold()))
+    if len(out) <= limit:
+        return out
+
+    head = out[:limit]
+    rest = out[limit:]
+    other_amount = round(sum(float(item["amount"]) for item in rest), 2)
+    if other_amount > 0:
+        head.append(
+            {
+                "key": other_key,
+                "name": other_name,
+                "amount": other_amount,
+                "amount_compact": inr_compact(other_amount),
+                "pct_of_revenue": _flow_pct(other_amount, total_revenue),
+                "color": color,
+            }
+        )
+    return head
+
+
+def build_financial_flow(
+    outlet_totals,
+    purchase_categories,
+    expense_categories,
+    tax_amount,
+    *,
+    total_revenue=None,
+):
+    """Sankey financial flow: outlets → revenue → costs/PBT → tax/net profit.
+
+    ``purchase_categories`` / ``expense_categories`` are lists of
+    ``{key, name, amount}`` from live ledger categories (not sample labels).
+    Each side keeps the top 4 categories by value and rolls the rest into
+    ``Other Purchase`` / ``Other Expenses``.
+    Tax is GST collected on sales (POS ``gst_amount`` + hotel inclusive split);
+    when pre-tax profit is positive, tax is capped so Tax + Net Profit = PBT.
+    """
+    hotel = round(float((outlet_totals or {}).get("Hotel") or 0), 2)
+    restaurant = round(float((outlet_totals or {}).get("Restaurant") or 0), 2)
+    bar = round(float((outlet_totals or {}).get("Bar") or 0), 2)
+    if total_revenue is None:
+        revenue = round(hotel + restaurant + bar, 2)
+    else:
+        revenue = round(float(total_revenue or 0), 2)
+
+    # Top 4 + rolled-up Other; totals stay equal to the full category sums.
+    purchase_rows = _flow_category_rows(
+        purchase_categories,
+        total_revenue=revenue,
+        color="#93C5FD",
+        top_n=4,
+        other_key="other_purchase",
+        other_name="Other Purchase",
+    )
+    expense_rows = _flow_category_rows(
+        expense_categories,
+        total_revenue=revenue,
+        color="#FDBA74",
+        top_n=4,
+        other_key="other_expenses",
+        other_name="Other Expenses",
+    )
+    purchase_total = round(sum(float(r["amount"]) for r in purchase_rows), 2)
+    expense_total = round(sum(float(r["amount"]) for r in expense_rows), 2)
+    # Keep Purchase/Expense hubs equal to category sums (Sankey conservation).
+    profit_before_tax = round(revenue - purchase_total - expense_total, 2)
+
+    try:
+        gst_tax = round(max(0.0, float(tax_amount or 0)), 2)
+    except (TypeError, ValueError):
+        gst_tax = 0.0
+
+    if profit_before_tax > 0:
+        tax = round(min(gst_tax, profit_before_tax), 2)
+        net_profit = round(profit_before_tax - tax, 2)
+    else:
+        tax = 0.0
+        net_profit = profit_before_tax
+
+    sources = []
+    for name, amount, color in (
+        ("Hotel", hotel, "#93C5FD"),
+        ("Restaurant", restaurant, "#86EFAC"),
+        ("Bar", bar, "#C4B5FD"),
+    ):
+        if amount <= 0:
+            continue
+        sources.append(
+            {
+                "key": name.casefold(),
+                "name": name,
+                "amount": amount,
+                "amount_compact": inr_compact(amount),
+                "pct_of_revenue": _flow_pct(amount, revenue),
+                "color": color,
+            }
+        )
+
+    return {
+        "total_revenue": revenue,
+        "total_revenue_compact": inr_compact(revenue),
+        "purchase_total": purchase_total,
+        "purchase_total_compact": inr_compact(purchase_total),
+        "expense_total": expense_total,
+        "expense_total_compact": inr_compact(expense_total),
+        "profit_before_tax": profit_before_tax,
+        "profit_before_tax_compact": inr_compact(profit_before_tax),
+        "tax": tax,
+        "tax_compact": inr_compact(tax),
+        "tax_collected": gst_tax,
+        "tax_collected_compact": inr_compact(gst_tax),
+        "net_profit": net_profit,
+        "net_profit_compact": inr_compact(net_profit),
+        "sources": sources,
+        "purchase_categories": purchase_rows,
+        "expense_categories": expense_rows,
+        "equation": (
+            f"{inr_compact(revenue)} = {inr_compact(purchase_total)} + "
+            f"{inr_compact(expense_total)} + {inr_compact(profit_before_tax)}"
+        ),
+    }

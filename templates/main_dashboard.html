@@ -390,6 +390,7 @@
             <div class="rdx-pm-legend" aria-hidden="true">
               <span class="rdx-pm-legend-item rdx-pm-legend-digital"><span class="rdx-pm-swatch"></span>Digital (%)</span>
               <span class="rdx-pm-legend-item rdx-pm-legend-cash"><span class="rdx-pm-swatch"></span>Cash (%)</span>
+              <span class="rdx-pm-legend-item rdx-pm-legend-credit"><span class="rdx-pm-swatch"></span>Credit (%)</span>
             </div>
             <div class="rdx-chart-ltr-mask" data-md-pm-chart-mask>
               <div class="rdx-pm-chart" id="rdx-chart-digital-cash"></div>
@@ -414,7 +415,50 @@
               </div>
               {% endif %}
             </div>
+            <div class="rdx-pm-kpi rdx-pm-kpi-credit" style="--rdx-pm-i: 2">
+              <div class="rdx-pm-kpi-label">Credit</div>
+              <div class="rdx-pm-kpi-value" data-md-pm-value data-value="{{ dashboard.payment_mode.credit_pct }}">{{ dashboard.payment_mode.credit_pct }}%</div>
+              {% if dashboard.payment_mode.credit_trend != 0 %}
+              <div class="rdx-pm-kpi-trend {% if dashboard.payment_mode.credit_trend > 0 %}up{% else %}down{% endif %}">
+                {% if dashboard.payment_mode.credit_trend > 0 %}▲{% else %}▼{% endif %} {{ dashboard.payment_mode.credit_trend | abs }}%
+              </div>
+              {% endif %}
+            </div>
           </div>
+        </div>
+      </article>
+    </div>
+
+    <div class="rdx-grid-1 rdx-grid-sankey-alone" data-md-sankey-row>
+      <article class="rdx-card rdx-financial-flow" data-md-financial-flow aria-label="Financial Flow Overview">
+        <div class="rdx-ff-head">
+          <div class="rdx-ff-head-text">
+            <h2 class="rdx-ff-title">Financial Flow Overview</h2>
+          </div>
+        </div>
+        <div class="rdx-ff-stages" role="list" aria-label="Financial flow stages">
+          <div class="rdx-ff-stage rdx-ff-stage--revenue" role="listitem">
+            <span class="rdx-ff-stage-kicker">1. REVENUE</span>
+            <span class="rdx-ff-stage-desc">Income from Hotel, Restaurant &amp; Bar</span>
+          </div>
+          <div class="rdx-ff-stage rdx-ff-stage--costs" role="listitem">
+            <span class="rdx-ff-stage-kicker">2. COSTS</span>
+            <span class="rdx-ff-stage-desc">Purchase &amp; Operating Expenses</span>
+          </div>
+          <div class="rdx-ff-stage rdx-ff-stage--output" role="listitem">
+            <span class="rdx-ff-stage-kicker">3. FINAL OUTPUT</span>
+            <span class="rdx-ff-stage-desc">Profit &amp; Tax</span>
+          </div>
+        </div>
+        <div class="rdx-ff-chart" id="rdx-chart-financial-flow"></div>
+        <div class="rdx-ff-footer">
+          <div class="rdx-ff-footer-main">
+            <p class="rdx-ff-equation-label">Total Revenue = Purchase + Expenses + Profit</p>
+            {% if dashboard.financial_flow and dashboard.financial_flow.equation %}
+            <p class="rdx-ff-equation-values">{{ dashboard.financial_flow.equation }}</p>
+            {% endif %}
+          </div>
+          <p class="rdx-ff-pct-note">Percentages are based on total revenue.</p>
         </div>
       </article>
     </div>

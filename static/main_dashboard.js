@@ -47,7 +47,8 @@
       return { from: new Date(today.getFullYear(), qMonth, 1), to: today };
     }
     if (key === 'ytd') return { from: new Date(today.getFullYear(), 0, 1), to: today };
-    return { from: addDays(today, -29), to: today };
+    // Default: month start → today (MTD)
+    return { from: new Date(today.getFullYear(), today.getMonth(), 1), to: today };
   }
 
   function submitFilterForm(form) {
@@ -75,7 +76,7 @@
     var dateFrom = $('md-date-from', page) || form.querySelector('[name="date_from"]');
     var dateTo = $('md-date-to', page) || form.querySelector('[name="date_to"]');
     var todayIso = form.getAttribute('data-today') || '';
-    var period = pill.getAttribute('data-md-period') || '30d';
+    var period = pill.getAttribute('data-md-period') || 'mtd';
     var range = periodRange(period, todayIso);
     if (periodInput) periodInput.value = period;
     if (dateFrom) dateFrom.value = toISODate(range.from);

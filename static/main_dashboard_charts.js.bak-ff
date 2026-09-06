@@ -1384,66 +1384,23 @@
     return Math.round((Number(amount || 0) / revenue) * 1000) / 10;
   }
 
-  /** Keep Other* as the final leaf even when remainder is 0 (layout slot). */
-  function ffEnsureOtherLast(cats, otherKey, otherName, color) {
-    var list = [];
-    var other = null;
-    (cats || []).forEach(function (cat) {
-      if (!cat) return;
-      if (cat.key === otherKey || cat.name === otherName) {
-        other = cat;
-        return;
-      }
-      list.push(cat);
-    });
-    if (!other) {
-      other = {
-        key: otherKey,
-        name: otherName,
-        amount: 0,
-        amount_compact: '₹0',
-        pct_of_revenue: 0,
-        color: color,
-      };
-    }
-    list.push(other);
-    return list;
-  }
-
   function ffNodeHtml(opts) {
-    var inline = !!opts.inline;
-    var cls = 'rdx-ff-node' + (opts.extraClass ? ' ' + opts.extraClass : '') + (inline ? ' rdx-ff-node--inline' : '');
+    var cls = 'rdx-ff-node' + (opts.extraClass ? ' ' + opts.extraClass : '');
     var stripe = opts.stripe
       ? '<span class="rdx-ff-node-stripe" style="background:' + ffEsc(opts.stripe) + '"></span>'
       : '';
     var pctHtml = opts.showPct === false
       ? ''
       : '<span class="rdx-ff-node-pct">(' + ffEsc(opts.pct) + '%)</span>';
-    var body;
-    if (inline) {
-      // Single readable row: Name - ₹ Amount (Pct) — uses full card width.
-      body =
-        '<div class="rdx-ff-node-body rdx-ff-node-body--inline">' +
-          '<span class="rdx-ff-node-name">' + ffEsc(opts.name) + '</span>' +
-          '<span class="rdx-ff-node-sep" aria-hidden="true">-</span>' +
-          '<span class="rdx-ff-node-amt">' + ffEsc(opts.compact) + '</span>' +
-          (pctHtml ? '<span class="rdx-ff-node-inline-gap" aria-hidden="true"></span>' + pctHtml : '') +
-        '</div>';
-    } else {
-      body =
+    return (
+      '<div class="' + cls + '" data-ff-id="' + ffEsc(opts.id) + '"' +
+      (opts.tone ? ' data-ff-tone="' + ffEsc(opts.tone) + '"' : '') + '>' +
+        stripe +
         '<div class="rdx-ff-node-body">' +
           '<span class="rdx-ff-node-name">' + ffEsc(opts.name) + '</span>' +
           '<span class="rdx-ff-node-amt">' + ffEsc(opts.compact) + '</span>' +
           pctHtml +
-        '</div>';
-    }
-    return (
-      '<div class="' + cls + '" data-ff-id="' + ffEsc(opts.id) + '"' +
-      (opts.tone ? ' data-ff-tone="' + ffEsc(opts.tone) + '"' : '') +
-      (opts.col != null ? ' data-ff-col="' + ffEsc(opts.col) + '"' : '') +
-      (opts.group ? ' data-ff-group="' + ffEsc(opts.group) + '"' : '') + '>' +
-        stripe +
-        body +
+        '</div>' +
       '</div>'
     );
   }
@@ -1452,18 +1409,8 @@
     flow = flow || {};
     var revenue = Number(flow.total_revenue || 0);
     var sources = flow.sources || [];
-    var purchaseCats = ffEnsureOtherLast(
-      flow.purchase_categories || [],
-      'other_purchase',
-      'Other Purchase',
-      '#93C5FD'
-    );
-    var expenseCats = ffEnsureOtherLast(
-      flow.expense_categories || [],
-      'other_expenses',
-      'Other Expenses',
-      '#FDBA74'
-    );
+    var purchaseCats = flow.purchase_categories || [];
+    var expenseCats = flow.expense_categories || [];
     var purchaseTotal = Number(flow.purchase_total || 0);
     var expenseTotal = Number(flow.expense_total || 0);
     var pbt = Number(flow.profit_before_tax || 0);
@@ -1473,8 +1420,10 @@
     var html = [];
     html.push('<div class="rdx-ff-layout">');
     html.push('<svg class="rdx-ff-links" aria-hidden="true"></svg>');
-    html.push('<div class="rdx-ff-stage-canvas" data-ff-canvas="1">');
+    html.push('<div class="rdx-ff-cols">');
 
+    // Column 0 — revenue sources
+    html.push('<div class="rdx-ff-col rdx-ff-col--sources" data-ff-col="0">');
     if (!sources.length) {
       html.push(ffNodeHtml({
         id: 'empty-src',
@@ -1482,8 +1431,6 @@
         compact: '₹0',
         pct: 0,
         showPct: false,
-        col: 0,
-        group: 'source',
         extraClass: 'rdx-ff-node--muted',
       }));
     } else {
@@ -1498,90 +1445,96 @@
           pct: src.pct_of_revenue != null ? src.pct_of_revenue : ffPct(src.amount, revenue),
           stripe: src.color || '#93C5FD',
           tone: tone,
-          col: 0,
-          group: 'source',
           extraClass: 'rdx-ff-node--source rdx-ff-node--' + tone,
         }));
       });
     }
+    html.push('</div>');
 
+    // Column 1 — Total Revenue
+    html.push('<div class="rdx-ff-col rdx-ff-col--total" data-ff-col="1">');
     html.push(ffNodeHtml({
       id: 'total',
       name: 'Total Revenue',
       compact: flow.total_revenue_compact || fmt(revenue),
       pct: 100,
-      col: 1,
-      group: 'total',
       extraClass: 'rdx-ff-node--total',
     }));
+    html.push('</div>');
 
-    if (purchaseTotal > 0 || purchaseCats.length) {
+    // Columns 2+3 — shared rows so Purchase / Expenses / PBT stay aligned
+    html.push('<div class="rdx-ff-col rdx-ff-col--right" data-ff-col="right">');
+
+    // Purchase row (always above expenses)
+    html.push('<div class="rdx-ff-row rdx-ff-row--purchase" data-ff-group="purchase">');
+    html.push('<div class="rdx-ff-hub">');
+    if (purchaseTotal > 0) {
       html.push(ffNodeHtml({
         id: 'purchase',
         name: 'Purchase',
         compact: flow.purchase_total_compact || fmt(purchaseTotal),
         pct: ffPct(purchaseTotal, revenue),
-        col: 2,
-        group: 'purchase',
         extraClass: 'rdx-ff-node--purchase',
       }));
     }
-    if (expenseTotal > 0 || expenseCats.length) {
-      html.push(ffNodeHtml({
-        id: 'expense',
-        name: 'Expenses',
-        compact: flow.expense_total_compact || fmt(expenseTotal),
-        pct: ffPct(expenseTotal, revenue),
-        col: 2,
-        group: 'expense',
-        extraClass: 'rdx-ff-node--expense',
-      }));
-    }
-    if (revenue > 0 || pbt !== 0) {
-      html.push(ffNodeHtml({
-        id: 'pbt',
-        name: 'Profit (Before Tax)',
-        compact: flow.profit_before_tax_compact || fmt(pbt),
-        pct: ffPct(Math.abs(pbt), revenue),
-        col: 2,
-        group: 'output',
-        extraClass: 'rdx-ff-node--pbt' + (pbt < 0 ? ' rdx-ff-node--loss' : ''),
-      }));
-    }
-
+    html.push('</div>');
+    html.push('<div class="rdx-ff-leaves">');
     purchaseCats.forEach(function (cat, idx) {
       html.push(ffNodeHtml({
         id: 'p-' + idx + '-' + cat.key,
         name: cat.name,
         compact: cat.amount_compact || fmt(cat.amount),
         pct: cat.pct_of_revenue != null ? cat.pct_of_revenue : ffPct(cat.amount, revenue),
-        col: 3,
-        group: 'purchase',
-        inline: true,
         extraClass: 'rdx-ff-node--purchase-leaf',
       }));
     });
+    html.push('</div></div>');
+
+    // Expenses row (below purchase)
+    html.push('<div class="rdx-ff-row rdx-ff-row--expense" data-ff-group="expense">');
+    html.push('<div class="rdx-ff-hub">');
+    if (expenseTotal > 0) {
+      html.push(ffNodeHtml({
+        id: 'expense',
+        name: 'Expenses',
+        compact: flow.expense_total_compact || fmt(expenseTotal),
+        pct: ffPct(expenseTotal, revenue),
+        extraClass: 'rdx-ff-node--expense',
+      }));
+    }
+    html.push('</div>');
+    html.push('<div class="rdx-ff-leaves">');
     expenseCats.forEach(function (cat, idx) {
       html.push(ffNodeHtml({
         id: 'e-' + idx + '-' + cat.key,
         name: cat.name,
         compact: cat.amount_compact || fmt(cat.amount),
         pct: cat.pct_of_revenue != null ? cat.pct_of_revenue : ffPct(cat.amount, revenue),
-        col: 3,
-        group: 'expense',
-        inline: true,
         extraClass: 'rdx-ff-node--expense-leaf',
       }));
     });
+    html.push('</div></div>');
+
+    // Final output row (PBT → Tax + Net Profit) at bottom
+    html.push('<div class="rdx-ff-row rdx-ff-row--output" data-ff-group="output">');
+    html.push('<div class="rdx-ff-hub">');
+    if (revenue > 0 || pbt !== 0) {
+      html.push(ffNodeHtml({
+        id: 'pbt',
+        name: 'Profit (Before Tax)',
+        compact: flow.profit_before_tax_compact || fmt(pbt),
+        pct: ffPct(Math.abs(pbt), revenue),
+        extraClass: 'rdx-ff-node--pbt' + (pbt < 0 ? ' rdx-ff-node--loss' : ''),
+      }));
+    }
+    html.push('</div>');
+    html.push('<div class="rdx-ff-leaves rdx-ff-leaves--output">');
     if (pbt > 0 && tax > 0) {
       html.push(ffNodeHtml({
         id: 'tax',
         name: 'Tax',
         compact: flow.tax_compact || fmt(tax),
         pct: ffPct(tax, revenue),
-        col: 3,
-        group: 'output',
-        inline: true,
         extraClass: 'rdx-ff-node--tax',
       }));
     }
@@ -1591,15 +1544,14 @@
         name: 'Net Profit',
         compact: flow.net_profit_compact || fmt(net),
         pct: ffPct(Math.abs(net), revenue),
-        col: 3,
-        group: 'output',
-        inline: true,
         extraClass: 'rdx-ff-node--net' + (net < 0 ? ' rdx-ff-node--loss' : ''),
       }));
     }
+    html.push('</div></div>');
 
-    html.push('</div>');
-    html.push('</div>');
+    html.push('</div>'); // right col
+    html.push('</div>'); // cols
+    html.push('</div>'); // layout
     return html.join('');
   }
 
@@ -1620,7 +1572,7 @@
 
   function ffRibbonPath(x0, y0, x1, y1, thickness) {
     var t = Math.max(2, thickness);
-    var dx = Math.max(28, (x1 - x0) * 0.48);
+    var dx = Math.max(24, (x1 - x0) * 0.45);
     var y0a = y0 - t / 2;
     var y0b = y0 + t / 2;
     var y1a = y1 - t / 2;
@@ -1633,278 +1585,6 @@
       ' Z'
     );
   }
-
-        /**
-   * FIXED COMPOSITION — absolute card coordinates only.
-   * FLOW POSITION ≠ LABEL POSITION: SVG ribbons curve freely; destination
-   * cards/labels stay on a fixed 4-column grid. No ECharts/d3 Sankey layout.
-   *
-   * COL1 sources → COL2 Total Revenue → COL3 hubs (Purchase/Expenses/PBT)
-   * → COL4 fixed ranked lists (purchase → expense → Tax/Net Profit)
-   * Hubs sit next to their leaf groups (reference composition) while remaining
-   * a tight vertical stack — never library auto-placement.
-   */
-  function layoutFinancialFlowNodes(root, flow) {
-    var layout = root.querySelector('.rdx-ff-layout');
-    var canvas = root.querySelector('[data-ff-canvas]') || layout;
-    if (!layout || !canvas) return;
-
-    var W = Math.max(root.clientWidth || layout.clientWidth || 980, 880);
-    var padX = 12;
-    var padY = 14;
-    var padRight = 14;
-
-    var col0W = 148;
-    var col1W = 168;
-    var col2W = 168;
-    var col3W = 320;
-
-    var gap01 = 18;
-    var gap12 = 48;
-    var gap23 = 52;
-    var used = padX + padRight + col0W + col1W + col2W + col3W + gap01 + gap12 + gap23;
-    var leftover = W - used;
-    if (leftover > 0) {
-      gap12 += Math.round(leftover * 0.4);
-      gap23 += Math.round(leftover * 0.45);
-      gap01 += Math.round(leftover * 0.1);
-    } else if (leftover < 0) {
-      var shrink = Math.min(col3W - 280, -leftover);
-      col3W -= shrink;
-      leftover += shrink;
-      if (leftover < 0) {
-        gap12 = Math.max(34, gap12 + Math.round(leftover * 0.5));
-        gap23 = Math.max(34, gap23 + Math.round(leftover * 0.5));
-      }
-    }
-
-    var x0 = padX;
-    var x1 = x0 + col0W + gap01;
-    var x2 = x1 + col1W + gap12;
-    var x3 = x2 + col2W + gap23;
-
-    var srcH = 58;
-    var srcGap = 10;
-    var totalH = 96;
-    var hubH = 64;
-    var leafH = 40;
-    var leafGap = 7;
-    var groupGap = 22;
-    var outGap = 18;
-    var outLeafH = 40;
-    var netH = 62;
-
-    var purchaseCats = ffEnsureOtherLast(
-      flow.purchase_categories || [],
-      'other_purchase',
-      'Other Purchase',
-      '#93C5FD'
-    );
-    var expenseCats = ffEnsureOtherLast(
-      flow.expense_categories || [],
-      'other_expenses',
-      'Other Expenses',
-      '#FDBA74'
-    );
-    var pbt = Number(flow.profit_before_tax || 0);
-    var tax = Number(flow.tax || 0);
-    var net = Number(flow.net_profit || 0);
-    var showTax = pbt > 0 && tax > 0;
-    var showNet = pbt > 0 || net !== 0;
-
-    function setBox(el, x, y, w, h) {
-      if (!el) return;
-      el.style.position = 'absolute';
-      el.style.left = Math.round(x) + 'px';
-      el.style.top = Math.round(y) + 'px';
-      el.style.width = Math.round(w) + 'px';
-      if (h) {
-        el.style.height = Math.round(h) + 'px';
-        el.style.minHeight = Math.round(h) + 'px';
-      }
-      el.style.margin = '0';
-      el.style.right = 'auto';
-      el.style.bottom = 'auto';
-      el.style.maxWidth = 'none';
-    }
-
-    function node(id) {
-      return root.querySelector('[data-ff-id="' + id + '"]');
-    }
-
-    function mid(a, b) { return (a + b) / 2; }
-
-    var y = padY;
-    var purchaseTop = y;
-    purchaseCats.forEach(function (cat, idx) {
-      setBox(node('p-' + idx + '-' + cat.key), x3, y, col3W, leafH);
-      y += leafH + leafGap;
-    });
-    var purchaseBottom = purchaseCats.length ? (y - leafGap) : purchaseTop;
-    if (purchaseCats.length) y += groupGap - leafGap;
-    else y += 4;
-
-    var expenseTop = y;
-    expenseCats.forEach(function (cat, idx) {
-      setBox(node('e-' + idx + '-' + cat.key), x3, y, col3W, leafH);
-      y += leafH + leafGap;
-    });
-    var expenseBottom = expenseCats.length ? (y - leafGap) : expenseTop;
-    if (expenseCats.length) y += outGap - leafGap;
-    else y += 4;
-
-    var taxTop = y;
-    if (showTax) {
-      setBox(node('tax'), x3, y, col3W, outLeafH);
-      y += outLeafH + leafGap;
-    }
-    var netTop = y;
-    if (showNet) {
-      setBox(node('net'), x3, y, col3W, netH);
-      y += netH;
-    }
-    var outBottom = y;
-    var contentBottom = y + padY;
-
-    var purchaseEl = node('purchase');
-    var expenseEl = node('expense');
-    var pbtEl = node('pbt');
-
-    // Hub heights scale slightly with % of revenue (min readable size).
-    var hubMinH = 92; // always fits Name + Amount + (Pct) centered, no clipping
-    var hubMaxExtra = 48; // mild stretch by % above the readable minimum
-    var revForHub = Math.max(Number(flow.total_revenue || 0), 1);
-    function hubHeightFor(amount) {
-      var pct = Math.max(0, Number(amount || 0)) / revForHub; // 0..1+
-      pct = Math.min(pct, 1);
-      return Math.round(hubMinH + hubMaxExtra * pct);
-    }
-    var purchaseHubH = purchaseEl ? hubHeightFor(flow.purchase_total) : 0;
-    var expenseHubH = expenseEl ? hubHeightFor(flow.expense_total) : 0;
-    var pbtHubH = pbtEl ? hubHeightFor(Math.abs(Number(flow.profit_before_tax || 0))) : 0;
-
-    var purchaseHubY = purchaseCats.length
-      ? mid(purchaseTop, purchaseBottom) - purchaseHubH / 2
-      : padY;
-    var expenseHubY = expenseCats.length
-      ? mid(expenseTop, expenseBottom) - expenseHubH / 2
-      : purchaseHubY + purchaseHubH + 14;
-    var pbtHubY = (showTax || showNet)
-      ? mid(taxTop, outBottom) - pbtHubH / 2
-      : expenseHubY + expenseHubH + 14;
-
-    var minHubGap = 10;
-    if (expenseEl && expenseHubY < purchaseHubY + purchaseHubH + minHubGap) {
-      expenseHubY = purchaseHubY + purchaseHubH + minHubGap;
-    }
-    if (pbtEl && pbtHubY < expenseHubY + (expenseEl ? expenseHubH : 0) + minHubGap) {
-      pbtHubY = expenseHubY + (expenseEl ? expenseHubH : 0) + minHubGap;
-    }
-
-    if (purchaseEl) setBox(purchaseEl, x2, purchaseHubY, col2W, purchaseHubH);
-    if (expenseEl) setBox(expenseEl, x2, expenseHubY, col2W, expenseHubH);
-    if (pbtEl) setBox(pbtEl, x2, pbtHubY, col2W, pbtHubH);
-
-    var hubTops = [];
-    var hubBottoms = [];
-    if (purchaseEl) { hubTops.push(purchaseHubY); hubBottoms.push(purchaseHubY + purchaseHubH); }
-    if (expenseEl) { hubTops.push(expenseHubY); hubBottoms.push(expenseHubY + expenseHubH); }
-    if (pbtEl) { hubTops.push(pbtHubY); hubBottoms.push(pbtHubY + pbtHubH); }
-    var hubClusterTop = hubTops.length ? Math.min.apply(null, hubTops) : padY;
-    var hubClusterBottom = hubBottoms.length ? Math.max.apply(null, hubBottoms) : padY + hubH;
-    var hubClusterMid = mid(hubClusterTop, hubClusterBottom);
-
-    var totalTop = hubClusterMid - totalH / 2;
-    totalTop = Math.max(padY, Math.min(totalTop, Math.max(padY, contentBottom - padY - totalH)));
-    setBox(node('total'), x1, totalTop, col1W, totalH);
-    var totalMid = totalTop + totalH / 2;
-
-    var sources = flow.sources || [];
-    var srcCount = sources.length || (node('empty-src') ? 1 : 0);
-    // Bigger source column; each card height ∝ contribution share of total revenue.
-    var srcMinH = 72;
-    var srcGapUse = 12;
-    var srcBudget = Math.max(
-      340,
-      Math.round((hubClusterBottom - hubClusterTop) * 1.35),
-      Math.round((contentBottom - 2 * padY) * 0.62)
-    );
-    var srcHeights = [];
-    var clusterH;
-    if (!sources.length) {
-      srcHeights = [Math.max(srcMinH, Math.round(srcBudget * 0.35))];
-      clusterH = srcHeights[0];
-    } else {
-      var weights = sources.map(function (src) {
-        var w = Number(src.amount || 0);
-        if (!(w > 0) && src.pct_of_revenue != null) w = Number(src.pct_of_revenue) || 0;
-        return w > 0 ? w : 0;
-      });
-      var wSum = weights.reduce(function (a, b) { return a + b; }, 0);
-      if (!(wSum > 0)) {
-        weights = sources.map(function () { return 1; });
-        wSum = sources.length;
-      }
-      var gapsTotal = Math.max(0, sources.length - 1) * srcGapUse;
-      var avail = Math.max(sources.length * srcMinH, srcBudget - gapsTotal);
-      srcHeights = weights.map(function (w) {
-        return Math.max(srcMinH, Math.round(avail * (w / wSum)));
-      });
-      var hSum = srcHeights.reduce(function (a, b) { return a + b; }, 0);
-      if (hSum > avail && hSum > 0) {
-        var scale = avail / hSum;
-        srcHeights = srcHeights.map(function (h) {
-          return Math.max(srcMinH, Math.round(h * scale));
-        });
-        hSum = srcHeights.reduce(function (a, b) { return a + b; }, 0);
-        // Fix rounding drift on the largest card.
-        var drift = avail - hSum;
-        if (drift !== 0) {
-          var maxIdx = 0;
-          for (var si = 1; si < srcHeights.length; si++) {
-            if (srcHeights[si] > srcHeights[maxIdx]) maxIdx = si;
-          }
-          srcHeights[maxIdx] = Math.max(srcMinH, srcHeights[maxIdx] + drift);
-        }
-      }
-      clusterH = srcHeights.reduce(function (a, b) { return a + b; }, 0) + gapsTotal;
-    }
-    var srcTop = totalMid - clusterH / 2;
-    srcTop = Math.max(padY, srcTop);
-    if (srcTop + clusterH > contentBottom - padY) {
-      srcTop = Math.max(padY, contentBottom - padY - clusterH);
-    }
-    if (!sources.length) {
-      setBox(node('empty-src'), x0, srcTop, col0W, srcHeights[0]);
-    } else {
-      var srcY = srcTop;
-      sources.forEach(function (src, idx) {
-        var h = srcHeights[idx] || srcMinH;
-        setBox(node('src-' + src.key), x0, srcY, col0W, h);
-        srcY += h + srcGapUse;
-      });
-    }
-
-    var neededH = Math.max(
-      contentBottom,
-      totalTop + totalH + padY,
-      srcTop + clusterH + padY,
-      hubClusterBottom + padY,
-      pbtHubY + hubH + padY
-    );
-
-    layout.style.height = Math.round(neededH) + 'px';
-    layout.style.minHeight = Math.round(neededH) + 'px';
-    canvas.style.height = Math.round(neededH) + 'px';
-    canvas.style.position = 'relative';
-    canvas.style.width = '100%';
-    root.style.minHeight = Math.round(neededH + 8) + 'px';
-    root.style.height = Math.round(neededH + 8) + 'px';
-    root.setAttribute('data-ff-layout', 'fixed-composition-v3');
-  }
-
-
-
 
   function drawFinancialFlowLinks(root, flow) {
     var svg = root.querySelector('.rdx-ff-links');
@@ -1923,147 +1603,52 @@
     }
 
     var revenue = Math.max(Number(flow.total_revenue || 0), 1);
-    var maxStroke = Math.min(52, Math.max(26, h * 0.07));
+    var maxStroke = Math.min(56, Math.max(28, h * 0.08));
 
     function thickness(amount) {
-      return Math.max(2.5, (Number(amount || 0) / revenue) * maxStroke);
+      return Math.max(3, (Number(amount || 0) / revenue) * maxStroke);
     }
 
-    function appendPath(x0, y0, x1, y1, amount, color) {
+    function link(fromId, toId, amount, color) {
+      var a = node(fromId);
+      var b = node(toId);
+      if (!a || !b) return;
+      var A = ffNodeCenter(a, rootRect);
+      var B = ffNodeCenter(b, rootRect);
       var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', ffRibbonPath(x0, y0, x1, y1, thickness(amount)));
+      path.setAttribute('d', ffRibbonPath(A.right, A.midY, B.left, B.midY, thickness(amount)));
       path.setAttribute('fill', color);
       path.setAttribute('fill-opacity', '0.38');
       path.setAttribute('stroke', 'none');
       svg.appendChild(path);
     }
 
-    function edgePorts(box, amounts, side) {
-      var ths = amounts.map(thickness);
-      var totalT = ths.reduce(function (a, b) { return a + b; }, 0);
-      var gap = 3;
-      var block = totalT + gap * Math.max(0, amounts.length - 1);
-      var start = box.midY - block / 2;
-      var inset = 8;
-      if (start < box.top + inset) start = box.top + inset;
-      if (start + block > box.bottom - inset) {
-        start = Math.max(box.top + inset, box.bottom - inset - block);
-      }
-      var ports = [];
-      var cursor = start;
-      for (var i = 0; i < ths.length; i++) {
-        ports.push(cursor + ths[i] / 2);
-        cursor += ths[i] + gap;
-      }
-      return ports.map(function (py) {
-        return { x: side === 'left' ? box.left : box.right, y: py };
+    (flow.sources || []).forEach(function (src) {
+      link('src-' + src.key, 'total', src.amount, src.color || '#93C5FD');
+    });
+    if (Number(flow.purchase_total || 0) > 0) {
+      link('total', 'purchase', flow.purchase_total, '#93C5FD');
+      (flow.purchase_categories || []).forEach(function (cat, idx) {
+        link('purchase', 'p-' + idx + '-' + cat.key, cat.amount, '#93C5FD');
       });
     }
-
-    function boxOf(id) {
-      var el = node(id);
-      return el ? ffNodeCenter(el, rootRect) : null;
-    }
-
-    var purchaseCats = ffEnsureOtherLast(
-      flow.purchase_categories || [],
-      'other_purchase',
-      'Other Purchase',
-      '#93C5FD'
-    );
-    var expenseCats = ffEnsureOtherLast(
-      flow.expense_categories || [],
-      'other_expenses',
-      'Other Expenses',
-      '#FDBA74'
-    );
-
-    var totalBox = boxOf('total');
-    if (totalBox && (flow.sources || []).length) {
-      var srcAmounts = (flow.sources || []).map(function (s) { return s.amount; });
-      var inPorts = edgePorts(totalBox, srcAmounts, 'left');
-      (flow.sources || []).forEach(function (src, idx) {
-        var sb = boxOf('src-' + src.key);
-        if (!sb || !inPorts[idx]) return;
-        appendPath(
-          sb.right, sb.midY,
-          inPorts[idx].x, inPorts[idx].y,
-          src.amount,
-          src.color || '#93C5FD'
-        );
+    if (Number(flow.expense_total || 0) > 0) {
+      link('total', 'expense', flow.expense_total, '#FDBA74');
+      (flow.expense_categories || []).forEach(function (cat, idx) {
+        link('expense', 'e-' + idx + '-' + cat.key, cat.amount, '#FDBA74');
       });
     }
-
-    var outSpecs = [];
-    if (node('purchase')) {
-      outSpecs.push({ id: 'purchase', amount: Math.max(Number(flow.purchase_total || 0), 0), color: '#93C5FD' });
-    }
-    if (node('expense')) {
-      outSpecs.push({ id: 'expense', amount: Math.max(Number(flow.expense_total || 0), 0), color: '#FDBA74' });
-    }
-    var pbtAmt = Number(flow.profit_before_tax || 0);
-    if (pbtAmt !== 0 && node('pbt')) {
-      outSpecs.push({
-        id: 'pbt',
-        amount: Math.abs(pbtAmt),
-        color: pbtAmt < 0 ? '#FCA5A5' : '#6EE7B7',
-      });
-    }
-    if (totalBox && outSpecs.length) {
-      var outPorts = edgePorts(
-        totalBox,
-        outSpecs.map(function (s) { return s.amount; }),
-        'right'
-      );
-      outSpecs.forEach(function (spec, idx) {
-        var hb = boxOf(spec.id);
-        if (!hb || !outPorts[idx]) return;
-        appendPath(outPorts[idx].x, outPorts[idx].y, hb.left, hb.midY, spec.amount, spec.color);
-      });
-    }
-
-    function hubToLeaves(hubId, cats, idPrefix, color) {
-      var hub = boxOf(hubId);
-      if (!hub || !cats.length) return;
-      var amts = cats.map(function (c) { return Math.max(Number(c.amount || 0), revenue * 0.004); });
-      var ports = edgePorts(hub, amts, 'right');
-      cats.forEach(function (cat, idx) {
-        var lb = boxOf(idPrefix + idx + '-' + cat.key);
-        if (!lb || !ports[idx]) return;
-        var amt = Number(cat.amount || 0);
-        if (amt <= 0) return;
-        appendPath(ports[idx].x, ports[idx].y, lb.left, lb.midY, amt, color);
-      });
-    }
-
-    if (node('purchase')) {
-      hubToLeaves('purchase', purchaseCats, 'p-', '#93C5FD');
-    }
-    if (node('expense')) {
-      hubToLeaves('expense', expenseCats, 'e-', '#FDBA74');
-    }
-
-    if (pbtAmt > 0 && node('pbt')) {
-      var pbtBox = boxOf('pbt');
-      var finals = [];
-      if (Number(flow.tax || 0) > 0 && node('tax')) {
-        finals.push({ id: 'tax', amount: flow.tax, color: '#CBD5E1' });
+    var pbt = Number(flow.profit_before_tax || 0);
+    if (pbt > 0) {
+      link('total', 'pbt', pbt, '#6EE7B7');
+      if (Number(flow.tax || 0) > 0) {
+        link('pbt', 'tax', flow.tax, '#CBD5E1');
       }
-      if (Number(flow.net_profit || 0) > 0 && node('net')) {
-        finals.push({ id: 'net', amount: flow.net_profit, color: '#34D399' });
+      if (Number(flow.net_profit || 0) > 0) {
+        link('pbt', 'net', flow.net_profit, '#34D399');
       }
-      if (pbtBox && finals.length) {
-        var fPorts = edgePorts(
-          pbtBox,
-          finals.map(function (f) { return f.amount; }),
-          'right'
-        );
-        finals.forEach(function (f, idx) {
-          var fb = boxOf(f.id);
-          if (!fb || !fPorts[idx]) return;
-          appendPath(fPorts[idx].x, fPorts[idx].y, fb.left, fb.midY, f.amount, f.color);
-        });
-      }
+    } else if (pbt < 0) {
+      link('total', 'pbt', Math.abs(pbt), '#FCA5A5');
     }
   }
 
@@ -2075,6 +1660,7 @@
     var el = document.getElementById('rdx-chart-financial-flow');
     if (!el) return;
 
+    // Dispose any leftover ECharts instance on this container.
     if (typeof echarts !== 'undefined') {
       var existing = echarts.getInstanceByDom(el);
       if (existing) {
@@ -2083,24 +1669,12 @@
       }
     }
 
-    var purchaseCats = ffEnsureOtherLast(
-      flow.purchase_categories || [],
-      'other_purchase',
-      'Other Purchase',
-      '#93C5FD'
-    );
-    var expenseCats = ffEnsureOtherLast(
-      flow.expense_categories || [],
-      'other_expenses',
-      'Other Expenses',
-      '#FDBA74'
-    );
     var leafCount =
-      purchaseCats.length +
-      expenseCats.length +
+      (flow.purchase_categories || []).length +
+      (flow.expense_categories || []).length +
       ((Number(flow.tax || 0) > 0) ? 1 : 0) +
       ((Number(flow.net_profit || 0) !== 0 || Number(flow.profit_before_tax || 0) > 0) ? 1 : 0);
-    var chartH = Math.max(560, 140 + leafCount * 58 + 36);
+    var chartH = Math.max(560, 220 + leafCount * 64 + (flow.sources || []).length * 72);
     el.style.minHeight = chartH + 'px';
     el.innerHTML = buildFinancialFlowDom(flow);
 
@@ -2108,7 +1682,6 @@
     if (eq && flow.equation) eq.textContent = flow.equation;
 
     function paint() {
-      layoutFinancialFlowNodes(el, flow);
       drawFinancialFlowLinks(el, flow);
     }
     paint();

@@ -1,0 +1,181 @@
+/* Fixed-composition financial flow — v3 overrides */
+
+.rdx-ff-chart {
+  position: relative;
+  width: 100%;
+  min-height: 560px;
+  height: auto;
+  box-sizing: border-box;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fbfcfe 0%, #ffffff 55%);
+  border: 1px solid #f1f5f9;
+  overflow: hidden; /* no scroll; all cards stay inside */
+  padding: 10px 8px 12px;
+}
+
+.rdx-ff-layout {
+  position: relative;
+  width: 100%;
+  min-height: inherit;
+  overflow: visible;
+}
+
+.rdx-ff-links {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  overflow: visible;
+}
+
+.rdx-ff-stage-canvas {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  min-height: 520px;
+}
+
+.rdx-ff-node {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: stretch;
+  box-sizing: border-box;
+  min-height: 50px;
+  border-radius: 12px;
+  border: 1px solid #e8eef5;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+}
+
+.rdx-ff-node-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 6px 10px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.rdx-ff-node-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.rdx-ff-node-amt {
+  font-size: 13px;
+  font-weight: 800;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.rdx-ff-node-pct {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+/* Ranked-list leaves: keep name+amount+pct fully readable */
+.rdx-ff-node--purchase-leaf,
+.rdx-ff-node--expense-leaf,
+.rdx-ff-node--tax {
+  min-height: 50px;
+}
+
+.rdx-ff-node--purchase-leaf {
+  background: #f8fbff;
+  border-color: #bfdbfe;
+}
+
+.rdx-ff-node--expense-leaf {
+  background: #fffaf5;
+  border-color: #fed7aa;
+}
+
+.rdx-ff-node--purchase-leaf .rdx-ff-node-name,
+.rdx-ff-node--expense-leaf .rdx-ff-node-name,
+.rdx-ff-node--tax .rdx-ff-node-name {
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 1;
+  visibility: visible;
+}
+
+.rdx-ff-node--purchase-leaf .rdx-ff-node-amt {
+  color: #1d4ed8;
+  font-size: 13px;
+}
+
+.rdx-ff-node--expense-leaf .rdx-ff-node-amt {
+  color: #c2410c;
+  font-size: 13px;
+}
+
+.rdx-ff-node--total {
+  min-height: 88px;
+  background: #ffffff;
+  border: 2px solid #93c5fd;
+  box-shadow: 0 8px 22px rgba(37, 99, 235, 0.1);
+}
+
+.rdx-ff-node--total .rdx-ff-node-amt {
+  font-size: 18px;
+  font-weight: 800;
+  color: #1d4ed8;
+}
+
+.rdx-ff-node--purchase {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  min-height: 60px;
+}
+
+.rdx-ff-node--expense {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  min-height: 60px;
+}
+
+.rdx-ff-node--pbt {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  min-height: 60px;
+}
+
+.rdx-ff-node--net {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.12);
+  min-height: 60px;
+}
+
+@media (max-width: 900px) {
+  .rdx-ff-chart {
+    min-height: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .rdx-ff-stage-canvas {
+    min-width: 900px;
+  }
+}

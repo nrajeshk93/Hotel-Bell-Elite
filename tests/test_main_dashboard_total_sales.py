@@ -268,6 +268,13 @@ class MainDashboardTotalSalesTests(unittest.TestCase):
             [OUTLET_RESTAURANT, OUTLET_BAR],
         )
 
+    def test_default_period_is_month_to_date(self):
+        filters = _resolve_main_dashboard_filters({})
+        self.assertEqual(filters["selected_period"], "mtd")
+        today = date.today()
+        self.assertEqual(filters["date_from"], today.replace(day=1).isoformat())
+        self.assertEqual(filters["date_to"], today.isoformat())
+
     def test_difference_zero_when_modules_balanced_despite_stale_raw_cash(self):
         """Raw sales_updates can have cash=0 while actual_cash is set; modules overlay
         invoice cash so Difference is 0 — dashboard must match that, not −13520."""

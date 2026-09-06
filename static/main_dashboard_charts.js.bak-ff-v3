@@ -1411,39 +1411,24 @@
   }
 
   function ffNodeHtml(opts) {
-    var inline = !!opts.inline;
-    var cls = 'rdx-ff-node' + (opts.extraClass ? ' ' + opts.extraClass : '') + (inline ? ' rdx-ff-node--inline' : '');
+    var cls = 'rdx-ff-node' + (opts.extraClass ? ' ' + opts.extraClass : '');
     var stripe = opts.stripe
       ? '<span class="rdx-ff-node-stripe" style="background:' + ffEsc(opts.stripe) + '"></span>'
       : '';
     var pctHtml = opts.showPct === false
       ? ''
       : '<span class="rdx-ff-node-pct">(' + ffEsc(opts.pct) + '%)</span>';
-    var body;
-    if (inline) {
-      // Single readable row: Name - ₹ Amount (Pct) — uses full card width.
-      body =
-        '<div class="rdx-ff-node-body rdx-ff-node-body--inline">' +
-          '<span class="rdx-ff-node-name">' + ffEsc(opts.name) + '</span>' +
-          '<span class="rdx-ff-node-sep" aria-hidden="true">-</span>' +
-          '<span class="rdx-ff-node-amt">' + ffEsc(opts.compact) + '</span>' +
-          (pctHtml ? '<span class="rdx-ff-node-inline-gap" aria-hidden="true"></span>' + pctHtml : '') +
-        '</div>';
-    } else {
-      body =
-        '<div class="rdx-ff-node-body">' +
-          '<span class="rdx-ff-node-name">' + ffEsc(opts.name) + '</span>' +
-          '<span class="rdx-ff-node-amt">' + ffEsc(opts.compact) + '</span>' +
-          pctHtml +
-        '</div>';
-    }
     return (
       '<div class="' + cls + '" data-ff-id="' + ffEsc(opts.id) + '"' +
       (opts.tone ? ' data-ff-tone="' + ffEsc(opts.tone) + '"' : '') +
       (opts.col != null ? ' data-ff-col="' + ffEsc(opts.col) + '"' : '') +
       (opts.group ? ' data-ff-group="' + ffEsc(opts.group) + '"' : '') + '>' +
         stripe +
-        body +
+        '<div class="rdx-ff-node-body">' +
+          '<span class="rdx-ff-node-name">' + ffEsc(opts.name) + '</span>' +
+          '<span class="rdx-ff-node-amt">' + ffEsc(opts.compact) + '</span>' +
+          pctHtml +
+        '</div>' +
       '</div>'
     );
   }
@@ -1515,7 +1500,7 @@
       extraClass: 'rdx-ff-node--total',
     }));
 
-    if (purchaseTotal > 0 || purchaseCats.length) {
+    if (purchaseTotal > 0) {
       html.push(ffNodeHtml({
         id: 'purchase',
         name: 'Purchase',
@@ -1526,7 +1511,7 @@
         extraClass: 'rdx-ff-node--purchase',
       }));
     }
-    if (expenseTotal > 0 || expenseCats.length) {
+    if (expenseTotal > 0) {
       html.push(ffNodeHtml({
         id: 'expense',
         name: 'Expenses',
@@ -1557,7 +1542,6 @@
         pct: cat.pct_of_revenue != null ? cat.pct_of_revenue : ffPct(cat.amount, revenue),
         col: 3,
         group: 'purchase',
-        inline: true,
         extraClass: 'rdx-ff-node--purchase-leaf',
       }));
     });
@@ -1569,7 +1553,6 @@
         pct: cat.pct_of_revenue != null ? cat.pct_of_revenue : ffPct(cat.amount, revenue),
         col: 3,
         group: 'expense',
-        inline: true,
         extraClass: 'rdx-ff-node--expense-leaf',
       }));
     });
@@ -1581,7 +1564,6 @@
         pct: ffPct(tax, revenue),
         col: 3,
         group: 'output',
-        inline: true,
         extraClass: 'rdx-ff-node--tax',
       }));
     }
@@ -1593,7 +1575,6 @@
         pct: ffPct(Math.abs(net), revenue),
         col: 3,
         group: 'output',
-        inline: true,
         extraClass: 'rdx-ff-node--net' + (net < 0 ? ' rdx-ff-node--loss' : ''),
       }));
     }
@@ -1634,65 +1615,45 @@
     );
   }
 
-        /**
-   * FIXED COMPOSITION — absolute card coordinates only.
-   * FLOW POSITION ≠ LABEL POSITION: SVG ribbons curve freely; destination
-   * cards/labels stay on a fixed 4-column grid. No ECharts/d3 Sankey layout.
-   *
-   * COL1 sources → COL2 Total Revenue → COL3 hubs (Purchase/Expenses/PBT)
-   * → COL4 fixed ranked lists (purchase → expense → Tax/Net Profit)
-   * Hubs sit next to their leaf groups (reference composition) while remaining
-   * a tight vertical stack — never library auto-placement.
+  /**
+   * Deliberate 4-column Sankey geometry (no engine auto-layout):
+   * col0 sources | col1 Total Revenue | col2 hubs | col3 leaves
+   * Leaves: purchase group → expense group → Tax + Net Profit.
    */
   function layoutFinancialFlowNodes(root, flow) {
     var layout = root.querySelector('.rdx-ff-layout');
     var canvas = root.querySelector('[data-ff-canvas]') || layout;
     if (!layout || !canvas) return;
 
-    var W = Math.max(root.clientWidth || layout.clientWidth || 980, 880);
-    var padX = 12;
-    var padY = 14;
-    var padRight = 14;
-
-    var col0W = 148;
-    var col1W = 168;
-    var col2W = 168;
-    var col3W = 320;
-
-    var gap01 = 18;
-    var gap12 = 48;
-    var gap23 = 52;
-    var used = padX + padRight + col0W + col1W + col2W + col3W + gap01 + gap12 + gap23;
-    var leftover = W - used;
-    if (leftover > 0) {
-      gap12 += Math.round(leftover * 0.4);
-      gap23 += Math.round(leftover * 0.45);
-      gap01 += Math.round(leftover * 0.1);
-    } else if (leftover < 0) {
-      var shrink = Math.min(col3W - 280, -leftover);
-      col3W -= shrink;
-      leftover += shrink;
-      if (leftover < 0) {
-        gap12 = Math.max(34, gap12 + Math.round(leftover * 0.5));
-        gap23 = Math.max(34, gap23 + Math.round(leftover * 0.5));
-      }
-    }
+    var W = Math.max(root.clientWidth || layout.clientWidth || 980, 720);
+    var padX = 10;
+    var padY = 10;
+    // Fill width: tight sources→total, then hubs/leaves share remaining space.
+    var gap01 = 14;   // sources → Total Revenue (compact)
+    var gap12 = Math.round(Math.max(44, Math.min(72, W * 0.058)));
+    var gap23 = Math.round(Math.max(28, Math.min(44, W * 0.036)));
+    var padRight = 10;
+    var usable = W - padX - padRight - gap01 - gap12 - gap23;
+    // Fractions: sources | total | hubs | leaves
+    var col0W = Math.round(Math.max(136, Math.min(168, usable * 0.165)));
+    var col1W = Math.round(Math.max(158, Math.min(196, usable * 0.195)));
+    var col2W = Math.round(Math.max(158, Math.min(200, usable * 0.20)));
+    var col3W = Math.max(180, usable - col0W - col1W - col2W);
 
     var x0 = padX;
     var x1 = x0 + col0W + gap01;
     var x2 = x1 + col1W + gap12;
     var x3 = x2 + col2W + gap23;
 
-    var srcH = 58;
-    var srcGap = 10;
-    var totalH = 96;
-    var hubH = 64;
-    var leafH = 40;
-    var leafGap = 7;
-    var groupGap = 22;
-    var outGap = 18;
-    var outLeafH = 40;
-    var netH = 62;
+    var srcH = 66;
+    var totalH = 112;
+    var hubH = 70;
+    var leafH = 56;
+    var outLeafH = 62;
+    var netH = 72;
+    var leafGap = 9;
+    var groupGap = 26;
+    var srcGap = 14;
 
     var purchaseCats = ffEnsureOtherLast(
       flow.purchase_categories || [],
@@ -1718,193 +1679,139 @@
       el.style.left = Math.round(x) + 'px';
       el.style.top = Math.round(y) + 'px';
       el.style.width = Math.round(w) + 'px';
-      if (h) {
-        el.style.height = Math.round(h) + 'px';
-        el.style.minHeight = Math.round(h) + 'px';
-      }
+      if (h) el.style.height = Math.round(h) + 'px';
       el.style.margin = '0';
-      el.style.right = 'auto';
-      el.style.bottom = 'auto';
-      el.style.maxWidth = 'none';
     }
 
     function node(id) {
       return root.querySelector('[data-ff-id="' + id + '"]');
     }
 
-    function mid(a, b) { return (a + b) / 2; }
-
     var y = padY;
-    var purchaseTop = y;
+    var purchaseLeafBoxes = [];
     purchaseCats.forEach(function (cat, idx) {
-      setBox(node('p-' + idx + '-' + cat.key), x3, y, col3W, leafH);
+      var el = node('p-' + idx + '-' + cat.key);
+      setBox(el, x3, y, col3W, leafH);
+      purchaseLeafBoxes.push({ top: y, bottom: y + leafH, mid: y + leafH / 2 });
       y += leafH + leafGap;
     });
-    var purchaseBottom = purchaseCats.length ? (y - leafGap) : purchaseTop;
-    if (purchaseCats.length) y += groupGap - leafGap;
+    if (purchaseLeafBoxes.length) y += groupGap - leafGap;
     else y += 4;
 
-    var expenseTop = y;
+    var expenseLeafBoxes = [];
     expenseCats.forEach(function (cat, idx) {
-      setBox(node('e-' + idx + '-' + cat.key), x3, y, col3W, leafH);
+      var el = node('e-' + idx + '-' + cat.key);
+      setBox(el, x3, y, col3W, leafH);
+      expenseLeafBoxes.push({ top: y, bottom: y + leafH, mid: y + leafH / 2 });
       y += leafH + leafGap;
     });
-    var expenseBottom = expenseCats.length ? (y - leafGap) : expenseTop;
-    if (expenseCats.length) y += outGap - leafGap;
+    if (expenseLeafBoxes.length) y += groupGap - leafGap;
     else y += 4;
 
-    var taxTop = y;
+    var outputLeafBoxes = [];
     if (showTax) {
       setBox(node('tax'), x3, y, col3W, outLeafH);
+      outputLeafBoxes.push({ top: y, bottom: y + outLeafH, mid: y + outLeafH / 2 });
       y += outLeafH + leafGap;
     }
-    var netTop = y;
     if (showNet) {
       setBox(node('net'), x3, y, col3W, netH);
+      outputLeafBoxes.push({ top: y, bottom: y + netH, mid: y + netH / 2 });
       y += netH;
     }
-    var outBottom = y;
+
     var contentBottom = y + padY;
+
+    function groupMid(boxes, fallback) {
+      if (!boxes || !boxes.length) return fallback;
+      return (boxes[0].top + boxes[boxes.length - 1].bottom) / 2;
+    }
+
+    var purchaseMid = groupMid(purchaseLeafBoxes, padY + 80);
+    var expenseMid = groupMid(expenseLeafBoxes, purchaseMid + 160);
+    var outputMid = groupMid(outputLeafBoxes, expenseMid + 160);
 
     var purchaseEl = node('purchase');
     var expenseEl = node('expense');
     var pbtEl = node('pbt');
+    if (purchaseEl) setBox(purchaseEl, x2, purchaseMid - hubH / 2, col2W, hubH);
+    if (expenseEl) setBox(expenseEl, x2, expenseMid - hubH / 2, col2W, hubH);
+    if (pbtEl) setBox(pbtEl, x2, outputMid - hubH / 2, col2W, hubH);
 
-    // Hub heights scale slightly with % of revenue (min readable size).
-    var hubMinH = 92; // always fits Name + Amount + (Pct) centered, no clipping
-    var hubMaxExtra = 48; // mild stretch by % above the readable minimum
-    var revForHub = Math.max(Number(flow.total_revenue || 0), 1);
-    function hubHeightFor(amount) {
-      var pct = Math.max(0, Number(amount || 0)) / revForHub; // 0..1+
-      pct = Math.min(pct, 1);
-      return Math.round(hubMinH + hubMaxExtra * pct);
+    var hubMids = [];
+    var hubWeights = [];
+    if (purchaseEl) {
+      hubMids.push(purchaseMid);
+      hubWeights.push(Math.max(Number(flow.purchase_total || 0), 1));
     }
-    var purchaseHubH = purchaseEl ? hubHeightFor(flow.purchase_total) : 0;
-    var expenseHubH = expenseEl ? hubHeightFor(flow.expense_total) : 0;
-    var pbtHubH = pbtEl ? hubHeightFor(Math.abs(Number(flow.profit_before_tax || 0))) : 0;
-
-    var purchaseHubY = purchaseCats.length
-      ? mid(purchaseTop, purchaseBottom) - purchaseHubH / 2
-      : padY;
-    var expenseHubY = expenseCats.length
-      ? mid(expenseTop, expenseBottom) - expenseHubH / 2
-      : purchaseHubY + purchaseHubH + 14;
-    var pbtHubY = (showTax || showNet)
-      ? mid(taxTop, outBottom) - pbtHubH / 2
-      : expenseHubY + expenseHubH + 14;
-
-    var minHubGap = 10;
-    if (expenseEl && expenseHubY < purchaseHubY + purchaseHubH + minHubGap) {
-      expenseHubY = purchaseHubY + purchaseHubH + minHubGap;
+    if (expenseEl) {
+      hubMids.push(expenseMid);
+      hubWeights.push(Math.max(Number(flow.expense_total || 0), 1));
     }
-    if (pbtEl && pbtHubY < expenseHubY + (expenseEl ? expenseHubH : 0) + minHubGap) {
-      pbtHubY = expenseHubY + (expenseEl ? expenseHubH : 0) + minHubGap;
+    if (pbtEl) {
+      hubMids.push(outputMid);
+      hubWeights.push(Math.max(Math.abs(Number(flow.profit_before_tax || 0)), 1));
     }
-
-    if (purchaseEl) setBox(purchaseEl, x2, purchaseHubY, col2W, purchaseHubH);
-    if (expenseEl) setBox(expenseEl, x2, expenseHubY, col2W, expenseHubH);
-    if (pbtEl) setBox(pbtEl, x2, pbtHubY, col2W, pbtHubH);
-
-    var hubTops = [];
-    var hubBottoms = [];
-    if (purchaseEl) { hubTops.push(purchaseHubY); hubBottoms.push(purchaseHubY + purchaseHubH); }
-    if (expenseEl) { hubTops.push(expenseHubY); hubBottoms.push(expenseHubY + expenseHubH); }
-    if (pbtEl) { hubTops.push(pbtHubY); hubBottoms.push(pbtHubY + pbtHubH); }
-    var hubClusterTop = hubTops.length ? Math.min.apply(null, hubTops) : padY;
-    var hubClusterBottom = hubBottoms.length ? Math.max.apply(null, hubBottoms) : padY + hubH;
-    var hubClusterMid = mid(hubClusterTop, hubClusterBottom);
-
-    var totalTop = hubClusterMid - totalH / 2;
-    totalTop = Math.max(padY, Math.min(totalTop, Math.max(padY, contentBottom - padY - totalH)));
-    setBox(node('total'), x1, totalTop, col1W, totalH);
-    var totalMid = totalTop + totalH / 2;
+    var totalMid;
+    if (!hubMids.length) {
+      totalMid = contentBottom / 2;
+    } else {
+      var wSum = 0;
+      var ySum = 0;
+      for (var i = 0; i < hubMids.length; i++) {
+        ySum += hubMids[i] * hubWeights[i];
+        wSum += hubWeights[i];
+      }
+      totalMid = ySum / wSum;
+    }
+    if (hubMids.length >= 2) {
+      var hi = Math.min.apply(null, hubMids);
+      var lo = Math.max.apply(null, hubMids);
+      totalMid = Math.max(hi, Math.min(lo, totalMid));
+    }
+    setBox(node('total'), x1, totalMid - totalH / 2, col1W, totalH);
 
     var sources = flow.sources || [];
     var srcCount = sources.length || (node('empty-src') ? 1 : 0);
-    // Bigger source column; each card height ∝ contribution share of total revenue.
-    var srcMinH = 72;
-    var srcGapUse = 12;
-    var srcBudget = Math.max(
-      340,
-      Math.round((hubClusterBottom - hubClusterTop) * 1.35),
-      Math.round((contentBottom - 2 * padY) * 0.62)
-    );
-    var srcHeights = [];
-    var clusterH;
-    if (!sources.length) {
-      srcHeights = [Math.max(srcMinH, Math.round(srcBudget * 0.35))];
-      clusterH = srcHeights[0];
-    } else {
-      var weights = sources.map(function (src) {
-        var w = Number(src.amount || 0);
-        if (!(w > 0) && src.pct_of_revenue != null) w = Number(src.pct_of_revenue) || 0;
-        return w > 0 ? w : 0;
-      });
-      var wSum = weights.reduce(function (a, b) { return a + b; }, 0);
-      if (!(wSum > 0)) {
-        weights = sources.map(function () { return 1; });
-        wSum = sources.length;
-      }
-      var gapsTotal = Math.max(0, sources.length - 1) * srcGapUse;
-      var avail = Math.max(sources.length * srcMinH, srcBudget - gapsTotal);
-      srcHeights = weights.map(function (w) {
-        return Math.max(srcMinH, Math.round(avail * (w / wSum)));
-      });
-      var hSum = srcHeights.reduce(function (a, b) { return a + b; }, 0);
-      if (hSum > avail && hSum > 0) {
-        var scale = avail / hSum;
-        srcHeights = srcHeights.map(function (h) {
-          return Math.max(srcMinH, Math.round(h * scale));
-        });
-        hSum = srcHeights.reduce(function (a, b) { return a + b; }, 0);
-        // Fix rounding drift on the largest card.
-        var drift = avail - hSum;
-        if (drift !== 0) {
-          var maxIdx = 0;
-          for (var si = 1; si < srcHeights.length; si++) {
-            if (srcHeights[si] > srcHeights[maxIdx]) maxIdx = si;
-          }
-          srcHeights[maxIdx] = Math.max(srcMinH, srcHeights[maxIdx] + drift);
-        }
-      }
-      clusterH = srcHeights.reduce(function (a, b) { return a + b; }, 0) + gapsTotal;
-    }
+    var clusterH = srcCount > 0
+      ? srcCount * srcH + Math.max(0, srcCount - 1) * srcGap
+      : srcH;
     var srcTop = totalMid - clusterH / 2;
     srcTop = Math.max(padY, srcTop);
     if (srcTop + clusterH > contentBottom - padY) {
       srcTop = Math.max(padY, contentBottom - padY - clusterH);
     }
     if (!sources.length) {
-      setBox(node('empty-src'), x0, srcTop, col0W, srcHeights[0]);
+      setBox(node('empty-src'), x0, srcTop, col0W, srcH);
     } else {
-      var srcY = srcTop;
       sources.forEach(function (src, idx) {
-        var h = srcHeights[idx] || srcMinH;
-        setBox(node('src-' + src.key), x0, srcY, col0W, h);
-        srcY += h + srcGapUse;
+        setBox(node('src-' + src.key), x0, srcTop + idx * (srcH + srcGap), col0W, srcH);
       });
     }
 
+    [purchaseEl, expenseEl, pbtEl, node('total')].forEach(function (el) {
+      if (!el) return;
+      var top = parseFloat(el.style.top) || 0;
+      if (top < padY) el.style.top = padY + 'px';
+    });
+
     var neededH = Math.max(
       contentBottom,
-      totalTop + totalH + padY,
-      srcTop + clusterH + padY,
-      hubClusterBottom + padY,
-      pbtHubY + hubH + padY
+      (parseFloat((node('total') || {}).style && node('total').style.top) || 0) + totalH + padY,
+      srcTop + clusterH + padY
     );
+    [purchaseEl, expenseEl, pbtEl].forEach(function (el) {
+      if (!el) return;
+      var bottom = (parseFloat(el.style.top) || 0) + (parseFloat(el.style.height) || hubH);
+      if (bottom + padY > neededH) neededH = bottom + padY;
+    });
 
     layout.style.height = Math.round(neededH) + 'px';
-    layout.style.minHeight = Math.round(neededH) + 'px';
     canvas.style.height = Math.round(neededH) + 'px';
     canvas.style.position = 'relative';
     canvas.style.width = '100%';
-    root.style.minHeight = Math.round(neededH + 8) + 'px';
-    root.style.height = Math.round(neededH + 8) + 'px';
-    root.setAttribute('data-ff-layout', 'fixed-composition-v3');
+    root.style.minHeight = Math.round(neededH + 16) + 'px';
   }
-
-
-
 
   function drawFinancialFlowLinks(root, flow) {
     var svg = root.querySelector('.rdx-ff-links');
@@ -1995,11 +1902,11 @@
     }
 
     var outSpecs = [];
-    if (node('purchase')) {
-      outSpecs.push({ id: 'purchase', amount: Math.max(Number(flow.purchase_total || 0), 0), color: '#93C5FD' });
+    if (Number(flow.purchase_total || 0) > 0 && node('purchase')) {
+      outSpecs.push({ id: 'purchase', amount: flow.purchase_total, color: '#93C5FD' });
     }
-    if (node('expense')) {
-      outSpecs.push({ id: 'expense', amount: Math.max(Number(flow.expense_total || 0), 0), color: '#FDBA74' });
+    if (Number(flow.expense_total || 0) > 0 && node('expense')) {
+      outSpecs.push({ id: 'expense', amount: flow.expense_total, color: '#FDBA74' });
     }
     var pbtAmt = Number(flow.profit_before_tax || 0);
     if (pbtAmt !== 0 && node('pbt')) {
@@ -2036,10 +1943,10 @@
       });
     }
 
-    if (node('purchase')) {
+    if (Number(flow.purchase_total || 0) > 0) {
       hubToLeaves('purchase', purchaseCats, 'p-', '#93C5FD');
     }
-    if (node('expense')) {
+    if (Number(flow.expense_total || 0) > 0) {
       hubToLeaves('expense', expenseCats, 'e-', '#FDBA74');
     }
 
@@ -2100,7 +2007,7 @@
       expenseCats.length +
       ((Number(flow.tax || 0) > 0) ? 1 : 0) +
       ((Number(flow.net_profit || 0) !== 0 || Number(flow.profit_before_tax || 0) > 0) ? 1 : 0);
-    var chartH = Math.max(560, 140 + leafCount * 58 + 36);
+    var chartH = Math.max(620, 180 + leafCount * 66 + 48);
     el.style.minHeight = chartH + 'px';
     el.innerHTML = buildFinancialFlowDom(flow);
 

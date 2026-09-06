@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Financial Flow Preview</title>
+<style>
+body{margin:0;background:#eef2f7;font-family:Inter,Poppins,system-ui,sans-serif}
+.wrap{max-width:1180px;margin:24px auto;padding:0 16px}
+.rdx-card{background:#fff}
+.rdx-grid-sankey-alone {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.rdx-grid-sankey-alone > .rdx-financial-flow {
+  width: 100%;
+  margin-bottom: 0;
+}
+
+/* Sankey financial flow — Hotel Business card */
+.rdx-financial-flow {
+  border-radius: 18px;
+  border: 1px solid #e8eef5;
+  padding: 22px 24px 18px;
+  background: #ffffff;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.04);
+}
+
+.rdx-ff-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.rdx-ff-head-text {
+  min-width: 0;
+}
+
+.rdx-ff-title {
+  margin: 0;
+  font-family: Inter, Poppins, system-ui, sans-serif;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #0f2744;
+  text-transform: none;
+}
+
+.rdx-ff-subtitle {
+  margin: 4px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.rdx-ff-tagline {
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.rdx-ff-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin: 2px 0 0;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.rdx-ff-date:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.rdx-ff-date-icon {
+  width: 16px;
+  height: 16px;
+  color: #64748b;
+}
+
+.rdx-ff-date-chevron {
+  width: 14px;
+  height: 14px;
+  color: #94a3b8;
+}
+
+.rdx-ff-date-label {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.rdx-ff-stages {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.rdx-ff-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+}
+
+.rdx-ff-stage--revenue {
+  background: #eff6ff;
+  border-color: #dbeafe;
+}
+
+.rdx-ff-stage--costs {
+  background: #fff7ed;
+  border-color: #ffedd5;
+}
+
+.rdx-ff-stage--output {
+  background: #ecfdf5;
+  border-color: #d1fae5;
+}
+
+.rdx-ff-stage-kicker {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+.rdx-ff-stage--revenue .rdx-ff-stage-kicker { color: #1d4ed8; }
+.rdx-ff-stage--costs .rdx-ff-stage-kicker { color: #c2410c; }
+.rdx-ff-stage--output .rdx-ff-stage-kicker { color: #047857; }
+
+.rdx-ff-stage-desc {
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.rdx-ff-chart {
+  position: relative;
+  width: 100%;
+  min-height: 620px;
+  height: auto;
+  box-sizing: border-box;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fbfcfe 0%, #ffffff 55%);
+  border: 1px solid #f1f5f9;
+  overflow: visible;
+  padding: 8px 4px 12px;
+}
+
+.rdx-ff-layout {
+  position: relative;
+  width: 100%;
+  min-height: inherit;
+}
+
+.rdx-ff-links {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  overflow: visible;
+}
+
+.rdx-ff-stage-canvas {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  min-height: 600px;
+}
+
+.rdx-ff-node {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: stretch;
+  box-sizing: border-box;
+  min-height: 56px;
+  border-radius: 12px;
+  border: 1px solid #e8eef5;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+}
+
+.rdx-ff-node-stripe {
+  width: 5px;
+  flex-shrink: 0;
+}
+
+.rdx-ff-node-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 12px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.rdx-ff-node-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rdx-ff-node-amt {
+  font-size: 14px;
+  font-weight: 800;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+}
+
+.rdx-ff-node-pct {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  line-height: 1.2;
+}
+
+.rdx-ff-node--source {
+  background: #f8fbff;
+}
+
+.rdx-ff-node--hotel {
+  background: #eff6ff;
+  border-color: #dbeafe;
+}
+
+.rdx-ff-node--restaurant {
+  background: #ecfdf5;
+  border-color: #d1fae5;
+}
+
+.rdx-ff-node--bar {
+  background: #f5f3ff;
+  border-color: #ede9fe;
+}
+
+.rdx-ff-node--total {
+  min-height: 110px;
+  background: #ffffff;
+  border: 2px solid #93c5fd;
+  box-shadow: 0 8px 22px rgba(37, 99, 235, 0.1);
+}
+
+.rdx-ff-node--total .rdx-ff-node-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f2744;
+}
+
+.rdx-ff-node--total .rdx-ff-node-amt {
+  font-size: 20px;
+  font-weight: 800;
+  color: #1d4ed8;
+}
+
+.rdx-ff-node--total .rdx-ff-node-pct {
+  color: #3b82f6;
+  font-weight: 700;
+}
+
+.rdx-ff-node--purchase {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.rdx-ff-node--purchase .rdx-ff-node-amt { color: #1d4ed8; }
+
+.rdx-ff-node--expense {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.rdx-ff-node--expense .rdx-ff-node-amt { color: #c2410c; }
+
+.rdx-ff-node--pbt {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  min-height: 70px;
+}
+
+.rdx-ff-node--pbt .rdx-ff-node-amt { color: #047857; }
+
+.rdx-ff-node--purchase-leaf {
+  background: #f8fbff;
+  border-color: #dbeafe;
+  min-height: 56px;
+}
+
+.rdx-ff-node--expense-leaf {
+  background: #fffaf5;
+  border-color: #ffedd5;
+  min-height: 56px;
+}
+
+.rdx-ff-node--tax {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  min-height: 58px;
+}
+
+.rdx-ff-node--tax .rdx-ff-node-amt { color: #475569; }
+
+.rdx-ff-node--net {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.12);
+  min-height: 72px;
+}
+
+.rdx-ff-node--net .rdx-ff-node-name {
+  font-weight: 800;
+  color: #065f46;
+}
+
+.rdx-ff-node--net .rdx-ff-node-amt {
+  font-size: 16px;
+  color: #047857;
+}
+
+.rdx-ff-node--net .rdx-ff-node-pct {
+  color: #059669;
+  font-weight: 700;
+}
+
+.rdx-ff-node--loss {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.rdx-ff-node--loss .rdx-ff-node-amt { color: #b91c1c; }
+
+.rdx-ff-node--muted {
+  background: #f8fafc;
+  border-style: dashed;
+}
+
+.rdx-ff-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.rdx-ff-footer-main {
+  min-width: 0;
+}
+
+.rdx-ff-equation-label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.rdx-ff-equation-values {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.rdx-ff-pct-note {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .rdx-ff-node-amt { font-size: 13px; }
+  .rdx-ff-node--total .rdx-ff-node-amt { font-size: 17px; }
+}
+
+@media (max-width: 900px) {
+  .rdx-ff-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .rdx-ff-date {
+    align-self: flex-start;
+  }
+
+  .rdx-ff-stages {
+    grid-template-columns: 1fr;
+  }
+
+  .rdx-ff-chart {
+    min-height: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .rdx-ff-stage-canvas {
+    min-width: 860px;
+  }
+
+  .rdx-ff-footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .rdx-ff-pct-note {
+    white-space: normal;
+  }
+}
+
+/* === FF INLINE LEAF ROWS === */
+.rdx-ff-node--inline,
+.rdx-ff-node--purchase-leaf,
+.rdx-ff-node--expense-leaf,
+.rdx-ff-node--tax,
+.rdx-ff-node--net {
+  overflow: visible !important;
+  min-height: 40px !important;
+  height: auto;
+  align-items: center;
+  box-sizing: border-box;
+}
+.rdx-ff-node-body--inline {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 12px 5.75rem 4.5rem;
+  column-gap: 6px; align-items: center; padding: 8px 12px !important;
+  width: 100%; box-sizing: border-box; min-width: 0; overflow: visible !important;
+}
+.rdx-ff-node-body--inline .rdx-ff-node-name {
+  grid-column: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px; font-weight: 700; color: #0f172a; line-height: 1.25;
+}
+.rdx-ff-node-body--inline .rdx-ff-node-sep {
+  grid-column: 2; justify-self: center; color: #94a3b8; font-weight: 700; font-size: 13px; line-height: 1; width: 100%; text-align: center;
+}
+.rdx-ff-node-body--inline .rdx-ff-node-amt {
+  grid-column: 3; text-align: right; white-space: nowrap; overflow: visible;
+  font-size: 12px; font-weight: 800; line-height: 1.25; font-variant-numeric: tabular-nums;
+}
+.rdx-ff-node-body--inline .rdx-ff-node-pct {
+  grid-column: 4; text-align: right; white-space: nowrap; overflow: visible !important;
+  font-size: 11px; font-weight: 600; color: #64748b; line-height: 1.25;
+}
+.rdx-ff-node-body--inline .rdx-ff-node-inline-gap { display: none !important; }
+.rdx-ff-node--purchase-leaf.rdx-ff-node--inline .rdx-ff-node-amt { color: #1d4ed8; }
+.rdx-ff-node--expense-leaf.rdx-ff-node--inline .rdx-ff-node-amt { color: #c2410c; }
+.rdx-ff-node--tax.rdx-ff-node--inline .rdx-ff-node-amt { color: #475569; }
+.rdx-ff-node--net.rdx-ff-node--inline .rdx-ff-node-amt { color: #047857; }
+.rdx-ff-node--net.rdx-ff-node--inline .rdx-ff-node-name { color: #065f46; }
+.rdx-ff-node--net.rdx-ff-node--loss.rdx-ff-node--inline .rdx-ff-node-amt { color: #b91c1c; }
+.rdx-ff-node--net.rdx-ff-node--inline { background: #ecfdf5 !important; border-color: #6ee7b7 !important; }
+
+/* === FF SOURCE CARD REDESIGN === */
+.rdx-ff-node--source { border-width: 1px; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04); }
+.rdx-ff-node--source .rdx-ff-node-body { align-items: center; justify-content: center; text-align: center; gap: 3px; padding: 10px 12px; }
+.rdx-ff-node--source .rdx-ff-node-name,
+.rdx-ff-node--source .rdx-ff-node-amt,
+.rdx-ff-node--source .rdx-ff-node-pct { width: 100%; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rdx-ff-node--source .rdx-ff-node-name { font-size: 13px; font-weight: 700; color: #0f172a; line-height: 1.25; }
+.rdx-ff-node--source .rdx-ff-node-amt { font-size: 15px; font-weight: 800; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.rdx-ff-node--source .rdx-ff-node-pct { font-size: 12px; font-weight: 600; color: #64748b; line-height: 1.2; }
+.rdx-ff-node--hotel { background: #eff6ff !important; border-color: #93c5fd !important; }
+.rdx-ff-node--hotel .rdx-ff-node-amt { color: #1d4ed8; }
+.rdx-ff-node--restaurant { background: #ecfdf5 !important; border-color: #86efac !important; }
+.rdx-ff-node--restaurant .rdx-ff-node-amt { color: #047857; }
+.rdx-ff-node--bar { background: #f5f3ff !important; border-color: #c4b5fd !important; }
+.rdx-ff-node--bar .rdx-ff-node-amt { color: #6d28d9; }
+
+/* === FF TOTAL REVENUE CARD === */
+.rdx-ff-node--total {
+  min-height: 88px; background: #eff6ff !important; border: 2px solid #93c5fd !important;
+  box-shadow: 0 8px 22px rgba(37, 99, 235, 0.1);
+}
+.rdx-ff-node--total .rdx-ff-node-body {
+  align-items: center; justify-content: center; text-align: center; gap: 3px; padding: 12px 14px;
+}
+.rdx-ff-node--total .rdx-ff-node-name,
+.rdx-ff-node--total .rdx-ff-node-amt,
+.rdx-ff-node--total .rdx-ff-node-pct { width: 100%; text-align: center; white-space: nowrap; }
+.rdx-ff-node--total .rdx-ff-node-name { font-size: 13px; font-weight: 700; color: #0f2744; line-height: 1.25; }
+.rdx-ff-node--total .rdx-ff-node-amt { font-size: 18px; font-weight: 800; color: #1d4ed8; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.rdx-ff-node--total .rdx-ff-node-pct { font-size: 12px; font-weight: 700; color: #3b82f6; line-height: 1.2; }
+/* === FF HUB CARD CENTER + FILL === */
+.rdx-ff-node--purchase,
+.rdx-ff-node--expense,
+.rdx-ff-node--pbt {
+  overflow: visible !important;
+  min-height: 92px;
+  box-sizing: border-box;
+}
+.rdx-ff-node--purchase .rdx-ff-node-body,
+.rdx-ff-node--expense .rdx-ff-node-body,
+.rdx-ff-node--pbt .rdx-ff-node-body {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 4px;
+  padding: 12px 12px;
+  overflow: visible !important;
+  box-sizing: border-box;
+}
+.rdx-ff-node--purchase .rdx-ff-node-name,
+.rdx-ff-node--purchase .rdx-ff-node-amt,
+.rdx-ff-node--purchase .rdx-ff-node-pct,
+.rdx-ff-node--expense .rdx-ff-node-name,
+.rdx-ff-node--expense .rdx-ff-node-amt,
+.rdx-ff-node--expense .rdx-ff-node-pct,
+.rdx-ff-node--pbt .rdx-ff-node-name,
+.rdx-ff-node--pbt .rdx-ff-node-amt,
+.rdx-ff-node--pbt .rdx-ff-node-pct {
+  width: 100%;
+  text-align: center;
+  white-space: nowrap;
+  overflow: visible;
+  line-height: 1.25;
+}
+.rdx-ff-node--purchase .rdx-ff-node-name,
+.rdx-ff-node--expense .rdx-ff-node-name,
+.rdx-ff-node--pbt .rdx-ff-node-name {
+  font-size: 13px; font-weight: 700; color: #0f172a;
+}
+.rdx-ff-node--purchase .rdx-ff-node-amt,
+.rdx-ff-node--expense .rdx-ff-node-amt,
+.rdx-ff-node--pbt .rdx-ff-node-amt {
+  font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums;
+}
+.rdx-ff-node--purchase .rdx-ff-node-pct,
+.rdx-ff-node--expense .rdx-ff-node-pct,
+.rdx-ff-node--pbt .rdx-ff-node-pct {
+  font-size: 12px; font-weight: 600; color: #64748b;
+}
+.rdx-ff-node--purchase { background: #eff6ff !important; border-color: #93c5fd !important; }
+.rdx-ff-node--purchase .rdx-ff-node-amt { color: #1d4ed8; }
+.rdx-ff-node--expense { background: #fff7ed !important; border-color: #fdba74 !important; }
+.rdx-ff-node--expense .rdx-ff-node-amt { color: #c2410c; }
+.rdx-ff-node--pbt { background: #ecfdf5 !important; border-color: #6ee7b7 !important; }
+.rdx-ff-node--pbt .rdx-ff-node-amt { color: #047857; }
+.rdx-ff-node--pbt.rdx-ff-node--loss .rdx-ff-node-amt { color: #b91c1c; }
+</style></head><body><div class="wrap">
+<article class="rdx-card rdx-financial-flow">
+  <div class="rdx-ff-head">
+    <div class="rdx-ff-head-text">
+      <h2 class="rdx-ff-title">Hotel Business</h2>
+      <p class="rdx-ff-subtitle">Financial Flow Overview</p>
+      <p class="rdx-ff-tagline">From Revenue to Profit</p>
+    </div>
+    <button type="button" class="rdx-ff-date"><span class="rdx-ff-date-label">8 August – 6 September 2026</span></button>
+  </div>
+  <div class="rdx-ff-stages" role="list">
+    <div class="rdx-ff-stage rdx-ff-stage--revenue"><span class="rdx-ff-stage-kicker">1. REVENUE</span><span class="rdx-ff-stage-desc">Income from Hotel, Restaurant &amp; Bar</span></div>
+    <div class="rdx-ff-stage rdx-ff-stage--costs"><span class="rdx-ff-stage-kicker">2. COSTS</span><span class="rdx-ff-stage-desc">Purchase &amp; Operating Expenses</span></div>
+    <div class="rdx-ff-stage rdx-ff-stage--output"><span class="rdx-ff-stage-kicker">3. FINAL OUTPUT</span><span class="rdx-ff-stage-desc">Profit &amp; Tax</span></div>
+  </div>
+  <div class="rdx-ff-chart" id="rdx-chart-financial-flow"></div>
+  <div class="rdx-ff-footer">
+    <div class="rdx-ff-footer-main">
+      <p class="rdx-ff-equation-label">Total Revenue = Purchase + Expenses + Profit</p>
+      <p class="rdx-ff-equation-values">₹5.1 Lakh = ₹1.9 Lakh + ₹37,668 + ₹2.8 Lakh</p>
+    </div>
+    <p class="rdx-ff-pct-note">Percentages are based on total revenue.</p>
+  </div>
+</article></div>
+<script>
+var DATA = { financial_flow: {"total_revenue": 509809.0, "total_revenue_compact": "₹5.1 Lakh", "purchase_total": 189876.0, "purchase_total_compact": "₹1.9 Lakh", "expense_total": 37668.0, "expense_total_compact": "₹37,668", "profit_before_tax": 282265.0, "profit_before_tax_compact": "₹2.8 Lakh", "tax": 20095.0, "tax_compact": "₹20,095", "tax_collected": 20095.0, "tax_collected_compact": "₹20,095", "net_profit": 262170.0, "net_profit_compact": "₹2.6 Lakh", "sources": [{"key": "hotel", "name": "Hotel", "amount": 280000.0, "amount_compact": "₹2.8 Lakh", "pct_of_revenue": 54.9, "color": "#93C5FD"}, {"key": "restaurant", "name": "Restaurant", "amount": 150000.0, "amount_compact": "₹1.5 Lakh", "pct_of_revenue": 29.4, "color": "#86EFAC"}, {"key": "bar", "name": "Bar", "amount": 79809.0, "amount_compact": "₹79,809", "pct_of_revenue": 15.7, "color": "#C4B5FD"}], "purchase_categories": [{"key": "grocery", "name": "Grocery", "amount": 150000.0, "amount_compact": "₹1.5 Lakh", "pct_of_revenue": 29.4, "color": "#93C5FD"}, {"key": "veg", "name": "Vegetables", "amount": 17227.0, "amount_compact": "₹17,227", "pct_of_revenue": 3.4, "color": "#93C5FD"}, {"key": "misc", "name": "Misc Purchase", "amount": 10434.0, "amount_compact": "₹10,434", "pct_of_revenue": 2.0, "color": "#93C5FD"}, {"key": "meat", "name": "Meat", "amount": 6783.0, "amount_compact": "₹6,783", "pct_of_revenue": 1.3, "color": "#93C5FD"}, {"key": "other_purchase", "name": "Other Purchase", "amount": 5432.0, "amount_compact": "₹5,432", "pct_of_revenue": 1.1, "color": "#93C5FD"}], "expense_categories": [{"key": "other", "name": "Other", "amount": 33168.0, "amount_compact": "₹33,168", "pct_of_revenue": 6.5, "color": "#FDBA74"}, {"key": "water", "name": "Water Tank", "amount": 2700.0, "amount_compact": "₹2,700", "pct_of_revenue": 0.5, "color": "#FDBA74"}, {"key": "snacks", "name": "Snacks", "amount": 1200.0, "amount_compact": "₹1,200", "pct_of_revenue": 0.2, "color": "#FDBA74"}, {"key": "fuel", "name": "Fuel", "amount": 600.0, "amount_compact": "₹600", "pct_of_revenue": 0.1, "color": "#FDBA74"}], "equation": "₹5.1 Lakh = ₹1.9 Lakh + ₹37,668 + ₹2.8 Lakh"} };
+var charts = [];
+function fmt(v){
+  var n=Number(v||0),neg=n<0;n=Math.abs(n);
+  var t = n>=1e5 ? ('₹'+(n/1e5).toFixed(1)+' Lakh') : ('₹'+Math.round(n).toLocaleString('en-IN'));
+  return (neg?'−':'')+t;
+}
+function ffEsc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function ffPct(amount, revenue) {
+  if (!(revenue > 0)) return 0;
+  return Math.round((Number(amount || 0) / revenue) * 1000) / 10;
+}
+
+/** Keep Other* as the final leaf even when remainder is 0 (layout slot). */
+function ffEnsureOtherLast(cats, otherKey, otherName, color) {
+  var list = [];
+  var other = null;
+  (cats || []).forEach(function (cat) {
+    if (!cat) return;
+    if (cat.key === otherKey || cat.name === otherName) {
+      other = cat;
+      return;
+    }
+    list.push(cat);
+  });
+  if (!other) {
+    other = {
+      key: otherKey,
+      name: otherName,
+      amount: 0,
+      amount_compact: '₹0',
+      pct_of_revenue: 0,
+      color: color,
+    };
+  }
+  list.push(other);
+  return list;
+}
+
+function ffNodeHtml(opts) {
+  var cls = 'rdx-ff-node' + (opts.extraClass ? ' ' + opts.extraClass : '');
+  var stripe = opts.stripe
+    ? '<span class="rdx-ff-node-stripe" style="background:' + ffEsc(opts.stripe) + '"></span>'
+    : '';
+  var pctHtml = opts.showPct === false
+    ? ''
+    : '<span class="rdx-ff-node-pct">(' + ffEsc(opts.pct) + '%)</span>';
+  return (
+    '<div class="' + cls + '" data-ff-id="' + ffEsc(opts.id) + '"' +
+    (opts.tone ? ' data-ff-tone="' + ffEsc(opts.tone) + '"' : '') +
+    (opts.col != null ? ' data-ff-col="' + ffEsc(opts.col) + '"' : '') +
+    (opts.group ? ' data-ff-group="' + ffEsc(opts.group) + '"' : '') + '>' +
+      stripe +
+      '<div class="rdx-ff-node-body">' +
+        '<span class="rdx-ff-node-name">' + ffEsc(opts.name) + '</span>' +
+        '<span class="rdx-ff-node-amt">' + ffEsc(opts.compact) + '</span>' +
+        pctHtml +
+      '</div>' +
+    '</div>'
+  );
+}
+
+function buildFinancialFlowDom(flow) {
+  flow = flow || {};
+  var revenue = Number(flow.total_revenue || 0);
+  var sources = flow.sources || [];
+  var purchaseCats = ffEnsureOtherLast(
+    flow.purchase_categories || [],
+    'other_purchase',
+    'Other Purchase',
+    '#93C5FD'
+  );
+  var expenseCats = ffEnsureOtherLast(
+    flow.expense_categories || [],
+    'other_expenses',
+    'Other Expenses',
+    '#FDBA74'
+  );
+  var purchaseTotal = Number(flow.purchase_total || 0);
+  var expenseTotal = Number(flow.expense_total || 0);
+  var pbt = Number(flow.profit_before_tax || 0);
+  var tax = Number(flow.tax || 0);
+  var net = Number(flow.net_profit || 0);
+
+  var html = [];
+  html.push('<div class="rdx-ff-layout">');
+  html.push('<svg class="rdx-ff-links" aria-hidden="true"></svg>');
+  html.push('<div class="rdx-ff-stage-canvas" data-ff-canvas="1">');
+
+  if (!sources.length) {
+    html.push(ffNodeHtml({
+      id: 'empty-src',
+      name: 'No revenue',
+      compact: '₹0',
+      pct: 0,
+      showPct: false,
+      col: 0,
+      group: 'source',
+      extraClass: 'rdx-ff-node--muted',
+    }));
+  } else {
+    sources.forEach(function (src) {
+      var tone = 'hotel';
+      if (src.name === 'Restaurant') tone = 'restaurant';
+      else if (src.name === 'Bar') tone = 'bar';
+      html.push(ffNodeHtml({
+        id: 'src-' + src.key,
+        name: src.name,
+        compact: src.amount_compact || fmt(src.amount),
+        pct: src.pct_of_revenue != null ? src.pct_of_revenue : ffPct(src.amount, revenue),
+        stripe: src.color || '#93C5FD',
+        tone: tone,
+        col: 0,
+        group: 'source',
+        extraClass: 'rdx-ff-node--source rdx-ff-node--' + tone,
+      }));
+    });
+  }
+
+  html.push(ffNodeHtml({
+    id: 'total',
+    name: 'Total Revenue',
+    compact: flow.total_revenue_compact || fmt(revenue),
+    pct: 100,
+    col: 1,
+    group: 'total',
+    extraClass: 'rdx-ff-node--total',
+  }));
+
+  if (purchaseTotal > 0) {
+    html.push(ffNodeHtml({
+      id: 'purchase',
+      name: 'Purchase',
+      compact: flow.purchase_total_compact || fmt(purchaseTotal),
+      pct: ffPct(purchaseTotal, revenue),
+      col: 2,
+      group: 'purchase',
+      extraClass: 'rdx-ff-node--purchase',
+    }));
+  }
+  if (expenseTotal > 0) {
+    html.push(ffNodeHtml({
+      id: 'expense',
+      name: 'Expenses',
+      compact: flow.expense_total_compact || fmt(expenseTotal),
+      pct: ffPct(expenseTotal, revenue),
+      col: 2,
+      group: 'expense',
+      extraClass: 'rdx-ff-node--expense',
+    }));
+  }
+  if (revenue > 0 || pbt !== 0) {
+    html.push(ffNodeHtml({
+      id: 'pbt',
+      name: 'Profit (Before Tax)',
+      compact: flow.profit_before_tax_compact || fmt(pbt),
+      pct: ffPct(Math.abs(pbt), revenue),
+      col: 2,
+      group: 'output',
+      extraClass: 'rdx-ff-node--pbt' + (pbt < 0 ? ' rdx-ff-node--loss' : ''),
+    }));
+  }
+
+  purchaseCats.forEach(function (cat, idx) {
+    html.push(ffNodeHtml({
+      id: 'p-' + idx + '-' + cat.key,
+      name: cat.name,
+      compact: cat.amount_compact || fmt(cat.amount),
+      pct: cat.pct_of_revenue != null ? cat.pct_of_revenue : ffPct(cat.amount, revenue),
+      col: 3,
+      group: 'purchase',
+      inline: true,
+        extraClass: 'rdx-ff-node--purchase-leaf',
+    }));
+  });
+  expenseCats.forEach(function (cat, idx) {
+    html.push(ffNodeHtml({
+      id: 'e-' + idx + '-' + cat.key,
+      name: cat.name,
+      compact: cat.amount_compact || fmt(cat.amount),
+      pct: cat.pct_of_revenue != null ? cat.pct_of_revenue : ffPct(cat.amount, revenue),
+      col: 3,
+      group: 'expense',
+      inline: true,
+        extraClass: 'rdx-ff-node--expense-leaf',
+    }));
+  });
+  if (pbt > 0 && tax > 0) {
+    html.push(ffNodeHtml({
+      id: 'tax',
+      name: 'Tax',
+      compact: flow.tax_compact || fmt(tax),
+      pct: ffPct(tax, revenue),
+      col: 3,
+      group: 'output',
+      extraClass: 'rdx-ff-node--tax',
+    }));
+  }
+  if (pbt > 0 || net !== 0) {
+    html.push(ffNodeHtml({
+      id: 'net',
+      name: 'Net Profit',
+      compact: flow.net_profit_compact || fmt(net),
+      pct: ffPct(Math.abs(net), revenue),
+      col: 3,
+      group: 'output',
+      extraClass: 'rdx-ff-node--net' + (net < 0 ? ' rdx-ff-node--loss' : ''),
+    }));
+  }
+
+  html.push('</div>');
+  html.push('</div>');
+  return html.join('');
+}
+
+function ffNodeCenter(el, rootRect) {
+  var r = el.getBoundingClientRect();
+  return {
+    x: r.left - rootRect.left + r.width / 2,
+    y: r.top - rootRect.top + r.height / 2,
+    left: r.left - rootRect.left,
+    right: r.left - rootRect.left + r.width,
+    top: r.top - rootRect.top,
+    bottom: r.top - rootRect.top + r.height,
+    width: r.width,
+    height: r.height,
+    midY: r.top - rootRect.top + r.height / 2,
+  };
+}
+
+function ffRibbonPath(x0, y0, x1, y1, thickness) {
+  var t = Math.max(2, thickness);
+  var dx = Math.max(28, (x1 - x0) * 0.48);
+  var y0a = y0 - t / 2;
+  var y0b = y0 + t / 2;
+  var y1a = y1 - t / 2;
+  var y1b = y1 + t / 2;
+  return (
+    'M' + x0 + ',' + y0a +
+    ' C' + (x0 + dx) + ',' + y0a + ' ' + (x1 - dx) + ',' + y1a + ' ' + x1 + ',' + y1a +
+    ' L' + x1 + ',' + y1b +
+    ' C' + (x1 - dx) + ',' + y1b + ' ' + (x0 + dx) + ',' + y0b + ' ' + x0 + ',' + y0b +
+    ' Z'
+  );
+}
+
+    /**
+   * FIXED COMPOSITION — absolute card coordinates only.
+   * FLOW POSITION ≠ LABEL POSITION: SVG ribbons curve freely; destination
+   * cards/labels stay on a fixed 4-column grid. No ECharts/d3 Sankey layout.
+   *
+   * COL1 sources → COL2 Total Revenue → COL3 hubs (Purchase/Expenses/PBT)
+   * → COL4 fixed ranked lists (purchase → expense → Tax/Net Profit)
+   * Hubs sit next to their leaf groups (reference composition) while remaining
+   * a tight vertical stack — never library auto-placement.
+   */
+  function layoutFinancialFlowNodes(root, flow) {
+    var layout = root.querySelector('.rdx-ff-layout');
+    var canvas = root.querySelector('[data-ff-canvas]') || layout;
+    if (!layout || !canvas) return;
+
+    var W = Math.max(root.clientWidth || layout.clientWidth || 980, 880);
+    var padX = 12;
+    var padY = 14;
+    var padRight = 14;
+
+    var col0W = 148;
+    var col1W = 168;
+    var col2W = 168;
+    var col3W = 320;
+
+    var gap01 = 18;
+    var gap12 = 48;
+    var gap23 = 52;
+    var used = padX + padRight + col0W + col1W + col2W + col3W + gap01 + gap12 + gap23;
+    var leftover = W - used;
+    if (leftover > 0) {
+      gap12 += Math.round(leftover * 0.4);
+      gap23 += Math.round(leftover * 0.45);
+      gap01 += Math.round(leftover * 0.1);
+    } else if (leftover < 0) {
+      var shrink = Math.min(col3W - 210, -leftover);
+      col3W -= shrink;
+      leftover += shrink;
+      if (leftover < 0) {
+        gap12 = Math.max(34, gap12 + Math.round(leftover * 0.5));
+        gap23 = Math.max(34, gap23 + Math.round(leftover * 0.5));
+      }
+    }
+
+    var x0 = padX;
+    var x1 = x0 + col0W + gap01;
+    var x2 = x1 + col1W + gap12;
+    var x3 = x2 + col2W + gap23;
+
+    var srcH = 58;
+    var srcGap = 10;
+    var totalH = 96;
+    var hubH = 64;
+    var leafH = 52;
+    var leafGap = 8;
+    var groupGap = 22;
+    var outGap = 18;
+    var outLeafH = 52;
+    var netH = 62;
+
+    var purchaseCats = ffEnsureOtherLast(
+      flow.purchase_categories || [],
+      'other_purchase',
+      'Other Purchase',
+      '#93C5FD'
+    );
+    var expenseCats = ffEnsureOtherLast(
+      flow.expense_categories || [],
+      'other_expenses',
+      'Other Expenses',
+      '#FDBA74'
+    );
+    var pbt = Number(flow.profit_before_tax || 0);
+    var tax = Number(flow.tax || 0);
+    var net = Number(flow.net_profit || 0);
+    var showTax = pbt > 0 && tax > 0;
+    var showNet = pbt > 0 || net !== 0;
+
+    function setBox(el, x, y, w, h) {
+      if (!el) return;
+      el.style.position = 'absolute';
+      el.style.left = Math.round(x) + 'px';
+      el.style.top = Math.round(y) + 'px';
+      el.style.width = Math.round(w) + 'px';
+      if (h) {
+        el.style.height = Math.round(h) + 'px';
+        el.style.minHeight = Math.round(h) + 'px';
+      }
+      el.style.margin = '0';
+      el.style.right = 'auto';
+      el.style.bottom = 'auto';
+      el.style.maxWidth = 'none';
+    }
+
+    function node(id) {
+      return root.querySelector('[data-ff-id="' + id + '"]');
+    }
+
+    function mid(a, b) { return (a + b) / 2; }
+
+    var y = padY;
+    var purchaseTop = y;
+    purchaseCats.forEach(function (cat, idx) {
+      setBox(node('p-' + idx + '-' + cat.key), x3, y, col3W, leafH);
+      y += leafH + leafGap;
+    });
+    var purchaseBottom = purchaseCats.length ? (y - leafGap) : purchaseTop;
+    if (purchaseCats.length) y += groupGap - leafGap;
+    else y += 4;
+
+    var expenseTop = y;
+    expenseCats.forEach(function (cat, idx) {
+      setBox(node('e-' + idx + '-' + cat.key), x3, y, col3W, leafH);
+      y += leafH + leafGap;
+    });
+    var expenseBottom = expenseCats.length ? (y - leafGap) : expenseTop;
+    if (expenseCats.length) y += outGap - leafGap;
+    else y += 4;
+
+    var taxTop = y;
+    if (showTax) {
+      setBox(node('tax'), x3, y, col3W, outLeafH);
+      y += outLeafH + leafGap;
+    }
+    var netTop = y;
+    if (showNet) {
+      setBox(node('net'), x3, y, col3W, netH);
+      y += netH;
+    }
+    var outBottom = y;
+    var contentBottom = y + padY;
+
+    var purchaseEl = node('purchase');
+    var expenseEl = node('expense');
+    var pbtEl = node('pbt');
+
+    var purchaseHubY = purchaseCats.length
+      ? mid(purchaseTop, purchaseBottom) - hubH / 2
+      : padY;
+    var expenseHubY = expenseCats.length
+      ? mid(expenseTop, expenseBottom) - hubH / 2
+      : purchaseHubY + hubH + 14;
+    var pbtHubY = (showTax || showNet)
+      ? mid(taxTop, outBottom) - hubH / 2
+      : expenseHubY + hubH + 14;
+
+    var minHubGap = 10;
+    if (expenseHubY < purchaseHubY + hubH + minHubGap) {
+      expenseHubY = purchaseHubY + hubH + minHubGap;
+    }
+    if (pbtHubY < expenseHubY + hubH + minHubGap) {
+      pbtHubY = expenseHubY + hubH + minHubGap;
+    }
+
+    if (purchaseEl) setBox(purchaseEl, x2, purchaseHubY, col2W, hubH);
+    if (expenseEl) setBox(expenseEl, x2, expenseHubY, col2W, hubH);
+    if (pbtEl) setBox(pbtEl, x2, pbtHubY, col2W, hubH);
+
+    var hubTops = [];
+    if (purchaseEl) hubTops.push(purchaseHubY);
+    if (expenseEl) hubTops.push(expenseHubY);
+    if (pbtEl) hubTops.push(pbtHubY);
+    var hubClusterTop = hubTops.length ? Math.min.apply(null, hubTops) : padY;
+    var hubClusterBottom = hubTops.length ? Math.max.apply(null, hubTops) + hubH : padY + hubH;
+    var hubClusterMid = mid(hubClusterTop, hubClusterBottom);
+
+    var totalTop = hubClusterMid - totalH / 2;
+    totalTop = Math.max(padY, Math.min(totalTop, Math.max(padY, contentBottom - padY - totalH)));
+    setBox(node('total'), x1, totalTop, col1W, totalH);
+    var totalMid = totalTop + totalH / 2;
+
+    var sources = flow.sources || [];
+    var srcCount = sources.length || (node('empty-src') ? 1 : 0);
+    var clusterH = srcCount > 0
+      ? srcCount * srcH + Math.max(0, srcCount - 1) * srcGap
+      : srcH;
+    var srcTop = totalMid - clusterH / 2;
+    srcTop = Math.max(padY, srcTop);
+    if (srcTop + clusterH > contentBottom - padY) {
+      srcTop = Math.max(padY, contentBottom - padY - clusterH);
+    }
+    if (!sources.length) {
+      setBox(node('empty-src'), x0, srcTop, col0W, srcH);
+    } else {
+      sources.forEach(function (src, idx) {
+        setBox(node('src-' + src.key), x0, srcTop + idx * (srcH + srcGap), col0W, srcH);
+      });
+    }
+
+    var neededH = Math.max(
+      contentBottom,
+      totalTop + totalH + padY,
+      srcTop + clusterH + padY,
+      hubClusterBottom + padY,
+      pbtHubY + hubH + padY
+    );
+
+    layout.style.height = Math.round(neededH) + 'px';
+    layout.style.minHeight = Math.round(neededH) + 'px';
+    canvas.style.height = Math.round(neededH) + 'px';
+    canvas.style.position = 'relative';
+    canvas.style.width = '100%';
+    root.style.minHeight = Math.round(neededH + 8) + 'px';
+    root.style.height = Math.round(neededH + 8) + 'px';
+    root.setAttribute('data-ff-layout', 'fixed-composition-v3');
+  }
+
+
+
+function drawFinancialFlowLinks(root, flow) {
+  var svg = root.querySelector('.rdx-ff-links');
+  if (!svg) return;
+  var layout = root.querySelector('.rdx-ff-layout') || root;
+  var rootRect = layout.getBoundingClientRect();
+  var w = Math.max(layout.clientWidth, 1);
+  var h = Math.max(layout.clientHeight, 1);
+  svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+  svg.setAttribute('width', String(w));
+  svg.setAttribute('height', String(h));
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  function node(id) {
+    return root.querySelector('[data-ff-id="' + id + '"]');
+  }
+
+  var revenue = Math.max(Number(flow.total_revenue || 0), 1);
+  var maxStroke = Math.min(52, Math.max(26, h * 0.07));
+
+  function thickness(amount) {
+    return Math.max(2.5, (Number(amount || 0) / revenue) * maxStroke);
+  }
+
+  function appendPath(x0, y0, x1, y1, amount, color) {
+    var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', ffRibbonPath(x0, y0, x1, y1, thickness(amount)));
+    path.setAttribute('fill', color);
+    path.setAttribute('fill-opacity', '0.38');
+    path.setAttribute('stroke', 'none');
+    svg.appendChild(path);
+  }
+
+  function edgePorts(box, amounts, side) {
+    var ths = amounts.map(thickness);
+    var totalT = ths.reduce(function (a, b) { return a + b; }, 0);
+    var gap = 3;
+    var block = totalT + gap * Math.max(0, amounts.length - 1);
+    var start = box.midY - block / 2;
+    var inset = 8;
+    if (start < box.top + inset) start = box.top + inset;
+    if (start + block > box.bottom - inset) {
+      start = Math.max(box.top + inset, box.bottom - inset - block);
+    }
+    var ports = [];
+    var cursor = start;
+    for (var i = 0; i < ths.length; i++) {
+      ports.push(cursor + ths[i] / 2);
+      cursor += ths[i] + gap;
+    }
+    return ports.map(function (py) {
+      return { x: side === 'left' ? box.left : box.right, y: py };
+    });
+  }
+
+  function boxOf(id) {
+    var el = node(id);
+    return el ? ffNodeCenter(el, rootRect) : null;
+  }
+
+  var purchaseCats = ffEnsureOtherLast(
+    flow.purchase_categories || [],
+    'other_purchase',
+    'Other Purchase',
+    '#93C5FD'
+  );
+  var expenseCats = ffEnsureOtherLast(
+    flow.expense_categories || [],
+    'other_expenses',
+    'Other Expenses',
+    '#FDBA74'
+  );
+
+  var totalBox = boxOf('total');
+  if (totalBox && (flow.sources || []).length) {
+    var srcAmounts = (flow.sources || []).map(function (s) { return s.amount; });
+    var inPorts = edgePorts(totalBox, srcAmounts, 'left');
+    (flow.sources || []).forEach(function (src, idx) {
+      var sb = boxOf('src-' + src.key);
+      if (!sb || !inPorts[idx]) return;
+      appendPath(
+        sb.right, sb.midY,
+        inPorts[idx].x, inPorts[idx].y,
+        src.amount,
+        src.color || '#93C5FD'
+      );
+    });
+  }
+
+  var outSpecs = [];
+  if (Number(flow.purchase_total || 0) > 0 && node('purchase')) {
+    outSpecs.push({ id: 'purchase', amount: flow.purchase_total, color: '#93C5FD' });
+  }
+  if (Number(flow.expense_total || 0) > 0 && node('expense')) {
+    outSpecs.push({ id: 'expense', amount: flow.expense_total, color: '#FDBA74' });
+  }
+  var pbtAmt = Number(flow.profit_before_tax || 0);
+  if (pbtAmt !== 0 && node('pbt')) {
+    outSpecs.push({
+      id: 'pbt',
+      amount: Math.abs(pbtAmt),
+      color: pbtAmt < 0 ? '#FCA5A5' : '#6EE7B7',
+    });
+  }
+  if (totalBox && outSpecs.length) {
+    var outPorts = edgePorts(
+      totalBox,
+      outSpecs.map(function (s) { return s.amount; }),
+      'right'
+    );
+    outSpecs.forEach(function (spec, idx) {
+      var hb = boxOf(spec.id);
+      if (!hb || !outPorts[idx]) return;
+      appendPath(outPorts[idx].x, outPorts[idx].y, hb.left, hb.midY, spec.amount, spec.color);
+    });
+  }
+
+  function hubToLeaves(hubId, cats, idPrefix, color) {
+    var hub = boxOf(hubId);
+    if (!hub || !cats.length) return;
+    var amts = cats.map(function (c) { return Math.max(Number(c.amount || 0), revenue * 0.004); });
+    var ports = edgePorts(hub, amts, 'right');
+    cats.forEach(function (cat, idx) {
+      var lb = boxOf(idPrefix + idx + '-' + cat.key);
+      if (!lb || !ports[idx]) return;
+      var amt = Number(cat.amount || 0);
+      if (amt <= 0) return;
+      appendPath(ports[idx].x, ports[idx].y, lb.left, lb.midY, amt, color);
+    });
+  }
+
+  if (Number(flow.purchase_total || 0) > 0) {
+    hubToLeaves('purchase', purchaseCats, 'p-', '#93C5FD');
+  }
+  if (Number(flow.expense_total || 0) > 0) {
+    hubToLeaves('expense', expenseCats, 'e-', '#FDBA74');
+  }
+
+  if (pbtAmt > 0 && node('pbt')) {
+    var pbtBox = boxOf('pbt');
+    var finals = [];
+    if (Number(flow.tax || 0) > 0 && node('tax')) {
+      finals.push({ id: 'tax', amount: flow.tax, color: '#CBD5E1' });
+    }
+    if (Number(flow.net_profit || 0) > 0 && node('net')) {
+      finals.push({ id: 'net', amount: flow.net_profit, color: '#34D399' });
+    }
+    if (pbtBox && finals.length) {
+      var fPorts = edgePorts(
+        pbtBox,
+        finals.map(function (f) { return f.amount; }),
+        'right'
+      );
+      finals.forEach(function (f, idx) {
+        var fb = boxOf(f.id);
+        if (!fb || !fPorts[idx]) return;
+        appendPath(fPorts[idx].x, fPorts[idx].y, fb.left, fb.midY, f.amount, f.color);
+      });
+    }
+  }
+}
+
+var _ffResizeTimer = null;
+var _ffResizeObs = null;
+
+function renderFinancialFlow() {
+  var flow = DATA.financial_flow || {};
+  var el = document.getElementById('rdx-chart-financial-flow');
+  if (!el) return;
+
+  if (typeof echarts !== 'undefined') {
+    var existing = echarts.getInstanceByDom(el);
+    if (existing) {
+      try { existing.dispose(); } catch (e) {}
+      charts = charts.filter(function (c) { return c !== existing; });
+    }
+  }
+
+  var purchaseCats = ffEnsureOtherLast(
+    flow.purchase_categories || [],
+    'other_purchase',
+    'Other Purchase',
+    '#93C5FD'
+  );
+  var expenseCats = ffEnsureOtherLast(
+    flow.expense_categories || [],
+    'other_expenses',
+    'Other Expenses',
+    '#FDBA74'
+  );
+  var leafCount =
+    purchaseCats.length +
+    expenseCats.length +
+    ((Number(flow.tax || 0) > 0) ? 1 : 0) +
+    ((Number(flow.net_profit || 0) !== 0 || Number(flow.profit_before_tax || 0) > 0) ? 1 : 0);
+  var chartH = Math.max(620, 180 + leafCount * 66 + 48);
+  el.style.minHeight = chartH + 'px';
+  el.innerHTML = buildFinancialFlowDom(flow);
+
+  var eq = document.querySelector('.rdx-ff-equation-values');
+  if (eq && flow.equation) eq.textContent = flow.equation;
+
+  function paint() {
+    layoutFinancialFlowNodes(el, flow);
+    drawFinancialFlowLinks(el, flow);
+  }
+  paint();
+  requestAnimationFrame(paint);
+
+  if (_ffResizeObs) {
+    try { _ffResizeObs.disconnect(); } catch (e) {}
+    _ffResizeObs = null;
+  }
+  if (typeof ResizeObserver !== 'undefined') {
+    _ffResizeObs = new ResizeObserver(function () {
+      clearTimeout(_ffResizeTimer);
+      _ffResizeTimer = setTimeout(paint, 40);
+    });
+    _ffResizeObs.observe(el);
+  }
+}
+
+renderFinancialFlow();
+</script></body></html>

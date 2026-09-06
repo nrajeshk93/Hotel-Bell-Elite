@@ -1749,14 +1749,14 @@
 .rdx-ff-chart {
   position: relative;
   width: 100%;
-  min-height: 560px;
+  min-height: 620px;
   height: auto;
   box-sizing: border-box;
   border-radius: 14px;
   background: linear-gradient(180deg, #fbfcfe 0%, #ffffff 55%);
   border: 1px solid #f1f5f9;
   overflow: visible;
-  padding: 10px 8px 12px;
+  padding: 8px 4px 12px;
 }
 
 .rdx-ff-layout {
@@ -1779,7 +1779,7 @@
   position: relative;
   z-index: 1;
   width: 100%;
-  min-height: 520px;
+  min-height: 600px;
 }
 
 .rdx-ff-node {
@@ -1814,14 +1814,12 @@
 .rdx-ff-node-name {
   font-size: 12px;
   font-weight: 700;
-  color: #0f172a;
-  line-height: 1.2;
+  color: #334155;
+  line-height: 1.25;
   letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  opacity: 1;
-  visibility: visible;
 }
 
 .rdx-ff-node-amt {
@@ -1860,7 +1858,7 @@
 }
 
 .rdx-ff-node--total {
-  min-height: 88px;
+  min-height: 110px;
   background: #ffffff;
   border: 2px solid #93c5fd;
   box-shadow: 0 8px 22px rgba(37, 99, 235, 0.1);
@@ -1873,7 +1871,7 @@
 }
 
 .rdx-ff-node--total .rdx-ff-node-amt {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 800;
   color: #1d4ed8;
 }
@@ -2033,289 +2031,4 @@
   .rdx-ff-pct-note {
     white-space: normal;
   }
-}
-
-/* === FF FIXED COMPOSITION V3 OVERRIDES === */
-/* Fixed-composition financial flow — v3 overrides */
-
-.rdx-ff-chart {
-  position: relative;
-  width: 100%;
-  min-height: 560px;
-  height: auto;
-  box-sizing: border-box;
-  border-radius: 14px;
-  background: linear-gradient(180deg, #fbfcfe 0%, #ffffff 55%);
-  border: 1px solid #f1f5f9;
-  overflow: visible; /* grow height — never clip nodes */
-  padding: 10px 8px 12px;
-}
-
-.rdx-ff-layout {
-  position: relative;
-  width: 100%;
-  min-height: inherit;
-  overflow: visible;
-}
-
-.rdx-ff-links {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 0;
-  overflow: visible;
-}
-
-.rdx-ff-stage-canvas {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  min-height: 520px;
-}
-
-.rdx-ff-node {
-  position: absolute;
-  z-index: 2;
-  display: flex;
-  align-items: stretch;
-  box-sizing: border-box;
-  min-height: 50px;
-  border-radius: 12px;
-  border: 1px solid #e8eef5;
-  background: #ffffff;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
-  overflow: hidden;
-}
-
-.rdx-ff-node-body {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 1px;
-  padding: 6px 10px;
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
-}
-
-.rdx-ff-node-name {
-  font-size: 12px;
-  font-weight: 700;
-  color: #0f172a;
-  line-height: 1.2;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-
-.rdx-ff-node-amt {
-  font-size: 13px;
-  font-weight: 800;
-  color: #0f172a;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.015em;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.rdx-ff-node-pct {
-  font-size: 11px;
-  font-weight: 600;
-  color: #64748b;
-  line-height: 1.15;
-  white-space: nowrap;
-}
-
-/* Ranked-list leaves: keep name+amount+pct fully readable */
-.rdx-ff-node--purchase-leaf,
-.rdx-ff-node--expense-leaf,
-.rdx-ff-node--tax {
-  min-height: 50px;
-}
-
-.rdx-ff-node--purchase-leaf {
-  background: #f8fbff;
-  border-color: #bfdbfe;
-}
-
-.rdx-ff-node--expense-leaf {
-  background: #fffaf5;
-  border-color: #fed7aa;
-}
-
-.rdx-ff-node--purchase-leaf .rdx-ff-node-name,
-.rdx-ff-node--expense-leaf .rdx-ff-node-name,
-.rdx-ff-node--tax .rdx-ff-node-name {
-  color: #0f172a;
-  font-size: 12px;
-  font-weight: 700;
-  opacity: 1;
-  visibility: visible;
-}
-
-.rdx-ff-node--purchase-leaf .rdx-ff-node-amt {
-  color: #1d4ed8;
-  font-size: 13px;
-}
-
-.rdx-ff-node--expense-leaf .rdx-ff-node-amt {
-  color: #c2410c;
-  font-size: 13px;
-}
-
-.rdx-ff-node--total {
-  min-height: 88px;
-  background: #ffffff;
-  border: 2px solid #93c5fd;
-  box-shadow: 0 8px 22px rgba(37, 99, 235, 0.1);
-}
-
-.rdx-ff-node--total .rdx-ff-node-amt {
-  font-size: 18px;
-  font-weight: 800;
-  color: #1d4ed8;
-}
-
-.rdx-ff-node--purchase {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-  min-height: 60px;
-}
-
-.rdx-ff-node--expense {
-  background: #fff7ed;
-  border-color: #fed7aa;
-  min-height: 60px;
-}
-
-.rdx-ff-node--pbt {
-  background: #ecfdf5;
-  border-color: #a7f3d0;
-  min-height: 60px;
-}
-
-.rdx-ff-node--net {
-  background: #d1fae5;
-  border-color: #6ee7b7;
-  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.12);
-  min-height: 60px;
-}
-
-@media (max-width: 900px) {
-  .rdx-ff-chart {
-    min-height: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .rdx-ff-stage-canvas {
-    min-width: 900px;
-  }
-}
-
-/* === FF INLINE LEAF ROWS === */
-.rdx-ff-node--inline,.rdx-ff-node--purchase-leaf,.rdx-ff-node--expense-leaf,.rdx-ff-node--tax,.rdx-ff-node--net{overflow:visible!important;min-height:40px!important;height:auto;align-items:center;box-sizing:border-box}
-.rdx-ff-node-body--inline{display:grid!important;grid-template-columns:minmax(0,1fr) 12px 5.75rem 4.5rem;column-gap:6px;align-items:center;padding:8px 12px!important;width:100%;box-sizing:border-box;min-width:0;overflow:visible!important}
-.rdx-ff-node-body--inline .rdx-ff-node-name{grid-column:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:700;color:#0f172a;line-height:1.25}
-.rdx-ff-node-body--inline .rdx-ff-node-sep{grid-column:2;justify-self:center;color:#94a3b8;font-weight:700;font-size:13px;line-height:1;width:100%;text-align:center}
-.rdx-ff-node-body--inline .rdx-ff-node-amt{grid-column:3;text-align:right;white-space:nowrap;overflow:visible;font-size:12px;font-weight:800;line-height:1.25;font-variant-numeric:tabular-nums}
-.rdx-ff-node-body--inline .rdx-ff-node-pct{grid-column:4;text-align:right;white-space:nowrap;overflow:visible!important;font-size:11px;font-weight:600;color:#64748b;line-height:1.25}
-.rdx-ff-node-body--inline .rdx-ff-node-inline-gap{display:none!important}
-.rdx-ff-node--purchase-leaf.rdx-ff-node--inline .rdx-ff-node-amt{color:#1d4ed8}
-.rdx-ff-node--expense-leaf.rdx-ff-node--inline .rdx-ff-node-amt{color:#c2410c}
-.rdx-ff-node--tax.rdx-ff-node--inline .rdx-ff-node-amt{color:#475569}
-.rdx-ff-node--net.rdx-ff-node--inline .rdx-ff-node-amt{color:#047857}
-.rdx-ff-node--net.rdx-ff-node--inline .rdx-ff-node-name{color:#065f46}
-.rdx-ff-node--net.rdx-ff-node--loss.rdx-ff-node--inline .rdx-ff-node-amt{color:#b91c1c}
-.rdx-ff-node--net.rdx-ff-node--inline{background:#ecfdf5!important;border-color:#6ee7b7!important}
-/* === FF SOURCE CARD REDESIGN === */
-.rdx-ff-node--source { border-width: 1px; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04); }
-.rdx-ff-node--source .rdx-ff-node-body { align-items: center; justify-content: center; text-align: center; gap: 3px; padding: 10px 12px; }
-.rdx-ff-node--source .rdx-ff-node-name,
-.rdx-ff-node--source .rdx-ff-node-amt,
-.rdx-ff-node--source .rdx-ff-node-pct { width: 100%; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rdx-ff-node--source .rdx-ff-node-name { font-size: 13px; font-weight: 700; color: #0f172a; line-height: 1.25; }
-.rdx-ff-node--source .rdx-ff-node-amt { font-size: 15px; font-weight: 800; line-height: 1.2; font-variant-numeric: tabular-nums; }
-.rdx-ff-node--source .rdx-ff-node-pct { font-size: 12px; font-weight: 600; color: #64748b; line-height: 1.2; }
-.rdx-ff-node--hotel { background: #eff6ff !important; border-color: #93c5fd !important; }
-.rdx-ff-node--hotel .rdx-ff-node-amt { color: #1d4ed8; }
-.rdx-ff-node--restaurant { background: #ecfdf5 !important; border-color: #86efac !important; }
-.rdx-ff-node--restaurant .rdx-ff-node-amt { color: #047857; }
-.rdx-ff-node--bar { background: #f5f3ff !important; border-color: #c4b5fd !important; }
-.rdx-ff-node--bar .rdx-ff-node-amt { color: #6d28d9; }
-
-/* === FF TOTAL REVENUE CARD === */
-.rdx-ff-node--total {
-  min-height: 88px; background: #eff6ff !important; border: 2px solid #93c5fd !important;
-  box-shadow: 0 8px 22px rgba(37, 99, 235, 0.1);
-}
-.rdx-ff-node--total .rdx-ff-node-body {
-  align-items: center; justify-content: center; text-align: center; gap: 3px; padding: 12px 14px;
-}
-.rdx-ff-node--total .rdx-ff-node-name,
-.rdx-ff-node--total .rdx-ff-node-amt,
-.rdx-ff-node--total .rdx-ff-node-pct { width: 100%; text-align: center; white-space: nowrap; }
-.rdx-ff-node--total .rdx-ff-node-name { font-size: 13px; font-weight: 700; color: #0f2744; line-height: 1.25; }
-.rdx-ff-node--total .rdx-ff-node-amt { font-size: 18px; font-weight: 800; color: #1d4ed8; line-height: 1.2; font-variant-numeric: tabular-nums; }
-.rdx-ff-node--total .rdx-ff-node-pct { font-size: 12px; font-weight: 700; color: #3b82f6; line-height: 1.2; }
-
-
-/* === FF NO CLIP CANVAS === */
-.rdx-ff-chart,
-.rdx-ff-layout,
-.rdx-ff-stage-canvas {
-  overflow: visible !important;
-}
-.rdx-ff-node--purchase-leaf .rdx-ff-node-body,
-.rdx-ff-node--expense-leaf .rdx-ff-node-body,
-.rdx-ff-node--tax .rdx-ff-node-body {
-  overflow: visible !important;
-}
-
-/* === FF HUB CARD CENTER + FILL === */
-.rdx-ff-node--purchase,.rdx-ff-node--expense,.rdx-ff-node--pbt{overflow:visible!important;min-height:92px;box-sizing:border-box}
-.rdx-ff-node--purchase .rdx-ff-node-body,.rdx-ff-node--expense .rdx-ff-node-body,.rdx-ff-node--pbt .rdx-ff-node-body{align-items:center;justify-content:center;text-align:center;gap:4px;padding:12px;overflow:visible!important;box-sizing:border-box}
-.rdx-ff-node--purchase .rdx-ff-node-name,.rdx-ff-node--purchase .rdx-ff-node-amt,.rdx-ff-node--purchase .rdx-ff-node-pct,.rdx-ff-node--expense .rdx-ff-node-name,.rdx-ff-node--expense .rdx-ff-node-amt,.rdx-ff-node--expense .rdx-ff-node-pct,.rdx-ff-node--pbt .rdx-ff-node-name,.rdx-ff-node--pbt .rdx-ff-node-amt,.rdx-ff-node--pbt .rdx-ff-node-pct{width:100%;text-align:center;white-space:nowrap;overflow:visible;line-height:1.25}
-.rdx-ff-node--purchase .rdx-ff-node-name,.rdx-ff-node--expense .rdx-ff-node-name,.rdx-ff-node--pbt .rdx-ff-node-name{font-size:13px;font-weight:700;color:#0f172a}
-.rdx-ff-node--purchase .rdx-ff-node-amt,.rdx-ff-node--expense .rdx-ff-node-amt,.rdx-ff-node--pbt .rdx-ff-node-amt{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
-.rdx-ff-node--purchase .rdx-ff-node-pct,.rdx-ff-node--expense .rdx-ff-node-pct,.rdx-ff-node--pbt .rdx-ff-node-pct{font-size:12px;font-weight:600;color:#64748b}
-.rdx-ff-node--purchase{background:#eff6ff!important;border-color:#93c5fd!important}
-.rdx-ff-node--purchase .rdx-ff-node-amt{color:#1d4ed8}
-.rdx-ff-node--expense{background:#fff7ed!important;border-color:#fdba74!important}
-.rdx-ff-node--expense .rdx-ff-node-amt{color:#c2410c}
-.rdx-ff-node--pbt{background:#ecfdf5!important;border-color:#6ee7b7!important}
-.rdx-ff-node--pbt .rdx-ff-node-amt{color:#047857}
-.rdx-ff-node--pbt.rdx-ff-node--loss .rdx-ff-node-amt{color:#b91c1c}
-
-/* === FF STAGES LAYOUT RESTORE === */
-.rdx-ff-stages {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  align-items: stretch;
-  margin: 0 0 12px;
-}
-.rdx-ff-head {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  margin-bottom: 12px;
-}
-.rdx-ff-title {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 800;
-  color: #0f2744;
-  letter-spacing: -0.02em;
-  line-height: 1.25;
-}
-.rdx-ff-water,
-.rdx-ff-stage-flow,
-.rdx-ff-flow-graphic {
-  display: none !important;
 }

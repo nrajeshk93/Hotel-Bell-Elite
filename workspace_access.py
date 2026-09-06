@@ -82,7 +82,6 @@ _MASTER_SUBMODULES = (
     {"key": "agency", "label": "Agency Master"},
     {"key": "category", "label": "Category Master"},
     {"key": "unit", "label": "Unit Master"},
-    {"key": "brand", "label": "Brand Master"},
 )
 
 _REPORTS_SUBMODULES = (
@@ -652,11 +651,6 @@ _MASTER_ENDPOINT_GROUPS = {
         "unit_master",
         "save_unit_master",
         "delete_unit_master",
-    },
-    "brand": {
-        "brand_master",
-        "save_brand_master",
-        "delete_brand_master",
     },
 }
 _MASTER_ENDPOINTS = set().union(*_MASTER_ENDPOINT_GROUPS.values()) | {"master"}
@@ -1521,19 +1515,6 @@ def user_can_access_unit_master(user):
     return False
 
 
-def user_can_access_brand_master(user):
-    """Brand Master via Master hub or Stores Product Master."""
-    if not user:
-        return False
-    if user.get("is_admin"):
-        return True
-    if user_can_access_master_submodule(user, "brand"):
-        return True
-    if user_can_access_stores_submodule(user, "product_master"):
-        return True
-    return False
-
-
 
 def dashboard_access_list(user):
     if not user:
@@ -1836,8 +1817,6 @@ def user_can_access_endpoint_master(user, endpoint):
         return user_can_access_category_master(user)
     if submodule == "unit":
         return user_can_access_unit_master(user)
-    if submodule == "brand":
-        return user_can_access_brand_master(user)
     return user_can_access_master_submodule(user, submodule)
 
 

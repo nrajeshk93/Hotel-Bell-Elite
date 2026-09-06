@@ -94,10 +94,14 @@ from db import (
     get_hotel_tariff_rates,
     hotel_room_invoice_kpis,
     aggregate_invoice_sales_kpis,
+    aggregate_invoice_sales_kpis_by_day,
+    _hotel_split_inclusive_tax,
+    _invoice_kpi_modules,
+    _iter_generated_ledger_pos_invoices,
+    _iter_hotel_ledger_sales_invoices,
     license_is_active,
     list_license_renewals,
     update_app_license,
-    aggregate_invoice_sales_kpis_by_day,
     hotel_sales_entry_from_invoices,
     pos_sales_entry_from_invoices,
     indian_fiscal_year_bounds,
@@ -349,6 +353,7 @@ from asset_digest import (
 from gst_hotel import register_gst_hotel
 from gst_fnb import register_gst_fnb
 from main_dashboard_data import (
+    build_financial_flow,
     build_outlet_boards,
     build_sales_heatmap,
     build_sales_trend,
@@ -5082,6 +5087,83 @@ def _invoice_sales_expense_total(conn, date_from, date_to, company=None, locatio
     return round_half_up(expense_row["total"] if expense_row else 0, 2)
 
 
+def _dashboard_ledger_category_totals(conn, date_from, date_to, entry_kind, location=None):
+    """Sum purchase/expense ledger rows by configured category for the date range."""
+    kind = _normalize_ledger_entry_kind(entry_kind)
+    labels = _expense_category_labels(
+        conn,
+        module=(
+            LEDGER_MODULE_PURCHASE
+            if kind == LEDGER_ENTRY_KIND_PURCHASE
+            else LEDGER_MODULE_EXPENSE
+        ),
+    )
+    sql = """
+        SELECT category, COALESCE(SUM(amount), 0) AS total
+        FROM sales_update_expenses
+        WHERE sales_date >= ? AND sales_date <= ?
+          AND cancelled_at IS NULL
+          AND COALESCE(NULLIF(TRIM(entry_kind), ''), ?) = ?
+        """
+    params = [
+        date_from.isoformat(),
+        date_to.isoformat(),
+        LEDGER_ENTRY_KIND_EXPENSE,
+        kind,
+    ]
+    sql, params = _append_sales_location_sql(sql, params, location)
+    sql += " GROUP BY category"
+    rows = []
+    for row in conn.execute(sql, params).fetchall():
+        key = _normalize_expense_category(row["category"]) or "other"
+        amount = round_half_up(float(row["total"] or 0), 2)
+        if amount <= 0:
+            continue
+        rows.append(
+            {
+                "key": key,
+                "name": labels.get(key) or EXPENSE_CATEGORY_LABELS.get(key) or key.replace("_", " ").title(),
+                "amount": amount,
+            }
+        )
+    # Merge duplicate keys after alias normalize.
+    merged = {}
+    for item in rows:
+        bucket = merged.get(item["key"])
+        if bucket is None:
+            merged[item["key"]] = dict(item)
+        else:
+            bucket["amount"] = round_half_up(bucket["amount"] + item["amount"], 2)
+    return sorted(
+        merged.values(),
+        key=lambda item: (-float(item["amount"]), str(item["name"]).casefold()),
+    )
+
+
+def _dashboard_gst_tax_total(conn, date_from, date_to, location=None):
+    """GST collected on dashboard revenue (POS gst_amount + hotel inclusive split)."""
+    include_hotel, outlets = _invoice_kpi_modules(location)
+    tax = 0.0
+    d0 = date_from.isoformat()
+    d1 = date_to.isoformat()
+
+    if include_hotel:
+        rates = get_hotel_tax_rates(conn)
+        for row in _iter_hotel_ledger_sales_invoices(conn, d0, d1):
+            _taxable, cgst, ugst, _inclusive = _hotel_split_inclusive_tax(
+                row["estimated_total"], rates
+            )
+            tax += float(cgst or 0) + float(ugst or 0)
+
+    for inv in _iter_generated_ledger_pos_invoices(conn, d0, d1, outlets):
+        try:
+            tax += float(inv.get("gst") or inv.get("gst_amount") or 0)
+        except (TypeError, ValueError):
+            pass
+
+    return round_half_up(tax, 2)
+
+
 def _format_kpi_date_window(date_from, date_to):
     months = (
         "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -6070,9 +6152,9 @@ def _format_dashboard_date_range_label(date_from, date_to):
 
 def _resolve_main_dashboard_filters(args):
     today = date.today()
-    period = (args.get("period") or "30d").strip().lower()
+    period = (args.get("period") or "mtd").strip().lower()
     if period not in DASHBOARD_PERIOD_KEYS and period != "custom":
-        period = "30d"
+        period = "mtd"
 
     location = (args.get("location") or DASHBOARD_FILTER_LOCATION_ALL).strip()
     if location not in DASHBOARD_FILTER_LOCATION_KEYS:
@@ -6100,7 +6182,7 @@ def _resolve_main_dashboard_filters(args):
         date_from, date_to = parsed_from, parsed_to
         period = "custom"
     else:
-        period = "30d"
+        period = "mtd"
         date_from, date_to = _dashboard_period_range(period, today)
 
     return {
@@ -6182,6 +6264,7 @@ def _dashboard_kpi_spark_series(conn, date_from, date_to, company=None, location
         )
 
     series = {key: [] for key in DASHBOARD_KPI_KEYS}
+    series["room_credit"] = []
     cursor = spark_from
     while cursor <= spark_to:
         day_iso = cursor.isoformat()
@@ -6192,6 +6275,7 @@ def _dashboard_kpi_spark_series(conn, date_from, date_to, company=None, location
             round_half_up(float(bucket.get("digital_transactions") or 0), 2)
         )
         series["cash"].append(round_half_up(float(bucket.get("cash") or 0), 2))
+        series["room_credit"].append(round_half_up(float(bucket.get("room_credit") or 0), 2))
         series["expense"].append(round_half_up(float(bucket.get("expense") or 0), 2))
         series["difference"].append(day_difference)
         cursor += timedelta(days=1)
@@ -6340,6 +6424,7 @@ def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
                 "actual_sales": float(day_kpi.get("actual_sales") or 0),
                 "digital_transactions": float(day_kpi.get("digital_transactions") or 0),
                 "cash": float(day_kpi.get("cash") or 0),
+                "room_credit": float(day_kpi.get("room_credit") or 0),
                 "expense": float(day_kpi.get("expense") or 0),
                 "difference": float(day_kpi.get("difference") or 0),
                 "transaction_count": 0,
@@ -6357,6 +6442,9 @@ def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
                         (sparks.get("digital_transactions") or [0] * len(su_days))[i]
                     ),
                     "cash": float((sparks.get("cash") or [0] * len(su_days))[i]),
+                    "room_credit": float(
+                        (sparks.get("room_credit") or [0] * len(su_days))[i]
+                    ),
                     "expense": float((sparks.get("expense") or [0] * len(su_days))[i]),
                     "difference": float(
                         (sparks.get("difference") or [0] * len(su_days))[i]
@@ -6401,25 +6489,58 @@ def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
         outlet_totals, prev_outlet_totals, grand_sales
     )
 
+    purchase_categories = _dashboard_ledger_category_totals(
+        conn,
+        date_from,
+        date_to,
+        LEDGER_ENTRY_KIND_PURCHASE,
+        location=location_filter,
+    )
+    expense_categories = _dashboard_ledger_category_totals(
+        conn,
+        date_from,
+        date_to,
+        LEDGER_ENTRY_KIND_EXPENSE,
+        location=location_filter,
+    )
+    gst_tax_total = _dashboard_gst_tax_total(
+        conn, date_from, date_to, location=location_filter
+    )
+    financial_flow = build_financial_flow(
+        outlet_totals,
+        purchase_categories,
+        expense_categories,
+        gst_tax_total,
+        total_revenue=grand_sales,
+    )
+
     digital_cash_stack = []
     for item in daily_series:
-        total = item["digital_transactions"] + item["cash"]
-        if total > 0:
-            dig_pct = round(item["digital_transactions"] / total * 100, 1)
+        dig_day, cash_day, credit_day = payment_mode_pct(
+            item["digital_transactions"],
+            item["cash"],
+            item.get("room_credit") or 0,
+        )
+        if dig_day + cash_day + credit_day > 0:
             digital_cash_stack.append(
                 {
                     "date": item["date"],
-                    "digital_pct": dig_pct,
-                    "cash_pct": round(100.0 - dig_pct, 1),
+                    "digital_pct": dig_day,
+                    "cash_pct": cash_day,
+                    "credit_pct": credit_day,
                 }
             )
 
-    dig_pct, cash_pct = payment_mode_pct(
-        bundle["current"]["digital_transactions"], bundle["current"]["cash"]
+    dig_pct, cash_pct, credit_pct = payment_mode_pct(
+        bundle["current"]["digital_transactions"],
+        bundle["current"]["cash"],
+        bundle["current"].get("room_credit") or 0,
     )
     prev_kpis = bundle["previous"]
-    prev_dig_pct, prev_cash_pct = payment_mode_pct(
-        prev_kpis["digital_transactions"], prev_kpis["cash"]
+    prev_dig_pct, prev_cash_pct, prev_credit_pct = payment_mode_pct(
+        prev_kpis["digital_transactions"],
+        prev_kpis["cash"],
+        prev_kpis.get("room_credit") or 0,
     )
 
     pos_outlets = set(_dashboard_pos_menu_outlets(location))
@@ -6463,12 +6584,15 @@ def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
         "sales_trend": build_sales_trend(daily_series, grand_sales),
         "company_leaderboard": company_leaderboard,
         "sales_contribution": sales_contribution,
+        "financial_flow": financial_flow,
         "digital_cash_stack": digital_cash_stack,
         "payment_mode": {
             "digital_pct": dig_pct,
             "cash_pct": cash_pct,
+            "credit_pct": credit_pct,
             "digital_trend": round(dig_pct - prev_dig_pct, 1),
             "cash_trend": round(cash_pct - prev_cash_pct, 1),
+            "credit_trend": round(credit_pct - prev_credit_pct, 1),
         },
         "heatmap": build_sales_heatmap(daily_series, date_from, date_to),
         "top_selling_items_restaurant": restaurant_top_qty,
