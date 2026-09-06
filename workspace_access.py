@@ -625,6 +625,7 @@ _MASTER_ENDPOINT_GROUPS = {
         "save_customer",
         "delete_customer",
         "export_customer_report",
+        "customer_id_document_view",
     },
     "agency": {
         "agency_master",

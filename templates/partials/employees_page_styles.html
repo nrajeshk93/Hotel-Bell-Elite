@@ -362,19 +362,72 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 
 /* Legacy compact rules removed — employee list uses employees_list.css (PL layout) */
 
-/* ── Compact icon action group ── */
+/* ── Compact icon action group ──
+   Resting brand colors match Restaurant Invoice Ledger / purchase_ledger.css
+   (View #2563EB, Edit #1877F2, Download #059669, Print #4F46E5,
+    Cancel/Del #DC2626, WhatsApp/Send #128C7E).
+   Payroll extras: .cred → view-blue, .att → print-indigo. */
+body.ep-module .act-grp,
 .act-grp{display:inline-flex;align-items:center;gap:2px;background:#F8FAFD;border:1px solid var(--border);border-radius:8px;padding:3px;position:relative;overflow:visible;}
-.act-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:none;cursor:pointer;background:transparent;color:var(--txt3);text-decoration:none;transition:background .12s,color .12s;position:relative;flex-shrink:0;}
+body.ep-module .act-btn,
+.act-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:none;cursor:pointer;background:transparent;color:var(--txt3);text-decoration:none;transition:background .12s,color .12s;position:relative;flex-shrink:0;padding:0;appearance:none;font:inherit;}
+body.ep-module .act-btn svg,
 .act-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;pointer-events:none;}
-.act-btn:hover{color:var(--txt);}
-.act-btn.att:hover{background:var(--warn-bg);color:var(--warn);}
-.act-btn.cred:hover{background:var(--pur-bg);color:var(--pur);}
-.act-btn.edit:hover{background:var(--acc-bg);color:var(--acc);}
-.act-btn.del:hover{background:var(--err-bg);color:var(--err);}
-.act-btn:disabled,.act-btn.is-disabled{opacity:.42;cursor:not-allowed;}
-.act-btn:disabled:hover,.act-btn.is-disabled:hover{background:transparent;color:var(--txt3);}
-.act-btn:disabled,.act-btn.is-disabled{opacity:.42;cursor:not-allowed;}
-.act-btn:disabled:hover,.act-btn.is-disabled:hover{background:transparent;color:var(--txt3);}
+
+/* Resting semantic colors — override grey shell */
+body.ep-module .act-grp .act-btn.view,
+body.ep-module .act-grp .act-btn.cred,
+.act-grp .act-btn.view,
+.act-grp .act-btn.cred{color:#2563EB;}
+body.ep-module .act-grp .act-btn.edit,
+.act-grp .act-btn.edit{color:#1877F2;}
+body.ep-module .act-grp .act-btn.download,
+.act-grp .act-btn.download{color:#059669;}
+body.ep-module .act-grp .act-btn.print,
+body.ep-module .act-grp .act-btn.att,
+.act-grp .act-btn.print,
+.act-grp .act-btn.att{color:#4F46E5;}
+body.ep-module .act-grp .act-btn.cancel,
+body.ep-module .act-grp .act-btn.del,
+.act-grp .act-btn.cancel,
+.act-grp .act-btn.del{color:#DC2626;}
+body.ep-module .act-grp .act-btn.whatsapp,
+body.ep-module .act-grp .act-btn.send,
+.act-grp .act-btn.whatsapp,
+.act-grp .act-btn.send{color:#128C7E;}
+body.ep-module .act-grp .act-btn.whatsapp svg,
+.act-grp .act-btn.whatsapp svg{fill:currentColor;stroke:none;stroke-width:0;}
+
+/* Hover — tinted backgrounds, darker resting hue */
+body.ep-module .act-grp .act-btn.view:hover,
+body.ep-module .act-grp .act-btn.cred:hover,
+.act-grp .act-btn.view:hover,
+.act-grp .act-btn.cred:hover{color:#1D4ED8;background:#EFF6FF;}
+body.ep-module .act-grp .act-btn.edit:hover,
+.act-grp .act-btn.edit:hover{background:var(--acc-bg,#EEF5FF);color:var(--acc,#0B5FCC);}
+body.ep-module .act-grp .act-btn.download:hover,
+.act-grp .act-btn.download:hover{color:#047857;background:#ECFDF5;}
+body.ep-module .act-grp .act-btn.print:hover,
+body.ep-module .act-grp .act-btn.att:hover,
+.act-grp .act-btn.print:hover,
+.act-grp .act-btn.att:hover{color:#4338CA;background:#EEF2FF;}
+body.ep-module .act-grp .act-btn.cancel:hover,
+body.ep-module .act-grp .act-btn.del:hover,
+.act-grp .act-btn.cancel:hover,
+.act-grp .act-btn.del:hover{background:var(--err-bg,#FEF2F2);color:var(--err,#B91C1C);}
+body.ep-module .act-grp .act-btn.whatsapp:hover,
+body.ep-module .act-grp .act-btn.send:hover,
+.act-grp .act-btn.whatsapp:hover,
+.act-grp .act-btn.send:hover{color:#075E54;background:#ECFDF5;}
+
+body.ep-module .act-btn:disabled,
+body.ep-module .act-btn.is-disabled,
+.act-btn:disabled,
+.act-btn.is-disabled{opacity:.42;cursor:not-allowed;}
+body.ep-module .act-btn:disabled:hover,
+body.ep-module .act-btn.is-disabled:hover,
+.act-btn:disabled:hover,
+.act-btn.is-disabled:hover{background:transparent;color:var(--txt3,#94A3B8);}
 .act-sep{width:1px;height:18px;background:var(--border);margin:0 2px;flex-shrink:0;}
 /* tooltip — below icon so sticky header / card overflow do not clip */
 .act-btn[data-tip]::after{content:attr(data-tip);position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#1A202C;color:#fff;font-size:10px;font-weight:600;white-space:nowrap;padding:4px 8px;border-radius:4px;pointer-events:none;opacity:0;visibility:hidden;z-index:30;box-shadow:0 4px 12px rgba(15,23,42,.18);transition:opacity .12s,visibility .12s;}

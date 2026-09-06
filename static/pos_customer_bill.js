@@ -447,6 +447,18 @@
     );
   }
 
+  function receiptAssetUrl(path) {
+    var raw = String(path || '').trim();
+    if (!raw) return '';
+    if (/^(https?:|data:|blob:)/i.test(raw)) return raw;
+    try {
+      if (typeof location !== 'undefined' && location.origin) {
+        return location.origin + (raw.charAt(0) === '/' ? raw : '/' + raw);
+      }
+    } catch (e) {}
+    return raw.charAt(0) === '/' ? raw : '/' + raw;
+  }
+
   function buildSpiceCustomerBillHtml(invoice, opts) {
     opts = opts || {};
     var cfg = getPosReceiptConfig(resolveOutlet(invoice, opts));
@@ -456,7 +468,9 @@
     var lines = invoice && Array.isArray(invoice.lines) ? invoice.lines : [];
     var totals = normalizeTotals(invoice);
     var rows = buildItemRows(lines, formatThermalAmount);
-    var logoUrl = escapeHtml(cfg.logo_url || DEFAULT_RECEIPT_CONFIG.logo_url);
+    var logoUrl = escapeHtml(
+      receiptAssetUrl(cfg.logo_url || DEFAULT_RECEIPT_CONFIG.logo_url)
+    );
     var isCancelled =
       String((invoice && invoice.status) || '')
         .trim()
@@ -529,7 +543,11 @@
       '.receipts-total{text-align:right;font-weight:800;margin-top:6px;font-size:16px}' +
       '.user{margin-top:12px;font-size:12px;font-weight:400}' +
       cancelledCss +
-      '@media print{body{width:auto;margin:0;padding:10px 8px}}' +
+      '@media print{' +
+      'body{width:auto;margin:0;padding:8px 6px}' +
+      '.logo{display:block !important;max-width:70mm;height:auto;' +
+      '-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}' +
+      '}' +
       '</style></head><body' +
       (isCancelled ? ' class="is-cancelled"' : '') +
       '><div class="bill-sheet">' +
@@ -648,4 +666,7 @@
   global.getPosReceiptConfig = getPosReceiptConfig;
   global.isNillSeriesOrderNo = isNillSeriesOrderNo;
   global.buildPosCustomerBillHtml = buildPosCustomerBillHtml;
+  global.groupPosBillLines = groupBillLines;
+  global.resolvePosBillUserLabel = resolveBillUserLabel;
+  global.formatPosBillSpiceDate = formatSpiceDate;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -617,8 +617,40 @@
     var frame = document.getElementById('pos-il-bill-frame');
     if (!frame || !frame.contentWindow) return false;
     try {
-      frame.contentWindow.focus();
-      frame.contentWindow.print();
+      var idoc = frame.contentDocument || frame.contentWindow.document;
+      var imgs = idoc ? idoc.images : null;
+      var pending = 0;
+      var started = false;
+
+      function doPrint() {
+        if (started) return;
+        started = true;
+        try {
+          frame.contentWindow.focus();
+          frame.contentWindow.print();
+        } catch (err) {}
+      }
+
+      if (imgs && imgs.length) {
+        for (var i = 0; i < imgs.length; i++) {
+          if (!imgs[i].complete) {
+            pending += 1;
+            imgs[i].addEventListener('load', function () {
+              pending -= 1;
+              if (pending <= 0) doPrint();
+            });
+            imgs[i].addEventListener('error', function () {
+              pending -= 1;
+              if (pending <= 0) doPrint();
+            });
+          }
+        }
+      }
+      if (pending <= 0) {
+        doPrint();
+      } else {
+        setTimeout(doPrint, 1500);
+      }
       return true;
     } catch (err) {
       return false;

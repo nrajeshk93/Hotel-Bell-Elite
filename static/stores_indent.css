@@ -945,21 +945,41 @@ body.su-module .st-list-card .act-btn svg{
   pointer-events:none;
 }
 body.su-module .st-list-card .act-btn:hover{color:#1A202C}
+/* Resting colors inherit from purchase_ledger.css (.act-grp); keep local hover aligned. */
+body.su-module .st-list-card .act-btn.view{
+  color:#2563EB;
+}
 body.su-module .st-list-card .act-btn.view:hover{
-  background:#EEF5FF;
+  background:#EFF6FF;
+  color:#1D4ED8;
+}
+body.su-module .st-list-card .act-btn.edit{
   color:#1877F2;
 }
 body.su-module .st-list-card .act-btn.edit:hover{
   background:#EEF5FF;
-  color:#1877F2;
+  color:#0B5FCC;
+}
+body.su-module .st-list-card .act-btn.download{
+  color:#059669;
 }
 body.su-module .st-list-card .act-btn.download:hover{
   background:#ECFDF5;
-  color:#059669;
+  color:#047857;
+}
+body.su-module .st-list-card .act-btn.send{
+  color:#128C7E;
+}
+body.su-module .st-list-card .act-btn.send:hover{
+  background:#ECFDF5;
+  color:#075E54;
+}
+body.su-module .st-list-card .act-btn.del{
+  color:#DC2626;
 }
 body.su-module .st-list-card .act-btn.del:hover{
   background:#FEF2F2;
-  color:#DC2626;
+  color:#B91C1C;
 }
 body.su-module .st-list-card .act-btn.is-disabled,
 body.su-module .st-list-card .act-btn:disabled{

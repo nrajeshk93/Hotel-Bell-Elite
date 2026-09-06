@@ -15277,6 +15277,17 @@ def _hotel_invoice_row_to_dict(row):
     item["agency_billing"] = bool(
         _hotel_stay_bills_room_to_agency(stay) or _hotel_stay_bills_fb_to_agency(stay)
     )
+    # Also treat legacy agencyBilling / bill-to-agency invoices as agency for WhatsApp.
+    if not item["agency_billing"] and agency_name:
+        legacy_on = _hotel_stay_flag_if_present(stay, "agencyBilling", "agency_billing")
+        invoice_to = _hotel_str(
+            stay.get("invoiceTo") or stay.get("billingName") or stay.get("billing_name"),
+            160,
+        )
+        if legacy_on or (
+            invoice_to and invoice_to.casefold() == agency_name.casefold()
+        ):
+            item["agency_billing"] = True
     item["guest_mobile"] = _normalize_customer_mobile(
         stay.get("mobile") or stay.get("phone") or ""
     )
@@ -19251,6 +19262,91 @@ def get_hotel_guest_profile(conn, mobile):
         return None
     data["returningGuest"] = "Yes"
     return data
+
+
+def hotel_guest_id_document_ref_from_guest(guest):
+    """Return ``{stored_name, path, name, mime}`` when guest has a primary ID doc."""
+    if not isinstance(guest, dict):
+        return None
+    stored = _hotel_id_document_basename(
+        guest.get("idDocumentStoredName") or guest.get("idDocumentPath")
+    )
+    if not stored:
+        return None
+    mime = _hotel_str(guest.get("idDocumentMime"), 80) or "application/pdf"
+    name = _hotel_str(guest.get("idDocumentName"), 160) or stored
+    return {
+        "stored_name": stored,
+        "path": _hotel_id_document_view_path(stored, stored),
+        "name": name,
+        "mime": mime,
+    }
+
+
+def enrich_customers_with_hotel_id_docs(conn, customers):
+    """Attach hotel guest ID doc refs (by mobile) onto Customer Master rows.
+
+    Prefers saved ``hotel_guest_profiles`` (kept after checkout), then overlays a
+    live in-house stay ID when the profile has none.
+    """
+    if not customers:
+        return customers
+    ensure_hotel_rooms_schema(conn)
+    by_mobile = {}
+
+    try:
+        rows = conn.execute("SELECT mobile, profile FROM hotel_guest_profiles").fetchall()
+    except Exception:
+        rows = []
+    for row in rows:
+        key = _hotel_guest_profile_key(row["mobile"] if row else "")
+        if not key or key in by_mobile:
+            continue
+        try:
+            data = json.loads((row["profile"] if row else "") or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        ref = hotel_guest_id_document_ref_from_guest(data if isinstance(data, dict) else {})
+        if ref:
+            by_mobile[key] = ref
+
+    try:
+        layout = get_hotel_rooms_layout(conn)
+    except Exception:
+        layout = {}
+    for room in layout.get("rooms") or []:
+        if not isinstance(room, dict):
+            continue
+        stay = room.get("stay")
+        if not isinstance(stay, dict) or not stay:
+            continue
+        key = _hotel_guest_profile_key(stay.get("mobile"))
+        if not key:
+            continue
+        existing = by_mobile.get(key)
+        if existing:
+            continue
+        ref = hotel_guest_id_document_ref_from_guest(stay)
+        if ref:
+            by_mobile[key] = ref
+
+    for customer in customers:
+        if not isinstance(customer, dict):
+            continue
+        key = _hotel_guest_profile_key(customer.get("mobile"))
+        ref = by_mobile.get(key) if key else None
+        customer["id_document_url"] = (ref or {}).get("path") or ""
+        customer["id_document_stored_name"] = (ref or {}).get("stored_name") or ""
+        customer["id_document_name"] = (ref or {}).get("name") or ""
+        customer["id_document_mime"] = (ref or {}).get("mime") or ""
+        # Customer-scoped view URL (Master access; not hotel rooms submodule).
+        if customer["id_document_stored_name"]:
+            customer["id_document_view_url"] = (
+                "/customers/api/id-documents/" + customer["id_document_stored_name"]
+            )
+        else:
+            customer["id_document_view_url"] = ""
+    return customers
 
 
 def find_hotel_guest_by_mobile(conn, mobile, first_name="", last_name=""):

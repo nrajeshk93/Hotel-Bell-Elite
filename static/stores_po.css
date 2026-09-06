@@ -411,9 +411,12 @@ body.su-module .st-po-head-actions .act-btn svg{
 body.su-module .st-po-head-actions .act-btn:hover{
   color:var(--txt, #1A202C);
 }
+body.su-module .st-po-head-actions .act-btn.edit{
+  color:#1877F2;
+}
 body.su-module .st-po-head-actions .act-btn.edit:hover{
   background:var(--acc-bg, #EEF5FF);
-  color:var(--acc, #1877F2);
+  color:var(--acc, #0B5FCC);
 }
 body.su-module .st-po-send-shell.is-editing .st-po-head-actions .act-btn.edit{
   background:var(--acc-bg, #EEF5FF);
@@ -995,9 +998,12 @@ body.su-module .st-po-compose-actions .st-btn:disabled{
   cursor:not-allowed;
 }
 
+body.su-module .st-list-card .act-btn.send{
+  color:#128C7E;
+}
 body.su-module .st-list-card .act-btn.send:hover{
   background:#ECFDF5;
-  color:#16A34A;
+  color:#075E54;
 }
 
 /* Purchase Order PDF popup */

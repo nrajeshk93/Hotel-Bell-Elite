@@ -619,9 +619,8 @@
       ' ' +
       billPadLeft(billAmt(amt), 8);
     var nameWidth = Math.max(8, KOT_COLS - right.length - 1);
-    var nm = String(name || '')
-      .trim()
-      .toUpperCase();
+    /* Keep original casing to match on-screen Spice bill preview. */
+    var nm = String(name || '').replace(/\s+/g, ' ').trim();
     var rows = [];
     if (nm.length <= nameWidth) {
       rows.push(kotPad(nm, right));
@@ -646,13 +645,173 @@
     if (lower === 'upi') return 'UPI';
     if (lower === 'card') return 'Card';
     if (lower === 'cash') return 'Cash';
+    if (lower === 'room_transfer' || lower === 'room transfer') return 'Room Transfer';
     return raw.replace(/\b\w/g, function (c) {
       return c.toUpperCase();
     });
   }
 
+  function billSpiceDate(d) {
+    if (typeof global.formatPosBillSpiceDate === 'function') {
+      return global.formatPosBillSpiceDate(d);
+    }
+    var dt = d instanceof Date ? d : new Date();
+    var months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+    var day = dt.getDate();
+    var mon = months[dt.getMonth()] || '';
+    var year = dt.getFullYear();
+    var h = dt.getHours();
+    var m = dt.getMinutes();
+    var ap = h >= 12 ? 'PM' : 'AM';
+    var h12 = h % 12 || 12;
+    return day + '-' + mon + '-' + year + ' ' + h12 + ':' + (m < 10 ? '0' : '') + m + ' ' + ap;
+  }
+
+  function billFormatTaxPct(rate) {
+    var pct = Number(rate) * 100;
+    if (!isFinite(pct) || pct < 0) pct = 0;
+    pct = Math.round(pct * 1000) / 1000;
+    var text = String(pct);
+    if (text.indexOf('.') !== -1) text = text.replace(/\.?0+$/, '');
+    return text;
+  }
+
+  function billInvoiceTaxRates(invoice) {
+    var base = billActiveTaxRates();
+    if (!invoice) return base;
+    var cgstPct = invoice.tax_cgst_pct != null ? invoice.tax_cgst_pct : invoice.taxCgstPct;
+    var ugstPct = invoice.tax_ugst_pct != null ? invoice.tax_ugst_pct : invoice.taxUgstPct;
+    if (cgstPct != null && isFinite(Number(cgstPct))) base.cgst = Number(cgstPct) / 100;
+    if (ugstPct != null && isFinite(Number(ugstPct))) base.ugst = Number(ugstPct) / 100;
+    return base;
+  }
+
+  function billGroupedLines(lines) {
+    if (typeof global.groupPosBillLines === 'function') {
+      return global.groupPosBillLines(lines);
+    }
+    return Array.isArray(lines) ? lines : [];
+  }
+
+  function billUserLabel(invoice, opts, cfg) {
+    if (typeof global.resolvePosBillUserLabel === 'function') {
+      return global.resolvePosBillUserLabel(invoice, opts, cfg);
+    }
+    var fromCfg = String((cfg && cfg.user_label) || '').trim();
+    if (fromCfg && !/^(restaurant|bar)$/i.test(fromCfg)) return fromCfg;
+    var fromInvoice = String((invoice && invoice.created_by) || '').trim();
+    if (fromInvoice) return fromInvoice;
+    return fromCfg || 'User';
+  }
+
+  function billAbsoluteUrl(path) {
+    var raw = String(path || '').trim();
+    if (!raw) return '';
+    if (/^(https?:|data:|blob:)/i.test(raw)) return raw;
+    try {
+      if (typeof location !== 'undefined' && location.origin) {
+        return location.origin + (raw.charAt(0) === '/' ? raw : '/' + raw);
+      }
+    } catch (e) {}
+    return raw.charAt(0) === '/' ? raw : '/' + raw;
+  }
+
+  var _logoRasterCache = {};
+
+  function imageToEscPosRaster(img, maxWidthPx) {
+    maxWidthPx = maxWidthPx || 384;
+    var w = img.naturalWidth || img.width || 0;
+    var h = img.naturalHeight || img.height || 0;
+    if (!w || !h) return '';
+    var scale = Math.min(1, maxWidthPx / w);
+    var tw = Math.max(8, Math.floor(w * scale));
+    tw = tw - (tw % 8);
+    if (tw < 8) tw = 8;
+    var th = Math.max(1, Math.round((h * tw) / w));
+    var canvas = document.createElement('canvas');
+    canvas.width = tw;
+    canvas.height = th;
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, tw, th);
+    ctx.drawImage(img, 0, 0, tw, th);
+    var pixels = ctx.getImageData(0, 0, tw, th).data;
+    var widthBytes = tw / 8;
+    var data = new Array(widthBytes * th);
+    var di = 0;
+    for (var y = 0; y < th; y++) {
+      for (var xb = 0; xb < widthBytes; xb++) {
+        var b = 0;
+        for (var bit = 0; bit < 8; bit++) {
+          var x = xb * 8 + bit;
+          var i = (y * tw + x) * 4;
+          var r = pixels[i];
+          var g = pixels[i + 1];
+          var bl = pixels[i + 2];
+          var a = pixels[i + 3];
+          var lum = 0.299 * r + 0.587 * g + 0.114 * bl;
+          if (a > 128 && lum < 190) b |= 0x80 >> bit;
+        }
+        data[di++] = b;
+      }
+    }
+    var GS = '\x1d';
+    var xL = widthBytes & 0xff;
+    var xH = (widthBytes >> 8) & 0xff;
+    var yL = th & 0xff;
+    var yH = (th >> 8) & 0xff;
+    var out = GS + 'v0\x00' + String.fromCharCode(xL, xH, yL, yH);
+    for (var n = 0; n < data.length; n++) {
+      out += String.fromCharCode(data[n]);
+    }
+    return out;
+  }
+
+  function loadReceiptLogoEscPos(outlet) {
+    var cfg =
+      typeof global.getPosReceiptConfig === 'function'
+        ? global.getPosReceiptConfig(resolveOutlet(outlet))
+        : {};
+    var url = billAbsoluteUrl(cfg.logo_url || '');
+    if (!url) return Promise.resolve('');
+    if (Object.prototype.hasOwnProperty.call(_logoRasterCache, url)) {
+      return Promise.resolve(_logoRasterCache[url] || '');
+    }
+    return new Promise(function (resolve) {
+      var img = new Image();
+      img.onload = function () {
+        try {
+          _logoRasterCache[url] = imageToEscPosRaster(img, 384) || '';
+        } catch (e) {
+          _logoRasterCache[url] = '';
+        }
+        resolve(_logoRasterCache[url]);
+      };
+      img.onerror = function () {
+        _logoRasterCache[url] = '';
+        resolve('');
+      };
+      img.src = url;
+    });
+  }
+
   /**
    * Plain-text Spice-style guest bill for thermal printers (no HTML/CSS).
+   * Layout mirrors static/pos_customer_bill.js on-screen / browser preview.
    */
   function formatCustomerBillText(invoice, opts) {
     opts = opts || {};
@@ -664,11 +823,11 @@
         ? global.getPosReceiptConfig(o)
         : {};
     var totals = billNormalizeTotals(invoice);
-    var rates = billActiveTaxRates();
+    var rates = billInvoiceTaxRates(invoice);
     var when = billResolveDate(invoice);
     var orderNo = invoice.order_no || '—';
     var table = invoice.table_label || invoice.table || '—';
-    var lines = Array.isArray(invoice.lines) ? invoice.lines : [];
+    var lines = billGroupedLines(invoice.lines);
     var rule = kotRule();
     var out = [];
 
@@ -678,20 +837,20 @@
     });
     if (!isNillSeriesOrderNo(orderNo)) {
       var taxLine = 'GST ' + (cfg.gst || '');
-      if (cfg.fssai) taxLine += ' | FSSAI ' + cfg.fssai;
+      if (cfg.fssai) taxLine += ' | FSSAI No - ' + cfg.fssai;
       billWrap(taxLine, KOT_COLS).forEach(function (ln) {
         out.push(kotCenter(ln));
       });
     }
     out.push(rule);
     out.push(kotPad('Invoice', String(orderNo)));
-    out.push(kotPad('Date', kotFormatDate(when)));
+    out.push(kotPad('Date', billSpiceDate(when)));
     out.push(kotPad('Table', String(table)));
     out.push(rule);
     out.push(
       kotPad(
-        'ITEMS',
-        billPadLeft('QTY', 3) + ' ' + billPadLeft('RATE', 7) + ' ' + billPadLeft('AMOUNT', 8)
+        'Items',
+        billPadLeft('Qty', 3) + ' ' + billPadLeft('Rate', 7) + ' ' + billPadLeft('Amount', 8)
       )
     );
     out.push(rule);
@@ -712,10 +871,14 @@
     if (Number(totals.discount) > 0) {
       out.push(kotPad('Discount', '-' + billAmt(totals.discount)));
     }
-    out.push(kotPad('CGST @ ' + rates.cgst * 100 + '%', billAmt(totals.cgst)));
-    out.push(kotPad('UGST @ ' + rates.ugst * 100 + '%', billAmt(totals.ugst)));
+    if (Number(totals.cgst) > 0) {
+      out.push(kotPad('CGST @ ' + billFormatTaxPct(rates.cgst) + '%', billAmt(totals.cgst)));
+    }
+    if (Number(totals.ugst) > 0) {
+      out.push(kotPad('UGST @ ' + billFormatTaxPct(rates.ugst) + '%', billAmt(totals.ugst)));
+    }
     if (Number(totals.vat) > 0) {
-      out.push(kotPad('VAT @ ' + rates.vat * 100 + '%', billAmt(totals.vat)));
+      out.push(kotPad('VAT @ ' + billFormatTaxPct(rates.vat) + '%', billAmt(totals.vat)));
     }
     if (Number(totals.service) > 0) {
       out.push(kotPad('Service Charge', billAmt(totals.service)));
@@ -727,7 +890,7 @@
       out.push(kotPad('Round-Off', billAmt(totals.roundOff)));
     }
     out.push(rule);
-    out.push(kotPad('TOTAL', billAmt(totals.total)));
+    out.push(kotPad('Total', '₹' + billAmt(totals.total)));
     var payments = Array.isArray(invoice.payments) ? invoice.payments : [];
     if (payments.length) {
       out.push(rule);
@@ -736,12 +899,12 @@
       });
     }
     out.push('');
-    out.push('User : ' + (cfg.user_label || meta.userLabel || 'RESTAURANT'));
+    out.push('User : ' + billUserLabel(invoice, opts, cfg || { user_label: meta.userLabel }));
     out.push('');
     return out.join('\n');
   }
 
-  /** ESC/POS bytes for 80mm guest invoice — avoids HTML/CSS dump on thermal. */
+  /** ESC/POS bytes for 80mm guest invoice — mirrors on-screen Spice bill. */
   function formatCustomerBillEscPos(invoice, opts) {
     opts = opts || {};
     invoice = invoice || {};
@@ -754,11 +917,11 @@
         ? global.getPosReceiptConfig(o)
         : {};
     var totals = billNormalizeTotals(invoice);
-    var rates = billActiveTaxRates();
+    var rates = billInvoiceTaxRates(invoice);
     var when = billResolveDate(invoice);
     var orderNo = invoice.order_no || '—';
     var table = invoice.table_label || invoice.table || '—';
-    var items = Array.isArray(invoice.lines) ? invoice.lines : [];
+    var items = billGroupedLines(invoice.lines);
     var rule = kotRule();
     var parts = [];
 
@@ -787,6 +950,10 @@
 
     raw(ESC + '@');
     center(true);
+    if (opts.logoRaster) {
+      raw(opts.logoRaster);
+      raw('\n');
+    }
     textStyle({ bold: true, doubleH: true });
     line(String(meta.business || cfg.business_name || '').toUpperCase());
     textStyle({});
@@ -795,7 +962,7 @@
     });
     if (!isNillSeriesOrderNo(orderNo)) {
       var taxLine = 'GST ' + (cfg.gst || '');
-      if (cfg.fssai) taxLine += ' | FSSAI ' + cfg.fssai;
+      if (cfg.fssai) taxLine += ' | FSSAI No - ' + cfg.fssai;
       billWrap(taxLine, KOT_COLS).forEach(function (ln) {
         line(ln);
       });
@@ -803,7 +970,7 @@
     center(false);
     line(rule);
     line(kotPad('Invoice', String(orderNo)));
-    line(kotPad('Date', kotFormatDate(when)));
+    line(kotPad('Date', billSpiceDate(when)));
     textStyle({ bold: true });
     line(kotPad('Table', String(table)));
     textStyle({});
@@ -811,8 +978,8 @@
     textStyle({ bold: true });
     line(
       kotPad(
-        'ITEMS',
-        billPadLeft('QTY', 3) + ' ' + billPadLeft('RATE', 7) + ' ' + billPadLeft('AMOUNT', 8)
+        'Items',
+        billPadLeft('Qty', 3) + ' ' + billPadLeft('Rate', 7) + ' ' + billPadLeft('Amount', 8)
       )
     );
     textStyle({});
@@ -836,10 +1003,14 @@
     if (Number(totals.discount) > 0) {
       line(kotPad('Discount', '-' + billAmt(totals.discount)));
     }
-    line(kotPad('CGST @ ' + rates.cgst * 100 + '%', billAmt(totals.cgst)));
-    line(kotPad('UGST @ ' + rates.ugst * 100 + '%', billAmt(totals.ugst)));
+    if (Number(totals.cgst) > 0) {
+      line(kotPad('CGST @ ' + billFormatTaxPct(rates.cgst) + '%', billAmt(totals.cgst)));
+    }
+    if (Number(totals.ugst) > 0) {
+      line(kotPad('UGST @ ' + billFormatTaxPct(rates.ugst) + '%', billAmt(totals.ugst)));
+    }
     if (Number(totals.vat) > 0) {
-      line(kotPad('VAT @ ' + rates.vat * 100 + '%', billAmt(totals.vat)));
+      line(kotPad('VAT @ ' + billFormatTaxPct(rates.vat) + '%', billAmt(totals.vat)));
     }
     if (Number(totals.service) > 0) {
       line(kotPad('Service Charge', billAmt(totals.service)));
@@ -852,7 +1023,8 @@
     }
     line(rule);
     textStyle({ bold: true, doubleH: true });
-    line(kotPad('TOTAL', billAmt(totals.total)));
+    /* ESC/POS ASCII path cannot emit ₹ — use Rs. to match preview amount. */
+    line(kotPad('Total', 'Rs.' + billAmt(totals.total)));
     textStyle({});
     var payments = Array.isArray(invoice.payments) ? invoice.payments : [];
     if (payments.length) {
@@ -862,7 +1034,7 @@
       });
     }
     line('');
-    line('User : ' + (cfg.user_label || meta.userLabel || 'RESTAURANT'));
+    line('User : ' + billUserLabel(invoice, opts, cfg || { user_label: meta.userLabel }));
     raw('\n\n');
     raw(GS + 'V' + '\x01');
     return parts.join('');
@@ -912,71 +1084,88 @@
       );
     }
 
-    var text = '';
-    var escposB64 = '';
-    if (invoice) {
-      try {
-        text = formatCustomerBillText(invoice, { outlet: opts.outlet });
-      } catch (e) {
-        text = '';
-      }
-      try {
-        escposB64 = toBase64Binary(formatCustomerBillEscPos(invoice, { outlet: opts.outlet }));
-      } catch (e2) {
-        escposB64 = '';
-      }
-    }
-
-    var job = {
-      printerRole: role,
-      documentType: opts.documentType || 'receipt',
-      copies: opts.copies || 1,
-      jobId: opts.jobId || undefined,
-      idempotencyKey: opts.idempotencyKey || opts.jobId || undefined
-    };
-    if (escposB64) {
-      job.contentType = 'escpos';
-      job.contentEncoding = 'base64';
-      job.content = escposB64;
-    } else if (text) {
-      job.contentType = 'text';
-      job.contentEncoding = 'utf8';
-      job.content = String(text);
-    } else if (html) {
-      /* Last resort — may dump CSS on older agents; prefer passing opts.invoice. */
-      job.contentType = 'html';
-      job.contentEncoding = 'utf8';
-      job.content = html;
-    } else {
-      return Promise.resolve(fail(new Error('Nothing to print.')));
-    }
-
-    return global.HotelPrintAgent.print(job)
-      .then(function (data) {
-        return { via: 'agent', data: data };
-      })
-      .catch(function (err) {
-        if (job.contentType === 'escpos' && text) {
-          return global.HotelPrintAgent.print({
-            printerRole: role,
-            documentType: opts.documentType || 'receipt',
-            contentType: 'text',
-            contentEncoding: 'utf8',
-            content: String(text),
-            copies: opts.copies || 1,
-            jobId: (opts.jobId || 'inv') + '-txt',
-            idempotencyKey:
-              (opts.idempotencyKey || opts.jobId || '') + '-txt' || undefined
-          })
-            .then(function (data) {
-              return { via: 'agent', data: data, fallback: 'text' };
-            })
-            .catch(function (err2) {
-              return fail(err2 || err);
-            });
+    function sendJob(logoRaster) {
+      var text = '';
+      var escposB64 = '';
+      if (invoice) {
+        try {
+          text = formatCustomerBillText(invoice, { outlet: opts.outlet });
+        } catch (e) {
+          text = '';
         }
-        return fail(err);
-      });
+        try {
+          escposB64 = toBase64Binary(
+            formatCustomerBillEscPos(invoice, {
+              outlet: opts.outlet,
+              logoRaster: logoRaster || ''
+            })
+          );
+        } catch (e2) {
+          escposB64 = '';
+        }
+      }
+
+      var job = {
+        printerRole: role,
+        documentType: opts.documentType || 'receipt',
+        copies: opts.copies || 1,
+        jobId: opts.jobId || undefined,
+        idempotencyKey: opts.idempotencyKey || opts.jobId || undefined
+      };
+      if (escposB64) {
+        job.contentType = 'escpos';
+        job.contentEncoding = 'base64';
+        job.content = escposB64;
+      } else if (text) {
+        job.contentType = 'text';
+        job.contentEncoding = 'utf8';
+        job.content = String(text);
+      } else if (html) {
+        /* Last resort — may dump CSS on older agents; prefer passing opts.invoice. */
+        job.contentType = 'html';
+        job.contentEncoding = 'utf8';
+        job.content = html;
+      } else {
+        return Promise.resolve(fail(new Error('Nothing to print.')));
+      }
+
+      return global.HotelPrintAgent.print(job)
+        .then(function (data) {
+          return { via: 'agent', data: data };
+        })
+        .catch(function (err) {
+          if (job.contentType === 'escpos' && text) {
+            return global.HotelPrintAgent.print({
+              printerRole: role,
+              documentType: opts.documentType || 'receipt',
+              contentType: 'text',
+              contentEncoding: 'utf8',
+              content: String(text),
+              copies: opts.copies || 1,
+              jobId: (opts.jobId || 'inv') + '-txt',
+              idempotencyKey:
+                (opts.idempotencyKey || opts.jobId || '') + '-txt' || undefined
+            })
+              .then(function (data) {
+                return { via: 'agent', data: data, fallback: 'text' };
+              })
+              .catch(function (err2) {
+                return fail(err2 || err);
+              });
+          }
+          return fail(err);
+        });
+    }
+
+    var logoPromise = invoice
+      ? loadReceiptLogoEscPos(opts.outlet || invoice.outlet).catch(function () {
+          return '';
+        })
+      : Promise.resolve('');
+
+    return logoPromise.then(function (logoRaster) {
+      return sendJob(logoRaster);
+    });
   }
 
   /** Apply stored prefs onto Printers panel fields marked data-pos-pc-printer. */

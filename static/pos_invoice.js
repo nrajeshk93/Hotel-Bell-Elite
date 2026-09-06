@@ -2739,7 +2739,33 @@
       },
       { once: true }
     );
-    if (autoPrint) setTimeout(doPrint, 300);
+    if (autoPrint) {
+      var imgs = idoc.images;
+      var pending = 0;
+      var printed = false;
+      function kickPrint() {
+        if (printed) return;
+        printed = true;
+        doPrint();
+      }
+      if (imgs && imgs.length) {
+        for (var ii = 0; ii < imgs.length; ii++) {
+          if (!imgs[ii].complete) {
+            pending += 1;
+            imgs[ii].addEventListener('load', function () {
+              pending -= 1;
+              if (pending <= 0) kickPrint();
+            });
+            imgs[ii].addEventListener('error', function () {
+              pending -= 1;
+              if (pending <= 0) kickPrint();
+            });
+          }
+        }
+      }
+      if (pending <= 0) setTimeout(kickPrint, 300);
+      else setTimeout(kickPrint, 1500);
+    }
     return true;
   }
 
@@ -2760,7 +2786,33 @@
           if (autoPrint) {
             setTimeout(function () {
               try {
-                win.print();
+                var imgs = win.document && win.document.images;
+                var pending = 0;
+                var printed = false;
+                function kick() {
+                  if (printed) return;
+                  printed = true;
+                  try {
+                    win.print();
+                  } catch (err2) {}
+                }
+                if (imgs && imgs.length) {
+                  for (var i = 0; i < imgs.length; i++) {
+                    if (!imgs[i].complete) {
+                      pending += 1;
+                      imgs[i].addEventListener('load', function () {
+                        pending -= 1;
+                        if (pending <= 0) kick();
+                      });
+                      imgs[i].addEventListener('error', function () {
+                        pending -= 1;
+                        if (pending <= 0) kick();
+                      });
+                    }
+                  }
+                }
+                if (pending <= 0) kick();
+                else setTimeout(kick, 1500);
               } catch (err) {}
             }, 250);
           }

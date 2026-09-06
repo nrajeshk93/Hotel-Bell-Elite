@@ -736,7 +736,7 @@ body.su-module .pl-add-kind-field .pl-kind-tabs .pl-kind-tab.is-active{
 body.su-module .pl-name{font-weight:700;color:var(--txt)}
 body.su-module .pl-meta{font-size:12px;color:var(--txt3);margin-top:2px;line-height:1.4}
 body.su-module .pl-amount{font-weight:700;color:var(--txt)}
-/* Icon actions — match Employee Payroll list (.act-grp / .act-btn) */
+/* Icon actions — .act-grp / .act-btn shell; resting colors match Restaurant Invoice Ledger */
 body.su-module .pl-list-panel .act-grp,
 body.su-module .pl-action-btns.act-grp{
   display:inline-flex;
@@ -782,15 +782,161 @@ body.su-module .pl-action-btns .act-btn svg{
 }
 body.su-module .pl-list-panel .act-btn:hover,
 body.su-module .pl-action-btns .act-btn:hover{color:var(--txt,#1A202C)}
+
+/* Resting brand colors — match Restaurant Invoice Ledger (not gray until hover).
+   Hook: .act-grp / .pl-action-btns / .pl-list-panel so Purchase, Expense, Transfer,
+   Stores, Indents, Accounts, and future ledgers inherit the same palette. */
+body.su-module .act-grp .act-btn.view,
+body.su-module .pl-list-panel .act-btn.view,
+body.su-module .pl-action-btns .act-btn.view{
+  color:#2563EB;
+}
+body.su-module .act-grp .act-btn.view:hover,
+body.su-module .pl-list-panel .act-btn.view:hover,
+body.su-module .pl-action-btns .act-btn.view:hover{
+  color:#1D4ED8;
+  background:#EFF6FF;
+}
+
+body.su-module .act-grp .act-btn.edit,
+body.su-module .pl-list-panel .act-btn.edit,
+body.su-module .pl-action-btns .act-btn.edit{
+  color:#1877F2;
+}
+body.su-module .act-grp .act-btn.edit:hover,
 body.su-module .pl-list-panel .act-btn.edit:hover,
 body.su-module .pl-action-btns .act-btn.edit:hover{
   background:var(--acc-bg,#EEF5FF);
-  color:var(--acc,#1877F2);
+  color:var(--acc,#0B5FCC);
 }
+
+/* View aliases that also carry .edit — must follow .edit so resting stays view-blue. */
+body.su-module .act-grp .act-btn.pos-il-view-btn,
+body.su-module .act-grp .act-btn.hil-view-btn,
+body.su-module .act-grp .act-btn.cp-view-payment,
+body.su-module .pl-action-btns .act-btn.pos-il-view-btn,
+body.su-module .pl-action-btns .act-btn.hil-view-btn,
+body.su-module .pl-action-btns .act-btn.cp-view-payment{
+  color:#2563EB;
+}
+body.su-module .act-grp .act-btn.pos-il-view-btn:hover,
+body.su-module .act-grp .act-btn.hil-view-btn:hover,
+body.su-module .act-grp .act-btn.cp-view-payment:hover,
+body.su-module .pl-action-btns .act-btn.pos-il-view-btn:hover,
+body.su-module .pl-action-btns .act-btn.hil-view-btn:hover,
+body.su-module .pl-action-btns .act-btn.cp-view-payment:hover{
+  color:#1D4ED8;
+  background:#EFF6FF;
+}
+
+/* Employee Payroll — .cred is view (credits ledger); .att uses print indigo (calendar). */
+body.su-module .act-grp .act-btn.cred,
+body.ep-module .act-grp .act-btn.cred,
+body.su-module .pl-list-panel .act-btn.cred,
+body.ep-module .pl-list-panel .act-btn.cred{
+  color:#2563EB;
+}
+body.su-module .act-grp .act-btn.cred:hover,
+body.ep-module .act-grp .act-btn.cred:hover,
+body.su-module .pl-list-panel .act-btn.cred:hover,
+body.ep-module .pl-list-panel .act-btn.cred:hover{
+  color:#1D4ED8;
+  background:#EFF6FF;
+}
+body.su-module .act-grp .act-btn.att,
+body.ep-module .act-grp .act-btn.att,
+body.su-module .pl-list-panel .act-btn.att,
+body.ep-module .pl-list-panel .act-btn.att{
+  color:#4F46E5;
+}
+body.su-module .act-grp .act-btn.att:hover,
+body.ep-module .act-grp .act-btn.att:hover,
+body.su-module .pl-list-panel .act-btn.att:hover,
+body.ep-module .pl-list-panel .act-btn.att:hover{
+  color:#4338CA;
+  background:#EEF2FF;
+}
+
+body.su-module .act-grp .act-btn.download,
+body.su-module .pl-list-panel .act-btn.download,
+body.su-module .pl-action-btns .act-btn.download{
+  color:#059669;
+}
+body.su-module .act-grp .act-btn.download:hover,
+body.su-module .pl-list-panel .act-btn.download:hover,
+body.su-module .pl-action-btns .act-btn.download:hover{
+  color:#047857;
+  background:#ECFDF5;
+}
+
+body.su-module .act-grp .act-btn.print,
+body.su-module .pl-list-panel .act-btn.print,
+body.su-module .pl-action-btns .act-btn.print,
+body.su-module .act-grp .act-btn.hil-print-btn,
+body.su-module .act-grp .act-btn.st-tl-print-btn,
+body.su-module .pl-action-btns .act-btn.hil-print-btn,
+body.su-module .pl-action-btns .act-btn.st-tl-print-btn{
+  color:#4F46E5;
+}
+body.su-module .act-grp .act-btn.print:hover,
+body.su-module .pl-list-panel .act-btn.print:hover,
+body.su-module .pl-action-btns .act-btn.print:hover,
+body.su-module .act-grp .act-btn.hil-print-btn:hover,
+body.su-module .act-grp .act-btn.st-tl-print-btn:hover,
+body.su-module .pl-action-btns .act-btn.hil-print-btn:hover,
+body.su-module .pl-action-btns .act-btn.st-tl-print-btn:hover{
+  color:#4338CA;
+  background:#EEF2FF;
+}
+
+body.su-module .act-grp .act-btn.cancel,
+body.su-module .act-grp .act-btn.del,
+body.su-module .pl-list-panel .act-btn.cancel,
+body.su-module .pl-list-panel .act-btn.del,
+body.su-module .pl-action-btns .act-btn.cancel,
+body.su-module .pl-action-btns .act-btn.del{
+  color:#DC2626;
+}
+body.su-module .act-grp .act-btn.cancel:hover,
+body.su-module .act-grp .act-btn.del:hover,
+body.su-module .pl-list-panel .act-btn.cancel:hover,
 body.su-module .pl-list-panel .act-btn.del:hover,
+body.su-module .pl-action-btns .act-btn.cancel:hover,
 body.su-module .pl-action-btns .act-btn.del:hover{
   background:var(--err-bg,#FEF2F2);
-  color:var(--err,#DC2626);
+  color:var(--err,#B91C1C);
+}
+
+body.su-module .act-grp .act-btn.whatsapp,
+body.su-module .act-grp .act-btn.send,
+body.su-module .pl-list-panel .act-btn.whatsapp,
+body.su-module .pl-list-panel .act-btn.send,
+body.su-module .pl-action-btns .act-btn.whatsapp,
+body.su-module .pl-action-btns .act-btn.send{
+  color:#128C7E;
+}
+body.su-module .act-grp .act-btn.whatsapp svg,
+body.su-module .pl-list-panel .act-btn.whatsapp svg,
+body.su-module .pl-action-btns .act-btn.whatsapp svg{
+  fill:currentColor;
+  stroke:none;
+  stroke-width:0;
+}
+body.su-module .act-grp .act-btn.whatsapp:hover,
+body.su-module .act-grp .act-btn.send:hover,
+body.su-module .pl-list-panel .act-btn.whatsapp:hover,
+body.su-module .pl-list-panel .act-btn.send:hover,
+body.su-module .pl-action-btns .act-btn.whatsapp:hover,
+body.su-module .pl-action-btns .act-btn.send:hover{
+  color:#075E54;
+  background:#ECFDF5;
+}
+body.su-module .act-grp .act-btn.whatsapp:disabled,
+body.su-module .act-grp .act-btn.whatsapp.is-disabled,
+body.su-module .pl-action-btns .act-btn.whatsapp:disabled,
+body.su-module .pl-action-btns .act-btn.whatsapp.is-disabled{
+  color:#94A3B8;
+  background:transparent;
 }
 body.su-module .pl-list-panel .sm-row-delete-form,
 body.su-module .pl-action-btns .sm-row-delete-form{
@@ -1009,19 +1155,53 @@ body.su-module #employee-master-filter-form .btn-clear:hover{
 :is(#md-master-modal, #st-product-master-modal) .sm-list-panel .act-btn:hover{
   color:var(--txt);
 }
+:is(#md-master-modal, #st-product-master-modal) .act-grp .act-btn.view,
+:is(#md-master-modal, #st-product-master-modal) .pl-list-panel .act-btn.view,
+:is(#md-master-modal, #st-product-master-modal) .sm-list-panel .act-btn.view{
+  color:#2563EB;
+}
+:is(#md-master-modal, #st-product-master-modal) .act-grp .act-btn.view:hover,
+:is(#md-master-modal, #st-product-master-modal) .pl-list-panel .act-btn.view:hover,
+:is(#md-master-modal, #st-product-master-modal) .sm-list-panel .act-btn.view:hover{
+  color:#1D4ED8;
+  background:#EFF6FF;
+}
+:is(#md-master-modal, #st-product-master-modal) .act-grp .act-btn.edit,
+:is(#md-master-modal, #st-product-master-modal) .pl-list-panel .act-btn.edit,
+:is(#md-master-modal, #st-product-master-modal) .sm-list-panel .act-btn.edit{
+  color:#1877F2;
+}
+:is(#md-master-modal, #st-product-master-modal) .act-grp .act-btn.edit:hover,
 :is(#md-master-modal, #st-product-master-modal) .pl-list-panel .act-btn.edit:hover,
 :is(#md-master-modal, #st-product-master-modal) .sm-list-panel .act-btn.edit:hover{
-  background:var(--acc-bg);
-  color:var(--acc);
+  background:var(--acc-bg,#EEF5FF);
+  color:var(--acc,#0B5FCC);
 }
 :is(#md-master-modal, #st-product-master-modal) .pl-list-panel .sm-row-delete-form,
 :is(#md-master-modal, #st-product-master-modal) .sm-list-panel .sm-row-delete-form{
   display:contents;
 }
+:is(#md-master-modal, #st-product-master-modal) .act-grp .act-btn.del,
+:is(#md-master-modal, #st-product-master-modal) .pl-list-panel .act-btn.del,
+:is(#md-master-modal, #st-product-master-modal) .sm-list-panel .act-btn.del{
+  color:#DC2626;
+}
+:is(#md-master-modal, #st-product-master-modal) .act-grp .act-btn.del:hover,
 :is(#md-master-modal, #st-product-master-modal) .pl-list-panel .act-btn.del:hover,
 :is(#md-master-modal, #st-product-master-modal) .sm-list-panel .act-btn.del:hover{
   background:var(--err-bg,#FEF2F2);
-  color:var(--err,#DC2626);
+  color:var(--err,#B91C1C);
+}
+:is(#md-master-modal, #st-product-master-modal) .act-grp .act-btn.download,
+:is(#md-master-modal, #st-product-master-modal) .pl-list-panel .act-btn.download,
+:is(#md-master-modal, #st-product-master-modal) .sm-list-panel .act-btn.download{
+  color:#059669;
+}
+:is(#md-master-modal, #st-product-master-modal) .act-grp .act-btn.download:hover,
+:is(#md-master-modal, #st-product-master-modal) .pl-list-panel .act-btn.download:hover,
+:is(#md-master-modal, #st-product-master-modal) .sm-list-panel .act-btn.download:hover{
+  color:#047857;
+  background:#ECFDF5;
 }
 :is(#md-master-modal, #st-product-master-modal) .pl-list-panel .act-btn.is-disabled,
 :is(#md-master-modal, #st-product-master-modal) .sm-list-panel .act-btn.is-disabled,

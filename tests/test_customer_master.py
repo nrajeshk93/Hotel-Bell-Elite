@@ -129,6 +129,106 @@ class CustomerMasterTest(unittest.TestCase):
         self.assertNotIn("Mobile numbers must be unique", form_html)
 
 
+class CustomerMasterIdDocumentTests(unittest.TestCase):
+    """View ID from hotel guest profiles on Customer Master."""
+
+    def setUp(self):
+        self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.tmp.close()
+        self.db_path = self.tmp.name
+        self._orig_path = db_mod.DATABASE_PATH
+        db_mod.DATABASE_PATH = self.db_path
+        db_mod.init_db()
+
+        import app as app_mod
+
+        self.app_mod = app_mod
+        self.app = app_mod.app
+        self.app.config["TESTING"] = True
+        self.client = self.app.test_client()
+        conn = db_mod.get_db()
+        try:
+            admin = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()
+            self.admin_id = admin["id"]
+        finally:
+            conn.close()
+        self.user = {
+            "id": self.admin_id,
+            "username": "admin",
+            "full_name": "Administrator",
+            "is_admin": True,
+            "is_active": True,
+            "dashboard_access": {"master"},
+            "stores_access": set(),
+        }
+        self._get_user_patch = mock.patch.object(
+            app_mod, "get_current_user", return_value=self.user
+        )
+        self._get_user_patch.start()
+
+    def tearDown(self):
+        self._get_user_patch.stop()
+        db_mod.DATABASE_PATH = self._orig_path
+        try:
+            os.unlink(self.db_path)
+        except OSError:
+            pass
+
+    def test_customer_list_shows_view_id_when_hotel_profile_has_doc(self):
+        import uuid
+
+        from hotel_id_documents import load_id_document_bytes, persist_id_document_bytes
+
+        conn = db_mod.get_db()
+        try:
+            save_customer_record(conn, "Id Guest", "9000099999")
+            stored = str(uuid.uuid4()) + ".pdf"
+            # Reuse the same connection — a second SQLite writer would hit
+            # "database is locked" while this transaction is open.
+            persist_id_document_bytes(
+                stored,
+                b"%PDF-1.4 id",
+                "application/pdf",
+                owner_user_id=self.admin_id,
+                conn=conn,
+            )
+            # Commit so a separate read connection can see the blob.
+            conn.commit()
+            payload, _, _ = load_id_document_bytes(stored)
+            self.assertTrue(payload, "ID payload must persist in SQLite before HTTP view")
+            db_mod.ensure_hotel_rooms_schema(conn)
+            db_mod.save_hotel_guest_profile(
+                conn,
+                {
+                    "mobile": "9000099999",
+                    "firstName": "Id",
+                    "lastName": "Guest",
+                    "idDocumentStoredName": stored,
+                    "idDocumentName": "Guest ID.pdf",
+                    "idDocumentMime": "application/pdf",
+                    "idDocumentPath": "/hotel/api/id-documents/view/" + stored + "/raw",
+                },
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        response = self.client.get("/customers?embed=1")
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn("sm-view-id-btn", html)
+        self.assertIn("/customers/api/id-documents/" + stored, html)
+
+        doc = self.client.get("/customers/api/id-documents/" + stored)
+        self.assertEqual(doc.status_code, 200)
+        self.assertTrue(doc.data.startswith(b"%PDF"))
+
+        missing = self.client.get(
+            "/customers/api/id-documents/00000000-0000-0000-0000-000000000000.pdf"
+        )
+        self.assertEqual(missing.status_code, 404)
+
+
 class PosInvoiceCustomerSyncTests(unittest.TestCase):
     """Invoice save path upserts into Customer Master (shared with autosave/KOT)."""
 

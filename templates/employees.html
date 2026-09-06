@@ -1,5 +1,5 @@
 {% set _ep_body_extra = ' cd-ledger-page' if (mode is defined and mode in ('credits_dashboard', 'credits')) else '' %}
-{% set de_soft_body_class = 'de-open ep-module' ~ _ep_body_extra %}
+{% set de_soft_body_class = 'de-open su-module ep-module' ~ _ep_body_extra %}
 {% set de_soft_page_title = 'Employee Payroll | Hotel Bell Elite' %}
 {% if not is_partial_main %}
 <!DOCTYPE html>
@@ -22,6 +22,7 @@
 {% include 'partials/hbe_fonts.html' %}
 <script src="{{ asset('lucide.min.js') }}"></script>
 <link rel="stylesheet" href="{{ asset('sales_update_header.css') }}">
+<link rel="stylesheet" href="{{ asset('purchase_ledger.css') }}">
 <link rel="stylesheet" href="{{ asset('employees_premium.css') }}">
 <link rel="stylesheet" href="{{ asset('employees_list.css') }}">
 <link rel="stylesheet" href="{{ asset('ep_form_listbox.css') }}">
@@ -76,6 +77,7 @@
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ asset('sales_update_header.css') }}">
+<link rel="stylesheet" href="{{ asset('purchase_ledger.css') }}">
 <link rel="stylesheet" href="{{ asset('employees_premium.css') }}">
 <link rel="stylesheet" href="{{ asset('employees_list.css') }}">
 <link rel="stylesheet" href="{{ asset('ep_form_listbox.css') }}">
@@ -475,7 +477,6 @@
                 <div class="an-range-panel" id="ec-date-range-panel" role="dialog" aria-labelledby="ec-date-range-panel-title" hidden>
                   <div class="an-range-panel-inner">
                     <div class="an-range-panel-h" id="ec-date-range-panel-title">Date range</div>
-                    <p class="an-range-hint">Click a start date, then an end date. Use arrows to change months.</p>
                     <div class="an-cal-dual">
                       <div class="an-cal-pane">
                         <div class="an-cal-pane-hdr">
@@ -956,7 +957,7 @@
               <td class="pl-col-actions">
                 <div class="act-grp">
                   <a href="{{ url_for('attendance', emp_id=emp.id, year=sel_year, month=sel_month) }}"
-                     class="act-btn att" data-tip="Mark attendance" aria-label="Mark attendance for {{ emp.name }}">
+                     class="act-btn print att" data-tip="Mark attendance" aria-label="Mark attendance for {{ emp.name }}">
                     <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                   </a>
                 </div>
@@ -2115,7 +2116,7 @@
               <td class="pl-col-actions">
                 <div class="act-grp">
                   <a href="{{ url_for('employee_credits', emp_id=e.id, year=sel_year, month=sel_month) }}"
-                     class="act-btn cred" data-tip="Manage">
+                     class="act-btn view cred" data-tip="Manage">
                     <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
                   </a>
                 </div>
@@ -2231,7 +2232,7 @@
               <td class="pl-col-actions">
                 <div class="act-grp">
                   <a href="{{ url_for('employee_credits', emp_id=cr.emp_id, year=sel_year, month=sel_month) }}"
-                     class="act-btn cred" data-tip="View">
+                     class="act-btn view cred" data-tip="View">
                     <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                   </a>
                   {% if cr.can_edit %}
@@ -2473,13 +2474,13 @@
                 <div class="act-grp">
                   {% if has_payroll_access('attendance') %}
                   <a href="{{ url_for('attendance', emp_id=emp.id, year=sel_year, month=sel_month) }}"
-                     class="act-btn att" data-tip="Attendance">
+                     class="act-btn print att" data-tip="Attendance">
                     <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                   </a>
                   {% endif %}
                   {% if has_payroll_access('credit') %}
                   <a href="{{ url_for('employee_credits', emp_id=emp.id, year=sel_year, month=sel_month) }}"
-                     class="act-btn cred" data-tip="Credits">
+                     class="act-btn view cred" data-tip="Credits">
                     <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
                   </a>
                   {% endif %}

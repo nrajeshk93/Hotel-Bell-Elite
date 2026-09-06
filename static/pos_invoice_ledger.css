@@ -490,7 +490,7 @@ body.su-module #pos-invoice-ledger-page .pl-date-range-host .se-filter-chip.is-f
   font-size: 1rem;
 }
 
-/* Resting brand colors — match WhatsApp icon treatment (not gray until hover). */
+/* Resting brand colors — shared palette also lives in purchase_ledger.css (.act-grp). */
 body.su-module .pl-action-btns .act-btn.pos-il-view-btn{
   color:#2563EB;
 }

@@ -74,8 +74,14 @@ def _mime_for_suffix(suffix):
     }.get(str(suffix or "").lower(), "application/pdf")
 
 
-def persist_id_document_bytes(stored_name, data, mime="application/pdf", owner_user_id=None):
-    """Keep a copy in SQLite so deploys that wipe uploads/ can still serve the ID."""
+def persist_id_document_bytes(
+    stored_name, data, mime="application/pdf", owner_user_id=None, conn=None
+):
+    """Keep a copy in SQLite so deploys that wipe uploads/ can still serve the ID.
+
+    Pass ``conn`` when the caller already holds a write transaction so a second
+    SQLite connection does not block on ``database is locked``.
+    """
     name = stored_id_document_basename(stored_name) or _raw_id_document_basename(
         stored_name
     )
@@ -87,7 +93,9 @@ def persist_id_document_bytes(stored_name, data, mime="application/pdf", owner_u
         import db as db_mod
     except Exception:
         return
-    conn = db_mod.get_db()
+    own_conn = conn is None
+    if own_conn:
+        conn = db_mod.get_db()
     try:
         db_mod.ensure_hotel_id_documents_schema(conn)
         owner = 0
@@ -116,14 +124,17 @@ def persist_id_document_bytes(stored_name, data, mime="application/pdf", owner_u
             """,
             (name, mime or "application/pdf", sqlite3.Binary(bytes(data)), owner),
         )
-        conn.commit()
+        if own_conn:
+            conn.commit()
     except Exception:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
+        if own_conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
     finally:
-        conn.close()
+        if own_conn:
+            conn.close()
 
 
 def load_id_document_bytes(stored_name):
@@ -161,10 +172,14 @@ def open_id_document_payload(stored_name):
     """Disk first, then SQLite. Returns (data, mime, filename) or (None, None, None)."""
     path = resolve_stored_id_document(stored_name)
     if path:
-        data = path.read_bytes()
-        mime = _mime_for_suffix(path.suffix)
-        persist_id_document_bytes(path.name, data, mime)
-        return data, mime, path.name
+        try:
+            data = path.read_bytes()
+        except OSError:
+            data = b""
+        if data:
+            mime = _mime_for_suffix(path.suffix)
+            persist_id_document_bytes(path.name, data, mime)
+            return data, mime, path.name
     return load_id_document_bytes(stored_name)
 
 

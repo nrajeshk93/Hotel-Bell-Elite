@@ -147,6 +147,7 @@ from db import (
     get_pos_tax_rates,
     init_db,
     list_customers,
+    enrich_customers_with_hotel_id_docs,
     list_agencies,
     list_pos_invoices,
     pos_invoice_is_ledger_generated,
@@ -304,6 +305,7 @@ from embed_helpers import (
 from hotel_id_documents import (
     id_document_is_linked_to_guest,
     id_document_owner_user_id,
+    load_id_document_bytes,
     open_id_document_payload,
     persist_id_document_bytes,
     process_uploaded_id_documents,
@@ -1027,6 +1029,7 @@ def enforce_access():
                 "save_customer",
                 "delete_customer",
                 "export_customer_report",
+                "customer_id_document_view",
             }
             and user_can_access_customer_master(user)
         )
@@ -20226,6 +20229,7 @@ def customer_master():
     try:
         ensure_customers_schema(conn)
         customers = list_customers(conn)
+        enrich_customers_with_hotel_id_docs(conn, customers)
         selected_customer = get_customer(conn, selected_customer_id) if selected_customer_id else None
         conn.commit()
     finally:
@@ -20262,6 +20266,44 @@ def customer_master():
         customer_report_url=url_for("export_customer_report"),
         embed_mode=is_embed_request(),
     )
+
+
+@app.route(
+    "/customers/api/id-documents/<path:stored_name>",
+    methods=["GET"],
+    endpoint="customer_id_document_view",
+)
+def customer_id_document_view(stored_name):
+    """View a hotel guest ID saved against a Customer Master mobile (after checkout)."""
+    user = get_current_user()
+    if not user_can_access_customer_master(user):
+        abort(404)
+    from io import BytesIO
+
+    conn = get_db()
+    try:
+        linked = id_document_is_linked_to_guest(conn, stored_name)
+        if not linked:
+            abort(404)
+    finally:
+        conn.close()
+    data, mime, filename = open_id_document_payload(stored_name)
+    if not data:
+        data, mime, filename = load_id_document_bytes(stored_name)
+    if not data:
+        abort(404)
+    filename = filename or "guest-id.pdf"
+    mime = mime or "application/pdf"
+    resp = send_file(
+        BytesIO(data),
+        mimetype=mime,
+        as_attachment=False,
+        download_name=secure_filename(filename) or "guest-id.pdf",
+    )
+    resp.headers["Content-Disposition"] = _inline_content_disposition(filename)
+    resp.headers["Cache-Control"] = "private, max-age=0, no-store"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
 
 
 @app.route("/customers/report")
@@ -20338,6 +20380,7 @@ def save_customer():
         )
         if errors:
             customers = list_customers(conn)
+            enrich_customers_with_hotel_id_docs(conn, customers)
             selected_customer = get_customer(conn, customer_id) if customer_id else None
             form = dict(payload)
             form["id"] = customer_id or ""
