@@ -81,9 +81,9 @@ class PosBillRasterPrintWiringTests(unittest.TestCase):
         self.assertIn("CAPTURE_SUPERSAMPLE = 4", src)
         # Thermal capture tries Consolas per Rajesh; ink stroke preserves thin tip.
         self.assertIn("font-family:Consolas,monospace", src)
-        self.assertIn("doc.fonts.load('400 12.5px Consolas')", src)
-        self.assertIn("doc.fonts.load('700 12.5px Consolas')", src)
-        self.assertIn("doc.fonts.load('800 15px Consolas')", src)
+        self.assertIn("doc.fonts.load('400 13.5px Consolas')", src)
+        self.assertIn("doc.fonts.load('700 13.5px Consolas')", src)
+        self.assertIn("doc.fonts.load('800 16px Consolas')", src)
         self.assertIn("-webkit-text-stroke:0.35px #000", src)
         self.assertIn("paint-order:stroke fill", src)
         self.assertIn("text-shadow:0 0 0.25px #000", src)

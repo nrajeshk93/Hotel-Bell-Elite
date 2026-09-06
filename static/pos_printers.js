@@ -923,13 +923,13 @@
       if (doc && doc.fonts && typeof doc.fonts.load === 'function') {
         fontsReady = Promise.all([
           fontsReady,
-          doc.fonts.load('400 12.5px Consolas').catch(function () {
+          doc.fonts.load('400 13.5px Consolas').catch(function () {
             return null;
           }),
-          doc.fonts.load('700 12.5px Consolas').catch(function () {
+          doc.fonts.load('700 13.5px Consolas').catch(function () {
             return null;
           }),
-          doc.fonts.load('800 12.5px Consolas').catch(function () {
+          doc.fonts.load('800 13.5px Consolas').catch(function () {
             return null;
           })
         ]).catch(function () {
@@ -1033,13 +1033,13 @@
       var fontsWait = Promise.resolve();
       if (doc && doc.fonts && typeof doc.fonts.load === 'function') {
         fontsWait = Promise.all([
-          doc.fonts.load('400 12.5px Consolas').catch(function () {
+          doc.fonts.load('400 13.5px Consolas').catch(function () {
             return null;
           }),
-          doc.fonts.load('700 12.5px Consolas').catch(function () {
+          doc.fonts.load('700 13.5px Consolas').catch(function () {
             return null;
           }),
-          doc.fonts.load('800 15px Consolas').catch(function () {
+          doc.fonts.load('800 16px Consolas').catch(function () {
             return null;
           })
         ]).catch(function () {

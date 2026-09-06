@@ -1,10 +1,10 @@
 {
   "png": "/Users/rajesh/Documents/New project/Hotel Bell elite/.cursor/debug-raster-sim/bill_512_sim_current.png",
-  "bytes": 30693,
+  "bytes": 33091,
   "width": 512,
-  "height": 791,
+  "height": 828,
   "canvasW": 2048,
-  "canvasH": 3162,
+  "canvasH": 3312,
   "scrollW": 340,
   "scale": 6.023529411764706,
   "thermalDots": 512,
@@ -17,5 +17,5 @@
   "computedWeight": "800",
   "order_no": "INV/1987/2026-27",
   "grand_total": 660,
-  "at": "2026-09-06T10:11:16.507Z"
+  "at": "2026-09-06T10:25:46.665Z"
 }

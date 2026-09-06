@@ -311,20 +311,20 @@
       escapeHtml(orderNo) +
       '</title><style>' +
       'body{font-family:"Courier New",monospace;padding:16px;color:#111;width:340px;margin:0 auto}' +
-      'h1{font-size:16px;margin:0 0 4px;text-align:center;letter-spacing:.04em}' +
-      '.sub{font-size:11px;text-align:center;color:#555;margin-bottom:10px}' +
-      '.meta{font-size:12px;margin-bottom:10px;border-bottom:1px dashed #333;padding-bottom:8px}' +
+      'h1{font-size:17px;margin:0 0 4px;text-align:center;letter-spacing:.04em}' +
+      '.sub{font-size:12px;text-align:center;color:#555;margin-bottom:10px}' +
+      '.meta{font-size:13px;margin-bottom:10px;border-bottom:1px dashed #333;padding-bottom:8px}' +
       '.meta div{display:flex;justify-content:space-between;margin:2px 0;gap:8px}' +
-      'table.items{width:100%;border-collapse:collapse;font-size:12px}' +
-      'table.items th{text-align:left;font-size:11px;border-bottom:1px solid #333;padding:4px 0}' +
+      'table.items{width:100%;border-collapse:collapse;font-size:13px}' +
+      'table.items th{text-align:left;font-size:12px;border-bottom:1px solid #333;padding:4px 0}' +
       'table.items td{padding:4px 0;border-bottom:1px dashed #ddd;vertical-align:top}' +
       'table.items td.qty,table.items th.qty{width:30px;text-align:center}' +
       'table.items td.rate,table.items th.rate,table.items td.amt,table.items th.amt{width:64px;text-align:right}' +
-      '.variant{font-size:10px;color:#555}' +
-      '.totals{margin-top:10px;font-size:12px}' +
+      '.variant{font-size:11px;color:#555}' +
+      '.totals{margin-top:10px;font-size:13px}' +
       '.totals div{display:flex;justify-content:space-between;margin:2px 0}' +
-      '.totals .grand{font-size:15px;font-weight:700;border-top:1px solid #333;margin-top:6px;padding-top:6px}' +
-      '.foot{margin-top:14px;text-align:center;font-size:11px;color:#555}' +
+      '.totals .grand{font-size:16px;font-weight:700;border-top:1px solid #333;margin-top:6px;padding-top:6px}' +
+      '.foot{margin-top:14px;text-align:center;font-size:12px;color:#555}' +
       '@media print{body{width:auto;margin:0}}' +
       '</style></head><body>' +
       '<h1>Hotel Bell Elite</h1>' +
@@ -498,7 +498,7 @@
     var cancelledCss = isCancelled
       ? 'body.is-cancelled .bill-sheet{position:relative}' +
         '.cancelled-watermark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:20;overflow:hidden}' +
-        '.cancelled-watermark span{display:inline-block;font-family:"Noto Sans",sans-serif;font-size:46px;font-weight:800;letter-spacing:.14em;line-height:1;color:rgba(185,28,28,.34);border:3px solid rgba(185,28,28,.4);padding:8px 16px;transform:rotate(-34deg);text-transform:uppercase;white-space:nowrap}' +
+        '.cancelled-watermark span{display:inline-block;font-family:"Noto Sans",sans-serif;font-size:47px;font-weight:800;letter-spacing:.14em;line-height:1;color:rgba(185,28,28,.34);border:3px solid rgba(185,28,28,.4);padding:8px 16px;transform:rotate(-34deg);text-transform:uppercase;white-space:nowrap}' +
         '@media print{.cancelled-watermark span{color:rgba(185,28,28,.42);border-color:rgba(185,28,28,.48)}}'
       : '';
     var cancelledMark = isCancelled
@@ -529,38 +529,38 @@
       escapeHtml(orderNo) +
       '</title><style>' +
       receiptNotoSansFaceCss() +
-      'body{font-family:"Noto Sans",sans-serif;padding:14px 12px;color:#111;width:340px;margin:0 auto;font-size:12.5px;font-weight:400;line-height:1.45;-webkit-font-smoothing:antialiased}' +
+      'body{font-family:"Noto Sans",sans-serif;padding:14px 12px;color:#111;width:340px;margin:0 auto;font-size:13.5px;font-weight:400;line-height:1.45;-webkit-font-smoothing:antialiased}' +
       '.logo{display:block;margin:0 auto 10px;max-width:260px;height:auto}' +
-      '.brand{font-size:19px;font-weight:700;text-align:center;letter-spacing:0;margin:0 0 6px;line-height:1.25}' +
-      '.addr,.gst-no{font-size:11.5px;font-weight:400;text-align:center;margin:0 0 4px;line-height:1.4}' +
+      '.brand{font-size:20px;font-weight:700;text-align:center;letter-spacing:0;margin:0 0 6px;line-height:1.25}' +
+      '.addr,.gst-no{font-size:12.5px;font-weight:400;text-align:center;margin:0 0 4px;line-height:1.4}' +
       '.gst-no .fssai{white-space:nowrap}' +
       '.rule{border:0;border-top:1px solid #333;margin:10px 0}' +
-      '.meta{font-size:12.5px;margin:0 0 10px}' +
+      '.meta{font-size:13.5px;margin:0 0 10px}' +
       '.meta div{display:flex;justify-content:space-between;align-items:baseline;margin:4px 0;gap:10px}' +
       '.meta div>span:first-child{font-weight:600;flex:0 0 auto}' +
       '.meta div>span:last-child{font-weight:400;text-align:right}' +
-      'table.items{width:100%;border-collapse:collapse;font-size:12.5px;margin:0 0 10px}' +
-      'table.items th{text-align:left;font-size:12.5px;font-weight:700;padding:5px 0;border-bottom:1px solid #333;text-transform:uppercase;letter-spacing:.02em}' +
+      'table.items{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 10px}' +
+      'table.items th{text-align:left;font-size:13.5px;font-weight:700;padding:5px 0;border-bottom:1px solid #333;text-transform:uppercase;letter-spacing:.02em}' +
       'table.items td{padding:5px 0;border-bottom:1px solid #e5e7eb;vertical-align:top;font-weight:500}' +
       'table.items td:first-child{font-weight:500;text-align:left}' +
       'table.items td.qty,table.items th.qty{width:36px;text-align:right}' +
       'table.items td.rate,table.items th.rate{width:58px;text-align:right}' +
       'table.items td.amt,table.items th.amt{width:68px;text-align:right}' +
       'table.items td.qty,table.items td.rate,table.items td.amt{font-weight:500}' +
-      '.variant{font-size:11px;font-weight:400;color:#555}' +
-      '.totals{font-size:12.5px;font-weight:400;margin:0 0 10px}' +
+      '.variant{font-size:12px;font-weight:400;color:#555}' +
+      '.totals{font-size:13.5px;font-weight:400;margin:0 0 10px}' +
       '.totals div{display:flex;justify-content:space-between;align-items:baseline;margin:4px 0;gap:10px}' +
       '.totals .grand{margin-top:8px;padding-top:8px;border-top:1px solid #333;align-items:baseline}' +
-      '.totals .grand>span:first-child{font-size:17px;font-weight:800;letter-spacing:.01em}' +
-      '.totals .grand>span:last-child{font-size:21px;font-weight:800;letter-spacing:.01em;font-variant-numeric:tabular-nums}' +
-      '.section-title{text-align:center;font-weight:700;font-size:13.5px;margin:10px 0 6px;letter-spacing:.02em}' +
+      '.totals .grand>span:first-child{font-size:18px;font-weight:800;letter-spacing:.01em}' +
+      '.totals .grand>span:last-child{font-size:22px;font-weight:800;letter-spacing:.01em;font-variant-numeric:tabular-nums}' +
+      '.section-title{text-align:center;font-weight:700;font-size:14.5px;margin:10px 0 6px;letter-spacing:.02em}' +
       '.receipts{margin-top:6px}' +
-      'table.receipts-table{width:100%;border-collapse:collapse;font-size:12.5px}' +
-      'table.receipts-table th{font-size:12.5px;font-weight:700;text-align:left;padding:5px 0;border-bottom:1px solid #333;text-transform:uppercase;letter-spacing:.02em}' +
+      'table.receipts-table{width:100%;border-collapse:collapse;font-size:13.5px}' +
+      'table.receipts-table th{font-size:13.5px;font-weight:700;text-align:left;padding:5px 0;border-bottom:1px solid #333;text-transform:uppercase;letter-spacing:.02em}' +
       'table.receipts-table td{padding:5px 0;border-bottom:1px solid #e5e7eb;font-weight:500}' +
       'table.receipts-table .pay-amt,table.receipts-table th.pay-amt{text-align:right;width:80px}' +
-      '.receipts-total{text-align:right;font-weight:800;margin-top:6px;font-size:16px}' +
-      '.user{margin-top:12px;font-size:12px;font-weight:400}' +
+      '.receipts-total{text-align:right;font-weight:800;margin-top:6px;font-size:17px}' +
+      '.user{margin-top:12px;font-size:13px;font-weight:400}' +
       cancelledCss +
       '@media print{' +
       'body{width:auto;margin:0;padding:8px 6px}' +
@@ -744,9 +744,9 @@ window.run=async function(){
   if(idoc.fonts&&idoc.fonts.load){
     try{
       await Promise.all([
-        idoc.fonts.load('400 12.5px Consolas').catch(()=>null),
-        idoc.fonts.load('700 12.5px Consolas').catch(()=>null),
-        idoc.fonts.load('800 15px Consolas').catch(()=>null)
+        idoc.fonts.load('400 13.5px Consolas').catch(()=>null),
+        idoc.fonts.load('700 13.5px Consolas').catch(()=>null),
+        idoc.fonts.load('800 16px Consolas').catch(()=>null)
       ]);
     }catch(e){}
   }
