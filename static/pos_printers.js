@@ -793,9 +793,9 @@
    */
   function canvasToEscPosRasterBands(canvas, opts) {
     opts = opts || {};
-    /* Match logo raster (384): wider bitmaps (512/576) are scaled down on these
-       heads and crush spaces (BLENDERS PRIDE → BLENDERSPRIDE). */
-    var maxWidth = opts.maxWidth || 384;
+    /* 80mm heads here print ~512 dots. 576 crushed spaces; 384 upscaled and
+       went soft/illegible on production (2026-09-06 14:06 photo). */
+    var maxWidth = opts.maxWidth || 512;
     var bandHeight = opts.bandHeight || 1200;
     var threshold = opts.threshold != null ? opts.threshold : 168;
     if (!canvas || !canvas.width || !canvas.height) return '';
@@ -808,7 +808,7 @@
     var th = Math.max(1, Math.round((srcH * tw) / srcW));
 
     // #region agent log
-    fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'B,D',location:'pos_printers.js:canvasToEscPosRasterBands',message:'raster scale dims',data:{srcW:srcW,srcH:srcH,tw:tw,th:th,maxWidth:maxWidth,scaleX:tw/srcW,scaleY:th/srcH,threshold:threshold},timestamp:Date.now()})}).catch(function(){});
+    fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix-512ss',hypothesisId:'H',location:'pos_printers.js:canvasToEscPosRasterBands',message:'raster scale dims',data:{srcW:srcW,srcH:srcH,tw:tw,th:th,maxWidth:maxWidth,scaleX:tw/srcW,scaleY:th/srcH,threshold:threshold},timestamp:Date.now()})}).catch(function(){});
     // #endregion
 
     var scaled = document.createElement('canvas');
@@ -889,26 +889,34 @@
       return Promise.reject(new Error('invoice required'));
     }
 
-    /* Same width as imageToEscPosRaster(logo) — production printers scale wider rasters. */
-    var THERMAL_DOTS = 384;
+    /* Sweet spot for these printers: 512. 384 (logo width) upscales soft; 576 crushes. */
+    var THERMAL_DOTS = 512;
+    var CAPTURE_SUPERSAMPLE = 2;
 
     function injectThermalCaptureCss(doc) {
       if (!doc || !doc.head) return null;
       try {
         var style = doc.createElement('style');
         style.setAttribute('data-hbe-thermal-capture', '1');
-        /* Extra tracking so spaces survive 1-bit thresholding. */
+        /* Widen word gaps so they survive 1-bit + any mild paper scale. */
         style.textContent =
-          'body,.bill-sheet{letter-spacing:0.07em !important;word-spacing:0.18em !important;' +
-          '-webkit-font-smoothing:none !important;font-smooth:never !important}' +
+          'body,.bill-sheet{letter-spacing:0.04em !important;word-spacing:0.28em !important;' +
+          '-webkit-font-smoothing:antialiased !important}' +
           '.brand,.meta,.totals,.user,table.items td,table.items th,' +
           'table.receipts-table td,table.receipts-table th,.addr,.gst-no{' +
-          'letter-spacing:0.07em !important;word-spacing:0.18em !important}';
+          'letter-spacing:0.04em !important;word-spacing:0.28em !important}';
         doc.head.appendChild(style);
         return style;
       } catch (e) {
         return null;
       }
+    }
+
+    function cleanupThermalCapture(doc) {
+      try {
+        var injected = doc && doc.querySelector('style[data-hbe-thermal-capture="1"]');
+        if (injected && injected.parentNode) injected.parentNode.removeChild(injected);
+      } catch (e) {}
     }
 
     function captureTarget(doc, target, ownedIframe) {
@@ -917,32 +925,15 @@
           ? doc.defaultView.getComputedStyle(doc.body)
           : null;
       var scrollW = (target && target.scrollWidth) || 340;
-      /* Exact target width — avoid capture-wider-then-squash (crushes spaces). */
-      var scale = THERMAL_DOTS / Math.max(1, scrollW);
-      /* Clone into an off-screen host so View iframe letter-spacing is unchanged. */
-      var host = null;
-      var captureEl = target;
-      try {
-        host = doc.createElement('div');
-        host.setAttribute('data-hbe-thermal-host', '1');
-        host.style.cssText =
-          'position:fixed;left:-12000px;top:0;width:' +
-          scrollW +
-          'px;background:#fff;z-index:-1;';
-        var clone = target.cloneNode(true);
-        host.appendChild(clone);
-        doc.body.appendChild(host);
-        injectThermalCaptureCss(doc);
-        captureEl = clone;
-      } catch (eClone) {
-        injectThermalCaptureCss(doc);
-        captureEl = target;
-      }
+      /* 2× supersample then downscale to THERMAL_DOTS — keeps thin spaces as gray. */
+      var scale =
+        (THERMAL_DOTS * CAPTURE_SUPERSAMPLE) / Math.max(1, scrollW);
+      injectThermalCaptureCss(doc);
       // #region agent log
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'F',location:'pos_printers.js:renderCustomerBillRasterEscPos',message:'html2canvas target metrics',data:{source:opts.captureSource||'offscreen',hasHtml2canvas:typeof global.html2canvas==='function',tag:captureEl&&captureEl.tagName,scrollWidth:scrollW,offsetWidth:target&&target.offsetWidth,clientWidth:target&&target.clientWidth,scrollHeight:target&&target.scrollHeight,bodyWidth:bodyStyle&&bodyStyle.width,bodyFont:bodyStyle&&bodyStyle.fontFamily,captureScale:scale,thermalDots:THERMAL_DOTS,usedClone:!!host},timestamp:Date.now()})}).catch(function(){});
+      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix-512ss',hypothesisId:'H',location:'pos_printers.js:renderCustomerBillRasterEscPos',message:'html2canvas target metrics',data:{source:opts.captureSource||'offscreen',hasHtml2canvas:typeof global.html2canvas==='function',tag:target&&target.tagName,scrollWidth:scrollW,offsetWidth:target&&target.offsetWidth,clientWidth:target&&target.clientWidth,scrollHeight:target&&target.scrollHeight,bodyWidth:bodyStyle&&bodyStyle.width,bodyFont:bodyStyle&&bodyStyle.fontFamily,captureScale:scale,thermalDots:THERMAL_DOTS,supersample:CAPTURE_SUPERSAMPLE,usedClone:false},timestamp:Date.now()})}).catch(function(){});
       // #endregion
       return global
-        .html2canvas(captureEl, {
+        .html2canvas(target, {
           backgroundColor: '#ffffff',
           scale: scale,
           useCORS: true,
@@ -953,13 +944,9 @@
           windowWidth: Math.max(380, scrollW + 40)
         })
         .then(function (canvas) {
-          try {
-            if (host && host.parentNode) host.parentNode.removeChild(host);
-            var injected = doc.querySelector('style[data-hbe-thermal-capture="1"]');
-            if (injected && injected.parentNode) injected.parentNode.removeChild(injected);
-          } catch (eClean) {}
+          cleanupThermalCapture(doc);
           // #region agent log
-          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'F',location:'pos_printers.js:html2canvas-result',message:'html2canvas canvas size',data:{canvasW:canvas&&canvas.width,canvasH:canvas&&canvas.height,source:opts.captureSource||'offscreen'},timestamp:Date.now()})}).catch(function(){});
+          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix-512ss',hypothesisId:'H',location:'pos_printers.js:html2canvas-result',message:'html2canvas canvas size',data:{canvasW:canvas&&canvas.width,canvasH:canvas&&canvas.height,source:opts.captureSource||'offscreen'},timestamp:Date.now()})}).catch(function(){});
           // #endregion
           if (!canvas || !canvas.width || !canvas.height) {
             throw new Error('empty html2canvas result');
@@ -972,7 +959,7 @@
           var escpos = canvasToEscPosRasterBands(canvas, {
             maxWidth: THERMAL_DOTS,
             bandHeight: 1200,
-            threshold: 145
+            threshold: 160
           });
           // #region agent log
           try {
@@ -981,21 +968,18 @@
               canvasW: canvas && canvas.width,
               canvasH: canvas && canvas.height,
               widthBytes: Math.floor(THERMAL_DOTS / 8),
+              supersample: CAPTURE_SUPERSAMPLE,
               source: opts.captureSource || 'offscreen',
               at: Date.now()
             };
           } catch (eMeta) {}
-          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix-384',hypothesisId:'G',location:'pos_printers.js:escpos-built',message:'escpos payload built',data:{escposLen:escpos?escpos.length:0,widthBytes:Math.floor(THERMAL_DOTS/8),thermalDots:THERMAL_DOTS,canvasW:canvas&&canvas.width},timestamp:Date.now()})}).catch(function(){});
+          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix-512ss',hypothesisId:'H',location:'pos_printers.js:escpos-built',message:'escpos payload built',data:{escposLen:escpos?escpos.length:0,widthBytes:Math.floor(THERMAL_DOTS/8),thermalDots:THERMAL_DOTS,canvasW:canvas&&canvas.width,supersample:CAPTURE_SUPERSAMPLE},timestamp:Date.now()})}).catch(function(){});
           // #endregion
           if (!escpos) throw new Error('empty bill raster');
           return escpos;
         })
         .catch(function (err) {
-          try {
-            if (host && host.parentNode) host.parentNode.removeChild(host);
-            var injected2 = doc.querySelector('style[data-hbe-thermal-capture="1"]');
-            if (injected2 && injected2.parentNode) injected2.parentNode.removeChild(injected2);
-          } catch (eClean2) {}
+          cleanupThermalCapture(doc);
           throw err;
         });
     }
