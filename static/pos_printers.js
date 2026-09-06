@@ -793,9 +793,9 @@
    */
   function canvasToEscPosRasterBands(canvas, opts) {
     opts = opts || {};
-    /* Most 80mm ESC/POS heads are 512 dots (Epson). 576 was scaled down on
-       production printers and crushed spaces (BLENDERS PRIDE → BLENDERSPRIDE). */
-    var maxWidth = opts.maxWidth || 512;
+    /* Match logo raster (384): wider bitmaps (512/576) are scaled down on these
+       heads and crush spaces (BLENDERS PRIDE → BLENDERSPRIDE). */
+    var maxWidth = opts.maxWidth || 384;
     var bandHeight = opts.bandHeight || 1200;
     var threshold = opts.threshold != null ? opts.threshold : 168;
     if (!canvas || !canvas.width || !canvas.height) return '';
@@ -828,7 +828,7 @@
     var GS = '\x1d';
     var parts = [];
     parts.push(ESC + '@');
-    /* Left-align full-width raster so 576-dot image fills 80mm without firmware stretch. */
+    /* Left-align full-width raster (no firmware center-stretch). */
     parts.push(ESC + 'a\x00');
     for (var y0 = 0; y0 < th; y0 += bandHeight) {
       var bh = Math.min(bandHeight, th - y0);
@@ -889,20 +889,21 @@
       return Promise.reject(new Error('invoice required'));
     }
 
-    var THERMAL_DOTS = 512;
+    /* Same width as imageToEscPosRaster(logo) — production printers scale wider rasters. */
+    var THERMAL_DOTS = 384;
 
     function injectThermalCaptureCss(doc) {
       if (!doc || !doc.head) return null;
       try {
         var style = doc.createElement('style');
         style.setAttribute('data-hbe-thermal-capture', '1');
-        /* Extra tracking so spaces survive 1-bit + printer-side scaling. */
+        /* Extra tracking so spaces survive 1-bit thresholding. */
         style.textContent =
-          'body,.bill-sheet{letter-spacing:0.06em !important;word-spacing:0.14em !important;' +
+          'body,.bill-sheet{letter-spacing:0.07em !important;word-spacing:0.18em !important;' +
           '-webkit-font-smoothing:none !important;font-smooth:never !important}' +
           '.brand,.meta,.totals,.user,table.items td,table.items th,' +
           'table.receipts-table td,table.receipts-table th,.addr,.gst-no{' +
-          'letter-spacing:0.06em !important;word-spacing:0.14em !important}';
+          'letter-spacing:0.07em !important;word-spacing:0.18em !important}';
         doc.head.appendChild(style);
         return style;
       } catch (e) {
@@ -971,10 +972,20 @@
           var escpos = canvasToEscPosRasterBands(canvas, {
             maxWidth: THERMAL_DOTS,
             bandHeight: 1200,
-            threshold: 155
+            threshold: 145
           });
           // #region agent log
-          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'F',location:'pos_printers.js:escpos-built',message:'escpos payload built',data:{escposLen:escpos?escpos.length:0,widthBytes:Math.floor(THERMAL_DOTS/8),thermalDots:THERMAL_DOTS},timestamp:Date.now()})}).catch(function(){});
+          try {
+            global.__HBE_RASTER_META__ = {
+              thermalDots: THERMAL_DOTS,
+              canvasW: canvas && canvas.width,
+              canvasH: canvas && canvas.height,
+              widthBytes: Math.floor(THERMAL_DOTS / 8),
+              source: opts.captureSource || 'offscreen',
+              at: Date.now()
+            };
+          } catch (eMeta) {}
+          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix-384',hypothesisId:'G',location:'pos_printers.js:escpos-built',message:'escpos payload built',data:{escposLen:escpos?escpos.length:0,widthBytes:Math.floor(THERMAL_DOTS/8),thermalDots:THERMAL_DOTS,canvasW:canvas&&canvas.width},timestamp:Date.now()})}).catch(function(){});
           // #endregion
           if (!escpos) throw new Error('empty bill raster');
           return escpos;
