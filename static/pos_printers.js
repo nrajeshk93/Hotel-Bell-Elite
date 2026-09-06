@@ -793,9 +793,10 @@
    */
   function canvasToEscPosRasterBands(canvas, opts) {
     opts = opts || {};
-    var maxWidth = opts.maxWidth || 384;
+    /* 80mm heads are typically 512–576 dots; 384 crushed letter spacing on paper. */
+    var maxWidth = opts.maxWidth || 576;
     var bandHeight = opts.bandHeight || 1200;
-    var threshold = opts.threshold != null ? opts.threshold : 185;
+    var threshold = opts.threshold != null ? opts.threshold : 168;
     if (!canvas || !canvas.width || !canvas.height) return '';
 
     var srcW = canvas.width;
@@ -805,6 +806,10 @@
     if (tw < 8) tw = 8;
     var th = Math.max(1, Math.round((srcH * tw) / srcW));
 
+    // #region agent log
+    fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'B,D',location:'pos_printers.js:canvasToEscPosRasterBands',message:'raster scale dims',data:{srcW:srcW,srcH:srcH,tw:tw,th:th,maxWidth:maxWidth,scaleX:tw/srcW,scaleY:th/srcH,threshold:threshold},timestamp:Date.now()})}).catch(function(){});
+    // #endregion
+
     var scaled = document.createElement('canvas');
     scaled.width = tw;
     scaled.height = th;
@@ -812,13 +817,18 @@
     if (!sctx) return '';
     sctx.fillStyle = '#ffffff';
     sctx.fillRect(0, 0, tw, th);
+    sctx.imageSmoothingEnabled = true;
+    try {
+      sctx.imageSmoothingQuality = 'high';
+    } catch (e) {}
     sctx.drawImage(canvas, 0, 0, tw, th);
 
     var ESC = '\x1b';
     var GS = '\x1d';
     var parts = [];
     parts.push(ESC + '@');
-    parts.push(ESC + 'a\x01');
+    /* Left-align full-width raster so 576-dot image fills 80mm without firmware stretch. */
+    parts.push(ESC + 'a\x00');
     for (var y0 = 0; y0 < th; y0 += bandHeight) {
       var bh = Math.min(bandHeight, th - y0);
       parts.push(imageDataToGsV0(sctx.getImageData(0, y0, tw, bh), tw, bh, threshold));
@@ -867,45 +877,103 @@
   /**
    * Render the Spice View-bill HTML to ESC/POS raster so digits match Noto Sans
    * (thermal text font makes “6” look like “0”).
+   * Prefers the on-screen View iframe when open so paper matches the digital copy.
    */
   function renderCustomerBillRasterEscPos(invoice, opts) {
     opts = opts || {};
     if (typeof global.html2canvas !== 'function') {
       return Promise.reject(new Error('html2canvas unavailable'));
     }
-    if (typeof global.buildPosCustomerBillHtml !== 'function') {
-      return Promise.reject(new Error('bill HTML builder unavailable'));
-    }
-    if (!invoice) {
+    if (!invoice && !opts.sourceDocument) {
       return Promise.reject(new Error('invoice required'));
     }
 
+    var THERMAL_DOTS = 576;
+
+    function captureTarget(doc, target, ownedIframe) {
+      var bodyStyle =
+        doc && doc.body && doc.defaultView
+          ? doc.defaultView.getComputedStyle(doc.body)
+          : null;
+      var scrollW = (target && target.scrollWidth) || 340;
+      var scale = Math.max(1.5, THERMAL_DOTS / Math.max(1, scrollW));
+      // #region agent log
+      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'A,B,D',location:'pos_printers.js:renderCustomerBillRasterEscPos',message:'html2canvas target metrics',data:{source:opts.captureSource||'offscreen',hasHtml2canvas:typeof global.html2canvas==='function',tag:target&&target.tagName,scrollWidth:scrollW,offsetWidth:target&&target.offsetWidth,clientWidth:target&&target.clientWidth,scrollHeight:target&&target.scrollHeight,bodyWidth:bodyStyle&&bodyStyle.width,bodyFont:bodyStyle&&bodyStyle.fontFamily,captureScale:scale,thermalDots:THERMAL_DOTS},timestamp:Date.now()})}).catch(function(){});
+      // #endregion
+      return global
+        .html2canvas(target, {
+          backgroundColor: '#ffffff',
+          scale: scale,
+          useCORS: true,
+          allowTaint: true,
+          logging: false,
+          imageTimeout: 2500,
+          width: Math.max(320, scrollW),
+          windowWidth: Math.max(380, scrollW + 40)
+        })
+        .then(function (canvas) {
+          // #region agent log
+          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'A,B,D',location:'pos_printers.js:html2canvas-result',message:'html2canvas canvas size',data:{canvasW:canvas&&canvas.width,canvasH:canvas&&canvas.height,source:opts.captureSource||'offscreen'},timestamp:Date.now()})}).catch(function(){});
+          // #endregion
+          if (ownedIframe && ownedIframe.parentNode) {
+            try {
+              ownedIframe.parentNode.removeChild(ownedIframe);
+            } catch (e) {}
+          }
+          var escpos = canvasToEscPosRasterBands(canvas, {
+            maxWidth: THERMAL_DOTS,
+            bandHeight: 1200,
+            threshold: 168
+          });
+          // #region agent log
+          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'D',location:'pos_printers.js:escpos-built',message:'escpos payload built',data:{escposLen:escpos?escpos.length:0,widthBytes:Math.floor(THERMAL_DOTS/8),thermalDots:THERMAL_DOTS},timestamp:Date.now()})}).catch(function(){});
+          // #endregion
+          if (!escpos) throw new Error('empty bill raster');
+          return escpos;
+        });
+    }
+
+    /* Exact digital copy: capture the open View iframe when present. */
+    try {
+      var viewFrame = document.getElementById('pos-il-bill-frame');
+      var viewDoc =
+        viewFrame &&
+        (viewFrame.contentDocument ||
+          (viewFrame.contentWindow && viewFrame.contentWindow.document));
+      var viewTarget =
+        viewDoc && (viewDoc.querySelector('.bill-sheet') || viewDoc.body);
+      if (viewTarget && viewTarget.querySelector && viewTarget.querySelector('.brand, .logo, table.items')) {
+        opts.captureSource = 'pos-il-bill-frame';
+        return waitForBillAssets(viewDoc, 2000).then(function () {
+          return captureTarget(viewDoc, viewTarget, null);
+        });
+      }
+    } catch (eView) {}
+
+    if (typeof global.buildPosCustomerBillHtml !== 'function') {
+      return Promise.reject(new Error('bill HTML builder unavailable'));
+    }
+
     var billOpts = {
-      outlet: opts.outlet || invoice.outlet,
+      outlet: opts.outlet || (invoice && invoice.outlet),
       userLabel: opts.userLabel || opts.user_label || ''
     };
     var html = global.buildPosCustomerBillHtml(invoice, billOpts);
+    opts.captureSource = 'offscreen';
 
     return new Promise(function (resolve, reject) {
       var iframe = document.createElement('iframe');
       iframe.setAttribute('aria-hidden', 'true');
       iframe.setAttribute('tabindex', '-1');
       iframe.style.cssText =
-        'position:fixed;left:-12000px;top:0;width:380px;height:1200px;opacity:0;pointer-events:none;border:0;';
+        'position:fixed;left:-12000px;top:0;width:420px;height:1400px;opacity:0;pointer-events:none;border:0;';
       document.body.appendChild(iframe);
-
-      var cleaned = false;
-      function cleanup() {
-        if (cleaned) return;
-        cleaned = true;
-        try {
-          if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-        } catch (e) {}
-      }
 
       var idoc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
       if (!idoc) {
-        cleanup();
+        try {
+          if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+        } catch (e) {}
         reject(new Error('Could not open bill render frame'));
         return;
       }
@@ -914,7 +982,9 @@
         idoc.write(html);
         idoc.close();
       } catch (err) {
-        cleanup();
+        try {
+          if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+        } catch (e2) {}
         reject(err);
         return;
       }
@@ -922,32 +992,16 @@
       waitForBillAssets(idoc, 3000)
         .then(function () {
           var target = idoc.querySelector('.bill-sheet') || idoc.body;
-          return global.html2canvas(target, {
-            backgroundColor: '#ffffff',
-            scale: 2,
-            useCORS: true,
-            allowTaint: true,
-            logging: false,
-            imageTimeout: 2500,
-            width: Math.max(320, target.scrollWidth || 340),
-            windowWidth: 380
-          });
+          return captureTarget(idoc, target, iframe);
         })
-        .then(function (canvas) {
-          cleanup();
-          var escpos = canvasToEscPosRasterBands(canvas, {
-            maxWidth: 384,
-            bandHeight: 1200,
-            threshold: 185
-          });
-          if (!escpos) {
-            reject(new Error('empty bill raster'));
-            return;
-          }
-          resolve(escpos);
-        })
+        .then(resolve)
         .catch(function (err) {
-          cleanup();
+          // #region agent log
+          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'C',location:'pos_printers.js:raster-fail',message:'raster render failed',data:{err:String(err&&err.message||err||'')},timestamp:Date.now()})}).catch(function(){});
+          // #endregion
+          try {
+            if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+          } catch (e3) {}
           reject(err || new Error('bill raster failed'));
         });
     });
@@ -1356,8 +1410,14 @@
       .then(function (rasterEscPos) {
         var b64 = toBase64Binary(rasterEscPos);
         if (!b64) {
+          // #region agent log
+          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'pre-fix',hypothesisId:'C',location:'pos_printers.js:printInvoiceHtml',message:'empty raster b64 -> text fallback',data:{},timestamp:Date.now()})}).catch(function(){});
+          // #endregion
           return sendLogoTextFallback();
         }
+        // #region agent log
+        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'C',location:'pos_printers.js:printInvoiceHtml',message:'sending raster escpos job',data:{b64Len:b64.length,role:role},timestamp:Date.now()})}).catch(function(){});
+        // #endregion
         return sendAgentJob({
           printerRole: role,
           documentType: opts.documentType || 'receipt',
@@ -1369,14 +1429,23 @@
           idempotencyKey: opts.idempotencyKey || opts.jobId || undefined
         })
           .then(function (result) {
+            // #region agent log
+            fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'post-fix',hypothesisId:'C',location:'pos_printers.js:printInvoiceHtml',message:'raster job accepted',data:{via:result&&result.via,viaRaster:true},timestamp:Date.now()})}).catch(function(){});
+            // #endregion
             result.viaRaster = true;
             return result;
           })
-          .catch(function () {
+          .catch(function (err) {
+            // #region agent log
+            fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'pre-fix',hypothesisId:'C',location:'pos_printers.js:printInvoiceHtml',message:'raster job failed -> text fallback',data:{err:String(err&&err.message||err||'')},timestamp:Date.now()})}).catch(function(){});
+            // #endregion
             return sendLogoTextFallback();
           });
       })
-      .catch(function () {
+      .catch(function (err) {
+        // #region agent log
+        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2e5a8b'},body:JSON.stringify({sessionId:'2e5a8b',runId:'pre-fix',hypothesisId:'C',location:'pos_printers.js:printInvoiceHtml',message:'raster render rejected -> text fallback',data:{err:String(err&&err.message||err||'')},timestamp:Date.now()})}).catch(function(){});
+        // #endregion
         return sendLogoTextFallback();
       });
   }
