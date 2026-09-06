@@ -453,7 +453,10 @@
   /** Same customer-bill HTML used when printing from POS / Tables. */
   function buildCustomerBillHtml(invoice) {
     if (typeof global.buildPosCustomerBillHtml === 'function') {
-      return global.buildPosCustomerBillHtml(invoice, {});
+      return global.buildPosCustomerBillHtml(invoice, {
+        outlet: resolveLedgerOutlet(invoice),
+        userLabel: String((invoice && invoice.created_by) || '').trim()
+      });
     }
     return buildCustomerBillHtmlLegacy(invoice);
   }
@@ -718,6 +721,7 @@
           outlet: outlet,
           jobId: jobId,
           invoice: invoice,
+          userLabel: String((invoice && invoice.created_by) || '').trim(),
           allowBrowserFallback: false
         });
       })

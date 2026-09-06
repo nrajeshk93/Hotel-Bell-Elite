@@ -2891,6 +2891,11 @@
             outlet: outlet,
             jobId: jobId,
             invoice: billPayload,
+            userLabel: String(
+              (billPayload && billPayload.created_by) ||
+                (invoice && invoice.created_by) ||
+                ''
+            ).trim(),
             browserPrint: function () {}
           });
         }
@@ -2904,6 +2909,11 @@
             outlet: outlet,
             jobId: jobId,
             invoice: billPayload,
+            userLabel: String(
+              (billPayload && billPayload.created_by) ||
+                (invoice && invoice.created_by) ||
+                ''
+            ).trim(),
             allowBrowserFallback: false
           })
           .then(function (result) {

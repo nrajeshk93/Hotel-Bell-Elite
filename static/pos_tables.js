@@ -4125,6 +4125,7 @@
             outlet: outlet,
             jobId: jobId,
             invoice: invoice,
+            userLabel: String((invoice && invoice.created_by) || '').trim(),
             allowBrowserFallback: false
           })
           .then(function (result) {

@@ -731,6 +731,41 @@
 
   var _logoRasterCache = {};
 
+  function imageDataToGsV0(imageData, width, height, threshold) {
+    threshold = threshold != null ? threshold : 190;
+    var pixels = imageData.data;
+    var widthBytes = Math.floor(width / 8);
+    if (widthBytes < 1) return '';
+    var GS = '\x1d';
+    var chunks = [];
+    for (var y = 0; y < height; y++) {
+      for (var xb = 0; xb < widthBytes; xb++) {
+        var b = 0;
+        for (var bit = 0; bit < 8; bit++) {
+          var x = xb * 8 + bit;
+          if (x >= width) continue;
+          var i = (y * width + x) * 4;
+          var r = pixels[i];
+          var g = pixels[i + 1];
+          var bl = pixels[i + 2];
+          var a = pixels[i + 3];
+          var lum = 0.299 * r + 0.587 * g + 0.114 * bl;
+          if (a > 128 && lum < threshold) b |= 0x80 >> bit;
+        }
+        chunks.push(b);
+      }
+    }
+    var xL = widthBytes & 0xff;
+    var xH = (widthBytes >> 8) & 0xff;
+    var yL = height & 0xff;
+    var yH = (height >> 8) & 0xff;
+    var out = GS + 'v0\x00' + String.fromCharCode(xL, xH, yL, yH);
+    for (var n = 0; n < chunks.length; n++) {
+      out += String.fromCharCode(chunks[n]);
+    }
+    return out;
+  }
+
   function imageToEscPosRaster(img, maxWidthPx) {
     maxWidthPx = maxWidthPx || 384;
     var w = img.naturalWidth || img.width || 0;
@@ -749,36 +784,173 @@
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, tw, th);
     ctx.drawImage(img, 0, 0, tw, th);
-    var pixels = ctx.getImageData(0, 0, tw, th).data;
-    var widthBytes = tw / 8;
-    var data = new Array(widthBytes * th);
-    var di = 0;
-    for (var y = 0; y < th; y++) {
-      for (var xb = 0; xb < widthBytes; xb++) {
-        var b = 0;
-        for (var bit = 0; bit < 8; bit++) {
-          var x = xb * 8 + bit;
-          var i = (y * tw + x) * 4;
-          var r = pixels[i];
-          var g = pixels[i + 1];
-          var bl = pixels[i + 2];
-          var a = pixels[i + 3];
-          var lum = 0.299 * r + 0.587 * g + 0.114 * bl;
-          if (a > 128 && lum < 190) b |= 0x80 >> bit;
-        }
-        data[di++] = b;
-      }
-    }
+    return imageDataToGsV0(ctx.getImageData(0, 0, tw, th), tw, th, 190);
+  }
+
+  /**
+   * Convert a canvas to centered ESC/POS raster bands + cut.
+   * Uses Noto Sans glyphs from the View HTML (clear upright “6”), not printer text font.
+   */
+  function canvasToEscPosRasterBands(canvas, opts) {
+    opts = opts || {};
+    var maxWidth = opts.maxWidth || 384;
+    var bandHeight = opts.bandHeight || 1200;
+    var threshold = opts.threshold != null ? opts.threshold : 185;
+    if (!canvas || !canvas.width || !canvas.height) return '';
+
+    var srcW = canvas.width;
+    var srcH = canvas.height;
+    var tw = Math.min(maxWidth, srcW);
+    tw = tw - (tw % 8);
+    if (tw < 8) tw = 8;
+    var th = Math.max(1, Math.round((srcH * tw) / srcW));
+
+    var scaled = document.createElement('canvas');
+    scaled.width = tw;
+    scaled.height = th;
+    var sctx = scaled.getContext('2d');
+    if (!sctx) return '';
+    sctx.fillStyle = '#ffffff';
+    sctx.fillRect(0, 0, tw, th);
+    sctx.drawImage(canvas, 0, 0, tw, th);
+
+    var ESC = '\x1b';
     var GS = '\x1d';
-    var xL = widthBytes & 0xff;
-    var xH = (widthBytes >> 8) & 0xff;
-    var yL = th & 0xff;
-    var yH = (th >> 8) & 0xff;
-    var out = GS + 'v0\x00' + String.fromCharCode(xL, xH, yL, yH);
-    for (var n = 0; n < data.length; n++) {
-      out += String.fromCharCode(data[n]);
+    var parts = [];
+    parts.push(ESC + '@');
+    parts.push(ESC + 'a\x01');
+    for (var y0 = 0; y0 < th; y0 += bandHeight) {
+      var bh = Math.min(bandHeight, th - y0);
+      parts.push(imageDataToGsV0(sctx.getImageData(0, y0, tw, bh), tw, bh, threshold));
     }
-    return out;
+    parts.push('\n\n');
+    parts.push(GS + 'V\x01');
+    return parts.join('');
+  }
+
+  function waitForBillAssets(doc, timeoutMs) {
+    return new Promise(function (resolve) {
+      var settled = false;
+      function finish() {
+        if (settled) return;
+        settled = true;
+        resolve();
+      }
+      var fontsReady =
+        doc && doc.fonts && typeof doc.fonts.ready !== 'undefined'
+          ? doc.fonts.ready.catch(function () {
+              return null;
+            })
+          : Promise.resolve();
+      var pending = 0;
+      var imgs = (doc && doc.images) || [];
+      for (var i = 0; i < imgs.length; i++) {
+        if (!imgs[i].complete) {
+          pending += 1;
+          imgs[i].addEventListener('load', function () {
+            pending -= 1;
+            if (pending <= 0) fontsReady.then(finish);
+          });
+          imgs[i].addEventListener('error', function () {
+            pending -= 1;
+            if (pending <= 0) fontsReady.then(finish);
+          });
+        }
+      }
+      fontsReady.then(function () {
+        if (pending <= 0) finish();
+      });
+      setTimeout(finish, timeoutMs || 3000);
+    });
+  }
+
+  /**
+   * Render the Spice View-bill HTML to ESC/POS raster so digits match Noto Sans
+   * (thermal text font makes “6” look like “0”).
+   */
+  function renderCustomerBillRasterEscPos(invoice, opts) {
+    opts = opts || {};
+    if (typeof global.html2canvas !== 'function') {
+      return Promise.reject(new Error('html2canvas unavailable'));
+    }
+    if (typeof global.buildPosCustomerBillHtml !== 'function') {
+      return Promise.reject(new Error('bill HTML builder unavailable'));
+    }
+    if (!invoice) {
+      return Promise.reject(new Error('invoice required'));
+    }
+
+    var billOpts = {
+      outlet: opts.outlet || invoice.outlet,
+      userLabel: opts.userLabel || opts.user_label || ''
+    };
+    var html = global.buildPosCustomerBillHtml(invoice, billOpts);
+
+    return new Promise(function (resolve, reject) {
+      var iframe = document.createElement('iframe');
+      iframe.setAttribute('aria-hidden', 'true');
+      iframe.setAttribute('tabindex', '-1');
+      iframe.style.cssText =
+        'position:fixed;left:-12000px;top:0;width:380px;height:1200px;opacity:0;pointer-events:none;border:0;';
+      document.body.appendChild(iframe);
+
+      var cleaned = false;
+      function cleanup() {
+        if (cleaned) return;
+        cleaned = true;
+        try {
+          if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+        } catch (e) {}
+      }
+
+      var idoc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
+      if (!idoc) {
+        cleanup();
+        reject(new Error('Could not open bill render frame'));
+        return;
+      }
+      try {
+        idoc.open();
+        idoc.write(html);
+        idoc.close();
+      } catch (err) {
+        cleanup();
+        reject(err);
+        return;
+      }
+
+      waitForBillAssets(idoc, 3000)
+        .then(function () {
+          var target = idoc.querySelector('.bill-sheet') || idoc.body;
+          return global.html2canvas(target, {
+            backgroundColor: '#ffffff',
+            scale: 2,
+            useCORS: true,
+            allowTaint: true,
+            logging: false,
+            imageTimeout: 2500,
+            width: Math.max(320, target.scrollWidth || 340),
+            windowWidth: 380
+          });
+        })
+        .then(function (canvas) {
+          cleanup();
+          var escpos = canvasToEscPosRasterBands(canvas, {
+            maxWidth: 384,
+            bandHeight: 1200,
+            threshold: 185
+          });
+          if (!escpos) {
+            reject(new Error('empty bill raster'));
+            return;
+          }
+          resolve(escpos);
+        })
+        .catch(function (err) {
+          cleanup();
+          reject(err || new Error('bill raster failed'));
+        });
+    });
   }
 
   function loadReceiptLogoEscPos(outlet) {
@@ -1042,8 +1214,8 @@
 
   /**
    * Silent invoice/bill print via Hotel Print Agent (billing role).
-   * Prefers ESC/POS (same path as KOT) — HTML contentType is printed as raw
-   * text by some agent builds and dumps CSS onto the thermal paper.
+   * Prefers a full View-bill raster (Noto Sans digits) so thermal “6” matches
+   * the iframe preview. Falls back to text/logo ESC/POS, then plain text.
    * Set opts.allowBrowserFallback = true to open Chrome print as a last resort.
    */
   function printInvoiceHtml(html, opts) {
@@ -1084,12 +1256,21 @@
       );
     }
 
-    function sendJob(logoRaster) {
+    function sendAgentJob(job) {
+      return global.HotelPrintAgent.print(job).then(function (data) {
+        return { via: 'agent', data: data };
+      });
+    }
+
+    function sendTextEscPosJob(logoRaster) {
       var text = '';
       var escposB64 = '';
       if (invoice) {
         try {
-          text = formatCustomerBillText(invoice, { outlet: opts.outlet });
+          text = formatCustomerBillText(invoice, {
+            outlet: opts.outlet,
+            userLabel: opts.userLabel || opts.user_label || ''
+          });
         } catch (e) {
           text = '';
         }
@@ -1097,7 +1278,8 @@
           escposB64 = toBase64Binary(
             formatCustomerBillEscPos(invoice, {
               outlet: opts.outlet,
-              logoRaster: logoRaster || ''
+              logoRaster: logoRaster || '',
+              userLabel: opts.userLabel || opts.user_label || ''
             })
           );
         } catch (e2) {
@@ -1121,7 +1303,6 @@
         job.contentEncoding = 'utf8';
         job.content = String(text);
       } else if (html) {
-        /* Last resort — may dump CSS on older agents; prefer passing opts.invoice. */
         job.contentType = 'html';
         job.contentEncoding = 'utf8';
         job.content = html;
@@ -1129,43 +1310,75 @@
         return Promise.resolve(fail(new Error('Nothing to print.')));
       }
 
-      return global.HotelPrintAgent.print(job)
-        .then(function (data) {
-          return { via: 'agent', data: data };
-        })
-        .catch(function (err) {
-          if (job.contentType === 'escpos' && text) {
-            return global.HotelPrintAgent.print({
-              printerRole: role,
-              documentType: opts.documentType || 'receipt',
-              contentType: 'text',
-              contentEncoding: 'utf8',
-              content: String(text),
-              copies: opts.copies || 1,
-              jobId: (opts.jobId || 'inv') + '-txt',
-              idempotencyKey:
-                (opts.idempotencyKey || opts.jobId || '') + '-txt' || undefined
+      return sendAgentJob(job).catch(function (err) {
+        if (job.contentType === 'escpos' && text) {
+          return sendAgentJob({
+            printerRole: role,
+            documentType: opts.documentType || 'receipt',
+            contentType: 'text',
+            contentEncoding: 'utf8',
+            content: String(text),
+            copies: opts.copies || 1,
+            jobId: (opts.jobId || 'inv') + '-txt',
+            idempotencyKey:
+              (opts.idempotencyKey || opts.jobId || '') + '-txt' || undefined
+          })
+            .then(function (result) {
+              result.fallback = 'text';
+              return result;
             })
-              .then(function (data) {
-                return { via: 'agent', data: data, fallback: 'text' };
-              })
-              .catch(function (err2) {
-                return fail(err2 || err);
-              });
-          }
-          return fail(err);
+            .catch(function (err2) {
+              return fail(err2 || err);
+            });
+        }
+        return fail(err);
+      });
+    }
+
+    function sendLogoTextFallback() {
+      return loadReceiptLogoEscPos(opts.outlet || (invoice && invoice.outlet) || '')
+        .catch(function () {
+          return '';
+        })
+        .then(function (logoRaster) {
+          return sendTextEscPosJob(logoRaster);
         });
     }
 
-    var logoPromise = invoice
-      ? loadReceiptLogoEscPos(opts.outlet || invoice.outlet).catch(function () {
-          return '';
-        })
-      : Promise.resolve('');
+    if (!invoice) {
+      return sendLogoTextFallback();
+    }
 
-    return logoPromise.then(function (logoRaster) {
-      return sendJob(logoRaster);
-    });
+    return renderCustomerBillRasterEscPos(invoice, {
+      outlet: opts.outlet,
+      userLabel: opts.userLabel || opts.user_label || ''
+    })
+      .then(function (rasterEscPos) {
+        var b64 = toBase64Binary(rasterEscPos);
+        if (!b64) {
+          return sendLogoTextFallback();
+        }
+        return sendAgentJob({
+          printerRole: role,
+          documentType: opts.documentType || 'receipt',
+          contentType: 'escpos',
+          contentEncoding: 'base64',
+          content: b64,
+          copies: opts.copies || 1,
+          jobId: opts.jobId || undefined,
+          idempotencyKey: opts.idempotencyKey || opts.jobId || undefined
+        })
+          .then(function (result) {
+            result.viaRaster = true;
+            return result;
+          })
+          .catch(function () {
+            return sendLogoTextFallback();
+          });
+      })
+      .catch(function () {
+        return sendLogoTextFallback();
+      });
   }
 
   /** Apply stored prefs onto Printers panel fields marked data-pos-pc-printer. */
@@ -1607,6 +1820,8 @@
     formatKotTicketEscPos: formatKotTicketEscPos,
     formatCustomerBillText: formatCustomerBillText,
     formatCustomerBillEscPos: formatCustomerBillEscPos,
+    renderCustomerBillRasterEscPos: renderCustomerBillRasterEscPos,
+    canvasToEscPosRasterBands: canvasToEscPosRasterBands,
     downloadKotTicketPdf: downloadKotTicketPdf,
     printKotHtml: printKotHtml,
     invoicePrinterRole: invoicePrinterRole,
