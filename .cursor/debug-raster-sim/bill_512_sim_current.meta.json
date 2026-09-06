@@ -1,6 +1,6 @@
 {
   "png": "/Users/rajesh/Documents/New project/Hotel Bell elite/.cursor/debug-raster-sim/bill_512_sim_current.png",
-  "bytes": 33091,
+  "bytes": 33010,
   "width": 512,
   "height": 828,
   "canvasW": 2048,
@@ -12,10 +12,14 @@
   "threshold": 185,
   "letterSpacing": "0.04em",
   "wordSpacing": "0.28em",
-  "captureFont": "Consolas",
+  "textFont": "DejaVu Sans",
+  "numFont": "Consolas",
+  "captureFont": "DejaVu Sans + Consolas",
   "computedFamily": "Consolas, monospace",
   "computedWeight": "800",
+  "computedTextFamily": "\"DejaVu Sans\", sans-serif",
+  "computedNumFamily": "Consolas, monospace",
   "order_no": "INV/1987/2026-27",
   "grand_total": 660,
-  "at": "2026-09-06T10:25:46.665Z"
+  "at": "2026-09-06T11:45:08.012Z"
 }

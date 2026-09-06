@@ -35,7 +35,7 @@ async function main() {
     if (!m) throw new Error('Unexpected __png data URL');
     const buf = Buffer.from(m[1], 'base64');
     fs.writeFileSync(OUT_PNG, buf);
-    const outMeta = { png: OUT_PNG, bytes: buf.length, width: meta.tw, height: meta.th, canvasW: meta.canvasW, canvasH: meta.canvasH, scrollW: meta.scrollW, scale: meta.scale, thermalDots: meta.thermalDots, supersample: meta.supersample, threshold: meta.threshold, letterSpacing: meta.letterSpacing, wordSpacing: meta.wordSpacing, captureFont: meta.captureFont, computedFamily: meta.computedFamily, computedWeight: meta.computedWeight, order_no: meta.order_no, grand_total: meta.grand_total, at: new Date().toISOString() };
+    const outMeta = { png: OUT_PNG, bytes: buf.length, width: meta.tw, height: meta.th, canvasW: meta.canvasW, canvasH: meta.canvasH, scrollW: meta.scrollW, scale: meta.scale, thermalDots: meta.thermalDots, supersample: meta.supersample, threshold: meta.threshold, letterSpacing: meta.letterSpacing, wordSpacing: meta.wordSpacing, textFont: meta.textFont, numFont: meta.numFont, captureFont: meta.captureFont, computedFamily: meta.computedFamily, computedWeight: meta.computedWeight, computedTextFamily: meta.computedTextFamily, computedNumFamily: meta.computedNumFamily, order_no: meta.order_no, grand_total: meta.grand_total, at: new Date().toISOString() };
     fs.writeFileSync(OUT_META, JSON.stringify(outMeta, null, 2));
     console.log(JSON.stringify(outMeta, null, 2));
   } finally { await browser.close(); }

@@ -1,4 +1,4 @@
-"""Wiring checks for View-bill raster thermal printing (Noto + ink stroke for digit 6)."""
+"""Wiring checks for View-bill raster thermal printing (DejaVu text + Consolas numbers + ink stroke for digit 6)."""
 
 from __future__ import annotations
 
@@ -69,7 +69,7 @@ class PosBillRasterPrintWiringTests(unittest.TestCase):
         self.assertIn("if (allowBrowser)", body)
 
     def test_thermal_capture_css_crisp_and_nn_downscale(self):
-        """Digit-6 tip: Consolas + ink stroke + crisp + threshold-at-hires → nearest-neighbor."""
+        """Digit-6 tip: DejaVu text + Consolas numbers + ink stroke + crisp + NN."""
         src = (ROOT / "static" / "pos_printers.js").read_text(encoding="utf-8")
         self.assertIn("-webkit-font-smoothing:none", src)
         self.assertIn("font-smooth:never", src)
@@ -79,8 +79,15 @@ class PosBillRasterPrintWiringTests(unittest.TestCase):
         self.assertIn("6-tip preservation", src)
         self.assertIn("threshold at hi-res", src)
         self.assertIn("CAPTURE_SUPERSAMPLE = 4", src)
-        # Thermal capture tries Consolas per Rajesh; ink stroke preserves thin tip.
+        # Text DejaVu (vendored) + numbers Consolas; ink stroke preserves thin tip.
+        self.assertIn('font-family:"DejaVu Sans",sans-serif', src)
+        self.assertIn("DejaVuSans.ttf", src)
+        self.assertIn("DejaVuSans-Bold.ttf", src)
         self.assertIn("font-family:Consolas,monospace", src)
+        self.assertIn(".bill-num", src)
+        self.assertIn("""doc.fonts.load('400 13.5px "DejaVu Sans"')""", src)
+        self.assertIn("""doc.fonts.load('700 13.5px "DejaVu Sans"')""", src)
+        self.assertIn("""doc.fonts.load('800 16px "DejaVu Sans"')""", src)
         self.assertIn("doc.fonts.load('400 13.5px Consolas')", src)
         self.assertIn("doc.fonts.load('700 13.5px Consolas')", src)
         self.assertIn("doc.fonts.load('800 16px Consolas')", src)
@@ -89,6 +96,21 @@ class PosBillRasterPrintWiringTests(unittest.TestCase):
         self.assertIn("text-shadow:0 0 0.25px #000", src)
         self.assertIn(".totals .grand", src)
         self.assertIn("tipSharpenUpperRight", src)
+
+    def test_customer_bill_html_uses_dejavu_text_consolas_numbers(self):
+        bill = (ROOT / "static" / "pos_customer_bill.js").read_text(encoding="utf-8")
+        self.assertIn("receiptDejaVuSansFaceCss", bill)
+        self.assertIn("DejaVuSans.ttf", bill)
+        self.assertIn("DejaVuSans-Bold.ttf", bill)
+        self.assertIn('font-family:"DejaVu Sans",sans-serif', bill)
+        self.assertIn("font-family:Consolas,monospace", bill)
+        self.assertIn(".bill-num", bill)
+        self.assertNotIn("receiptNotoSansFaceCss", bill)
+        self.assertNotIn('font-family:"Noto Sans"', bill)
+        fonts_dir = ROOT / "static" / "fonts"
+        self.assertTrue((fonts_dir / "DejaVuSans.ttf").is_file())
+        self.assertTrue((fonts_dir / "DejaVuSans-Bold.ttf").is_file())
+        self.assertGreater((fonts_dir / "DejaVuSans.ttf").stat().st_size, 100_000)
 
     def test_ledger_passes_created_by_user_label(self):
 

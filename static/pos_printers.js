@@ -789,7 +789,7 @@
 
   /**
    * Convert a canvas to left-aligned ESC/POS raster bands + cut.
-   * Uses View HTML glyphs (Noto Sans + ink stroke during capture), not printer text font.
+   * Uses View HTML glyphs (DejaVu text + Consolas numbers + ink stroke during capture), not printer text font.
    * 6-tip preservation: threshold at hi-res (supersampled) → nearest-neighbor
    * downscale to THERMAL_DOTS. Soft bilinear shrink first would round the
    * pointed Noto “6” tip into a bent/closed top after 1-bit.
@@ -919,17 +919,26 @@
               return null;
             })
           : Promise.resolve();
-      /* Thermal capture tries Consolas per Rajesh (load before html2canvas). */
+      /* Load DejaVu (text) + Consolas (numbers) before html2canvas. */
       if (doc && doc.fonts && typeof doc.fonts.load === 'function') {
         fontsReady = Promise.all([
           fontsReady,
+          doc.fonts.load('400 13.5px "DejaVu Sans"').catch(function () {
+            return null;
+          }),
+          doc.fonts.load('700 13.5px "DejaVu Sans"').catch(function () {
+            return null;
+          }),
+          doc.fonts.load('800 16px "DejaVu Sans"').catch(function () {
+            return null;
+          }),
           doc.fonts.load('400 13.5px Consolas').catch(function () {
             return null;
           }),
           doc.fonts.load('700 13.5px Consolas').catch(function () {
             return null;
           }),
-          doc.fonts.load('800 13.5px Consolas').catch(function () {
+          doc.fonts.load('800 16px Consolas').catch(function () {
             return null;
           })
         ]).catch(function () {
@@ -959,12 +968,11 @@
   }
 
   /**
-   * Render the Spice View-bill HTML to ESC/POS raster (Consolas + ink stroke so
-   * digit “6” tip stays distinct; thermal text font makes “6” look like “0”).
+   * Render the Spice View-bill HTML to ESC/POS raster (DejaVu text + Consolas
+   * numbers + ink stroke so digit “6” tip stays distinct).
    * Prefers the on-screen View iframe when open so paper matches the digital copy.
-   * Thermal capture tries Consolas per Rajesh. Capture uses crisp font smoothing;
-   * bands threshold-at-hires → NN downscale so the pointed upward “6” tip is not
-   * bent by anti-alias + bilinear shrink.
+   * Capture uses crisp font smoothing; bands threshold-at-hires → NN downscale
+   * so the pointed upward “6” tip is not bent by anti-alias + bilinear shrink.
    */
   function renderCustomerBillRasterEscPos(invoice, opts) {
     opts = opts || {};
@@ -983,31 +991,55 @@
     function injectThermalCaptureCss(doc) {
       if (!doc || !doc.head) return null;
       try {
-        /* Thermal capture tries Consolas per Rajesh. Ink stroke preserves thin tip.
-         * No Consolas TTF vendored under static/fonts/ — family name only so Chrome
-         * uses system/Office Consolas when present (do not @font-face missing URLs).
-         * If Consolas-Regular.ttf / Consolas-Bold.ttf are later copied from local
-         * Office/User fonts, @font-face them from /static/fonts/. */
+        /* Text: DejaVu Sans (vendored TTF). Numbers: Consolas (system) for digit-6 tip.
+         * Ink stroke preserves thin tip through threshold (SS4 / thr ~185). */
         var style = doc.createElement('style');
         style.setAttribute('data-hbe-thermal-capture', '1');
-        /* Capture Consolas + ink stroke: tip survives threshold (SS4 / thr ~185).
-         * Thermal capture tries Consolas per Rajesh. */
+        var faceRoot = '';
+        try {
+          faceRoot = billAbsoluteUrl('/static/fonts/');
+          if (faceRoot && faceRoot.slice(-1) !== '/') faceRoot += '/';
+        } catch (eFace) {
+          faceRoot = '/static/fonts/';
+        }
+        function dejaFace(weight, file) {
+          return (
+            '@font-face{font-family:"DejaVu Sans";font-style:normal;font-weight:' +
+            weight +
+            ';font-display:swap;src:url("' +
+            faceRoot +
+            file +
+            '") format("truetype")}'
+          );
+        }
         style.textContent =
-          'body,.bill-sheet{font-family:Consolas,monospace !important;' +
-          'letter-spacing:0.04em !important;word-spacing:0.28em !important;' +
+          dejaFace(400, 'DejaVuSans.ttf') +
+          dejaFace(500, 'DejaVuSans.ttf') +
+          dejaFace(600, 'DejaVuSans.ttf') +
+          dejaFace(700, 'DejaVuSans-Bold.ttf') +
+          dejaFace(800, 'DejaVuSans-Bold.ttf') +
+          'body,.bill-sheet{font-family:"DejaVu Sans",sans-serif !important;' +
           /* Crisp glyphs for capture: antialiased tips soft-round after threshold. */
           '-webkit-font-smoothing:none !important;font-smooth:never !important;' +
           '-webkit-text-stroke:0.35px #000;paint-order:stroke fill;' +
           'text-shadow:0 0 0.25px #000}' +
           '.brand,.meta,.totals,.user,table.items td,table.items th,' +
           'table.receipts-table td,table.receipts-table th,.addr,.gst-no,' +
-          '.cancelled-watermark span{font-family:Consolas,monospace !important;' +
+          '.cancelled-watermark span{font-family:"DejaVu Sans",sans-serif !important;' +
+          '-webkit-text-stroke:0.35px #000;paint-order:stroke fill;' +
+          'text-shadow:0 0 0.25px #000}' +
+          /* Numbers → Consolas (qty/rate/amt, totals amounts, grand, receipts). */
+          '.bill-num,table.items td.qty,table.items td.rate,table.items td.amt,' +
+          'table.items th.qty,table.items th.rate,table.items th.amt,' +
+          '.totals div>span:last-child,.totals .grand>span:last-child,' +
+          'table.receipts-table td.pay-amt,table.receipts-table th.pay-amt,' +
+          '.receipts-total{font-family:Consolas,monospace !important;' +
           'letter-spacing:0.04em !important;word-spacing:0.28em !important;' +
           '-webkit-text-stroke:0.35px #000;paint-order:stroke fill;' +
           'text-shadow:0 0 0.25px #000}' +
           /* Heavier grand/amounts so the tip stays 1–2px black after threshold. */
-          '.totals .grand,table.items td.amt,table.receipts-table td.amt,' +
-          '.totals td,.totals th{font-weight:800 !important;' +
+          '.totals .grand>span:last-child,table.items td.amt,' +
+          'table.receipts-table td.pay-amt,.bill-num{font-weight:800 !important;' +
           '-webkit-text-stroke:0.4px #000;paint-order:stroke fill;' +
           'text-shadow:0 0 0.3px #000}';
         doc.head.appendChild(style);
@@ -1033,6 +1065,15 @@
       var fontsWait = Promise.resolve();
       if (doc && doc.fonts && typeof doc.fonts.load === 'function') {
         fontsWait = Promise.all([
+          doc.fonts.load('400 13.5px "DejaVu Sans"').catch(function () {
+            return null;
+          }),
+          doc.fonts.load('700 13.5px "DejaVu Sans"').catch(function () {
+            return null;
+          }),
+          doc.fonts.load('800 16px "DejaVu Sans"').catch(function () {
+            return null;
+          }),
           doc.fonts.load('400 13.5px Consolas').catch(function () {
             return null;
           }),
@@ -1112,7 +1153,7 @@
       if (!invoice) {
         return Promise.reject(new Error('invoice required for offscreen bill raster'));
       }
-      /* buildPosCustomerBillHtml embeds View fonts; capture CSS forces Consolas. */
+      /* buildPosCustomerBillHtml embeds DejaVu; capture CSS splits Consolas for numbers. */
       html = global.buildPosCustomerBillHtml(invoice, billOpts);
     }
     opts.captureSource = html && opts.html ? 'opts-html' : 'offscreen';
@@ -1423,7 +1464,7 @@
 
   /**
    * Silent invoice/bill print via Hotel Print Agent (billing role).
-   * Customer bills are raster-only to match digital Noto View: html2canvas of the
+   * Customer bills are raster-only to match digital View (DejaVu/Consolas): html2canvas of the
    * Spice/View HTML → ~512-dot GS v 0 bands. Text ESC/POS
    * (sendLogoTextFallback / formatCustomerBillEscPos) is disabled for this path —
    * printer built-in fonts do not match the digital invoice.
@@ -1499,7 +1540,7 @@
     function rasterOnlyFailure(err) {
       var msg =
         (err && err.message) ||
-        'Could not print customer bill as View raster (Noto HTML). Open View bill and retry, or check html2canvas.';
+        'Could not print customer bill as View raster (DejaVu HTML). Open View bill and retry, or check html2canvas.';
       var error = err && err.message ? err : new Error(msg);
       if (allowBrowser) {
         try {

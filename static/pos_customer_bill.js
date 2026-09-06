@@ -412,7 +412,7 @@
       '<tbody>' +
       rows +
       '</tbody></table>' +
-      '<div class="receipts-total">' +
+      '<div class="receipts-total bill-num">' +
       formatThermalAmount(totals.total) +
       '</div></div>'
     );
@@ -420,30 +420,38 @@
 
   function receiptFontBaseUrl() {
     try {
-      if (typeof location !== 'undefined' && location.origin) {
-        return location.origin + '/static/fonts/';
+      if (typeof location !== 'undefined') {
+        /* file:// sim / capture: resolve relative to this document (../../static/fonts). */
+        if (location.protocol === 'file:') {
+          return new URL('../../static/fonts/', location.href).href;
+        }
+        if (location.origin && location.origin !== 'null') {
+          return location.origin + '/static/fonts/';
+        }
       }
     } catch (e) {}
     return '/static/fonts/';
   }
 
-  function receiptNotoSansFaceCss() {
+  function receiptDejaVuSansFaceCss() {
     var root = receiptFontBaseUrl();
     function face(weight, file) {
       return (
-        '@font-face{font-family:"Noto Sans";font-style:normal;font-weight:' +
+        '@font-face{font-family:"DejaVu Sans";font-style:normal;font-weight:' +
         weight +
         ';font-display:swap;src:url("' +
         root +
         file +
-        '") format("woff2")}'
+        '") format("truetype")}'
       );
     }
+    /* DejaVu has Regular + Bold only; map 500/600→Regular, 700/800→Bold (grand). */
     return (
-      face(400, 'noto-sans-latin-400-normal.woff2') +
-      face(500, 'noto-sans-latin-500-normal.woff2') +
-      face(700, 'noto-sans-latin-700-normal.woff2') +
-      face(800, 'noto-sans-latin-800-normal.woff2')
+      face(400, 'DejaVuSans.ttf') +
+      face(500, 'DejaVuSans.ttf') +
+      face(600, 'DejaVuSans.ttf') +
+      face(700, 'DejaVuSans-Bold.ttf') +
+      face(800, 'DejaVuSans-Bold.ttf')
     );
   }
 
@@ -479,7 +487,7 @@
     var cancelledCss = isCancelled
       ? 'body.is-cancelled .bill-sheet{position:relative}' +
         '.cancelled-watermark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:20;overflow:hidden}' +
-        '.cancelled-watermark span{display:inline-block;font-family:"Noto Sans",sans-serif;font-size:47px;font-weight:800;letter-spacing:.14em;line-height:1;color:rgba(185,28,28,.34);border:3px solid rgba(185,28,28,.4);padding:8px 16px;transform:rotate(-34deg);text-transform:uppercase;white-space:nowrap}' +
+        '.cancelled-watermark span{display:inline-block;font-family:"DejaVu Sans",sans-serif;font-size:47px;font-weight:800;letter-spacing:.14em;line-height:1;color:rgba(185,28,28,.34);border:3px solid rgba(185,28,28,.4);padding:8px 16px;transform:rotate(-34deg);text-transform:uppercase;white-space:nowrap}' +
         '@media print{.cancelled-watermark span{color:rgba(185,28,28,.42);border-color:rgba(185,28,28,.48)}}'
       : '';
     var cancelledMark = isCancelled
@@ -509,8 +517,8 @@
       '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bill ' +
       escapeHtml(orderNo) +
       '</title><style>' +
-      receiptNotoSansFaceCss() +
-      'body{font-family:"Noto Sans",sans-serif;padding:14px 12px;color:#111;width:340px;margin:0 auto;font-size:13.5px;font-weight:400;line-height:1.45;-webkit-font-smoothing:antialiased}' +
+      receiptDejaVuSansFaceCss() +
+      'body{font-family:"DejaVu Sans",sans-serif;padding:14px 12px;color:#111;width:340px;margin:0 auto;font-size:13.5px;font-weight:400;line-height:1.45;-webkit-font-smoothing:antialiased}' +
       '.logo{display:block;margin:0 auto 10px;max-width:260px;height:auto}' +
       '.brand{font-size:20px;font-weight:700;text-align:center;letter-spacing:0;margin:0 0 6px;line-height:1.25}' +
       '.addr,.gst-no{font-size:12.5px;font-weight:400;text-align:center;margin:0 0 4px;line-height:1.4}' +
@@ -528,6 +536,7 @@
       'table.items td.rate,table.items th.rate{width:58px;text-align:right}' +
       'table.items td.amt,table.items th.amt{width:68px;text-align:right}' +
       'table.items td.qty,table.items td.rate,table.items td.amt{font-weight:500}' +
+      '.bill-num,table.items td.qty,table.items td.rate,table.items td.amt,table.receipts-table td.pay-amt,.receipts-total,.totals div>span:last-child,.totals .grand>span:last-child{font-family:Consolas,monospace;font-variant-numeric:tabular-nums}' +
       '.variant{font-size:12px;font-weight:400;color:#555}' +
       '.totals{font-size:13.5px;font-weight:400;margin:0 0 10px}' +
       '.totals div{display:flex;justify-content:space-between;align-items:baseline;margin:4px 0;gap:10px}' +
@@ -584,49 +593,49 @@
       '</tbody></table>' +
       '<hr class="rule">' +
       '<div class="totals">' +
-      '<div><span>Sub-Total</span><span>' +
+      '<div><span>Sub-Total</span><span class="bill-num">' +
       formatThermalAmount(totals.subtotal) +
       '</span></div>' +
       (Number(totals.discount) > 0 || Number(totals.discountValue) > 0
-        ? '<div><span>Discount</span><span>-' +
+        ? '<div><span>Discount</span><span class="bill-num">-' +
           formatThermalAmount(totals.discount) +
           '</span></div>'
         : '') +
       (Number(totals.cgst) > 0
         ? '<div><span>CGST @ ' +
           formatBillTaxPct(invoiceTaxRates(invoice).cgst) +
-          '%</span><span>' +
+          '%</span><span class="bill-num">' +
           formatThermalAmount(totals.cgst) +
           '</span></div>'
         : '') +
       (Number(totals.ugst) > 0
         ? '<div><span>UGST @ ' +
           formatBillTaxPct(invoiceTaxRates(invoice).ugst) +
-          '%</span><span>' +
+          '%</span><span class="bill-num">' +
           formatThermalAmount(totals.ugst) +
           '</span></div>'
         : '') +
       (Number(totals.vat) > 0
         ? '<div><span>VAT @ ' +
           activeTaxRates().vat * 100 +
-          '%</span><span>' +
+          '%</span><span class="bill-num">' +
           formatThermalAmount(totals.vat) +
           '</span></div>'
         : '') +
       (Number(totals.service) > 0 || Number(totals.serviceValue) > 0
-        ? '<div><span>Service Charge</span><span>' +
+        ? '<div><span>Service Charge</span><span class="bill-num">' +
           formatThermalAmount(totals.service) +
           '</span></div>'
         : '') +
       (Number(totals.tip) > 0
-        ? '<div><span>Tip</span><span>' + formatThermalAmount(totals.tip) + '</span></div>'
+        ? '<div><span>Tip</span><span class="bill-num">' + formatThermalAmount(totals.tip) + '</span></div>'
         : '') +
       (Number(totals.roundOff) !== 0
-        ? '<div><span>Round-Off</span><span>' +
+        ? '<div><span>Round-Off</span><span class="bill-num">' +
           formatThermalAmount(totals.roundOff) +
           '</span></div>'
         : '') +
-      '<div class="grand"><span>Total</span><span>₹' +
+      '<div class="grand"><span>Total</span><span class="bill-num">₹' +
       formatThermalAmount(totals.total) +
       '</span></div>' +
       '</div>' +
