@@ -56,6 +56,37 @@ def _money_thermal(value) -> str:
     return f"{n:.2f}"
 
 
+def _money_thermal_rupee(value) -> str:
+    """Grand total only — ₹ + thermal amount (matches Spice HTML grand line)."""
+    return f"₹{_money_thermal(value)}"
+
+
+_RECEIPT_FONTS_READY = False
+
+
+def _register_receipt_fonts() -> None:
+    """Self-hosted Noto Sans TTFs — mirrors printed customer bill typography."""
+    global _RECEIPT_FONTS_READY
+    if _RECEIPT_FONTS_READY:
+        return
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    font_dir = os.path.join(_ROOT, "static", "fonts")
+    mapping = (
+        ("NotoSans", "NotoSans-Regular.ttf"),
+        ("NotoSans-Medium", "NotoSans-Medium.ttf"),
+        ("NotoSans-Bold", "NotoSans-Bold.ttf"),
+        ("NotoSans-ExtraBold", "NotoSans-ExtraBold.ttf"),
+    )
+    for name, filename in mapping:
+        path = os.path.join(font_dir, filename)
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"Missing receipt font: {path}")
+        pdfmetrics.registerFont(TTFont(name, path))
+    _RECEIPT_FONTS_READY = True
+
+
 def _qty(value) -> str:
     try:
         n = float(value or 0)
@@ -405,40 +436,57 @@ def build_pos_invoice_pdf(
     rule = colors.HexColor("#333333")
     content_w = page_w - 2 * margin
 
+    _register_receipt_fonts()
+
     brand_style = ParagraphStyle(
         "SpiceBrand",
-        fontName="Courier-Bold",
-        fontSize=11,
+        fontName="NotoSans-Bold",
+        fontSize=14,
         alignment=TA_CENTER,
         textColor=ink,
-        leading=14,
-        spaceAfter=2,
+        leading=18,
+        spaceAfter=4,
     )
     center_style = ParagraphStyle(
         "SpiceCenter",
-        fontName="Courier",
-        fontSize=8,
+        fontName="NotoSans",
+        fontSize=8.5,
         alignment=TA_CENTER,
         textColor=ink,
-        leading=11,
-        spaceAfter=1,
+        leading=12,
+        spaceAfter=2,
     )
     body = ParagraphStyle(
         "SpiceBody",
-        fontName="Courier",
-        fontSize=8,
+        fontName="NotoSans",
+        fontSize=9.5,
         alignment=TA_LEFT,
         textColor=ink,
-        leading=11,
+        leading=13,
+    )
+    body_label = ParagraphStyle(
+        "SpiceBodyLabel",
+        parent=body,
+        fontName="NotoSans-Medium",
+    )
+    body_medium = ParagraphStyle(
+        "SpiceBodyMedium",
+        parent=body,
+        fontName="NotoSans-Medium",
     )
     body_bold = ParagraphStyle(
         "SpiceBodyBold",
         parent=body,
-        fontName="Courier-Bold",
+        fontName="NotoSans-Bold",
     )
     right = ParagraphStyle(
         "SpiceRight",
         parent=body,
+        alignment=TA_RIGHT,
+    )
+    right_medium = ParagraphStyle(
+        "SpiceRightMedium",
+        parent=body_medium,
         alignment=TA_RIGHT,
     )
     right_bold = ParagraphStyle(
@@ -446,47 +494,57 @@ def build_pos_invoice_pdf(
         parent=body_bold,
         alignment=TA_RIGHT,
     )
+    grand_label = ParagraphStyle(
+        "SpiceGrandLabel",
+        fontName="NotoSans-ExtraBold",
+        fontSize=12.5,
+        alignment=TA_LEFT,
+        textColor=ink,
+        leading=16,
+    )
+    grand_amount = ParagraphStyle(
+        "SpiceGrandAmount",
+        fontName="NotoSans-ExtraBold",
+        fontSize=15.5,
+        alignment=TA_RIGHT,
+        textColor=ink,
+        leading=19,
+    )
     th = ParagraphStyle(
         "SpiceTh",
-        fontName="Courier-Bold",
-        fontSize=7,
+        fontName="NotoSans-Bold",
+        fontSize=9.5,
         textColor=ink,
-        leading=9,
+        leading=12,
     )
     th_right = ParagraphStyle(
         "SpiceThRight",
         parent=th,
         alignment=TA_RIGHT,
     )
-    th_center = ParagraphStyle(
-        "SpiceThCenter",
-        parent=th,
-        alignment=TA_CENTER,
-    )
     item_style = ParagraphStyle(
         "SpiceItem",
-        fontName="Courier",
-        fontSize=8,
+        fontName="NotoSans-Medium",
+        fontSize=9.5,
         textColor=ink,
-        leading=10,
+        leading=12,
     )
     foot = ParagraphStyle(
         "SpiceFoot",
-        fontName="Courier",
-        fontSize=8,
+        fontName="NotoSans",
+        fontSize=9,
         textColor=ink,
-        leading=11,
-        spaceBefore=6,
+        leading=12,
+        spaceBefore=8,
     )
 
-    def dashed_rule():
+    def thin_rule():
         return HRFlowable(
             width="100%",
-            thickness=0.6,
+            thickness=0.7,
             color=rule,
-            dash=(1.5, 1.5),
-            spaceBefore=4,
-            spaceAfter=4,
+            spaceBefore=5,
+            spaceAfter=5,
         )
 
     story: list = []
@@ -517,33 +575,33 @@ def build_pos_invoice_pdf(
             gst_line += f"  |  FSSAI No - {_esc(fssai_no)}"
         story.append(Paragraph(gst_line, center_style))
 
-    story.append(dashed_rule())
+    story.append(thin_rule())
 
     meta_rows = [
-        [Paragraph("Invoice", body), Paragraph(_esc(order_no), right)],
-        [Paragraph("Date", body), Paragraph(_esc(order_date), right)],
-        [Paragraph("Table", body), Paragraph(_esc(table), right)],
+        [Paragraph("Invoice", body_label), Paragraph(_esc(order_no), right)],
+        [Paragraph("Date", body_label), Paragraph(_esc(order_date), right)],
+        [Paragraph("Table", body_label), Paragraph(_esc(table), right)],
     ]
     if is_cancelled:
-        meta_rows.append([Paragraph("Status", body), Paragraph("Cancelled", right)])
+        meta_rows.append([Paragraph("Status", body_label), Paragraph("Cancelled", right)])
         if cancel_reason:
             meta_rows.append(
-                [Paragraph("Reason", body), Paragraph(_esc(cancel_reason), right)]
+                [Paragraph("Reason", body_label), Paragraph(_esc(cancel_reason), right)]
             )
     meta = Table(meta_rows, colWidths=[28 * mm, content_w - 28 * mm])
     meta.setStyle(
         TableStyle(
             [
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("TOPPADDING", (0, 0), (-1, -1), 1),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
                 ("LEFTPADDING", (0, 0), (-1, -1), 0),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 0),
             ]
         )
     )
     story.append(meta)
-    story.append(dashed_rule())
+    story.append(thin_rule())
 
     col_item = content_w - 48 * mm
     col_qty = 12 * mm
@@ -552,7 +610,7 @@ def build_pos_invoice_pdf(
     table_data = [
         [
             Paragraph("ITEMS", th),
-            Paragraph("QTY", th_center),
+            Paragraph("QTY", th_right),
             Paragraph("RATE", th_right),
             Paragraph("AMOUNT", th_right),
         ]
@@ -571,9 +629,12 @@ def build_pos_invoice_pdf(
             table_data.append(
                 [
                     Paragraph(_esc(line.get("name") or "Item"), item_style),
-                    Paragraph(_qty(line.get("qty")), ParagraphStyle("q", parent=item_style, alignment=TA_CENTER)),
-                    Paragraph(_money_thermal(line.get("rate")), ParagraphStyle("r", parent=item_style, alignment=TA_RIGHT)),
-                    Paragraph(_money_thermal(line.get("line_total")), ParagraphStyle("a", parent=item_style, alignment=TA_RIGHT)),
+                    Paragraph(
+                        _qty(line.get("qty")),
+                        ParagraphStyle("q", parent=item_style, alignment=TA_RIGHT),
+                    ),
+                    Paragraph(_money_thermal(line.get("rate")), right_medium),
+                    Paragraph(_money_thermal(line.get("line_total")), right_medium),
                 ]
             )
 
@@ -582,17 +643,17 @@ def build_pos_invoice_pdf(
         TableStyle(
             [
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
                 ("LEFTPADDING", (0, 0), (-1, -1), 0),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 0),
                 ("LINEBELOW", (0, 0), (-1, 0), 0.8, rule),
-                ("LINEBELOW", (0, 1), (-1, -1), 0.4, colors.HexColor("#DDDDDD")),
+                ("LINEBELOW", (0, 1), (-1, -1), 0.4, colors.HexColor("#E5E7EB")),
             ]
         )
     )
     story.append(items)
-    story.append(dashed_rule())
+    story.append(thin_rule())
 
     totals_rows = []
     totals_rows.append(
@@ -652,21 +713,22 @@ def build_pos_invoice_pdf(
         )
     totals_rows.append(
         [
-            Paragraph("Total", body_bold),
-            Paragraph(_money_thermal(totals["total"]), right_bold),
+            Paragraph("Total", grand_label),
+            Paragraph(_money_thermal_rupee(totals["total"]), grand_amount),
         ]
     )
-    totals_tbl = Table(totals_rows, colWidths=[content_w - 28 * mm, 28 * mm])
+    totals_tbl = Table(totals_rows, colWidths=[content_w - 32 * mm, 32 * mm])
     totals_tbl.setStyle(
         TableStyle(
             [
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), 1),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
                 ("LEFTPADDING", (0, 0), (-1, -1), 0),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 0),
                 ("LINEABOVE", (0, -1), (-1, -1), 0.8, rule),
-                ("TOPPADDING", (0, -1), (-1, -1), 4),
+                ("TOPPADDING", (0, -1), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, -1), (-1, -1), 4),
             ]
         )
     )
@@ -731,7 +793,7 @@ def build_pos_invoice_pdf(
                 "<b>CANCELLED</b>",
                 ParagraphStyle(
                     "CancelledBanner",
-                    fontName="Courier-Bold",
+                    fontName="NotoSans-ExtraBold",
                     fontSize=14,
                     alignment=TA_CENTER,
                     textColor=colors.HexColor("#B91C1C"),

@@ -891,9 +891,24 @@
       }
       var whatsappBtn = ev.target.closest('.hil-whatsapp-btn');
       if (whatsappBtn) {
-        /* Hotel WhatsApp template not enabled yet — button stays disabled. */
         ev.preventDefault();
         ev.stopPropagation();
+        if (
+          whatsappBtn.disabled ||
+          whatsappBtn.getAttribute('aria-disabled') === 'true' ||
+          whatsappBtn.classList.contains('is-disabled')
+        ) {
+          return;
+        }
+        var row = whatsappBtn.closest('tr.hil-row');
+        var agencyBilling =
+          whatsappBtn.getAttribute('data-agency-billing') === '1' ||
+          (row && row.getAttribute('data-agency-billing') === '1');
+        if (agencyBilling) {
+          toast('WhatsApp is only available for direct customer billing.');
+          return;
+        }
+        /* Direct customer billing — send API not wired yet. */
         return;
       }
       if (ev.target.closest('.pl-col-actions')) return;

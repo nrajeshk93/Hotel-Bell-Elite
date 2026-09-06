@@ -589,6 +589,52 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertTrue(db_mod._hotel_stay_bills_room_to_agency(stay))
         self.assertFalse(db_mod._hotel_stay_bills_fb_to_agency(stay))
 
+        agency_row = db_mod._hotel_invoice_row_to_dict(
+            {
+                "id": 1,
+                "invoice_number": "HBE/WA-AGENCY/2026-27",
+                "status": "open",
+                "estimated_total": 1000,
+                "advance_paid": 0,
+                "balance_amount": 1000,
+                "payload_json": json.dumps(
+                    {
+                        "stay": {
+                            "agencyName": "ATPI India Pvt. Ltd",
+                            "agencyRoomBilling": True,
+                            "agencyFbBilling": False,
+                            "mobile": "9000000227",
+                        }
+                    }
+                ),
+            }
+        )
+        self.assertTrue(agency_row["agency_billing"])
+        self.assertEqual(agency_row["guest_mobile"], "9000000227")
+
+        direct_row = db_mod._hotel_invoice_row_to_dict(
+            {
+                "id": 2,
+                "invoice_number": "HBE/WA-DIRECT/2026-27",
+                "status": "open",
+                "estimated_total": 1000,
+                "advance_paid": 0,
+                "balance_amount": 1000,
+                "payload_json": json.dumps(
+                    {
+                        "stay": {
+                            "agencyName": "ATPI India Pvt. Ltd",
+                            "agencyRoomBilling": False,
+                            "agencyFbBilling": False,
+                            "mobile": "9000000228",
+                        }
+                    }
+                ),
+            }
+        )
+        self.assertFalse(direct_row["agency_billing"])
+        self.assertTrue(direct_row["allow_credit"])
+
         fb_only = self.client.put(
             "/hotel/api/rooms/room-104",
             json={

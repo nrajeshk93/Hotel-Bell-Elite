@@ -41,7 +41,7 @@ class WhatsAppMessageLimitHelpersTests(unittest.TestCase):
         self.assertEqual(quota["limit"], 1000)
         self.assertEqual(quota["remaining"], 1000)
         self.assertFalse(quota["exhausted"])
-        self.assertEqual(quota["display"], "0 / 1000")
+        self.assertEqual(quota["display"], "1000")
 
     def test_record_increments_and_exhausts(self):
         with mock.patch.dict(os.environ, {"WHATSAPP_MESSAGE_LIMIT": "2"}, clear=False):
@@ -57,7 +57,7 @@ class WhatsAppMessageLimitHelpersTests(unittest.TestCase):
             self.assertEqual(quota["limit"], 2)
             self.assertEqual(quota["remaining"], 0)
             self.assertTrue(quota["exhausted"])
-            self.assertEqual(quota["display"], "2 / 2")
+            self.assertEqual(quota["display"], "0")
 
     def test_invalid_env_falls_back_to_1000(self):
         with mock.patch.dict(os.environ, {"WHATSAPP_MESSAGE_LIMIT": "nope"}, clear=False):
@@ -163,7 +163,7 @@ class WhatsAppSendPayloadQuotaTests(unittest.TestCase):
         try:
             quota = db_mod.whatsapp_outbound_quota(conn)
             self.assertEqual(quota["sent"], 1)
-            self.assertEqual(quota["display"], "1 / 1000")
+            self.assertEqual(quota["display"], "999")
             row = conn.execute(
                 "SELECT wa_message_id, to_phone, message_type FROM wa_outbound_sends"
             ).fetchone()
@@ -256,9 +256,9 @@ class LicenseWhatsAppLimitDisplayTests(unittest.TestCase):
             page = self.client.get("/license")
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
-        self.assertIn("WhatsApp Message limit", html)
+        self.assertIn("WhatsApp available limit", html)
         self.assertIn('data-lic-wa-limit', html)
-        self.assertIn("0 / 1000", html)
+        self.assertIn(">1000<", html)
 
     def test_license_payload_reflects_sent_count(self):
         conn = db_mod.get_db()
@@ -274,7 +274,8 @@ class LicenseWhatsAppLimitDisplayTests(unittest.TestCase):
         lic = payload["license"]
         self.assertEqual(lic["whatsapp_messages_sent"], 1)
         self.assertEqual(lic["whatsapp_message_limit"], 1000)
-        self.assertEqual(lic["whatsapp_message_limit_display"], "1 / 1000")
+        self.assertEqual(lic["whatsapp_messages_remaining"], 999)
+        self.assertEqual(lic["whatsapp_message_limit_display"], "999")
 
 
 if __name__ == "__main__":

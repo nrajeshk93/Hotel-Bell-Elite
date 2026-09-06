@@ -418,6 +418,35 @@
     );
   }
 
+  function receiptFontBaseUrl() {
+    try {
+      if (typeof location !== 'undefined' && location.origin) {
+        return location.origin + '/static/fonts/';
+      }
+    } catch (e) {}
+    return '/static/fonts/';
+  }
+
+  function receiptNotoSansFaceCss() {
+    var root = receiptFontBaseUrl();
+    function face(weight, file) {
+      return (
+        '@font-face{font-family:"Noto Sans";font-style:normal;font-weight:' +
+        weight +
+        ';font-display:swap;src:url("' +
+        root +
+        file +
+        '") format("woff2")}'
+      );
+    }
+    return (
+      face(400, 'noto-sans-latin-400-normal.woff2') +
+      face(500, 'noto-sans-latin-500-normal.woff2') +
+      face(700, 'noto-sans-latin-700-normal.woff2') +
+      face(800, 'noto-sans-latin-800-normal.woff2')
+    );
+  }
+
   function buildSpiceCustomerBillHtml(invoice, opts) {
     opts = opts || {};
     var cfg = getPosReceiptConfig(resolveOutlet(invoice, opts));
@@ -436,7 +465,7 @@
     var cancelledCss = isCancelled
       ? 'body.is-cancelled .bill-sheet{position:relative}' +
         '.cancelled-watermark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:20;overflow:hidden}' +
-        '.cancelled-watermark span{display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:46px;font-weight:800;letter-spacing:.14em;line-height:1;color:rgba(185,28,28,.34);border:3px solid rgba(185,28,28,.4);padding:8px 16px;transform:rotate(-34deg);text-transform:uppercase;white-space:nowrap}' +
+        '.cancelled-watermark span{display:inline-block;font-family:"Noto Sans",sans-serif;font-size:46px;font-weight:800;letter-spacing:.14em;line-height:1;color:rgba(185,28,28,.34);border:3px solid rgba(185,28,28,.4);padding:8px 16px;transform:rotate(-34deg);text-transform:uppercase;white-space:nowrap}' +
         '@media print{.cancelled-watermark span{color:rgba(185,28,28,.42);border-color:rgba(185,28,28,.48)}}'
       : '';
     var cancelledMark = isCancelled
@@ -466,34 +495,41 @@
       '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bill ' +
       escapeHtml(orderNo) +
       '</title><style>' +
-      'body{font-family:"Courier New",monospace;padding:12px 10px;color:#111;width:340px;margin:0 auto;font-size:12px;line-height:1.35}' +
-      '.logo{display:block;margin:0 auto 8px;max-width:260px;height:auto}' +
-      '.brand{font-size:14px;font-weight:700;text-align:center;letter-spacing:.06em;margin:0 0 4px}' +
-      '.addr,.gst-no{font-size:11px;text-align:center;margin:0 0 3px}' +
+      receiptNotoSansFaceCss() +
+      'body{font-family:"Noto Sans",sans-serif;padding:14px 12px;color:#111;width:340px;margin:0 auto;font-size:12.5px;font-weight:400;line-height:1.45;-webkit-font-smoothing:antialiased}' +
+      '.logo{display:block;margin:0 auto 10px;max-width:260px;height:auto}' +
+      '.brand{font-size:19px;font-weight:700;text-align:center;letter-spacing:0;margin:0 0 6px;line-height:1.25}' +
+      '.addr,.gst-no{font-size:11.5px;font-weight:400;text-align:center;margin:0 0 4px;line-height:1.4}' +
       '.gst-no .fssai{white-space:nowrap}' +
-      '.rule{border:0;border-top:1px dashed #333;margin:8px 0}' +
-      '.meta{font-size:12px;margin:0 0 8px}' +
-      '.meta div{display:flex;justify-content:space-between;margin:2px 0;gap:8px}' +
-      'table.items{width:100%;border-collapse:collapse;font-size:11px;margin:0 0 8px}' +
-      'table.items th{text-align:left;font-size:10px;font-weight:700;padding:3px 0;border-bottom:1px solid #333;text-transform:uppercase}' +
-      'table.items td{padding:3px 0;border-bottom:1px dashed #ddd;vertical-align:top}' +
-      'table.items td.qty,table.items th.qty{width:28px;text-align:center}' +
-      'table.items td.rate,table.items th.rate{width:56px;text-align:right}' +
-      'table.items td.amt,table.items th.amt{width:64px;text-align:right}' +
-      '.variant{font-size:10px;color:#555}' +
-      '.totals{font-size:12px;margin:0 0 8px}' +
-      '.totals div{display:flex;justify-content:space-between;margin:2px 0}' +
-      '.totals .grand{font-size:14px;font-weight:700;border-top:1px solid #333;margin-top:4px;padding-top:4px}' +
-      '.section-title{text-align:center;font-weight:700;font-size:12px;margin:8px 0 4px;letter-spacing:.04em}' +
-      '.receipts{margin-top:4px}' +
-      'table.receipts-table{width:100%;border-collapse:collapse;font-size:12px}' +
-      'table.receipts-table th{font-size:10px;font-weight:700;text-align:left;padding:2px 0;border-bottom:1px solid #333;text-transform:uppercase}' +
-      'table.receipts-table td{padding:3px 0;border-bottom:1px dashed #ddd}' +
+      '.rule{border:0;border-top:1px solid #333;margin:10px 0}' +
+      '.meta{font-size:12.5px;margin:0 0 10px}' +
+      '.meta div{display:flex;justify-content:space-between;align-items:baseline;margin:4px 0;gap:10px}' +
+      '.meta div>span:first-child{font-weight:600;flex:0 0 auto}' +
+      '.meta div>span:last-child{font-weight:400;text-align:right}' +
+      'table.items{width:100%;border-collapse:collapse;font-size:12.5px;margin:0 0 10px}' +
+      'table.items th{text-align:left;font-size:12.5px;font-weight:700;padding:5px 0;border-bottom:1px solid #333;text-transform:uppercase;letter-spacing:.02em}' +
+      'table.items td{padding:5px 0;border-bottom:1px solid #e5e7eb;vertical-align:top;font-weight:500}' +
+      'table.items td:first-child{font-weight:500;text-align:left}' +
+      'table.items td.qty,table.items th.qty{width:36px;text-align:right}' +
+      'table.items td.rate,table.items th.rate{width:58px;text-align:right}' +
+      'table.items td.amt,table.items th.amt{width:68px;text-align:right}' +
+      'table.items td.qty,table.items td.rate,table.items td.amt{font-weight:500}' +
+      '.variant{font-size:11px;font-weight:400;color:#555}' +
+      '.totals{font-size:12.5px;font-weight:400;margin:0 0 10px}' +
+      '.totals div{display:flex;justify-content:space-between;align-items:baseline;margin:4px 0;gap:10px}' +
+      '.totals .grand{margin-top:8px;padding-top:8px;border-top:1px solid #333;align-items:baseline}' +
+      '.totals .grand>span:first-child{font-size:17px;font-weight:800;letter-spacing:.01em}' +
+      '.totals .grand>span:last-child{font-size:21px;font-weight:800;letter-spacing:.01em;font-variant-numeric:tabular-nums}' +
+      '.section-title{text-align:center;font-weight:700;font-size:13.5px;margin:10px 0 6px;letter-spacing:.02em}' +
+      '.receipts{margin-top:6px}' +
+      'table.receipts-table{width:100%;border-collapse:collapse;font-size:12.5px}' +
+      'table.receipts-table th{font-size:12.5px;font-weight:700;text-align:left;padding:5px 0;border-bottom:1px solid #333;text-transform:uppercase;letter-spacing:.02em}' +
+      'table.receipts-table td{padding:5px 0;border-bottom:1px solid #e5e7eb;font-weight:500}' +
       'table.receipts-table .pay-amt,table.receipts-table th.pay-amt{text-align:right;width:80px}' +
-      '.receipts-total{text-align:right;font-weight:700;margin-top:4px;font-size:13px}' +
-      '.user{margin-top:10px;font-size:11px}' +
+      '.receipts-total{text-align:right;font-weight:800;margin-top:6px;font-size:16px}' +
+      '.user{margin-top:12px;font-size:12px;font-weight:400}' +
       cancelledCss +
-      '@media print{body{width:auto;margin:0;padding:8px 6px}}' +
+      '@media print{body{width:auto;margin:0;padding:10px 8px}}' +
       '</style></head><body' +
       (isCancelled ? ' class="is-cancelled"' : '') +
       '><div class="bill-sheet">' +
@@ -572,7 +608,7 @@
           formatThermalAmount(totals.roundOff) +
           '</span></div>'
         : '') +
-      '<div class="grand"><span>Total</span><span>' +
+      '<div class="grand"><span>Total</span><span>₹' +
       formatThermalAmount(totals.total) +
       '</span></div>' +
       '</div>' +

@@ -11267,7 +11267,7 @@ def whatsapp_outbound_quota(conn) -> dict:
         "sent": sent,
         "remaining": remaining,
         "exhausted": sent >= limit,
-        "display": f"{sent} / {limit}",
+        "display": str(remaining),
     }
 
 
@@ -15274,6 +15274,12 @@ def _hotel_invoice_row_to_dict(row):
     agency_name = _hotel_str(stay.get("agencyName") or stay.get("agency_name"), 160)
     item["agency_name"] = agency_name
     item["allow_credit"] = bool(agency_name)
+    item["agency_billing"] = bool(
+        _hotel_stay_bills_room_to_agency(stay) or _hotel_stay_bills_fb_to_agency(stay)
+    )
+    item["guest_mobile"] = _normalize_customer_mobile(
+        stay.get("mobile") or stay.get("phone") or ""
+    )
     item["pos_order_no"] = _hotel_str(
         payload.get("posOrderNo") or payload.get("pos_order_no"), 60
     )

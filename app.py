@@ -10102,11 +10102,12 @@ def _license_payload(conn, *, include_renewals=True):
 
         wa_quota = whatsapp_outbound_quota(conn)
     except Exception:
-        wa_quota = {"sent": 0, "limit": 1000, "display": "0 / 1000"}
+        wa_quota = {"sent": 0, "limit": 1000, "remaining": 1000, "display": "1000"}
     payload["license"]["whatsapp_messages_sent"] = int(wa_quota.get("sent") or 0)
     payload["license"]["whatsapp_message_limit"] = int(wa_quota.get("limit") or 0)
+    payload["license"]["whatsapp_messages_remaining"] = int(wa_quota.get("remaining") or 0)
     payload["license"]["whatsapp_message_limit_display"] = str(
-        wa_quota.get("display") or "0 / 1000"
+        wa_quota.get("display") if wa_quota.get("display") is not None else wa_quota.get("remaining") or 0
     )
     if include_renewals:
         renewals = []
