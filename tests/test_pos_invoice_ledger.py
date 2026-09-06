@@ -326,6 +326,8 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertIn(f'data-invoice-id="{gen_id}"', html)
         self.assertIn(f'Cancel invoice {gen_no}', html)
         self.assertIn("pos-il-cancel-btn", html)
+        self.assertIn("pos-il-whatsapp-btn", html)
+        self.assertIn(f"Send invoice {gen_no} on WhatsApp", html)
         self.assertRegex(
             html,
             rf'pos-il-edit-btn[^>]*data-invoice-id="{gen_id}"|data-invoice-id="{gen_id}"[^>]*pos-il-edit-btn',
@@ -344,6 +346,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertNotIn("pos-il-edit-btn", settled_block)
         # Same-day settled bills keep Edit settlement for all users.
         self.assertIn("pos-il-resettle-btn", settled_block)
+        self.assertIn("pos-il-whatsapp-btn", settled_block)
         row_head = html.split(f'data-invoice-id="{settled_id}"', 1)[0][-280:]
         self.assertIn("is-resettleable", row_head)
 
@@ -765,6 +768,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertNotIn("ORD-FILT-PAID", unsettled_html)
         self.assertIn('id="pos-il-settlement"', unsettled_html)
         self.assertIn("Un Settled", unsettled_html)
+        self.assertIn("Cancelled", unsettled_html)
 
         settled_page = self.client.get("/point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01&settlement=settled")
         self.assertEqual(settled_page.status_code, 200)
@@ -772,16 +776,60 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertIn("ORD-FILT-PAID", settled_html)
         self.assertNotIn("ORD-FILT-OPEN", settled_html)
 
+        # Cancel a generated unsettled bill — filter lists it; KPIs stay 0 for cancelled-only.
+        today = date.today().isoformat()
+        gen = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                order_no="SPC/FILTCX/26-27",
+                total=250,
+                table="",
+                orderType="takeaway",
+                customerBill=True,
+                orderDate=today,
+                savedAt=today + " 11:00:00",
+            ),
+        )
+        self.assertEqual(gen.status_code, 200, gen.get_data(as_text=True))
+        gen_inv = gen.get_json()["invoice"]
+        gen_id = gen_inv["id"]
+        gen_no = gen_inv["order_no"]
+        cancel = self.client.post(
+            f"/point-of-sale/api/invoices/{gen_id}/delete",
+            json={"reason": "Guest left"},
+        )
+        self.assertEqual(cancel.status_code, 200, cancel.get_data(as_text=True))
+        self.assertEqual(cancel.get_json().get("mode"), "cancelled")
+
+        cancelled_page = self.client.get(
+            "/point-of-sale/invoice-ledger?date_from=2000-01-01&date_to=2100-01-01&settlement=cancelled"
+        )
+        self.assertEqual(cancelled_page.status_code, 200)
+        cancelled_html = cancelled_page.get_data(as_text=True)
+        self.assertIn(gen_no, cancelled_html)
+        self.assertNotIn("ORD-FILT-OPEN", cancelled_html)
+        self.assertNotIn("ORD-FILT-PAID", cancelled_html)
+        self.assertIn('id="pos-il-total-sales" data-amount="0.0"', cancelled_html)
+        self.assertIn('id="pos-il-invoice-count">0<', cancelled_html)
+
         conn = db_mod.get_db()
         try:
             unsettled_rows = db_mod.list_pos_invoices(conn, settlement="unsettled")
             settled_rows = db_mod.list_pos_invoices(conn, settlement="settled")
+            cancelled_rows = db_mod.list_pos_invoices(
+                conn, settlement="cancelled", generated_only=True
+            )
+            kpis = db_mod.pos_invoice_kpis(conn, cancelled_rows)
         finally:
             conn.close()
         self.assertTrue(any(r["id"] == open_id for r in unsettled_rows))
         self.assertFalse(any(r["id"] == settled_id for r in unsettled_rows))
         self.assertTrue(any(r["id"] == settled_id for r in settled_rows))
         self.assertFalse(any(r["id"] == open_id for r in settled_rows))
+        self.assertTrue(any(r["id"] == gen_id for r in cancelled_rows))
+        self.assertFalse(any(r["id"] == open_id for r in cancelled_rows))
+        self.assertEqual(kpis["invoice_count"], 0)
+        self.assertEqual(kpis["total_sales"], 0.0)
 
     def test_ledger_settle_selected_invoices(self):
         first = self.client.post(

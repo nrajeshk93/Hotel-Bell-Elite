@@ -117,7 +117,21 @@
 
 .rdx-spark {
   height: 44px;
+  margin: 0;
+  width: 100%;
+}
+
+.rdx-spark-ltr-mask {
   margin: 0 12px 12px;
+  overflow: hidden;
+  width: calc(100% - 24px);
+  will-change: width;
+  box-sizing: border-box;
+}
+
+.rdx-spark-ltr-mask > .rdx-spark {
+  height: 44px;
+  min-height: 44px;
 }
 
 @media (min-width: 1280px) {
@@ -234,6 +248,107 @@
   border: 1px solid transparent;
   cursor: default;
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+/* Hold until scrolled into view, then cascade fill like sales trend */
+.rdx-sales-heatmap-card.is-pending .rdx-heatmap-col-head,
+.rdx-sales-heatmap-card.is-pending .rdx-heatmap-row-label,
+.rdx-sales-heatmap-card.is-pending .rdx-heatmap-cell {
+  opacity: 0;
+  transform: scale(0.55);
+}
+
+.rdx-sales-heatmap-card.is-pending .rdx-heatmap-legend-label {
+  opacity: 0;
+}
+
+.rdx-sales-heatmap-card.is-pending .rdx-heatmap-legend-bar {
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+@keyframes rdx-hm-cell-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes rdx-hm-label-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes rdx-hm-legend-wipe {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes rdx-hm-legend-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.rdx-sales-heatmap-card.is-entering .rdx-heatmap-col-head {
+  animation: rdx-hm-cell-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--rdx-hm-i, 0) * 40ms);
+}
+
+.rdx-sales-heatmap-card.is-entering .rdx-heatmap-row-label {
+  animation: rdx-hm-label-enter 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(0.08s + var(--rdx-hm-i, 0) * 70ms);
+}
+
+.rdx-sales-heatmap-card.is-entering .rdx-heatmap-cell {
+  animation: rdx-hm-cell-enter 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(0.12s + var(--rdx-hm-i, 0) * 38ms);
+}
+
+.rdx-sales-heatmap-card.is-entering .rdx-heatmap-legend-bar {
+  transform-origin: left center;
+  animation: rdx-hm-legend-wipe 1.1s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.35s;
+}
+
+.rdx-sales-heatmap-card.is-entering .rdx-heatmap-legend-label {
+  animation: rdx-hm-legend-fade 0.45s ease both;
+  animation-delay: 0.45s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rdx-sales-heatmap-card.is-pending .rdx-heatmap-col-head,
+  .rdx-sales-heatmap-card.is-pending .rdx-heatmap-row-label,
+  .rdx-sales-heatmap-card.is-pending .rdx-heatmap-cell,
+  .rdx-sales-heatmap-card.is-pending .rdx-heatmap-legend-label {
+    opacity: 1;
+    transform: none;
+  }
+
+  .rdx-sales-heatmap-card.is-pending .rdx-heatmap-legend-bar {
+    transform: none;
+  }
+
+  .rdx-sales-heatmap-card.is-entering .rdx-heatmap-col-head,
+  .rdx-sales-heatmap-card.is-entering .rdx-heatmap-row-label,
+  .rdx-sales-heatmap-card.is-entering .rdx-heatmap-cell,
+  .rdx-sales-heatmap-card.is-entering .rdx-heatmap-legend-bar,
+  .rdx-sales-heatmap-card.is-entering .rdx-heatmap-legend-label {
+    animation: none;
+  }
 }
 
 .rdx-heatmap-cell.is-active {
@@ -436,6 +551,52 @@
   text-align: center;
 }
 
+/* Hold off-screen until scrolled into view, then stagger left→right */
+.rdx-sales-trend.is-pending .rdx-st-stat {
+  opacity: 0;
+  transform: translateX(-14px);
+}
+
+.rdx-chart-ltr-mask {
+  width: 100%;
+  overflow: hidden;
+  will-change: width;
+}
+
+.rdx-chart-ltr-mask > .rdx-chart-sales {
+  /* Full intrinsic width so the wipe reveals instead of squashing the canvas */
+  width: 100%;
+  min-height: 280px;
+  box-sizing: border-box;
+}
+
+@keyframes rdx-st-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.rdx-sales-trend.is-entering .rdx-st-stat {
+  animation: rdx-st-enter 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--rdx-st-i, 0) * 90ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rdx-sales-trend.is-pending .rdx-st-stat {
+    opacity: 1;
+    transform: none;
+  }
+
+  .rdx-sales-trend.is-entering .rdx-st-stat {
+    animation: none;
+  }
+}
+
 .rdx-st-stat-label {
   font-size: 11px;
   font-weight: 600;
@@ -589,7 +750,40 @@
   height: 100%;
   border-radius: 999px;
   background: linear-gradient(90deg, #3b82f6, #2563eb);
-  transition: width 0.4s ease;
+  width: 0%;
+  transform-origin: left center;
+}
+
+.rdx-co-leaderboard.is-pending .rdx-co-row {
+  opacity: 0;
+  transform: translateX(-12px);
+}
+
+@keyframes rdx-co-row-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.rdx-co-leaderboard.is-entering .rdx-co-row {
+  animation: rdx-co-row-enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--rdx-co-i, 0) * 100ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rdx-co-leaderboard.is-pending .rdx-co-row {
+    opacity: 1;
+    transform: none;
+  }
+
+  .rdx-co-leaderboard.is-entering .rdx-co-row {
+    animation: none;
+  }
 }
 
 .rdx-co-row-meta {
@@ -749,6 +943,76 @@
   min-width: 0;
 }
 
+.rdx-sales-contrib.is-pending .rdx-sc-row,
+.rdx-sales-contrib.is-pending .rdx-sc-center,
+.rdx-sales-contrib.is-pending .rdx-sc-insight {
+  opacity: 0;
+  transform: translateX(-12px);
+}
+
+.rdx-sales-contrib.is-pending .rdx-sc-chart {
+  opacity: 0;
+  transform: scale(0.86);
+}
+
+@keyframes rdx-sc-row-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes rdx-sc-donut-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.rdx-sales-contrib.is-entering .rdx-sc-row {
+  animation: rdx-sc-row-enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(0.2s + var(--rdx-sc-i, 0) * 100ms);
+}
+
+.rdx-sales-contrib.is-entering .rdx-sc-center {
+  animation: rdx-sc-row-enter 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.15s;
+}
+
+.rdx-sales-contrib.is-entering .rdx-sc-insight {
+  animation: rdx-sc-row-enter 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.45s;
+}
+
+.rdx-sales-contrib.is-entering .rdx-sc-chart {
+  animation: rdx-sc-donut-enter 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rdx-sales-contrib.is-pending .rdx-sc-row,
+  .rdx-sales-contrib.is-pending .rdx-sc-center,
+  .rdx-sales-contrib.is-pending .rdx-sc-insight,
+  .rdx-sales-contrib.is-pending .rdx-sc-chart {
+    opacity: 1;
+    transform: none;
+  }
+
+  .rdx-sales-contrib.is-entering .rdx-sc-row,
+  .rdx-sales-contrib.is-entering .rdx-sc-center,
+  .rdx-sales-contrib.is-entering .rdx-sc-insight,
+  .rdx-sales-contrib.is-entering .rdx-sc-chart {
+    animation: none;
+  }
+}
+
 .rdx-sc-row:last-child {
   border-bottom: none;
   padding-bottom: 0;
@@ -893,6 +1157,13 @@
 .rdx-pm-chart {
   width: 100%;
   min-height: 260px;
+  box-sizing: border-box;
+}
+
+.rdx-chart-ltr-mask > .rdx-pm-chart {
+  width: 100%;
+  min-height: 260px;
+  box-sizing: border-box;
 }
 
 .rdx-pm-kpis {
@@ -908,6 +1179,39 @@
   background: #f8fafc;
   border: 1px solid #eef2f7;
   text-align: center;
+}
+
+/* Hold off-screen until scrolled into view, then stagger */
+.rdx-payment-mode.is-pending .rdx-pm-kpi {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+@keyframes rdx-pm-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rdx-payment-mode.is-entering .rdx-pm-kpi {
+  animation: rdx-pm-enter 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--rdx-pm-i, 0) * 90ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rdx-payment-mode.is-pending .rdx-pm-kpi {
+    opacity: 1;
+    transform: none;
+  }
+
+  .rdx-payment-mode.is-entering .rdx-pm-kpi {
+    animation: none;
+  }
 }
 
 .rdx-pm-kpi-label {

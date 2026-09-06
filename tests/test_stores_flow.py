@@ -3351,7 +3351,7 @@ class StoresFlowTests(unittest.TestCase):
         self.assertEqual(payload.get("status"), "pending")
         transfer_no = payload.get("transfer_no") or ""
         transfer_id = int(payload.get("id") or 0)
-        self.assertTrue(transfer_no.startswith("TRF-"))
+        self.assertRegex(transfer_no, r"^TRF-RES-\d{2}-\d{2}-\d+$")
         self.assertGreater(transfer_id, 0)
 
         conn = db_mod.get_db()
@@ -3456,9 +3456,348 @@ class StoresFlowTests(unittest.TestCase):
         self.assertIn("deInvalidateSoftNavCacheByPath", js)
         self.assertIn("'/stores/stock'", js)
         self.assertIn(
-            "softRefreshStoresPaths(['/stores/stock', '/stores/purchase-requests', '/stores/inward'])",
+            "softRefreshStoresPaths(['/stores/stock', '/stores/purchase-requests', '/stores/inward', '/stores/stock/transfers'])",
             js,
         )
+        self.assertIn("result.data.pdf_url", js)
+        self.assertIn("window.open(pdfUrl", js)
+
+
+    def test_transfer_ledger_lists_all_statuses_and_header_button(self):
+        """Ledger shows pending/received/cancelled; Store header has Transfer Ledger before Export."""
+        conn = db_mod.get_db()
+        try:
+            db_mod.ensure_stores_schema(conn)
+            conn.execute(
+                """
+                INSERT INTO store_stock_items
+                    (outlet, place, item_name, unit, qty_on_hand, updated_at)
+                VALUES
+                    ('restaurant', 'warehouse', 'LedgerTomato', 'kg', 50.0, datetime('now','localtime'))
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        created = []
+        for note in ("pending-one", "to-receive", "to-cancel"):
+            resp = self.client.post(
+                "/stores/stock/transfer",
+                json={
+                    "direction": "to_counter",
+                    "to_outlet": "restaurant",
+                    "note": note,
+                    "items": [
+                        {
+                            "outlet": "restaurant",
+                            "item_name": "LedgerTomato",
+                            "unit": "kg",
+                            "qty": 2,
+                        }
+                    ],
+                },
+            )
+            self.assertEqual(resp.status_code, 200, resp.data)
+            payload = resp.get_json()
+            self.assertTrue(payload.get("ok"))
+            self.assertIn("pdf_url", payload)
+            self.assertIn(
+                f"/stores/stock/transfers/{payload.get('id')}/pdf",
+                payload.get("pdf_url") or "",
+            )
+            created.append(payload)
+
+        receive_id = int(created[1]["id"])
+        cancel_id = int(created[2]["id"])
+        pending_no = created[0]["transfer_no"]
+        received_no = created[1]["transfer_no"]
+        cancelled_no = created[2]["transfer_no"]
+
+        recv = self.client.post(f"/stores/stock/transfers/{receive_id}/receive")
+        self.assertEqual(recv.status_code, 200, recv.data)
+        self.assertTrue(recv.get_json().get("ok"))
+
+        cancel = self.client.post(f"/stores/stock/transfers/{cancel_id}/cancel")
+        self.assertEqual(cancel.status_code, 200, cancel.data)
+        self.assertTrue(cancel.get_json().get("ok"))
+
+        page = self.client.get("/stores/stock/transfers?outlet=restaurant")
+        self.assertEqual(page.status_code, 200)
+        html = page.data
+        self.assertIn(b'id="st-transfer-ledger-page"', html)
+        self.assertIn(b"Transfer Ledger", html)
+        self.assertIn(pending_no.encode(), html)
+        self.assertIn(received_no.encode(), html)
+        self.assertIn(cancelled_no.encode(), html)
+        self.assertIn(b"In progress", html)
+        self.assertIn(b"Completed", html)
+        self.assertIn(b"Cancelled", html)
+        self.assertIn(
+            f"/stores/stock/transfers/{created[0]['id']}/pdf".encode(),
+            html,
+        )
+        self.assertIn(b"st-tl-view-btn", html)
+        self.assertIn(b"st-tl-download-btn", html)
+        self.assertIn(b"st-tl-print-btn", html)
+        self.assertIn(b"st-tl-cancel-btn", html)
+        # Viewer shell mirrors hotel invoice hri-preview chrome
+        self.assertIn(b'id="st-tl-pdf-modal"', html)
+        self.assertIn(b"st-tl-preview-overlay", html)
+        self.assertIn(b"st-tl-preview-shell", html)
+        self.assertIn(b"st-tl-preview-toolbar", html)
+        self.assertIn(b"st-tl-preview-title", html)
+        self.assertIn(b"st-tl-preview-actions", html)
+        self.assertIn(b'id="st-tl-pdf-download"', html)
+        self.assertIn(b'id="st-tl-pdf-print"', html)
+        self.assertIn(b'id="st-tl-pdf-close"', html)
+        self.assertIn(b"st-tl-preview-frame", html)
+        self.assertIn(b'id="st-tl-pdf-frame"', html)
+        self.assertIn(b'data-tip="Cancel"', html)
+        self.assertIn(b'id="st-transfer-ledger-table"', html)
+        self.assertIn(b"pl-sortable", html)
+        self.assertIn(b'data-sort="transfer"', html)
+        self.assertIn(b'data-sort="when"', html)
+        self.assertIn(b'data-sort="from"', html)
+        self.assertIn(b'data-sort="to"', html)
+        self.assertIn(b'data-sort="route"', html)
+        self.assertIn(b'data-sort="status"', html)
+        self.assertIn(b'data-sort="items"', html)
+        self.assertIn(b'data-sort="created_by"', html)
+        self.assertIn(b"data-sort-row", html)
+        self.assertIn(b"Click to sort", html)
+        # Actions column must remain non-sortable
+        self.assertNotIn(b'data-sort="actions"', html)
+
+        stock = self.client.get("/stores/stock?outlet=restaurant&place=warehouse")
+        self.assertEqual(stock.status_code, 200)
+        stock_html = stock.data.decode("utf-8", errors="replace")
+        self.assertIn('id="st-transfer-ledger"', stock_html)
+        self.assertIn("Transfer Ledger", stock_html)
+        export_idx = stock_html.find('id="st-stock-export"')
+        ledger_idx = stock_html.find('id="st-transfer-ledger"')
+        self.assertGreater(export_idx, -1)
+        self.assertGreater(ledger_idx, -1)
+        self.assertLess(ledger_idx, export_idx)
+        self.assertIn("/stores/stock/transfers", stock_html)
+
+    def test_transfer_ledger_cancel_from_ledger(self):
+        """Cancel pending transfer from ledger endpoint + markup cancel URL."""
+        conn = db_mod.get_db()
+        try:
+            db_mod.ensure_stores_schema(conn)
+            conn.execute(
+                """
+                INSERT INTO store_stock_items
+                    (outlet, place, item_name, unit, qty_on_hand, updated_at)
+                VALUES
+                    ('bar', 'warehouse', 'LedgerCancelItem', 'kg', 10.0, datetime('now','localtime'))
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        create = self.client.post(
+            "/stores/stock/transfer",
+            json={
+                "direction": "to_counter",
+                "to_outlet": "bar",
+                "note": "ledger-cancel",
+                "items": [
+                    {
+                        "outlet": "bar",
+                        "item_name": "LedgerCancelItem",
+                        "unit": "kg",
+                        "qty": 1,
+                    }
+                ],
+            },
+        )
+        self.assertEqual(create.status_code, 200, create.data)
+        payload = create.get_json()
+        transfer_id = int(payload["id"])
+        transfer_no = payload["transfer_no"]
+
+        page = self.client.get("/stores/stock/transfers?outlet=bar&status=pending")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(transfer_no.encode(), page.data)
+        self.assertIn(
+            f"/stores/stock/transfers/{transfer_id}/cancel".encode(),
+            page.data,
+        )
+        self.assertIn(
+            f"/stores/stock/transfers/{transfer_id}/pdf".encode(),
+            page.data,
+        )
+
+        cancel = self.client.post(f"/stores/stock/transfers/{transfer_id}/cancel")
+        self.assertEqual(cancel.status_code, 200, cancel.data)
+        body = cancel.get_json()
+        self.assertTrue(body.get("ok"))
+        self.assertEqual(body.get("status"), "cancelled")
+
+        page2 = self.client.get("/stores/stock/transfers?outlet=bar&status=cancelled")
+        self.assertEqual(page2.status_code, 200)
+        self.assertIn(transfer_no.encode(), page2.data)
+        self.assertIn(b"Cancelled", page2.data)
+        page3 = self.client.get("/stores/stock/transfers?outlet=bar&status=pending")
+        self.assertEqual(page3.status_code, 200)
+        self.assertNotIn(transfer_no.encode(), page3.data)
+
+    def test_stock_transfer_pdf_and_receiving_outlet_list(self):
+        """PDF 200 for pending TRF; Inward lists by receiving to_outlet only."""
+        conn = db_mod.get_db()
+        try:
+            db_mod.ensure_stores_schema(conn)
+            conn.execute(
+                """
+                INSERT INTO store_stock_items
+                    (outlet, place, item_name, unit, qty_on_hand, updated_at)
+                VALUES
+                    ('bar', 'warehouse', '100 Pipers', 'mL', 750.0, datetime('now','localtime')),
+                    ('bar', 'counter', '100 Pipers', 'mL', 200.0, datetime('now','localtime')),
+                    ('restaurant', 'counter', '100 Pipers', 'mL', 0.0, datetime('now','localtime'))
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        to_bar = self.client.post(
+            "/stores/stock/transfer",
+            json={
+                "direction": "to_counter",
+                "to_outlet": "bar",
+                "note": "Bar handover",
+                "items": [
+                    {"outlet": "bar", "item_name": "100 Pipers", "unit": "mL", "qty": 150}
+                ],
+            },
+        )
+        self.assertEqual(to_bar.status_code, 200, to_bar.data)
+        bar_payload = to_bar.get_json()
+        self.assertTrue(bar_payload.get("ok"))
+        self.assertEqual(bar_payload.get("status"), "pending")
+        bar_id = int(bar_payload.get("id") or 0)
+        bar_no = bar_payload.get("transfer_no") or ""
+        self.assertRegex(bar_no, r"^TRF-BAR-\d{2}-\d{2}-\d+$")
+        self.assertTrue(bar_payload.get("pdf_url"))
+        self.assertIn(f"/stores/stock/transfers/{bar_id}/pdf", bar_payload.get("pdf_url"))
+
+        to_rest = self.client.post(
+            "/stores/stock/transfer",
+            json={
+                "direction": "to_counter",
+                "to_outlet": "restaurant",
+                "note": "Rest handover",
+                "items": [
+                    {"outlet": "bar", "item_name": "100 Pipers", "unit": "mL", "qty": 150}
+                ],
+            },
+        )
+        self.assertEqual(to_rest.status_code, 200, to_rest.data)
+        rest_payload = to_rest.get_json()
+        self.assertTrue(rest_payload.get("ok"))
+        rest_id = int(rest_payload.get("id") or 0)
+        rest_no = rest_payload.get("transfer_no") or ""
+        self.assertRegex(rest_no, r"^TRF-BAR-\d{2}-\d{2}-\d+$")
+        self.assertNotEqual(bar_no, rest_no)
+
+        # Stock unchanged until receive
+        conn = db_mod.get_db()
+        try:
+            wh = conn.execute(
+                """
+                SELECT qty_on_hand FROM store_stock_items
+                WHERE outlet = 'bar' AND place = 'warehouse'
+                  AND item_name = '100 Pipers' AND unit = 'mL'
+                """
+            ).fetchone()
+            self.assertAlmostEqual(float(wh["qty_on_hand"]), 750.0)
+        finally:
+            conn.close()
+
+        pdf = self.client.get(f"/stores/stock/transfers/{bar_id}/pdf")
+        self.assertEqual(pdf.status_code, 200, pdf.data)
+        ctype = (pdf.headers.get("Content-Type") or "").split(";")[0].strip()
+        self.assertEqual(ctype, "application/pdf")
+        self.assertTrue(pdf.data[:4] == b"%PDF")
+        self.assertGreater(len(pdf.data), 200)
+        try:
+            from pypdf import PdfReader
+        except ImportError:  # pragma: no cover
+            PdfReader = None
+        if PdfReader is not None:
+            import io as _io
+
+            transfer_text = PdfReader(_io.BytesIO(pdf.data)).pages[0].extract_text() or ""
+            transfer_compact = transfer_text.replace(" ", "").replace("\n", "")
+            self.assertIn("STOCKTRANSFER", transfer_compact)
+            self.assertIn("QTYBASE", transfer_compact)
+            self.assertNotIn("Qty (base)", transfer_text)
+            self.assertIn("ROUTE", transfer_compact)
+
+        # Return (Counter → Warehouse) must use the same hotel-invoice builder
+        # with STOCK RETURN title (not the old plain Qty (base) layout).
+        to_wh = self.client.post(
+            "/stores/stock/transfer",
+            json={
+                "direction": "to_warehouse",
+                "to_outlet": "bar",
+                "note": "Bar return",
+                "items": [
+                    {"outlet": "bar", "item_name": "100 Pipers", "unit": "mL", "qty": 50}
+                ],
+            },
+        )
+        self.assertEqual(to_wh.status_code, 200, to_wh.data)
+        wh_payload = to_wh.get_json()
+        self.assertTrue(wh_payload.get("ok"))
+        wh_id = int(wh_payload.get("id") or 0)
+        self.assertTrue(wh_payload.get("pdf_url"))
+        self.assertIn(f"/stores/stock/transfers/{wh_id}/pdf", wh_payload.get("pdf_url"))
+        ret_pdf = self.client.get(f"/stores/stock/transfers/{wh_id}/pdf")
+        self.assertEqual(ret_pdf.status_code, 200, ret_pdf.data)
+        self.assertTrue(ret_pdf.data[:4] == b"%PDF")
+        if PdfReader is not None:
+            return_text = PdfReader(_io.BytesIO(ret_pdf.data)).pages[0].extract_text() or ""
+            return_compact = return_text.replace(" ", "").replace("\n", "")
+            self.assertIn("STOCKRETURN", return_compact)
+            self.assertIn("QTYBASE", return_compact)
+            self.assertNotIn("Qty (base)", return_text)
+            from stock_transfer_pdf import transfer_pdf_filename as _trf_name
+
+            self.assertTrue(
+                _trf_name(str(wh_payload.get("transfer_no") or wh_id), {"direction": "to_warehouse"}).endswith(
+                    "_return.pdf"
+                )
+            )
+
+        bar_page = self.client.get("/stores/purchase-requests?outlet=bar&view=transfers")
+        self.assertEqual(bar_page.status_code, 200)
+        self.assertIn(bar_no.encode(), bar_page.data)
+        self.assertNotIn(rest_no.encode(), bar_page.data)
+        # Select bar transfer — Print / PDF + Verify appear
+        bar_sel = self.client.get(
+            f"/stores/purchase-requests?outlet=bar&view=transfers&transfer_id={bar_id}"
+        )
+        self.assertEqual(bar_sel.status_code, 200)
+        self.assertIn(b"st-inward-transfer-print", bar_sel.data)
+        self.assertIn(b"Print / PDF", bar_sel.data)
+        self.assertIn(b"Verify &amp; Receive", bar_sel.data)
+
+        rest_page = self.client.get("/stores/purchase-requests?outlet=restaurant&view=transfers")
+        self.assertEqual(rest_page.status_code, 200)
+        self.assertIn(rest_no.encode(), rest_page.data)
+        self.assertNotIn(bar_no.encode(), rest_page.data)
+
+        # Create path must not call apply helper
+        create_src = Path(__file__).resolve().parents[1].joinpath("stores.py").read_text()
+        start = create_src.find("def stores_stock_transfer():")
+        end = create_src.find("def stores_stock_transfer_receive")
+        self.assertGreater(start, 0)
+        self.assertNotIn("_apply_stock_transfer_line(", create_src[start:end])
 
 
     def test_stock_audit_seeds_and_zero_variance_verify(self):
@@ -3889,7 +4228,39 @@ class StoresFlowTests(unittest.TestCase):
         self.assertEqual(out_only.status_code, 200)
         self.assertTrue(out_only.data[:2] == b"PK")
 
+    def test_stock_audit_outlet_all_stays_selected(self):
+        """Stock Audit outlet All must stick (not coerce to Restaurant)."""
+        self._seed_stock_item(outlet="restaurant", item_name="AllAudit Rest Item", qty=4.0)
+        self._seed_stock_item(outlet="bar", item_name="AllAudit Bar Item", qty=3.0)
+
+        both = self.client.get(
+            "/stores/stock-audit?outlet=both&place=warehouse",
+            follow_redirects=False,
+        )
+        self.assertEqual(both.status_code, 200)
+        self.assertIn(b'id="st-audit-page"', both.data)
+        self.assertIn(b'data-outlet="both"', both.data)
+        # Listbox keeps All selected (key stays "both").
+        self.assertIn(b'data-value="both"', both.data)
+        self.assertIn(b'>All</button>', both.data)
+        self.assertRegex(
+            both.data.decode("utf-8", errors="replace"),
+            r'data-value="both"[^>]*aria-selected="true"|aria-selected="true"[^>]*data-value="both"',
+        )
+        # Queue spans both outlets.
+        self.assertIn(b"AllAudit Rest Item", both.data)
+        self.assertIn(b"AllAudit Bar Item", both.data)
+        self.assertIn(b'st-audit-col-outlet', both.data)
+
+        # Concrete outlet still works and omits the All outlet column.
+        rest = self.client.get("/stores/stock-audit?outlet=restaurant&place=warehouse")
+        self.assertEqual(rest.status_code, 200)
+        self.assertIn(b'data-outlet="restaurant"', rest.data)
+        self.assertIn(b"AllAudit Rest Item", rest.data)
+        self.assertNotIn(b"AllAudit Bar Item", rest.data)
+
     def test_stock_audit_access_gate(self):
+
         self._seed_stock_item(item_name="Chicken", qty=5.0)
         viewer = {
             "id": self.admin_id,

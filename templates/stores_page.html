@@ -1,4 +1,4 @@
-{% set de_soft_body_class = 'de-open su-module' ~ (' st-indent-shell' if page_key in ('indent', 'purchase_orders') else (' st-inward-shell' if page_key == 'purchase_requests' else (' st-stock-shell' if page_key in ('stock', 'stock_audit') else (' st-audit-shell' if page_key == 'stock_audit_report' else '')))) %}
+{% set de_soft_body_class = 'de-open su-module' ~ (' st-indent-shell' if page_key in ('indent', 'purchase_orders') else (' st-inward-shell' if page_key == 'purchase_requests' else (' st-stock-shell' if page_key in ('stock', 'stock_audit', 'transfer_ledger') else (' st-audit-shell' if page_key == 'stock_audit_report' else '')))) %}
 {% set de_soft_page_title = (page_title ~ ' | Purchase & Inventory | Hotel Bell Elite') %}
 {% if not is_partial_main %}
 <!doctype html>
@@ -17,7 +17,7 @@
 <link rel="stylesheet" href="{{ asset('credit_payment.css') }}">
 <link rel="stylesheet" href="{{ asset('ep_form_listbox.css') }}">
 <link rel="stylesheet" href="{{ asset('stores.css') }}">
-{% if page_key == 'stock_audit_report' %}
+{% if page_key in ('stock_audit_report', 'transfer_ledger') %}
 <link rel="stylesheet" href="{{ asset('sales_date_range.css') }}">
 {% endif %}
 {% if page_key in ('indent', 'purchase_orders') %}
@@ -39,7 +39,7 @@
 })();
 </script>
 </head>
-<body class="de-open su-module{% if page_key in ('indent', 'purchase_orders') %} st-indent-shell{% elif page_key == 'purchase_requests' %} st-inward-shell{% elif page_key in ('stock', 'stock_audit') %} st-stock-shell{% if page_key == 'stock_audit' %} st-audit-shell{% endif %}{% elif page_key == 'stock_audit_report' %} st-audit-shell{% endif %}">
+<body class="de-open su-module{% if page_key in ('indent', 'purchase_orders') %} st-indent-shell{% elif page_key == 'purchase_requests' %} st-inward-shell{% elif page_key in ('stock', 'stock_audit', 'transfer_ledger') %} st-stock-shell{% if page_key == 'stock_audit' %} st-audit-shell{% endif %}{% elif page_key == 'stock_audit_report' %} st-audit-shell{% endif %}">
 {% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
@@ -50,7 +50,7 @@
 <link rel="stylesheet" href="{{ asset('credit_payment.css') }}">
 <link rel="stylesheet" href="{{ asset('ep_form_listbox.css') }}">
 <link rel="stylesheet" href="{{ asset('stores.css') }}">
-{% if page_key == 'stock_audit_report' %}
+{% if page_key in ('stock_audit_report', 'transfer_ledger') %}
 <link rel="stylesheet" href="{{ asset('sales_date_range.css') }}">
 {% endif %}
 {% if page_key in ('indent', 'purchase_orders') %}
@@ -95,6 +95,7 @@
         {% endif %}
         {% if page_key in ('stock', 'stock_audit') %}
         {% if page_key == 'stock' %}
+          <a class="btn btn-primary" id="st-transfer-ledger" href="{{ transfer_ledger_url|default(url_for('stores_stock_transfers', outlet=selected_outlet)) }}">Transfer Ledger</a>
           {% if stock_export_url %}
           <a class="btn btn-primary" id="st-stock-export" href="{{ stock_export_url }}" download title="Download Stock Report Excel">Export</a>
           {% else %}
@@ -123,6 +124,8 @@
       <div class="se-sales-header-filters">
         {% if page_key == 'stock_audit_report' %}
           {% include 'partials/stores_stock_audit_report_filters.html' %}
+        {% elif page_key == 'transfer_ledger' %}
+          {% include 'partials/stores_transfer_ledger_filters.html' %}
         {% else %}
         <form id="stores-outlet-filter-form" class="sr-topbar-filters st-outlet-filter-form{% if page_key == 'purchase_requests' %} st-inward-header-filters{% elif page_key == 'product_master' %} st-product-filter-form{% elif page_key == 'stock' %} st-stock-filter-form{% elif page_key == 'stock_audit' %} st-audit-filter-form{% endif %}" aria-label="{% if page_key == 'purchase_requests' %}Stock inward filters{% elif page_key == 'product_master' %}Product filters{% elif page_key == 'stock' %}Stock filters{% elif page_key == 'stock_audit' %}Stock audit filters{% else %}Store outlet filter{% endif %}">
           {% if page_key == 'product_master' %}
@@ -439,6 +442,9 @@
           >
             <span class="se-filter-chip-label" id="st-inward-transfer-label">Transfer ID</span>
             <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+              </span>
               <input type="hidden" id="st-inward-transfer" value="{{ selected_transfer.id if selected_transfer else '' }}">
               <button
                 type="button"
@@ -458,20 +464,22 @@
               </span>
             </div>
             <div class="se-filter-listbox" id="st-inward-transfer-list" role="listbox" aria-labelledby="st-inward-transfer-label" hidden>
-              <div class="ep-listbox-options">
-                <button type="button" class="se-filter-listbox-option{% if not selected_transfer %} is-selected{% endif %}" role="option" data-value="" data-label="Select transfer…" aria-selected="{{ 'true' if not selected_transfer else 'false' }}">Select transfer…</button>
+              {% if pending_transfers %}
                 {% for tr in pending_transfers %}
                 <button
                   type="button"
                   class="se-filter-listbox-option{% if selected_transfer and selected_transfer.id == tr.id %} is-selected{% endif %}"
                   role="option"
                   data-value="{{ tr.id }}"
-                  data-label="{{ tr.transfer_no }}"
-                  data-outlet="{{ tr.from_outlet }}"
+                  data-name="{{ ((tr.transfer_no or '') ~ ' ' ~ (tr.route_label or ''))|lower }}"
+                  data-label="{{ tr.transfer_no }}{% if tr.route_label %} · {{ tr.route_label }}{% endif %}"
+                  data-outlet="{{ tr.to_outlet }}"
                   aria-selected="{{ 'true' if selected_transfer and selected_transfer.id == tr.id else 'false' }}"
-                >{{ tr.transfer_no }} · {{ tr.route_label|default('') }}</button>
+                >{{ tr.transfer_no }}{% if tr.route_label %} · {{ tr.route_label }}{% endif %}</button>
                 {% endfor %}
-              </div>
+              {% else %}
+                <div class="st-inward-listbox-empty">No pending transfers</div>
+              {% endif %}
             </div>
           </div>
           {% endif %}
@@ -505,6 +513,8 @@
       {% include 'partials/stores_pr_body.html' %}
     {% elif page_key == 'stock' %}
       {% include 'partials/stores_stock_body.html' %}
+    {% elif page_key == 'transfer_ledger' %}
+      {% include 'partials/stores_transfer_ledger_body.html' %}
     {% elif page_key == 'stock_audit' %}
       {% include 'partials/stores_stock_audit_body.html' %}
     {% elif page_key == 'stock_audit_report' %}
@@ -524,20 +534,22 @@
     <div id="st-stock-transfer-err" class="st-product-modal-err" style="display:none;"></div>
     <form id="st-stock-transfer-form">
       <input type="hidden" name="direction" id="st-stock-transfer-direction">
-      <div class="st-stock-transfer-dest" id="st-stock-transfer-dest">
-        <span class="se-filter-chip-label" id="st-stock-transfer-dest-label">Transfer to</span>
-        <input type="hidden" id="st-stock-transfer-to-outlet" name="to_outlet" value="" required>
-        <div class="cp-view-tabs st-stock-transfer-dest-tabs" role="tablist" aria-labelledby="st-stock-transfer-dest-label" aria-required="true">
-          <button type="button" class="cp-view-tab" role="tab" data-value="restaurant" id="st-stock-transfer-dest-restaurant" aria-selected="false">Restaurant Counter</button>
-          <button type="button" class="cp-view-tab" role="tab" data-value="bar" id="st-stock-transfer-dest-bar" aria-selected="false">Bar Counter</button>
+      <div class="st-stock-transfer-meta-row">
+        <div class="st-stock-transfer-dest" id="st-stock-transfer-dest">
+          <span class="se-filter-chip-label" id="st-stock-transfer-dest-label">Transfer to</span>
+          <input type="hidden" id="st-stock-transfer-to-outlet" name="to_outlet" value="" required>
+          <div class="cp-view-tabs st-stock-transfer-dest-tabs" role="tablist" aria-labelledby="st-stock-transfer-dest-label" aria-required="true">
+            <button type="button" class="cp-view-tab" role="tab" data-value="restaurant" id="st-stock-transfer-dest-restaurant" aria-selected="false">Restaurant Counter</button>
+            <button type="button" class="cp-view-tab" role="tab" data-value="bar" id="st-stock-transfer-dest-bar" aria-selected="false">Bar Counter</button>
+          </div>
         </div>
-      </div>
-      <div class="st-stock-transfer-qty-mode" id="st-stock-transfer-qty-mode">
-        <span class="se-filter-chip-label" id="st-stock-transfer-qty-mode-label">Qty by</span>
-        <input type="hidden" id="st-stock-transfer-qty-mode-value" name="qty_mode" value="pack">
-        <div class="cp-view-tabs st-stock-transfer-qty-mode-tabs" role="tablist" aria-labelledby="st-stock-transfer-qty-mode-label">
-          <button type="button" class="cp-view-tab is-active" role="tab" data-value="pack" id="st-stock-transfer-mode-pack" aria-selected="true">Pack</button>
-          <button type="button" class="cp-view-tab" role="tab" data-value="total" id="st-stock-transfer-mode-total" aria-selected="false">Total</button>
+        <div class="st-stock-transfer-qty-mode" id="st-stock-transfer-qty-mode">
+          <span class="se-filter-chip-label" id="st-stock-transfer-qty-mode-label">Qty by</span>
+          <input type="hidden" id="st-stock-transfer-qty-mode-value" name="qty_mode" value="pack">
+          <div class="cp-view-tabs st-stock-transfer-qty-mode-tabs" role="tablist" aria-labelledby="st-stock-transfer-qty-mode-label">
+            <button type="button" class="cp-view-tab is-active" role="tab" data-value="pack" id="st-stock-transfer-mode-pack" aria-selected="true">Pack</button>
+            <button type="button" class="cp-view-tab" role="tab" data-value="total" id="st-stock-transfer-mode-total" aria-selected="false">Total</button>
+          </div>
         </div>
       </div>
       <div class="st-stock-transfer-table-wrap">
@@ -581,6 +593,10 @@
 {% if page_key == 'stock_audit_report' %}
 <script src="{{ asset('sales_date_range.js') }}"></script>
 {% include 'partials/stores_stock_audit_report_scripts.html' %}
+{% endif %}
+{% if page_key == 'transfer_ledger' %}
+<script src="{{ asset('sales_date_range.js') }}"></script>
+{% include 'partials/stores_transfer_ledger_scripts.html' %}
 {% endif %}
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}

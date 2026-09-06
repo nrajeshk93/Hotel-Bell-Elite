@@ -285,11 +285,25 @@
     applyAuditFilters(page);
   }
 
+  function kpisFromDom(page) {
+    var rows = $all('tr.st-audit-row', page);
+    var total = rows.length;
+    var pending = 0;
+    var verified = 0;
+    rows.forEach(function (row) {
+      var status = row.getAttribute('data-status') || 'pending';
+      if (status === 'verified') verified += 1;
+      else pending += 1;
+    });
+    return { total: total, pending: pending, verified: verified };
+  }
+
   function updateKpis(page, kpis) {
-    if (!kpis) return;
-    var total = Number(kpis.total || 0);
-    var pending = Number(kpis.pending || 0);
-    var verified = Number(kpis.verified || 0);
+    // Prefer live DOM counts so All-outlet queues stay accurate after verify/skip.
+    var live = kpisFromDom(page);
+    var total = live.total || Number((kpis && kpis.total) || 0);
+    var pending = live.total ? live.pending : Number((kpis && kpis.pending) || 0);
+    var verified = live.total ? live.verified : Number((kpis && kpis.verified) || 0);
     var el;
     el = $('#st-audit-kpi-total', page);
     if (el) el.textContent = String(total);
@@ -301,6 +315,20 @@
     if (el) el.textContent = 'Remaining: ' + pending + ' items';
     el = $('#st-audit-queue-count', page);
     if (el) el.textContent = total + ' product' + (total === 1 ? '' : 's');
+  }
+
+  function nextPendingLineId(page, excludeId) {
+    var rows = $all('tr.st-audit-row', page);
+    var skip = excludeId != null ? String(excludeId) : '';
+    for (var i = 0; i < rows.length; i += 1) {
+      var row = rows[i];
+      var id = row.getAttribute('data-line-id') || '';
+      if (skip && id === skip) continue;
+      if ((row.getAttribute('data-status') || 'pending') !== 'verified') {
+        return id;
+      }
+    }
+    return '';
   }
 
   function setReasonLocked(page, locked) {
@@ -658,11 +686,16 @@
         updateKpis(page, result.data.kpis);
         applyAuditFilters(page);
         toast(result.data.message || 'Verified.');
-        if (goNext && result.data.next_line_id) {
-          selectLine(page, result.data.next_line_id);
+        if (goNext) {
+          var nextId = result.data.next_line_id || nextPendingLineId(page, lineId);
+          if (nextId) {
+            selectLine(page, nextId);
+          } else {
+            selectLine(page, lineId);
+            toast('All remaining items are done.');
+          }
         } else {
           selectLine(page, lineId);
-          if (goNext) toast('All remaining items are done.');
         }
       })
       .catch(function (err) {

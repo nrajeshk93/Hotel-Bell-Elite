@@ -192,8 +192,11 @@
     <div class="st-sticky-actions st-inward-actions" id="st-inward-transfer-actions"
          data-st-transfer-receive-url="{{ transfer_receive_url }}"
          data-st-transfer-cancel-url="{{ transfer_cancel_url }}"
+         data-st-transfer-pdf-url="{{ transfer_pdf_url|default('') }}"
          data-st-transfer-id="{{ selected_transfer.id }}"
          data-st-transfer-no="{{ selected_transfer.transfer_no }}">
+      <a class="st-btn st-btn--secondary" id="st-inward-transfer-print"
+         href="{{ transfer_pdf_url|default('#') }}" target="_blank" rel="noopener">Print / PDF</a>
       <button type="button" class="st-btn st-btn--secondary" id="st-inward-transfer-cancel">Cancel transfer</button>
       <button type="button" class="st-btn st-btn--primary" id="st-inward-transfer-receive">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>

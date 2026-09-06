@@ -347,7 +347,6 @@ from asset_digest import (
 from gst_hotel import register_gst_hotel
 from gst_fnb import register_gst_fnb
 from main_dashboard_data import (
-    build_dow_avg,
     build_outlet_boards,
     build_sales_heatmap,
     build_sales_trend,
@@ -6204,7 +6203,9 @@ def _dashboard_invoice_kpi_bundle(conn, date_from, date_to, location=None, compa
 
     - Hotel: Invoice Ledger Total billed (open + settled stay invoices only;
       excludes POS room-transfer and FBE F&B, by ``invoice_generated_at``)
-    - Restaurant / Bar: Invoice Ledger settled + generated invoices
+    - Restaurant / Bar: all generated invoices (same as Sales Update overlay /
+      ``pos_sales_entry_from_invoices``), including Generate Invoice bills still
+      awaiting Settle
 
     Difference is the sum of module Sales Update Difference KPIs (Hotel +
     Restaurant + Bar) for the same dates — using invoice overlay + the same
@@ -6286,17 +6287,17 @@ def _dashboard_outlet_names(location=None):
     return [OUTLET_HOTEL, OUTLET_RESTAURANT, OUTLET_BAR]
 
 
-def _dashboard_pos_menu_outlet(location=None):
-    """Map dashboard outlet filter to POS menu sales outlet (Restaurant/Bar only)."""
+def _dashboard_pos_menu_outlets(location=None):
+    """Which POS outlets to include in dashboard top-selling item lists."""
     if location == OUTLET_HOTEL:
-        return False  # no POS menu items
+        return ()
     if location == OUTLET_RESTAURANT:
-        return POS_OUTLET_RESTAURANT
+        return (POS_OUTLET_RESTAURANT,)
     if location == OUTLET_BAR:
-        return POS_OUTLET_BAR
+        return (POS_OUTLET_BAR,)
     if location == DASHBOARD_FILTER_LOCATION_RESTAURANT_BAR:
-        return None  # Restaurant + Bar POS
-    return None  # All
+        return (POS_OUTLET_RESTAURANT, POS_OUTLET_BAR)
+    return (POS_OUTLET_RESTAURANT, POS_OUTLET_BAR)
 
 
 def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
@@ -6320,7 +6321,8 @@ def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
         spark_from = date_from
     spark_to = date_to
 
-    # Total Sales = Hotel ledger Total billed + Restaurant/Bar settled ledger.
+    # Total Sales = Hotel ledger Total billed + Restaurant/Bar generated ledger
+    # (matches Sales Update; includes Generate Invoice bills pending Settle).
     # Sparklines track the selected range only (same days the KPI aggregates).
     spark_dates = date_range_days(spark_from, spark_to)
 
@@ -6417,17 +6419,40 @@ def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
         prev_kpis["digital_transactions"], prev_kpis["cash"]
     )
 
-    pos_outlet = _dashboard_pos_menu_outlet(location)
-    if pos_outlet is False:
-        menu_sales_rows = []
+    pos_outlets = set(_dashboard_pos_menu_outlets(location))
+    date_from_iso = date_from.isoformat()
+    date_to_iso = date_to.isoformat()
+    # Location chip still scopes which invoices count; each card ranks by
+    # catalog menu outlet so bar drinks on a restaurant bill stay on Bar.
+    if location == OUTLET_RESTAURANT:
+        invoice_outlet = POS_OUTLET_RESTAURANT
+    elif location == OUTLET_BAR:
+        invoice_outlet = POS_OUTLET_BAR
     else:
-        menu_sales_rows = list_pos_menu_sales(
+        invoice_outlet = None
+
+    def _outlet_menu_sales(menu_outlet_key):
+        if menu_outlet_key not in pos_outlets:
+            return []
+        return list_pos_menu_sales(
             conn,
-            date_from=date_from.isoformat(),
-            date_to=date_to.isoformat(),
-            outlet=pos_outlet,
+            date_from=date_from_iso,
+            date_to=date_to_iso,
+            outlet=invoice_outlet,
+            menu_outlet=menu_outlet_key,
             settlement="settled",
         )
+
+    restaurant_menu_rows = _outlet_menu_sales(POS_OUTLET_RESTAURANT)
+    bar_menu_rows = _outlet_menu_sales(POS_OUTLET_BAR)
+    restaurant_top_qty = build_top_selling_items(
+        restaurant_menu_rows, limit=5, sort_by="qty"
+    )
+    restaurant_top_rev = build_top_selling_items(
+        restaurant_menu_rows, limit=5, sort_by="revenue"
+    )
+    bar_top_qty = build_top_selling_items(bar_menu_rows, limit=5, sort_by="qty")
+    bar_top_rev = build_top_selling_items(bar_menu_rows, limit=5, sort_by="revenue")
 
     dashboard = {
         "kpis": kpis,
@@ -6442,12 +6467,14 @@ def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
             "digital_trend": round(dig_pct - prev_dig_pct, 1),
             "cash_trend": round(cash_pct - prev_cash_pct, 1),
         },
-        "dow_avg": build_dow_avg(daily_series),
         "heatmap": build_sales_heatmap(daily_series, date_from, date_to),
-        "top_selling_items": build_top_selling_items(menu_sales_rows, limit=5, sort_by="qty"),
-        "top_selling_items_by_revenue": build_top_selling_items(
-            menu_sales_rows, limit=5, sort_by="revenue"
-        ),
+        "top_selling_items_restaurant": restaurant_top_qty,
+        "top_selling_items_restaurant_by_revenue": restaurant_top_rev,
+        "top_selling_items_bar": bar_top_qty,
+        "top_selling_items_bar_by_revenue": bar_top_rev,
+        # Legacy mobile/API keys: Restaurant-shaped (no longer Restaurant+Bar mix).
+        "top_selling_items": restaurant_top_qty,
+        "top_selling_items_by_revenue": restaurant_top_rev,
     }
 
     # Keep legacy keys for any partial consumers / fitters.
@@ -10070,6 +10097,17 @@ def _license_payload(conn, *, include_renewals=True):
             "is_active": status != "expired",
         },
     }
+    try:
+        from db import whatsapp_outbound_quota
+
+        wa_quota = whatsapp_outbound_quota(conn)
+    except Exception:
+        wa_quota = {"sent": 0, "limit": 1000, "display": "0 / 1000"}
+    payload["license"]["whatsapp_messages_sent"] = int(wa_quota.get("sent") or 0)
+    payload["license"]["whatsapp_message_limit"] = int(wa_quota.get("limit") or 0)
+    payload["license"]["whatsapp_message_limit_display"] = str(
+        wa_quota.get("display") or "0 / 1000"
+    )
     if include_renewals:
         renewals = []
         for row in list_license_renewals(conn):
@@ -13786,14 +13824,28 @@ def point_of_sale_api_invoice_detail(invoice_id):
 def point_of_sale_api_invoice_by_table():
     """Look up the open dine-in order for a table, if any — shared by the Tables
     page tile tap and the Create Invoice table picker to resume a bill instead
-    of blocking on 'occupied'."""
+    of blocking on 'occupied'.
+
+    When there is no open pre-invoice, include localShouldDrop so the client
+    purges IndexedDB leftovers for that table and starts blank.
+    """
     outlet = _pos_outlet_from_request()
     table = (request.args.get("table") or "").strip()
     conn = get_db()
     try:
         ensure_pos_schema(conn)
         invoice = get_open_pos_invoice_for_table(conn, table, outlet) if table else None
-        return jsonify({"ok": True, "invoice": invoice})
+        if invoice:
+            return jsonify({"ok": True, "invoice": invoice})
+        return jsonify(
+            {
+                "ok": True,
+                "invoice": None,
+                "localShouldDrop": True,
+                "table": table,
+                "reason": "no_open_preinvoice",
+            }
+        )
     finally:
         conn.close()
 
@@ -14219,6 +14271,56 @@ def point_of_sale_api_invoice_generate_customer_bill(invoice_id):
             entity_id=order_ref,
         )
         return jsonify({"ok": True, "invoice": invoice})
+    finally:
+        conn.close()
+
+
+@app.route(
+    "/point-of-sale/api/invoices/<int:invoice_id>/send-whatsapp",
+    methods=["POST"],
+    endpoint="point_of_sale_api_invoice_send_whatsapp",
+)
+@app.route(
+    "/bar-point-of-sale/api/invoices/<int:invoice_id>/send-whatsapp",
+    methods=["POST"],
+    endpoint="bar_point_of_sale_api_invoice_send_whatsapp",
+)
+def point_of_sale_api_invoice_send_whatsapp(invoice_id):
+    """Send a generated POS invoice to the customer via WhatsApp template.
+
+    Uses Meta template ``hotel_bell_elite_invoice`` (DOCUMENT header + 4 body
+    vars). Requires a 10-digit customer mobile on the invoice.
+    """
+    from pos_invoice_whatsapp import send_pos_invoice_whatsapp
+
+    outlet = _pos_outlet_from_request()
+    user = get_current_user()
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        invoice = get_pos_invoice(conn, invoice_id)
+        if not invoice or not _pos_invoice_belongs_to_outlet(invoice, outlet):
+            return jsonify({"ok": False, "error": "Invoice not found."}), 404
+        receipt = _pos_receipt_config(outlet, user=user)
+        result = send_pos_invoice_whatsapp(
+            invoice,
+            business_name=str(receipt.get("business_name") or ""),
+            address=str(receipt.get("address") or ""),
+            gst=str(receipt.get("gst") or ""),
+            fssai=str(receipt.get("fssai") or ""),
+            logo_url=str(receipt.get("logo_url") or ""),
+            user_label=str(receipt.get("user_label") or ""),
+            outlet=outlet,
+        )
+        if not result.get("ok"):
+            status = int(result.get("status") or 400)
+            return jsonify(result), status
+        order_ref = invoice.get("order_no") or invoice_id
+        activity_audit.set_activity_audit(
+            f"WhatsApp invoice {order_ref} (point of sale api invoice send whatsapp)",
+            entity_id=order_ref,
+        )
+        return jsonify(result)
     finally:
         conn.close()
 

@@ -497,20 +497,35 @@
                 </td>
                 <td class="pl-col-date" data-sort-value="{{ entry.payment_date or '' }}">{{ entry.payment_date|report_dt }}</td>
                 {% if settlement_labels.show_payment_mode %}
-                <td class="cp-col-method" data-sort-value="{{ method_label }}">{{ method_label }}</td>
+                {% set method_key = (entry.payment_method or 'other')|lower|replace(' ', '_') %}
+                <td class="cp-col-method" data-sort-value="{{ method_label }}">
+                  <span class="cp-method-pill cp-method-pill--{{ method_key }}">{{ method_label or '—' }}</span>
+                </td>
                 {% for key, label in credit_payment_amount_columns|default(()) %}
                 {% set amt = amts.get(key, 0) or 0 %}
-                <td class="pl-col-amount cp-tender-col{% if amt > 0 %} pl-amount{% endif %}" data-amount="{{ amt if amt > 0 else '' }}" data-sort-value="{{ amt }}">{% if amt > 0 %}{{ amt }}{% else %}—{% endif %}</td>
+                <td class="pl-col-amount cp-tender-col{% if amt > 0 %} pl-amount{% endif %}" data-amount="{{ amt if amt > 0 else '' }}" data-sort-value="{{ amt }}">{% if amt > 0 %}{{ amt }}{% else %}<span class="cp-empty-dash" aria-hidden="true">—</span>{% endif %}</td>
                 {% endfor %}
-                <td class="cp-col-txn" data-sort-value="{{ entry.transaction_id or '' }}">{{ entry.transaction_id or '—' }}</td>
+                <td class="cp-col-txn" data-sort-value="{{ entry.transaction_id or '' }}">
+                  {% if entry.transaction_id %}
+                  <span class="cp-txn-chip" title="{{ entry.transaction_id }}">{{ entry.transaction_id }}</span>
+                  {% else %}
+                  <span class="cp-empty-dash" aria-hidden="true">—</span>
+                  {% endif %}
+                </td>
                 {% endif %}
                 {% if settlement_labels.show_verification_account %}
-                <td data-sort-value="{{ entry.verification_account or '' }}">{{ entry.verification_account or '—' }}</td>
+                <td data-sort-value="{{ entry.verification_account or '' }}">
+                  {% if entry.verification_account %}
+                  <span class="cp-txn-chip">{{ entry.verification_account }}</span>
+                  {% else %}
+                  <span class="cp-empty-dash" aria-hidden="true">—</span>
+                  {% endif %}
+                </td>
                 {% endif %}
                 <td class="pl-col-amount pl-amount" data-amount="{{ entry.total_amount }}" data-sort-value="{{ entry.total_amount }}">{{ entry.total_amount }}</td>
                 <td class="pl-col-count" data-sort-value="{{ entry.allocation_count }}">{{ entry.allocation_count }}</td>
                 <td class="cp-col-actions">
-                  <div class="act-grp">
+                  <div class="act-grp pl-action-btns">
                     <button
                       type="button"
                       class="act-btn edit cp-view-payment"

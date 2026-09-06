@@ -1841,6 +1841,12 @@ def ensure_pos_schema(conn):
         """
     )
 
+    # Permanent settle hardening: settled/closed rows must not stay is_active=1.
+    try:
+        repair_pos_settled_invoices_inactive(conn)
+    except Exception:
+        pass
+
     # Seed Bar floor once (never overwrite a saved Bar layout)
     bar_row = cursor.execute(
         "SELECT outlet FROM pos_floor_layout WHERE outlet = ?",
@@ -4543,6 +4549,7 @@ POS_INVOICE_ORDER_TYPE_LABELS = dict(POS_INVOICE_ORDER_TYPES)
 POS_INVOICE_SETTLEMENT_STATUSES = (
     ("settled", "Settled"),
     ("unsettled", "Un Settled"),
+    ("cancelled", "Cancelled"),
 )
 POS_INVOICE_SETTLEMENT_STATUS_LABELS = dict(POS_INVOICE_SETTLEMENT_STATUSES)
 
@@ -6431,14 +6438,18 @@ def close_pos_invoice_and_free_table(conn, invoice_id, *, user_id=None):
     except (TypeError, ValueError) as exc:
         raise ValueError("Invalid invoice id.") from exc
     row = conn.execute(
-        "SELECT id, table_label, order_type, outlet FROM pos_invoices WHERE id = ? AND is_active = 1",
+        "SELECT id, table_label, order_type, outlet, is_active, status "
+        "FROM pos_invoices WHERE id = ?",
         (invoice_id,),
     ).fetchone()
     if not row:
         raise ValueError("Invoice not found.")
     conn.execute(
         f"""
-        UPDATE pos_invoices SET status = 'closed', updated_at = {SQL_NOW}
+        UPDATE pos_invoices
+        SET status = 'closed',
+            is_active = 0,
+            updated_at = {SQL_NOW}
         WHERE id = ?
         """,
         (invoice_id,),
@@ -6708,10 +6719,10 @@ def settle_pos_invoice(
         raise ValueError("Invalid invoice id.") from exc
 
     row = conn.execute(
-        """
+        f"""
         SELECT id, status, grand_total, settled_at, outlet, order_no
         FROM pos_invoices
-        WHERE id = ? AND is_active = 1
+        WHERE id = ? AND {_pos_invoice_row_visible_sql("")}
         """,
         (invoice_id,),
     ).fetchone()
@@ -7302,7 +7313,8 @@ def clear_all_pos_tables(conn, *, user_id=None, outlet=POS_OUTLET_RESTAURANT):
                 closed_ids.append(int(open_row["id"]))
             conn.execute(
                 f"""
-                UPDATE pos_invoices SET status = 'closed', updated_at = {SQL_NOW}
+                UPDATE pos_invoices
+                SET status = 'closed', is_active = 0, updated_at = {SQL_NOW}
                 WHERE is_active = 1 AND status = 'open' AND order_type = 'dine_in'
                   AND outlet = ?
                   AND LOWER(table_label) = LOWER(?)
@@ -8146,22 +8158,87 @@ def auto_settle_zero_payable_pos_invoices(conn, *, outlet=None):
     return {"settled": settled, "cleaned_payments": cleaned, "changed": bool(settled or cleaned)}
 
 
+
+def _pos_invoice_row_visible_sql(alias="i"):
+    """SQL predicate: live active rows, or settled/closed (may have is_active=0).
+
+    Settle hardens by setting is_active=0 so floor/open queries cannot reclaim a
+    ghost table from a settled row. Ledger / get-by-id / sales still need those
+    rows, so visibility is broader than is_active alone.
+    Soft-deleted provisional drafts (is_active=0, still open, no settled_at)
+    stay hidden.
+    """
+    a = f"{alias}." if alias else ""
+    return (
+        f"({a}is_active = 1"
+        f" OR lower(trim(COALESCE({a}status, ''))) = 'closed'"
+        f" OR trim(COALESCE({a}settled_at, '')) != '')"
+    )
+
+
+def repair_pos_settled_invoices_inactive(conn):
+    """One-shot: mark already settled/closed rows is_active=0 (idempotent).
+
+    Does not touch official cancelled audit rows (status=cancelled with
+    is_active=1) — those keep series numbers visible for sales/KOT audit.
+    Gated by pos_settled_inactive_repair so ensure_pos_schema does not re-run
+    mid-settle (settle sets settled_at before close).
+    """
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='pos_settled_inactive_repair'"
+    ).fetchone()
+    if not row:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS pos_settled_inactive_repair (done INTEGER NOT NULL DEFAULT 0)"
+        )
+    done = conn.execute(
+        "SELECT done FROM pos_settled_inactive_repair LIMIT 1"
+    ).fetchone()
+    if done and int(done[0] if not hasattr(done, "keys") else done["done"]):
+        return 0
+    cur = conn.execute(
+        f"""
+        UPDATE pos_invoices
+        SET is_active = 0, updated_at = {SQL_NOW}
+        WHERE is_active = 1
+          AND (
+            lower(trim(COALESCE(status, ''))) = 'closed'
+            OR trim(COALESCE(settled_at, '')) != ''
+          )
+        """
+    )
+    changed = int(cur.rowcount or 0)
+    existing = conn.execute(
+        "SELECT COUNT(*) FROM pos_settled_inactive_repair"
+    ).fetchone()[0]
+    if int(existing or 0) == 0:
+        conn.execute(
+            "INSERT INTO pos_settled_inactive_repair (done) VALUES (1)"
+        )
+    else:
+        conn.execute("UPDATE pos_settled_inactive_repair SET done = 1")
+    return changed
+
+
 def get_pos_invoice(conn, invoice_id):
-    """Return one active invoice with lines, or None."""
+    """Return one visible invoice with lines, or None.
+
+    Includes settled/closed rows even when is_active=0.
+    """
     ensure_pos_schema(conn)
     try:
         invoice_id = int(invoice_id)
     except (TypeError, ValueError):
         return None
     row = conn.execute(
-        """
+        f"""
         SELECT
             i.*,
             (
                 SELECT COUNT(*) FROM pos_invoice_lines l WHERE l.invoice_id = i.id
             ) AS item_count
         FROM pos_invoices i
-        WHERE i.id = ? AND i.is_active = 1
+        WHERE i.id = ? AND {_pos_invoice_row_visible_sql("i")}
         """,
         (invoice_id,),
     ).fetchone()
@@ -8445,6 +8522,12 @@ _POS_INVOICE_UNSETTLED_SQL = """
 )
 """
 
+_POS_INVOICE_CANCELLED_SQL = """
+(
+    lower(COALESCE(i.status, '')) = 'cancelled'
+)
+"""
+
 def list_pos_invoices(
     conn,
     *,
@@ -8463,7 +8546,7 @@ def list_pos_invoices(
     other list callers (tables hub, sales import, etc.).
     """
     ensure_pos_schema(conn)
-    clauses = ["i.is_active = 1"]
+    clauses = [_pos_invoice_row_visible_sql("i")]
     params = []
     if outlet is not None:
         clauses.append("i.outlet = ?")
@@ -8482,6 +8565,8 @@ def list_pos_invoices(
         clauses.append(_POS_INVOICE_SETTLED_SQL)
     elif settlement_key == "unsettled":
         clauses.append(_POS_INVOICE_UNSETTLED_SQL)
+    elif settlement_key == "cancelled":
+        clauses.append(_POS_INVOICE_CANCELLED_SQL)
     needle = " ".join(str(q or "").split()).strip().lower()
     if needle:
         like = f"%{needle}%"
@@ -8532,12 +8617,18 @@ def _pos_menu_sales_invoice_clauses(
     date_from=None,
     date_to=None,
     outlet=None,
+    menu_outlet=None,
     settlement=None,
     category_id=None,
 ):
-    """Shared WHERE clauses/params for menu sales aggregations."""
+    """Shared WHERE clauses/params for menu sales aggregations.
+
+    outlet: filter by invoice POS workspace (restaurant|bar).
+    menu_outlet: filter by catalog menu/category outlet (restaurant|bar), so
+    bar drinks sold on a restaurant bill still count as bar menu sales.
+    """
     clauses = [
-        "i.is_active = 1",
+        _pos_invoice_row_visible_sql("i"),
         "TRIM(COALESCE(i.cancelled_at, '')) = ''",
         """lower(trim(COALESCE(i.status, 'open'))) NOT IN (
             'cancelled', 'canceled', 'void', 'voided', 'deleted'
@@ -8551,6 +8642,26 @@ def _pos_menu_sales_invoice_clauses(
     elif outlet_key not in ("", "all"):
         clauses.append("i.outlet = ?")
         params.append(normalize_pos_outlet(outlet_key))
+    menu_outlet_key = str(menu_outlet or "").strip().lower()
+    if menu_outlet_key in (POS_OUTLET_RESTAURANT, POS_OUTLET_BAR):
+        # Catalog ownership: item outlet, else category outlet. Liquor kind/type
+        # without outlet stamps still counts as bar.
+        clauses.append(
+            """
+            lower(trim(COALESCE(
+                NULLIF(TRIM(m.outlet), ''),
+                NULLIF(TRIM(c.outlet), ''),
+                CASE
+                    WHEN lower(trim(COALESCE(m.item_kind, ''))) IN ('liquor', 'alcohol', 'bar')
+                      OR lower(trim(COALESCE(m.menu_type, ''))) IN ('liquor', 'alcohol')
+                    THEN 'bar'
+                    ELSE ''
+                END,
+                ''
+            ))) = ?
+            """
+        )
+        params.append(normalize_pos_outlet(menu_outlet_key))
     if date_from:
         clauses.append("i.order_date >= ?")
         params.append(str(date_from))
@@ -8595,6 +8706,7 @@ def list_pos_menu_sales(
     date_from=None,
     date_to=None,
     outlet=None,
+    menu_outlet=None,
     settlement=None,
     category_id=None,
 ):
@@ -8604,6 +8716,7 @@ def list_pos_menu_sales(
         date_from=date_from,
         date_to=date_to,
         outlet=outlet,
+        menu_outlet=menu_outlet,
         settlement=settlement,
         category_id=category_id,
     )
@@ -8713,7 +8826,7 @@ def group_pos_menu_sales_by_category(rows, *, include_outlet_label=False):
     return results
 
 
-def pos_menu_sales_kpis(rows, conn=None, *, date_from=None, date_to=None, outlet=None, settlement=None, category_id=None):
+def pos_menu_sales_kpis(rows, conn=None, *, date_from=None, date_to=None, outlet=None, menu_outlet=None, settlement=None, category_id=None):
     """KPIs for menu sales: items, qty, sale value, contributing invoices."""
     item_rows = list(rows or [])
     qty_sum = 0.0
@@ -8727,6 +8840,7 @@ def pos_menu_sales_kpis(rows, conn=None, *, date_from=None, date_to=None, outlet
             date_from=date_from,
             date_to=date_to,
             outlet=outlet,
+            menu_outlet=menu_outlet,
             settlement=settlement,
             category_id=category_id,
         )
@@ -8738,6 +8852,7 @@ def pos_menu_sales_kpis(rows, conn=None, *, date_from=None, date_to=None, outlet
             FROM pos_invoices i
             JOIN pos_invoice_lines l ON l.invoice_id = i.id
             LEFT JOIN pos_menu_items m ON m.id = l.menu_item_id
+            LEFT JOIN pos_menu_categories c ON c.id = m.category_id
             WHERE {where}
             """,
             params,
@@ -9558,6 +9673,109 @@ def allocate_back_office_receipt_no(conn, when=None):
     return short_fy, seq, f"HBE/BOR/{short_fy}/{seq}"
 
 
+
+def _merge_duplicate_store_stock_items(cursor) -> int:
+    """One-shot: merge store_stock_items that share outlet+place+normalized name+unit.
+
+    Sums qty_on_hand onto the lowest id, adopts a canonical name/unit from
+    Product Master when possible, deletes extras. Does not invent qty beyond
+    summing true duplicate rows.
+    """
+    rows = cursor.execute(
+        """
+        SELECT id, outlet, place, item_name, unit, qty_on_hand, updated_at
+        FROM store_stock_items
+        ORDER BY id
+        """
+    ).fetchall()
+    if not rows:
+        return 0
+
+    def _unit_key(unit) -> str:
+        return _normalize_pos_menu_unit(unit)
+
+    def _name_key(name) -> str:
+        return re.sub(r"\s+", " ", str(name or "").strip()).lower()
+
+    products = cursor.execute(
+        """
+        SELECT name, default_unit, outlet
+        FROM store_products
+        WHERE is_active = 1 AND trim(name) != ''
+        """
+    ).fetchall()
+    master_by_key = {}
+    for prow in products:
+        if hasattr(prow, "keys"):
+            pname, punit, poutlet = prow["name"], prow["default_unit"], prow["outlet"]
+        else:
+            pname, punit, poutlet = prow[0], prow[1], prow[2]
+        nk = _name_key(pname)
+        uk = _unit_key(punit)
+        canon = (re.sub(r"\s+", " ", str(pname or "").strip()), str(punit or "").strip() or "pcs")
+        for out_key in (str(poutlet or "").strip().lower() or "both", "both"):
+            master_by_key.setdefault((out_key, nk, uk), canon)
+
+    groups = {}
+    for row in rows:
+        if hasattr(row, "keys"):
+            rid = row["id"]; outlet = row["outlet"]; place = row["place"]
+            item_name = row["item_name"]; unit = row["unit"]
+            qty = row["qty_on_hand"]; updated = row["updated_at"]
+        else:
+            rid, outlet, place, item_name, unit, qty, updated = row
+        key = (str(outlet or ""), str(place or ""), _name_key(item_name), _unit_key(unit))
+        groups.setdefault(key, []).append((int(rid), item_name, unit, float(qty or 0), updated))
+
+    merged = 0
+    for (outlet, place, nk, uk), members in groups.items():
+        keep_id = members[0][0]
+        total_qty = sum(m[3] for m in members)
+        canon = master_by_key.get((str(outlet).lower(), nk, uk)) or master_by_key.get(("both", nk, uk))
+        if canon:
+            canon_name, canon_unit = canon
+        else:
+            canon_name = re.sub(r"\s+", " ", str(members[0][1] or "").strip())
+            canon_unit = str(members[0][2] or "").strip() or "pcs"
+        latest = max((m[4] or "") for m in members)
+        if len(members) == 1:
+            only = members[0]
+            if canon and (only[1] != canon_name or only[2] != canon_unit):
+                cursor.execute(
+                    """
+                    UPDATE store_stock_items
+                    SET item_name = ?, unit = ?, updated_at = COALESCE(?, updated_at)
+                    WHERE id = ?
+                    """,
+                    (canon_name, canon_unit, latest, keep_id),
+                )
+            continue
+        cursor.execute(
+            """
+            UPDATE store_stock_items
+            SET item_name = ?, unit = ?, qty_on_hand = ?, updated_at = COALESCE(?, updated_at)
+            WHERE id = ?
+            """,
+            (canon_name, canon_unit, round(total_qty, 3), latest, keep_id),
+        )
+        drop_ids = [m[0] for m in members[1:]]
+        cursor.executemany("DELETE FROM store_stock_items WHERE id = ?", [(i,) for i in drop_ids])
+        merged += len(drop_ids)
+    return merged
+
+
+def _ensure_store_stock_items_identity_index(cursor) -> None:
+    """Case/trim-insensitive unique identity for stock rows (after merge)."""
+    cursor.execute("DROP INDEX IF EXISTS idx_store_stock_items_identity")
+    cursor.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_store_stock_items_identity
+        ON store_stock_items(outlet, place, lower(trim(item_name)), lower(trim(unit)))
+        """
+    )
+
+
+
 def ensure_stores_schema(conn):
     """Create Stores inventory workflow tables if missing."""
     cursor = conn.cursor()
@@ -10375,6 +10593,8 @@ def ensure_stores_schema(conn):
         ON store_stock_transfer_lines(transfer_id, sort_order, id)
     """)
 
+    _merge_duplicate_store_stock_items(cursor)
+    _ensure_store_stock_items_identity_index(cursor)
     _seed_store_place_demo(cursor, migrated_place=migrated_stock_place)
     conn.commit()
 
@@ -10970,6 +11190,85 @@ def ensure_communication_hub_schema(conn):
         ON wa_promo_recipients(campaign_id, id)
         """
     )
+    ensure_whatsapp_outbound_quota_schema(conn)
+
+
+def ensure_whatsapp_outbound_quota_schema(conn):
+    """Lifetime install-wide log of live WhatsApp Cloud API outbound messages."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS wa_outbound_sends (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            wa_message_id TEXT    NOT NULL DEFAULT '',
+            to_phone      TEXT    NOT NULL DEFAULT '',
+            message_type  TEXT    NOT NULL DEFAULT '',
+            source        TEXT    NOT NULL DEFAULT ''
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_wa_outbound_sends_created
+        ON wa_outbound_sends(created_at DESC, id DESC)
+        """
+    )
+
+
+def whatsapp_message_limit() -> int:
+    """Lifetime outbound WhatsApp cap for this install (env ``WHATSAPP_MESSAGE_LIMIT``)."""
+    raw = (os.environ.get("WHATSAPP_MESSAGE_LIMIT") or "1000").strip()
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = 1000
+    return max(0, value)
+
+
+def count_whatsapp_outbound_sends(conn) -> int:
+    ensure_whatsapp_outbound_quota_schema(conn)
+    row = conn.execute("SELECT COUNT(*) AS n FROM wa_outbound_sends").fetchone()
+    try:
+        return int((row["n"] if row else 0) or 0)
+    except (TypeError, ValueError, KeyError, IndexError):
+        return 0
+
+
+def record_whatsapp_outbound_send(
+    conn,
+    *,
+    wa_message_id: str = "",
+    to_phone: str = "",
+    message_type: str = "",
+    source: str = "",
+) -> None:
+    ensure_whatsapp_outbound_quota_schema(conn)
+    conn.execute(
+        """
+        INSERT INTO wa_outbound_sends (wa_message_id, to_phone, message_type, source)
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            str(wa_message_id or "").strip(),
+            str(to_phone or "").strip(),
+            str(message_type or "").strip(),
+            str(source or "").strip(),
+        ),
+    )
+
+
+def whatsapp_outbound_quota(conn) -> dict:
+    """Return ``limit``, ``sent``, ``remaining``, ``exhausted`` for License / send gate."""
+    limit = whatsapp_message_limit()
+    sent = count_whatsapp_outbound_sends(conn)
+    remaining = max(0, limit - sent)
+    return {
+        "limit": limit,
+        "sent": sent,
+        "remaining": remaining,
+        "exhausted": sent >= limit,
+        "display": f"{sent} / {limit}",
+    }
 
 
 def ensure_hotel_rooms_schema(conn):
@@ -15235,7 +15534,7 @@ def aggregate_settled_invoice_totals(conn, date_from, date_to, location=None):
             SELECT i.order_date AS sales_day,
                    COALESCE(SUM(i.grand_total), 0) AS amount
             FROM pos_invoices i
-            WHERE i.is_active = 1
+            WHERE {_pos_invoice_row_visible_sql("i")}
               AND i.outlet IN ({placeholders})
               AND i.order_date >= ?
               AND i.order_date <= ?
@@ -15610,14 +15909,18 @@ def _iter_hotel_ledger_sales_invoices(conn, date_from, date_to):
     ).fetchall()
 
 
-def _iter_settled_ledger_pos_invoices(conn, date_from, date_to, outlets):
-    """POS Invoice Ledger settled rows (generated_only) for dashboard sales KPIs."""
+def _iter_generated_ledger_pos_invoices(conn, date_from, date_to, outlets):
+    """POS Invoice Ledger generated rows for dashboard / Sales Update totals.
+
+    Same set as ``pos_sales_entry_from_invoices``: ``generated_only=True`` with no
+    settlement filter, so Generate Invoice bills still count while Settle is pending.
+    Provisional drafts and cancelled rows are excluded.
+    """
     for outlet in outlets or []:
         for inv in list_pos_invoices(
             conn,
             date_from=date_from,
             date_to=date_to,
-            settlement="settled",
             outlet=outlet,
             generated_only=True,
         ):
@@ -15629,13 +15932,13 @@ def _iter_settled_ledger_pos_invoices(conn, date_from, date_to, outlets):
 def aggregate_invoice_sales_kpis(conn, date_from, date_to, location=None):
     """Sum module invoice-ledger sales for a date range (Main Dashboard TOTAL SALES).
 
-    Per-module rules match what users see on each Invoice Ledger with the same
-    dates:
+    Per-module rules match Sales Update / Invoice Ledger generated totals:
 
     - **Hotel**: Total billed — stay invoices with status ``open`` or ``settled``
       (excludes POS room-transfer and FBE F&B combined-transfer).
-    - **Restaurant / Bar**: Settlement = Settled, generated invoices only
-      (``list_pos_invoices(..., settlement='settled', generated_only=True)``).
+    - **Restaurant / Bar**: all generated invoices (open or settled), same as
+      ``pos_sales_entry_from_invoices`` /
+      ``list_pos_invoices(..., generated_only=True)``.
 
     Provisional POS drafts and cancelled rows are excluded. This is ledger sales,
     not Sales Update cash / Difference fields.
@@ -15662,7 +15965,7 @@ def aggregate_invoice_sales_kpis(conn, date_from, date_to, location=None):
             tenders[1] += h_digital
             tenders[2] += h_room
 
-    for inv in _iter_settled_ledger_pos_invoices(conn, d0, d1, outlets):
+    for inv in _iter_generated_ledger_pos_invoices(conn, d0, d1, outlets):
         actual += float(inv.get("grand_total") or 0)
         amounts = inv.get("payment_amounts")
         if isinstance(amounts, dict):
@@ -15707,7 +16010,7 @@ def aggregate_invoice_sales_kpis_by_day(conn, date_from, date_to, location=None)
             bucket["digital_transactions"] += h_digital
             bucket["room_credit"] += h_room
 
-    for inv in _iter_settled_ledger_pos_invoices(conn, d0, d1, outlets):
+    for inv in _iter_generated_ledger_pos_invoices(conn, d0, d1, outlets):
         day = str(inv.get("order_date") or "")[:10]
         if not day:
             continue
@@ -18551,11 +18854,11 @@ def _pos_invoice_tax_snapshot_for_folio(conn, invoice_id, transfer_amount=None):
         return {}
     ensure_pos_schema(conn)
     row = conn.execute(
-        """
+        f"""
         SELECT subtotal, discount_amount, gst_amount, vat_amount, service_amount,
                tip, grand_total, tax_cgst_pct, tax_ugst_pct
         FROM pos_invoices
-        WHERE id = ? AND is_active = 1
+        WHERE id = ? AND {_pos_invoice_row_visible_sql("")}
         """,
         (iid,),
     ).fetchone()

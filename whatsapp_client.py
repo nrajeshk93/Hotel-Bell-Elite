@@ -1,14 +1,31 @@
-"""WhatsApp Cloud API helpers for Hotel Bell Elite (shared WABA with Neeraj Textile)."""
+"""WhatsApp Cloud API helpers for Hotel Bell Elite (shared WABA with Neeraj Textile).
+
+Outbound Cloud API "from" is the Meta ``phone_number_id`` in the URL path
+(``WHATSAPP_PHONE_NUMBER_ID``), not digits in the HTTP body. Hotel Bell Elite
+sends (POS invoice, PO, indent, hub, promotions) must use the phone number id
+for **+91 96112 32344** (E.164 ``+919611232344`` / digits ``919611232344``).
+"""
 
 from __future__ import annotations
 
 import logging
 import os
 import re
+import time
 
 import requests
 
 log = logging.getLogger(__name__)
+
+# Meta Cloud API phone_number_id for Hotel Bell Elite display number +91 96112 32344
+# (discovered via Graph GET /{WABA_ID}/phone_numbers). Not a secret.
+HBE_WHATSAPP_PHONE_NUMBER_ID = "1241737459022736"
+HBE_WHATSAPP_SENDER_E164 = "+919611232344"
+HBE_WHATSAPP_SENDER_DIGITS = "919611232344"
+
+# Short-lived cache for GET /{phone_number_id} display-number verification.
+_sender_display_cache: dict = {"phone_number_id": "", "digits": "", "ts": 0.0}
+_SENDER_DISPLAY_CACHE_TTL_SEC = 300.0
 
 
 def whatsapp_access_token() -> str:
@@ -16,7 +33,34 @@ def whatsapp_access_token() -> str:
 
 
 def whatsapp_phone_number_id() -> str:
-    return (os.environ.get("WHATSAPP_PHONE_NUMBER_ID") or "").strip()
+    """Meta phone_number_id used as the Cloud API sender (URL path).
+
+    Prefer ``WHATSAPP_PHONE_NUMBER_ID``. When unset, fall back to the known
+    Hotel Bell Elite id for +91 96112 32344 (``HBE_WHATSAPP_PHONE_NUMBER_ID``).
+    """
+    configured = (os.environ.get("WHATSAPP_PHONE_NUMBER_ID") or "").strip()
+    return configured or HBE_WHATSAPP_PHONE_NUMBER_ID
+
+
+def whatsapp_sender_e164() -> str:
+    """Expected sender E.164 for HBE (default ``+919611232344``).
+
+    Set ``WHATSAPP_SENDER_E164`` to override. Empty string disables display-number
+    mismatch checks (id-only mode). Use the default in production so sends refuse
+    when the configured phone_number_id belongs to a different number.
+    """
+    raw = os.environ.get("WHATSAPP_SENDER_E164")
+    if raw is None:
+        return HBE_WHATSAPP_SENDER_E164
+    return str(raw).strip()
+
+
+def whatsapp_sender_digits() -> str:
+    """Digits-only form of ``whatsapp_sender_e164()`` (e.g. ``919611232344``)."""
+    e164 = whatsapp_sender_e164()
+    if not e164:
+        return ""
+    return normalise_whatsapp_number(e164)
 
 
 def whatsapp_waba_id() -> str:
@@ -91,6 +135,103 @@ def parse_whatsapp_recipients(raw_text) -> list[str]:
         seen.add(phone)
         recipients.append(phone)
     return recipients
+
+
+def clear_sender_display_cache() -> None:
+    """Reset cached Graph display-number lookup (tests / after env change)."""
+    _sender_display_cache["phone_number_id"] = ""
+    _sender_display_cache["digits"] = ""
+    _sender_display_cache["ts"] = 0.0
+
+
+def fetch_phone_number_display_digits(phone_number_id: str = "") -> tuple[bool, str, str]:
+    """GET Meta phone number metadata; return (ok, digits_or_empty, error).
+
+    On success ``digits`` is the normalised display number (no +). Does not
+    print or return the access token. Soft-fails (ok=False) when token/id
+    missing or Graph is unreachable — callers treat that as "cannot verify".
+    """
+    pnid = (phone_number_id or whatsapp_phone_number_id()).strip()
+    token = whatsapp_access_token()
+    if not pnid:
+        return False, "", "WhatsApp phone number ID is not configured."
+    if not token:
+        return False, "", "WhatsApp access token is not configured."
+
+    now = time.time()
+    if (
+        _sender_display_cache.get("phone_number_id") == pnid
+        and (now - float(_sender_display_cache.get("ts") or 0)) < _SENDER_DISPLAY_CACHE_TTL_SEC
+        and _sender_display_cache.get("digits")
+    ):
+        return True, str(_sender_display_cache["digits"]), ""
+
+    url = (
+        f"https://graph.facebook.com/{whatsapp_graph_api_version()}/"
+        f"{pnid}"
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+    params = {"fields": "id,display_phone_number,verified_name"}
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=20)
+    except requests.RequestException as exc:
+        return False, "", str(exc)
+    if not (200 <= response.status_code < 300):
+        return False, "", (response.text or "")[:300]
+    try:
+        body = response.json()
+    except ValueError:
+        return False, "", "Invalid phone number metadata from Meta."
+    display = str((body or {}).get("display_phone_number") or "").strip()
+    digits = normalise_whatsapp_number(display)
+    if not digits:
+        return False, "", "Meta phone number has no display_phone_number."
+    _sender_display_cache["phone_number_id"] = pnid
+    _sender_display_cache["digits"] = digits
+    _sender_display_cache["ts"] = now
+    return True, digits, ""
+
+
+def validate_configured_sender(*, verify_via_api: bool = True) -> tuple[bool, str]:
+    """Ensure Cloud API sender id is usable and matches ``WHATSAPP_SENDER_E164``.
+
+    Returns ``(True, "")`` when OK. When ``WHATSAPP_SENDER_E164`` is set and
+    Graph can return the display number for ``WHATSAPP_PHONE_NUMBER_ID``, refuse
+    if digits do not match (prevents HBE traffic going out as Neeraj Tex / etc.).
+    If Graph cannot be reached, do not block solely on mismatch — still require
+    a configured phone_number_id.
+    """
+    pnid = whatsapp_phone_number_id()
+    if not pnid:
+        return False, "WhatsApp phone number ID is not configured."
+    expected = whatsapp_sender_digits()
+    if not expected:
+        return True, ""
+    if not verify_via_api:
+        return True, ""
+    skip = (os.environ.get("WHATSAPP_SKIP_SENDER_VERIFY") or "").strip().lower()
+    if skip in {"1", "true", "yes", "on"}:
+        return True, ""
+    ok, actual, err = fetch_phone_number_display_digits(pnid)
+    if not ok:
+        # Cannot verify — allow send; log once at warning for operators.
+        log.warning(
+            "WhatsApp sender E.164 check skipped (could not verify phone_number_id=%s): %s",
+            pnid,
+            err or "unknown",
+        )
+        return True, ""
+    if actual != expected:
+        return (
+            False,
+            (
+                f"WhatsApp sender mismatch: phone_number_id {pnid} is {actual}, "
+                f"but WHATSAPP_SENDER_E164 requires {expected} "
+                f"(Hotel Bell Elite +91 96112 32344). "
+                f"Set WHATSAPP_PHONE_NUMBER_ID={HBE_WHATSAPP_PHONE_NUMBER_ID}."
+            ),
+        )
+    return True, ""
 
 
 def graph_messages_url() -> str:
@@ -198,6 +339,59 @@ def _mirror_outbound_to_hub(payload: dict, response_body: dict) -> None:
         log.exception("Communication Hub mirror of WhatsApp send failed")
 
 
+def _record_outbound_quota_send(payload: dict, response_body: dict) -> None:
+    """Best-effort: count a successful live Cloud API message against the install limit."""
+    try:
+        from db import get_db, record_whatsapp_outbound_send
+
+        phone = normalise_whatsapp_number((payload or {}).get("to") or "")
+        msg_type = str((payload or {}).get("type") or "").strip().lower()
+        wa_id = first_message_id(response_body or {})
+        conn = get_db()
+        try:
+            conn.execute("PRAGMA busy_timeout=3000")
+            record_whatsapp_outbound_send(
+                conn,
+                wa_message_id=wa_id,
+                to_phone=phone,
+                message_type=msg_type,
+                source="send_payload",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        log.exception("WhatsApp outbound quota record failed")
+
+
+def _quota_exhausted_error(quota: dict) -> str:
+    sent = int((quota or {}).get("sent") or 0)
+    limit = int((quota or {}).get("limit") or 0)
+    return (
+        f"WhatsApp message limit reached ({sent}/{limit}). "
+        "Contact support to increase the limit."
+    )
+
+
+def _check_outbound_quota_before_send() -> tuple[bool, str]:
+    """Return (ok, error). Fail closed if the quota table cannot be read."""
+    try:
+        from db import get_db, whatsapp_outbound_quota
+
+        conn = get_db()
+        try:
+            conn.execute("PRAGMA busy_timeout=3000")
+            quota = whatsapp_outbound_quota(conn)
+        finally:
+            conn.close()
+    except Exception:
+        log.exception("WhatsApp outbound quota check failed")
+        return False, "WhatsApp message limit could not be verified. Try again."
+    if quota.get("exhausted"):
+        return False, _quota_exhausted_error(quota)
+    return True, ""
+
+
 def send_payload(payload: dict) -> tuple[bool, str, dict]:
     """POST one WhatsApp Cloud message. No automatic retries (avoids send storms)."""
     if not whatsapp_live_sends_allowed():
@@ -208,6 +402,13 @@ def send_payload(payload: dict) -> tuple[bool, str, dict]:
         return False, "WhatsApp access token is not configured.", {}
     if not phone_number_id:
         return False, "WhatsApp phone number ID is not configured.", {}
+    sender_ok, sender_err = validate_configured_sender(verify_via_api=True)
+    if not sender_ok:
+        log.error(sender_err)
+        return False, sender_err, {}
+    quota_ok, quota_err = _check_outbound_quota_before_send()
+    if not quota_ok:
+        return False, quota_err, {}
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
@@ -222,6 +423,7 @@ def send_payload(payload: dict) -> tuple[bool, str, dict]:
             body = response.json()
         except ValueError:
             body = {}
+        _record_outbound_quota_send(payload, body)
         _mirror_outbound_to_hub(payload, body)
         return True, "", body
     return False, (response.text or "")[:500], {}
@@ -234,6 +436,10 @@ def upload_media_file(file_path: str, mime_type: str = "application/pdf") -> tup
     phone_number_id = whatsapp_phone_number_id()
     if not token or not phone_number_id:
         return False, "WhatsApp API is not configured.", {}
+    sender_ok, sender_err = validate_configured_sender(verify_via_api=True)
+    if not sender_ok:
+        log.error(sender_err)
+        return False, sender_err, {}
     url = (
         f"https://graph.facebook.com/{whatsapp_graph_api_version()}/"
         f"{phone_number_id}/media"

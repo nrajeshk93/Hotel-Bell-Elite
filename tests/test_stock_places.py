@@ -904,6 +904,96 @@ class StockPlaceTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_merge_duplicate_stock_rows_via_ensure_schema(self):
+        """Repair merges same outlet+place+normalized name/unit into one summed row."""
+        with self.app.app_context():
+            conn = db_mod.get_db()
+            db_mod.ensure_stores_schema(conn)
+            conn.execute(
+                "DELETE FROM store_stock_items WHERE lower(trim(item_name)) LIKE 'dup pipers%'"
+            )
+            try:
+                conn.execute("DROP INDEX IF EXISTS idx_store_stock_items_identity")
+            except Exception:
+                pass
+            conn.execute(
+                """
+                INSERT INTO store_stock_items
+                    (outlet, place, item_name, unit, qty_on_hand, updated_at)
+                VALUES
+                    ('bar', 'counter', 'Dup Pipers', 'mL', 100.0, datetime('now','localtime')),
+                    ('bar', 'counter', 'Dup  Pipers', 'mL', 50.5, datetime('now','localtime'))
+                """
+            )
+            conn.commit()
+            db_mod.ensure_stores_schema(conn)
+            after = [
+                r
+                for r in conn.execute(
+                    "SELECT item_name, unit, qty_on_hand FROM store_stock_items WHERE outlet='bar' AND place='counter'"
+                ).fetchall()
+                if "dup pipers" in " ".join((r["item_name"] or "").split()).lower()
+            ]
+            self.assertEqual(len(after), 1, after)
+            self.assertAlmostEqual(float(after[0]["qty_on_hand"]), 150.5)
+
+    def test_transfer_receive_merges_into_existing_counter_row(self):
+        """Receiving a transfer onto an existing counter SKU updates qty — no second row."""
+        with self.app.app_context():
+            conn = db_mod.get_db()
+            db_mod.ensure_stores_schema(conn)
+            stores = self.stores_mod
+            conn.execute(
+                "DELETE FROM store_stock_items WHERE lower(trim(item_name)) = 'mergerecv whiskey'"
+            )
+            conn.execute(
+                "DELETE FROM store_stock_transfer_lines WHERE item_name = 'MergeRecv Whiskey'"
+            )
+            conn.execute(
+                "DELETE FROM store_stock_transfers WHERE transfer_no = 'TRF-TEST-MERGE-1'"
+            )
+            conn.execute(
+                """
+                INSERT INTO store_stock_items
+                    (outlet, place, item_name, unit, qty_on_hand, updated_at)
+                VALUES
+                    ('bar', 'warehouse', 'MergeRecv Whiskey', 'mL', 500.0, datetime('now','localtime')),
+                    ('bar', 'counter', 'MergeRecv Whiskey', 'mL', 10.0, datetime('now','localtime'))
+                """
+            )
+            conn.commit()
+            cur = conn.execute(
+                """
+                INSERT INTO store_stock_transfers
+                    (transfer_no, direction, from_outlet, from_place, to_outlet, to_place,
+                     status, note, created_by, created_at)
+                VALUES ('TRF-TEST-MERGE-1', 'to_counter', 'bar', 'warehouse', 'bar', 'counter',
+                        'pending', '', 1, datetime('now','localtime'))
+                """
+            )
+            tid = int(cur.lastrowid)
+            conn.execute(
+                """
+                INSERT INTO store_stock_transfer_lines
+                    (transfer_id, outlet, item_name, unit, qty_base, sort_order)
+                VALUES (?, 'bar', 'MergeRecv Whiskey', 'mL', 25.0, 0)
+                """,
+                (tid,),
+            )
+            conn.commit()
+            stores._receive_stock_transfer(conn, tid, user_id=1)
+            conn.commit()
+            rows = conn.execute(
+                """
+                SELECT place, qty_on_hand FROM store_stock_items
+                WHERE outlet = 'bar' AND lower(trim(item_name)) = 'mergerecv whiskey'
+                ORDER BY place
+                """
+            ).fetchall()
+            by_place = {r["place"]: float(r["qty_on_hand"]) for r in rows}
+            self.assertEqual(len(rows), 2, rows)
+            self.assertAlmostEqual(by_place["counter"], 35.0)
+            self.assertAlmostEqual(by_place["warehouse"], 475.0)
 
 if __name__ == "__main__":
     unittest.main()

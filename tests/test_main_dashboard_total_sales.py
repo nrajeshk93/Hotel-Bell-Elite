@@ -142,13 +142,13 @@ class MainDashboardTotalSalesTests(unittest.TestCase):
         self.assertEqual(kpi["value"], 6000.0)
         self.assertEqual(payload["dashboard"]["sales_contribution"]["total_sales"], 6000.0)
 
-    def test_total_sales_excludes_unsettled_and_provisional(self):
-        """TOTAL SALES matches Invoice Ledger Settled (generated_only), not open drafts."""
+    def test_total_sales_includes_generated_open_excludes_provisional(self):
+        """TOTAL SALES matches Sales Update / generated ledger, not Settle-only."""
         day = date(2026, 8, 1)
         day_iso = "2026-08-01"
         self._hotel("HBE/MD/OPEN", 1000, status="open")
         self._pos("SPC/MD/OK", db_mod.POS_OUTLET_RESTAURANT, 2000, "upi")
-        # Unsettled open bill — must not inflate TOTAL SALES.
+        # Generated but unsettled — still counts (same as Sales Update Bar/Restaurant).
         self.conn.execute(
             """
             INSERT INTO pos_invoices
@@ -186,12 +186,16 @@ class MainDashboardTotalSalesTests(unittest.TestCase):
             self.conn,
             date_from=day_iso,
             date_to=day_iso,
-            settlement="settled",
             outlet=db_mod.POS_OUTLET_RESTAURANT,
             generated_only=True,
         )
         ledger_total = sum(float(inv.get("grand_total") or 0) for inv in ledger)
-        self.assertEqual(ledger_total, 2000.0)
+        self.assertEqual(ledger_total, 11000.0)
+
+        su_total = db_mod.pos_sales_entry_from_invoices(
+            self.conn, OUTLET_RESTAURANT, day_iso
+        )["total_sales"]
+        self.assertEqual(su_total, ledger_total)
 
         payload = _build_main_dashboard_payload(
             self.conn, day, day, location=OUTLET_RESTAURANT

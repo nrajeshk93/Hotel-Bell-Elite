@@ -57,6 +57,12 @@ body.su-module.st-inward-shell .st-inward-header-filters .st-inward-supplier-fil
   min-width:180px;
   max-width:300px;
 }
+body.su-module.st-inward-shell .st-inward-header-filters .st-inward-listbox-empty{
+  padding:10px 12px;
+  font-size:12.5px;
+  font-style:italic;
+  color:#94A3B8;
+}
 body.su-module.st-inward-shell .st-inward-header-filters .st-inward-po-listbox,
 body.su-module.st-inward-shell .st-inward-header-filters .st-inward-indent-listbox{
   flex:1.2 1 220px;

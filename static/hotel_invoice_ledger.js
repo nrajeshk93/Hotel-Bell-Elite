@@ -889,6 +889,13 @@
         openInvoice(page, printBtn.getAttribute('data-invoice-number'), true);
         return;
       }
+      var whatsappBtn = ev.target.closest('.hil-whatsapp-btn');
+      if (whatsappBtn) {
+        /* Hotel WhatsApp template not enabled yet — button stays disabled. */
+        ev.preventDefault();
+        ev.stopPropagation();
+        return;
+      }
       if (ev.target.closest('.pl-col-actions')) return;
 
       if (isRoomTransferLedger(page)) return;

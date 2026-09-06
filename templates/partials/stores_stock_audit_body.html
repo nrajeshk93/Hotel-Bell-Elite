@@ -73,6 +73,9 @@
               <tr>
                 <th class="st-audit-col-num">#</th>
                 <th class="pl-sortable" data-sort="product" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Product</th>
+                {% if selected_outlet == 'both' %}
+                <th class="pl-sortable st-audit-col-outlet" data-sort="outlet" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Outlet</th>
+                {% endif %}
                 <th class="pl-sortable" data-sort="category" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Category</th>
                 <th class="pl-sortable pl-col-amount" data-sort="system" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">System Stock</th>
                 <th class="pl-sortable" data-sort="unit" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Unit</th>
@@ -87,13 +90,14 @@
                 data-sort-row
                 data-line-id="{{ line.id }}"
                 data-status="{{ 'pending' if line.status == 'skipped' else line.status }}"
+                data-outlet="{{ line.outlet or selected_outlet }}"
                 {% set display_qty = line.actual_qty if line.status == 'verified' and line.actual_qty is not none else line.system_qty %}
                 data-system-qty="{{ display_qty }}"
                 data-snapshot-qty="{{ line.system_qty }}"
                 data-unit="{{ line.unit }}"
                 data-name="{{ line.item_name }}"
                 data-category="{{ (line.category_name or 'Uncategorised') }}"
-                data-search="{{ (line.item_name ~ ' ' ~ (line.category_name or 'Uncategorised') ~ ' ' ~ line.unit ~ ' ' ~ line.status)|lower }}"
+                data-search="{{ (line.item_name ~ ' ' ~ (line.outlet_label or line.outlet or '') ~ ' ' ~ (line.category_name or 'Uncategorised') ~ ' ' ~ line.unit ~ ' ' ~ line.status)|lower }}"
                 data-initials="{{ line.initials }}"
                 data-actual="{{ line.actual_qty if line.actual_qty is not none else '' }}"
                 data-reason="{{ line.reason or '' }}"
@@ -106,6 +110,9 @@
               >
                 <td class="st-audit-col-num">{{ loop.index }}</td>
                 <td class="st-audit-product" data-sort-value="{{ line.item_name or '' }}">{{ line.item_name }}</td>
+                {% if selected_outlet == 'both' %}
+                <td class="st-audit-col-outlet" data-sort-value="{{ line.outlet or '' }}">{% if line.outlet == 'bar' %}Bar{% elif line.outlet == 'restaurant' %}Restaurant{% else %}{{ line.outlet_label or (line.outlet or '')|title }}{% endif %}</td>
+                {% endif %}
                 <td class="st-audit-category" data-sort-value="{{ (line.category_name or 'Uncategorised')|lower }}">{{ line.category_name or 'Uncategorised' }}</td>
                 <td class="pl-col-amount pl-amount st-audit-qty" data-sort-value="{{ display_qty }}">{{ '%.2f'|format(display_qty|float) }}</td>
                 <td data-sort-value="{{ line.unit or '' }}">{{ line.unit }}</td>
@@ -127,7 +134,7 @@
           <span class="st-audit-remaining" id="st-audit-remaining">Remaining: {{ pending }} items</span>
         </div>
         {% else %}
-        <div class="pl-empty">No stock items to audit for this outlet. Receive stock first, then start an audit.</div>
+        <div class="pl-empty">No stock items to audit{% if selected_outlet == 'both' %} across outlets{% else %} for this outlet{% endif %}. Receive stock first, then start an audit.</div>
         {% endif %}
       </div>
     </section>

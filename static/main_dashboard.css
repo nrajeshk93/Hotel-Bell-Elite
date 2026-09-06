@@ -307,12 +307,19 @@ body.main-dashboard-module #main-dashboard-page .rdx-kpi-change {
   line-height: 1.4;
 }
 
+body.main-dashboard-module #main-dashboard-page .rdx-spark-ltr-mask {
+  margin: 0 12px 12px;
+  overflow: hidden;
+  width: calc(100% - 24px);
+  box-sizing: border-box;
+}
+
 body.main-dashboard-module #main-dashboard-page .rdx-spark {
   height: 44px !important;
   min-height: 44px !important;
   max-height: 44px;
-  margin: 0 12px 12px;
-  width: auto;
+  margin: 0;
+  width: 100%;
 }
 
 body.main-dashboard-module #main-dashboard-page .rdx-spark > div,
@@ -363,13 +370,13 @@ body.main-dashboard-module #main-dashboard-page .rdx-grid-2 {
   gap: 16px;
 }
 
-/* Day of week + Top Selling: same outline size; heatmap stays under DOW */
+/* Restaurant + Bar top sellers: same outline size; heatmap stays under Restaurant */
 body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top {
   align-items: stretch;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   grid-template-rows: auto auto;
   grid-template-areas:
-    "dow top"
+    "rest bar"
     "heat .";
 }
 
@@ -378,8 +385,8 @@ body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > * {
   max-width: 100%;
 }
 
-body.main-dashboard-module #main-dashboard-page .rdx-dow-card {
-  grid-area: dow;
+body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-items[data-md-ti-outlet="restaurant"] {
+  grid-area: rest;
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -403,8 +410,8 @@ body.main-dashboard-module #main-dashboard-page .rdx-sales-heatmap-card {
   box-sizing: border-box;
 }
 
-body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-items {
-  grid-area: top;
+body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-items[data-md-ti-outlet="bar"] {
+  grid-area: bar;
   height: auto;
   align-self: stretch;
   display: flex;
@@ -413,21 +420,13 @@ body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-ite
   width: 100%;
 }
 
-body.main-dashboard-module #main-dashboard-page .rdx-dow-card > .rdx-card-head,
 body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-items > .rdx-card-head {
   flex: 0 0 auto;
 }
 
-body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top #rdx-chart-dow {
+body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-items .rdx-ti-list {
   flex: 1 1 auto;
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  min-height: 220px;
-  height: auto;
-  overflow: hidden;
-  position: relative;
-  box-sizing: border-box;
+  min-height: 0;
 }
 
 @media (max-width: 1100px) {
@@ -435,21 +434,15 @@ body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top #rdx-chart-dow
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: none;
     grid-template-areas:
-      "dow"
-      "heat"
-      "top";
+      "rest"
+      "bar"
+      "heat";
     align-items: start;
   }
 
-  body.main-dashboard-module #main-dashboard-page .rdx-dow-card,
   body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-items {
     height: auto;
     align-self: stretch;
-  }
-
-  body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top #rdx-chart-dow {
-    flex: 0 0 auto;
-    height: 220px;
   }
 }
 
@@ -630,11 +623,6 @@ body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-heat {
 body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-heat > .rdx-card {
   height: auto;
   align-self: start;
-}
-
-body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-heat #rdx-chart-dow {
-  min-height: 220px;
-  height: 220px;
 }
 
 /* Neeraj Retail Intelligence: top outlets + sales contribution chrome */
@@ -848,10 +836,6 @@ body.main-dashboard-module #main-dashboard-page > .rdx-content{
   }
   body.main-dashboard-module #main-dashboard-page .rdx-ti-sale{
     font-size: 14px;
-  }
-  body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top #rdx-chart-dow{
-    min-height: 200px;
-    height: 200px;
   }
 }
 

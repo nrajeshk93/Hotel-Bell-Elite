@@ -4981,6 +4981,12 @@
       paintTablesPage(root, data || loadFloorDataCached());
     });
     bindLocalOccupancySync(root);
+    try {
+      var offline = global.HbePosOffline;
+      if (offline && typeof offline.purgeLegacyServerDraftZombies === 'function') {
+        offline.purgeLegacyServerDraftZombies().catch(function () {});
+      }
+    } catch (eZombie) {}
     if (root.__posTableAttentionTimer) {
       clearInterval(root.__posTableAttentionTimer);
     }

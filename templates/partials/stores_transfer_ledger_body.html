@@ -1,0 +1,135 @@
+{% set rows = transfer_ledger_rows|default([]) %}
+<div class="st-transfer-ledger-page" id="st-transfer-ledger-page" data-st-transfer-ledger="1">
+  <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel st-panel" aria-label="Stock transfers">
+    <div class="card-hdr">
+      <div class="card-title">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+        <span>Transfer Ledger</span>
+      </div>
+      <span class="pl-count" id="st-transfer-ledger-count">{{ rows|length }} transfer{% if rows|length != 1 %}s{% endif %}</span>
+    </div>
+    <div class="card-body pl-card-body--flush">
+      {% if rows %}
+      <div class="pl-table-wrap" tabindex="0" aria-label="Stock transfers, scroll for more">
+        <table class="pl-table st-transfer-ledger-table" id="st-transfer-ledger-table" aria-label="Stock transfer ledger">
+          <thead>
+            <tr>
+              <th class="pl-sortable st-tl-col-id" data-sort="transfer" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Transfer</th>
+              <th class="pl-sortable pl-col-date st-tl-col-when" data-sort="when" scope="col" tabindex="0" aria-sort="none" title="Click to sort">When</th>
+              <th class="pl-sortable st-tl-col-place" data-sort="from" scope="col" tabindex="0" aria-sort="none" title="Click to sort">From</th>
+              <th class="pl-sortable st-tl-col-place" data-sort="to" scope="col" tabindex="0" aria-sort="none" title="Click to sort">To</th>
+              <th class="pl-sortable st-tl-col-route" data-sort="route" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Route</th>
+              <th class="pl-sortable st-tl-col-status" data-sort="status" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Status</th>
+              <th class="pl-sortable st-tl-col-items" data-sort="items" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Items</th>
+              <th class="pl-sortable st-tl-col-by" data-sort="created_by" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Created by</th>
+              <th class="pl-col-actions" scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            {% set items_one_line = ((row.line_count or 0)|string) ~ ' · ' ~ (row.line_summary or 'No items') %}
+            <tr class="st-transfer-ledger-row"
+                data-sort-row
+                data-transfer-id="{{ row.id }}"
+                data-status="{{ row.status }}"
+                data-search="{{ row.search_text or '' }}"
+                data-pdf-url="{{ row.pdf_url or '' }}"
+                data-cancel-url="{{ row.cancel_url or '' }}"
+                data-transfer-no="{{ row.transfer_no or '' }}">
+              <td class="pl-col-code st-tl-col-id" data-sort-value="{{ row.transfer_no or '' }}"{% if row.note %} title="{{ row.note }}"{% endif %}>
+                <span class="pl-expense-code" title="{{ row.transfer_no or '—' }}{% if row.note %} · {{ row.note }}{% endif %}">{{ row.transfer_no or '—' }}</span>
+              </td>
+              <td class="pl-col-date st-tl-col-when" data-sort-value="{{ row.created_at or '' }}" title="{{ row.created_at|report_dt }}">
+                <span>{{ row.created_at|report_dt }}</span>
+              </td>
+              <td class="st-tl-col-place" data-sort-value="{{ row.from_label or '' }}" title="{{ row.from_label or '' }}">
+                <span>{{ row.from_label or '—' }}</span>
+              </td>
+              <td class="st-tl-col-place" data-sort-value="{{ row.to_label or '' }}" title="{{ row.to_label or '' }}">
+                <span>{{ row.to_label or '—' }}</span>
+              </td>
+              <td class="st-tl-col-route" data-sort-value="{{ row.route_label or '' }}" title="{{ row.route_label or '' }}">
+                <span class="pl-name">{{ row.route_label or '—' }}</span>
+              </td>
+              <td class="st-tl-col-status" data-sort-value="{{ row.status_label or row.status or '' }}"{% if row.status_meta %} title="{{ row.status_meta }}"{% endif %}>
+                <span class="cp-status-pill cp-status-pill--{{ row.status or 'pending' }}">{{ row.status_label or row.status }}</span>
+              </td>
+              <td class="st-tl-col-items" data-sort-value="{{ row.line_count or 0 }}" title="{{ items_one_line }}">
+                <span>{{ items_one_line }}</span>
+              </td>
+              <td class="st-tl-col-by" data-sort-value="{{ row.created_by_name or '' }}" title="{{ row.created_by_name or '' }}">
+                <span>{{ row.created_by_name or '—' }}</span>
+              </td>
+              <td class="pl-col-actions st-actions">
+                <div class="act-grp pl-action-btns">
+                  <a href="{{ row.pdf_url }}"
+                     class="act-btn view st-tl-view-btn"
+                     data-tip="View"
+                     data-st-tl-pdf
+                     data-de-no-soft-nav
+                     data-transfer-title="{{ row.transfer_no }}"
+                     target="_blank"
+                     rel="noopener"
+                     aria-label="View PDF for {{ row.transfer_no }}">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </a>
+                  <a href="{{ row.pdf_url }}"
+                     class="act-btn download st-tl-download-btn"
+                     data-tip="Download PDF"
+                     download
+                     data-de-no-soft-nav
+                     aria-label="Download PDF for {{ row.transfer_no }}">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </a>
+                  <button type="button"
+                          class="act-btn st-tl-print-btn"
+                          data-tip="Print"
+                          data-pdf-url="{{ row.pdf_url }}"
+                          aria-label="Print {{ row.transfer_no }}">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                  </button>
+                  {% if row.can_cancel %}
+                  <button type="button"
+                          class="act-btn cancel del st-tl-cancel-btn"
+                          data-tip="Cancel"
+                          data-cancel-url="{{ row.cancel_url }}"
+                          data-transfer-no="{{ row.transfer_no }}"
+                          aria-label="Cancel {{ row.transfer_no }}">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></svg>
+                  </button>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="pl-empty" id="st-transfer-ledger-search-empty" hidden>
+        <strong>No matching transfers</strong>
+        <p>Try a different transfer number or clear filters.</p>
+      </div>
+      {% else %}
+      <div class="pl-empty">
+        <strong>No transfers found</strong>
+        <p>Create a transfer from Store, or widen the status / date filters.</p>
+      </div>
+      {% endif %}
+    </div>
+  </article>
+</div>
+
+{# PDF preview — mirrors hotel invoice ledger hri-preview overlay chrome #}
+<div class="st-tl-preview-overlay" id="st-tl-pdf-modal" hidden aria-hidden="true">
+  <div class="st-tl-preview-shell" role="dialog" aria-modal="true" aria-labelledby="st-tl-pdf-title">
+    <header class="st-tl-preview-toolbar">
+      <strong class="st-tl-preview-title" id="st-tl-pdf-title">Stock Transfer</strong>
+      <div class="st-tl-preview-actions">
+        <a class="st-tl-preview-download" id="st-tl-pdf-download" href="#" download>Download</a>
+        <button type="button" class="st-tl-preview-print" id="st-tl-pdf-print">Print</button>
+        <button type="button" class="st-tl-preview-close" id="st-tl-pdf-close">Close</button>
+      </div>
+    </header>
+    <iframe class="st-tl-preview-frame" id="st-tl-pdf-frame" title="Stock Transfer PDF" src="about:blank"></iframe>
+  </div>
+</div>

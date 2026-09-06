@@ -521,10 +521,12 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
   display:none;
 }
 
-/* History: fixed even columns so headers and amounts share one grid. */
+/* History: content-sized columns — never ellipsis invoice / party / method text.
+   Horizontal scroll on .pl-table-wrap keeps one line per cell. */
 #credit-payment-page #cp-history-table{
-  table-layout:fixed;
-  width:max(100%, 1180px);
+  table-layout:auto;
+  width:max-content;
+  min-width:100%;
   border-collapse:separate;
   border-spacing:0;
 }
@@ -533,6 +535,9 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
   vertical-align:middle;
   padding:10px 12px;
   box-sizing:border-box;
+  white-space:nowrap;
+  overflow:visible;
+  text-overflow:clip;
 }
 #credit-payment-page #cp-history-table th.pl-sortable{
   position:relative;
@@ -546,51 +551,134 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
   transform:translateY(-50%);
 }
 #credit-payment-page #cp-history-table .cp-expense-codes{
-  width:132px;
+  width:auto;
+  min-width:16ch;
   white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
+  overflow:visible;
+  text-overflow:clip;
   vertical-align:middle;
 }
 #credit-payment-page #cp-history-table th.cp-expense-codes{
   white-space:nowrap;
 }
 #credit-payment-page #cp-history-table .cp-expense-code-list{
-  display:flex;
-  flex-wrap:wrap;
+  display:inline-flex;
+  flex-wrap:nowrap;
   gap:4px;
   align-items:center;
+  max-width:none;
+  overflow:visible;
 }
 #credit-payment-page #cp-history-table .cp-expense-code-list .pl-expense-code{
   margin:0;
-  max-width:100%;
-  overflow:hidden;
-  text-overflow:ellipsis;
+  max-width:none;
+  white-space:nowrap;
+  overflow:visible;
+  text-overflow:clip;
 }
 #credit-payment-page #cp-history-table .cp-col-party{
-  width:148px;
-  overflow:hidden;
+  width:auto;
+  min-width:18ch;
+  overflow:visible;
 }
 #credit-payment-page #cp-history-table th.cp-col-party{
   white-space:nowrap;
 }
 #credit-payment-page #cp-history-table .cp-col-party .pl-name{
-  overflow:hidden;
-  text-overflow:ellipsis;
+  overflow:visible;
+  text-overflow:clip;
+  white-space:nowrap;
+  max-width:none;
+}
+#credit-payment-page #cp-history-table .cp-col-party .pl-meta{
   white-space:nowrap;
 }
 #credit-payment-page #cp-history-table .pl-col-date{
-  width:110px;
+  width:auto;
   white-space:nowrap;
 }
 #credit-payment-page #cp-history-table .cp-col-method{
-  width:128px;
-  white-space:normal;
+  width:auto;
+  min-width:12ch;
+  white-space:nowrap;
   line-height:1.3;
-  overflow-wrap:anywhere;
+  overflow:visible;
+}
+#credit-payment-page #cp-history-table .cp-method-pill{
+  display:inline-flex;
+  align-items:center;
+  max-width:none;
+  min-height:22px;
+  padding:3px 9px;
+  border-radius:999px;
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.25px;
+  text-transform:uppercase;
+  line-height:1.25;
+  white-space:nowrap;
+  overflow:visible;
+  border:1px solid transparent;
+}
+#credit-payment-page #cp-history-table .cp-method-pill--cash{
+  color:#047857;
+  background:#ECFDF5;
+  border-color:rgba(4,120,87,.18);
+}
+#credit-payment-page #cp-history-table .cp-method-pill--upi{
+  color:#6D28D9;
+  background:#F5F3FF;
+  border-color:rgba(109,40,217,.16);
+}
+#credit-payment-page #cp-history-table .cp-method-pill--card{
+  color:#1D4ED8;
+  background:#EFF6FF;
+  border-color:rgba(29,78,216,.18);
+}
+#credit-payment-page #cp-history-table .cp-method-pill--bank_transfer{
+  color:#0F766E;
+  background:#F0FDFA;
+  border-color:rgba(15,118,110,.18);
+}
+#credit-payment-page #cp-history-table .cp-method-pill--bor,
+#credit-payment-page #cp-history-table .cp-method-pill--back_office_receipt{
+  color:#B45309;
+  background:#FFFBEB;
+  border-color:rgba(180,83,9,.2);
+}
+#credit-payment-page #cp-history-table .cp-method-pill--split,
+#credit-payment-page #cp-history-table .cp-method-pill--other{
+  color:#334155;
+  background:#F1F5F9;
+  border-color:rgba(51,65,85,.14);
+}
+#credit-payment-page #cp-history-table .cp-empty-dash{
+  color:#94A3B8;
+  font-weight:600;
+}
+#credit-payment-page #cp-history-table .cp-col-txn{
+  width:auto;
+  min-width:12ch;
+  max-width:none;
+  white-space:nowrap;
+  overflow:visible;
+}
+#credit-payment-page #cp-history-table .cp-txn-chip{
+  display:inline-block;
+  max-width:none;
+  padding:4px 8px;
+  border-radius:8px;
+  background:#F8FAFC;
+  border:1px solid #E2E8F0;
+  color:#334155;
+  font:650 11.5px/1.35 Inter,system-ui,sans-serif;
+  white-space:nowrap;
+  overflow:visible;
+  word-break:normal;
 }
 #credit-payment-page #cp-history-table .cp-tender-col{
-  width:88px;
+  width:auto;
+  min-width:5.5ch;
   text-align:right;
   font-variant-numeric:tabular-nums;
   white-space:nowrap;
@@ -606,24 +694,21 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
 #credit-payment-page #cp-history-table td.cp-tender-col.pl-amount{
   color:inherit;
 }
-#credit-payment-page #cp-history-table .cp-col-txn{
-  width:108px;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
 #credit-payment-page #cp-history-table .pl-col-amount:not(.cp-tender-col),
 #credit-payment-page #cp-history-table .pl-col-count{
-  width:88px;
+  width:auto;
+  min-width:5.5ch;
   white-space:nowrap;
   text-align:right;
   font-variant-numeric:tabular-nums;
 }
 #credit-payment-page #cp-history-table th.cp-col-actions,
 #credit-payment-page #cp-history-table td.cp-col-actions{
-  width:84px;
+  width:1%;
+  min-width:84px;
   text-align:right;
   background:#fff;
+  white-space:nowrap;
 }
 #credit-payment-page #cp-history-table thead th.cp-col-actions{
   background:#F8FAFD;
@@ -631,6 +716,20 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
 #credit-payment-page #cp-history-table td.cp-col-actions .act-grp{
   margin-left:auto;
   justify-content:flex-end;
+}
+#credit-payment-page #cp-history-table .act-btn.cp-view-payment{
+  color:#2563EB;
+}
+#credit-payment-page #cp-history-table .act-btn.cp-view-payment:hover{
+  color:#1D4ED8;
+  background:#EFF6FF;
+}
+#credit-payment-page #cp-history-table .act-btn.cp-delete-payment{
+  color:#DC2626;
+}
+#credit-payment-page #cp-history-table .act-btn.cp-delete-payment:hover{
+  color:#B91C1C;
+  background:#FEF2F2;
 }
 /* Keep View/Revert tips above the icons so .pl-table-wrap overflow:auto
    does not clip them when the cursor moves (mirrors POS menu / stores). */

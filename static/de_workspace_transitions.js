@@ -1260,6 +1260,7 @@
       }
       if(path === '/stores/purchase-requests') return !!main.querySelector('#st-inward-page, #st-inward-indent, #st-inward-indent-listbox, #st-inward-direct-lines');
       if(path === '/stores/stock') return !!main.querySelector('#st-stock-search, #st-stock-page');
+      if(path === '/stores/stock/transfers') return !!main.querySelector('#st-transfer-ledger-page, #st-transfer-ledger-filter-form');
       if(path === '/stores/stock-audit') return !!main.querySelector('#st-audit-page, #st-audit-queue, #st-audit-search');
       if(path === '/stores/stock-audit/report') return !!main.querySelector('#st-audit-report-page, #st-audit-report-filter-form');
     } catch(e){}
@@ -3226,6 +3227,9 @@
     }
     if(typeof window.initStockAuditReportPage === 'function'){
       window.initStockAuditReportPage();
+    }
+    if(typeof window.initStoresTransferLedgerPage === 'function'){
+      window.initStoresTransferLedgerPage();
     }
     if(typeof window.initMainDashboardFilters === 'function'){
       window.initMainDashboardFilters();

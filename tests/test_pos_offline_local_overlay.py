@@ -52,6 +52,7 @@ class PosOfflineLocalOverlaySourceTests(unittest.TestCase):
             "findPendingForTable",
             "pickPendingResumeForTable",
             "purgePendingForTable",
+            "purgeLegacyServerDraftZombies",
             "pendingOrders",
             "patchFloorOccupancy",
         ):
@@ -120,6 +121,7 @@ class PosOfflineLocalOverlaySourceTests(unittest.TestCase):
         ]
         self.assertIn("purgeLocalOrderDrafts", fn)
         self.assertIn("onlyServerLinked", fn)
+        self.assertIn("localShouldDrop", fn)
         then_part = fn.split(".catch")[0]
         self.assertNotIn("resumeOrderFromLocal", then_part)
         self.assertIn("resumeOrderFromLocal", fn)

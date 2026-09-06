@@ -958,6 +958,48 @@
   }
 
   /**
+   * One-shot per page load: drop IndexedDB drafts that still carry a server
+   * invoiceId but never got customerBill (legacy Generate leftovers / ghosts).
+   * Safe and idempotent — true offline-unsynced drafts (no invoiceId) stay.
+   */
+  var legacyZombiePurgeStarted = false;
+  function purgeLegacyServerDraftZombies() {
+    if (legacyZombiePurgeStarted) {
+      return Promise.resolve({ removed: 0 });
+    }
+    legacyZombiePurgeStarted = true;
+    return listDrafts()
+      .then(function (rows) {
+        var victims = (rows || []).filter(function (row) {
+          if (!orderHasServerInvoiceId(row)) return false;
+          if (orderHasCustomerBill(row)) return false;
+          return true;
+        });
+        if (!victims.length) return { removed: 0 };
+        return victims
+          .reduce(function (chain, row) {
+            return chain.then(function (sum) {
+              return discardPending({
+                localId: row.localId,
+                invoiceId: rowInvoiceId(row),
+                orderNo: (row.payload && (row.payload.orderNo || row.payload.order_no)) || ""
+              }).then(function (summary) {
+                sum.removed += (summary && summary.removed) || 0;
+                return sum;
+              });
+            });
+          }, Promise.resolve({ removed: 0 }))
+          .then(function (sum) {
+            if (sum.removed) notifyChange("drafts");
+            return sum;
+          });
+      })
+      .catch(function () {
+        return { removed: 0 };
+      });
+  }
+
+  /**
    * Resume candidate for a table: unsynced dine-in drafts only.
    * Align with floor overlay — skip rows that already have a server invoiceId
    * or customerBill (Generate Invoice leftovers must not hydrate a ghost cart).
@@ -1219,6 +1261,7 @@
     findPendingForTable: findPendingForTable,
     pickPendingResumeForTable: pickPendingResumeForTable,
     purgePendingForTable: purgePendingForTable,
+    purgeLegacyServerDraftZombies: purgeLegacyServerDraftZombies,
     applyPendingToFloor: applyPendingToFloor,
     orderHasServerInvoiceId: orderHasServerInvoiceId,
     orderHasCustomerBill: orderHasCustomerBill,

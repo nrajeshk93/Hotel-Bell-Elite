@@ -15,7 +15,7 @@
 
 
   function softRefreshStoresPaths(extraPaths) {
-    var paths = ['/stores/stock', '/stores/purchase-requests', '/stores/inward'];
+    var paths = ['/stores/stock', '/stores/purchase-requests', '/stores/inward', '/stores/stock/transfers'];
     if (extraPaths && extraPaths.length) {
       for (var i = 0; i < extraPaths.length; i++) {
         if (paths.indexOf(extraPaths[i]) === -1) paths.push(extraPaths[i]);
@@ -2149,6 +2149,12 @@
     if (whenTh) table.__stSortBy(whenTh, false);
   }
 
+  function applyTransferLedgerDefaultSort(table) {
+    if (!table || typeof table.__stSortBy !== 'function') return;
+    var whenTh = table.querySelector('th.pl-sortable[data-sort="when"]');
+    if (whenTh) table.__stSortBy(whenTh, false);
+  }
+
   function initStoresSortableTables() {
     document.querySelectorAll('table.pl-table').forEach(function (table) {
       /* Weekly Stock Audit owns sort + KPI reorder in stores_stock_audit.js */
@@ -2159,6 +2165,7 @@
     applyMovementsDefaultSort(document.getElementById('st-stock-movements-table'));
     applyApprovalsDefaultSort(document.getElementById('st-approvals-pending-table'));
     applyApprovalsRecentDefaultSort(document.getElementById('st-approvals-recent-table'));
+    applyTransferLedgerDefaultSort(document.getElementById('st-transfer-ledger-table'));
     if (typeof window.initHbeTableScroll === 'function') window.initHbeTableScroll();
   }
 
@@ -2587,7 +2594,7 @@
         }
         var msg = (result.data && result.data.message) || 'Transfer updated.';
         try { sessionStorage.setItem('hbe.st.flash', JSON.stringify({ message: msg, category: 'ok' })); } catch (eFlash) {}
-        softRefreshStoresPaths(['/stores/stock', '/stores/purchase-requests', '/stores/inward']);
+        softRefreshStoresPaths(['/stores/stock', '/stores/purchase-requests', '/stores/inward', '/stores/stock/transfers']);
       }).catch(function () {
         showTransferErr('Could not update transfer.');
         if (busyEl) busyEl.disabled = false;
@@ -4794,7 +4801,8 @@
 
   function initStockSearch() {
     var searchInput = document.getElementById('st-stock-search');
-    if (!searchInput) return;
+    var stockPage = document.getElementById('st-stock-page');
+    if (!searchInput && !stockPage) return;
 
     function getPage() { return document.getElementById('st-stock-page'); }
     function getTable() { return document.getElementById('st-stock-table'); }
@@ -4815,7 +4823,34 @@
       return el ? String(el.value || 'all').toLowerCase() : 'all';
     }
 
-    function setStockStatusFilter(status) {
+    function currentKpi(page) {
+      return String((page && page.getAttribute('data-kpi-filter')) || 'items').toLowerCase();
+    }
+
+    function syncStockKpiSelection(page) {
+      var root = page || getPage();
+      if (!root) return;
+      var kpi = currentKpi(root);
+      root.querySelectorAll('.st-stock-kpi-row .st-stock-kpi[data-kpi]').forEach(function (card) {
+        var on = String(card.getAttribute('data-kpi') || '') === kpi;
+        card.classList.toggle('is-active', on);
+        card.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    }
+
+    function statusFromKpi(kpi) {
+      var key = String(kpi || 'items').toLowerCase();
+      if (key === 'low' || key === 'out') return key;
+      return 'all';
+    }
+
+    function kpiFromStatus(status) {
+      var key = String(status || 'all').toLowerCase();
+      if (key === 'low' || key === 'out') return key;
+      return 'items';
+    }
+
+    function setStockStatusFilterUi(status) {
       var next = String(status || 'all').toLowerCase();
       var root = document.getElementById('st-stock-status-listbox');
       var input = document.getElementById('st-stock-status');
@@ -4823,7 +4858,7 @@
       var option = root && root.querySelector('.se-filter-listbox-option[data-value="' + next + '"]');
       var label = option
         ? String(option.getAttribute('data-label') || option.textContent || '').trim()
-        : (next === 'out' ? 'Out' : 'All statuses');
+        : (next === 'out' ? 'Out' : next === 'low' ? 'Low' : next === 'healthy' ? 'Healthy' : 'All statuses');
       if (input) input.value = next;
       if (valueEl) {
         valueEl.textContent = label;
@@ -4836,6 +4871,27 @@
           opt.setAttribute('aria-selected', on ? 'true' : 'false');
         });
       }
+    }
+
+    function setStockStatusFilter(status) {
+      setStockStatusFilterUi(status);
+      var page = getPage();
+      if (page) {
+        page.setAttribute('data-kpi-filter', kpiFromStatus(status));
+        syncStockKpiSelection(page);
+      }
+      applyStockFilters();
+    }
+
+    function setStockKpiFilter(kpi) {
+      var page = getPage();
+      var next = String(kpi || 'items').toLowerCase();
+      if (currentKpi(page) === next && next !== 'items') {
+        next = 'items';
+      }
+      if (page) page.setAttribute('data-kpi-filter', next);
+      setStockStatusFilterUi(statusFromKpi(next));
+      syncStockKpiSelection(page);
       applyStockFilters();
     }
 
@@ -4873,10 +4929,11 @@
       return '₹' + Math.round(n).toLocaleString('en-IN');
     }
 
-    function matchedRows() {
+    function rankStockRows(opts) {
       var table = getTable();
       var searchEl = document.getElementById('st-stock-search');
       if (!table) return [];
+      var includeStatus = !(opts && opts.ignoreStatus);
       var needle = String((searchEl && searchEl.value) || '').trim();
       var category = getCategory();
       var status = getStatus();
@@ -4886,7 +4943,7 @@
         var cat = String(row.getAttribute('data-category') || '').toLowerCase();
         var categoryOk = category === 'all' || cat === category;
         var rowStatus = String(row.getAttribute('data-status') || '').toLowerCase();
-        var statusOk = status === 'all' || rowStatus === status;
+        var statusOk = !includeStatus || status === 'all' || rowStatus === status;
         // Server already scopes rows to the selected place; do not re-filter by
         // data-place (missing/stale attrs or pre-nav place flips hid Counter stock).
         var searchOk = !needle || score >= 0;
@@ -4894,6 +4951,10 @@
       }).filter(function (entry) { return entry.ok; });
       if (needle) ranked.sort(function (a, b) { return b.score - a.score; });
       return ranked.map(function (entry) { return entry.row; });
+    }
+
+    function matchedRows() {
+      return rankStockRows({ ignoreStatus: false });
     }
 
     function updateKpis(rows) {
@@ -4957,21 +5018,33 @@
       if (emptyEl) {
         var titleEl = document.getElementById('st-stock-empty-title');
         var copyEl = document.getElementById('st-stock-empty-copy');
+        var kpi = currentKpi(getPage());
         if (getPlace() === 'counter') {
           if (titleEl) titleEl.textContent = noMatch ? 'No counter stock match' : 'No counter stock';
           if (copyEl) {
             copyEl.textContent = noMatch
-              ? 'Try a different search or filter. Unused counter stock can be returned to Warehouse.'
+              ? (kpi === 'low' || kpi === 'out'
+                ? 'No products in this KPI group. Unused counter stock can be returned to Warehouse.'
+                : 'Try a different search or filter. Unused counter stock can be returned to Warehouse.')
               : 'Transfer items from Warehouse to Counter. Unused counter stock can be returned to Warehouse.';
           }
         } else {
-          if (titleEl) titleEl.textContent = 'No stock items match';
-          if (copyEl) copyEl.textContent = 'Try a different search or filter.';
+          if (titleEl) {
+            titleEl.textContent = (kpi === 'low' || kpi === 'out') && !needle && getCategory() === 'all'
+              ? 'No products in this KPI group'
+              : 'No stock items match';
+          }
+          if (copyEl) {
+            copyEl.textContent = (kpi === 'low' || kpi === 'out') && !needle && getCategory() === 'all'
+              ? 'Try another KPI or clear the status filter.'
+              : 'Try a different search or filter.';
+          }
         }
         emptyEl.hidden = !noMatch;
       }
       if (tableWrap) tableWrap.hidden = !!noMatch;
-      updateKpis(rows);
+      // KPI totals follow search/category (like audit DOM totals), not the active status KPI filter.
+      updateKpis(rankStockRows({ ignoreStatus: true }));
       syncStockExportLink();
       if (typeof window.stStockSyncTransferSelection === 'function') {
         window.stStockSyncTransferSelection();
@@ -4980,10 +5053,28 @@
 
     window.stStockApplyFilters = applyStockFilters;
     window.stStockCategoryChanged = function () { applyStockFilters(); };
-    window.stStockStatusChanged = function () { applyStockFilters(); };
+    window.stStockStatusChanged = function () {
+      var page = getPage();
+      if (page) {
+        page.setAttribute('data-kpi-filter', kpiFromStatus(getStatus()));
+        syncStockKpiSelection(page);
+      }
+      applyStockFilters();
+    };
     window.stStockSetStatusFilter = setStockStatusFilter;
 
-    if (searchInput.getAttribute('data-st-search-bound') !== '1') {
+    var page = getPage();
+    if (page && page.getAttribute('data-st-kpi-bound') !== '1') {
+      page.setAttribute('data-st-kpi-bound', '1');
+      page.addEventListener('click', function (event) {
+        var kpiCard = event.target.closest('.st-stock-kpi-row .st-stock-kpi[data-kpi]');
+        if (!kpiCard || !page.contains(kpiCard)) return;
+        event.preventDefault();
+        setStockKpiFilter(kpiCard.getAttribute('data-kpi') || 'items');
+      });
+    }
+
+    if (searchInput && searchInput.getAttribute('data-st-search-bound') !== '1') {
       searchInput.setAttribute('data-st-search-bound', '1');
       searchInput.addEventListener('input', function () { applyStockFilters(); });
       searchInput.addEventListener('keydown', function (e) {
@@ -4996,6 +5087,11 @@
       });
     }
 
+    if (page) {
+      // Keep KPI highlight in sync with the header status chip after soft-nav.
+      page.setAttribute('data-kpi-filter', kpiFromStatus(getStatus()));
+      syncStockKpiSelection(page);
+    }
     applyStockFilters();
   }
 
@@ -5519,7 +5615,11 @@
           var msg = (result.data && result.data.message)
             || ('Created ' + ((result.data && result.data.transfer_no) || 'transfer') + '. Receive under Stock Inward → Transfers.');
           try { sessionStorage.setItem('hbe.st.flash', JSON.stringify({ message: msg, category: 'ok' })); } catch (eFlash) {}
-          softRefreshStoresPaths(['/stores/stock', '/stores/purchase-requests', '/stores/inward']);
+          var pdfUrl = result.data && result.data.pdf_url;
+          if (pdfUrl) {
+            try { window.open(pdfUrl, '_blank', 'noopener'); } catch (ePdf) {}
+          }
+          softRefreshStoresPaths(['/stores/stock', '/stores/purchase-requests', '/stores/inward', '/stores/stock/transfers']);
         }).catch(function () {
           syncSubmitEnabled();
           showErr('Could not create transfer.');
@@ -5547,6 +5647,7 @@
     consumeStoresFlash();
     initStockSearch();
     if (typeof window.initStockAudit === 'function') window.initStockAudit();
+    if (typeof window.initStoresTransferLedgerPage === 'function') window.initStoresTransferLedgerPage();
     syncIndentLineTotals(document.getElementById('st-indent-form'));
     syncIndentSendButtons();
     document.querySelectorAll('.st-line.has-packs').forEach(function (line) {

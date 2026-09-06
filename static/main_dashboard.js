@@ -190,15 +190,21 @@
     if (!card) return;
     var mode = sortBy === 'revenue' ? 'revenue' : 'qty';
     var data = readDashboardData() || {};
-    var rows = mode === 'revenue'
-      ? (data.top_selling_items_by_revenue || data.top_selling_items || [])
-      : (data.top_selling_items || []);
-    var listEl = card.querySelector('[data-md-ti-list]');
-    var subtitle = card.querySelector('[data-md-ti-subtitle]');
-    renderTopSellingList(listEl, rows);
-    if (subtitle) {
-      subtitle.textContent = mode === 'revenue' ? 'By revenue' : 'By quantity sold';
+    var outlet = (card.getAttribute('data-md-ti-outlet') || 'restaurant').toLowerCase();
+    var qtyKey;
+    var revKey;
+    if (outlet === 'bar') {
+      qtyKey = 'top_selling_items_bar';
+      revKey = 'top_selling_items_bar_by_revenue';
+    } else {
+      qtyKey = 'top_selling_items_restaurant';
+      revKey = 'top_selling_items_restaurant_by_revenue';
     }
+    var rows = mode === 'revenue'
+      ? (data[revKey] || data[qtyKey] || data.top_selling_items_by_revenue || data.top_selling_items || [])
+      : (data[qtyKey] || data.top_selling_items || []);
+    var listEl = card.querySelector('[data-md-ti-list]');
+    renderTopSellingList(listEl, rows);
     card.querySelectorAll('[data-md-ti-sort]').forEach(function (btn) {
       var active = btn.getAttribute('data-md-ti-sort') === mode;
       btn.classList.toggle('is-active', active);
@@ -222,10 +228,11 @@
 
   function bindTopItemsSort(page) {
     ensureTopItemsSortDelegation();
-    var card = (page || document).querySelector('[data-md-top-items]');
-    if (!card) return;
-    var mode = card.getAttribute('data-md-ti-mode') || 'qty';
-    applyTopItemsSort(card, mode);
+    var root = page || document;
+    root.querySelectorAll('[data-md-top-items]').forEach(function (card) {
+      var mode = card.getAttribute('data-md-ti-mode') || 'qty';
+      applyTopItemsSort(card, mode);
+    });
   }
 
   function initMainDashboardFilters() {

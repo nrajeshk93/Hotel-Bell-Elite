@@ -2998,5 +2998,52 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(inv["cancel_reason"], "Guest cancelled")
 
 
+
+    def test_by_table_null_returns_local_should_drop(self):
+        res = self.client.get("/point-of-sale/api/invoices/by-table?table=T99-empty")
+        self.assertEqual(res.status_code, 200)
+        body = res.get_json()
+        self.assertTrue(body.get("ok"))
+        self.assertIsNone(body.get("invoice"))
+        self.assertTrue(body.get("localShouldDrop"))
+        self.assertEqual(body.get("reason"), "no_open_preinvoice")
+
+    def test_settle_clears_is_active(self):
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-Hardening-01", "T1", kot_send=True, customerBill=True),
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        invoice = saved.get_json()["invoice"]
+        invoice_id = invoice["id"]
+        total = float(invoice["grand_total"])
+        settle = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice_id}/settle",
+            json={
+                "payment_date": "2026-07-25",
+                "payment_splits": [{"payment_method": "cash", "amount": total}],
+            },
+        )
+        self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
+        conn = db_mod.get_db()
+        try:
+            row = conn.execute(
+                "SELECT is_active, status FROM pos_invoices WHERE id = ?",
+                (invoice_id,),
+            ).fetchone()
+            self.assertEqual(int(row["is_active"]), 0)
+            self.assertEqual(str(row["status"]).lower(), "closed")
+            self.assertIsNone(
+                db_mod.get_open_pos_invoice_for_table(
+                    conn, "T1", db_mod.POS_OUTLET_RESTAURANT
+                )
+            )
+            visible = db_mod.get_pos_invoice(conn, invoice_id)
+            self.assertIsNotNone(visible)
+            self.assertEqual(visible["status"], "closed")
+        finally:
+            conn.close()
+
+
 if __name__ == "__main__":
     unittest.main()

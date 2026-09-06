@@ -1,0 +1,141 @@
+{% set filters = transfer_ledger_filters|default({}) %}
+{% set selected_status = filters.status|default('all') %}
+{% set date_from = filters.date_from or '' %}
+{% set date_to = filters.date_to or '' %}
+{% set active_date_filter = date_from or date_to %}
+{% set status_options = transfer_status_options|default([
+  ('all', 'All statuses'),
+  ('pending', 'In progress'),
+  ('received', 'Completed'),
+  ('cancelled', 'Cancelled'),
+]) %}
+{% set status_label_ns = namespace(label='All statuses') %}
+{% for key, label in status_options %}
+  {% if key == selected_status %}
+    {% set status_label_ns.label = label %}
+  {% endif %}
+{% endfor %}
+
+<form id="st-transfer-ledger-filter-form"
+      method="get"
+      action="{{ url_for('stores_stock_transfers') }}"
+      class="sr-topbar-filters st-outlet-filter-form st-transfer-ledger-filter-form"
+      aria-label="Transfer ledger filters"
+      data-clear-url="{{ url_for('stores_stock_transfers', outlet=selected_outlet) }}">
+  <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox pl-header-field-listbox pl-header-field"
+       data-se-listbox
+       data-se-listbox-change="stTransferLedgerFilterChanged"
+       id="st-transfer-ledger-status-listbox">
+    <span class="se-filter-chip-label" id="st-transfer-ledger-status-label">Status</span>
+    <div class="se-filter-chip-control">
+      <input type="hidden" id="st-transfer-ledger-status" name="status" value="{{ selected_status }}">
+      <button type="button"
+              class="se-filter-chip-trigger"
+              id="st-transfer-ledger-status-trigger"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              aria-controls="st-transfer-ledger-status-list"
+              aria-labelledby="st-transfer-ledger-status-label st-transfer-ledger-status-value">
+        <span class="se-filter-chip-value" id="st-transfer-ledger-status-value">{{ status_label_ns.label }}</span>
+      </button>
+      <span class="se-filter-chip-chev" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </span>
+    </div>
+    <div class="se-filter-listbox" id="st-transfer-ledger-status-list" role="listbox" aria-labelledby="st-transfer-ledger-status-label" hidden>
+      {% for key, label in status_options %}
+      <button type="button"
+              class="se-filter-listbox-option{% if selected_status == key %} is-selected{% endif %}"
+              role="option"
+              data-value="{{ key }}"
+              data-name="{{ label|lower }}"
+              data-label="{{ label }}"
+              aria-selected="{{ 'true' if selected_status == key else 'false' }}">{{ label }}</button>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="se-filter-chip se-filter-chip--search pl-search-chip pl-header-field-listbox pl-header-field st-transfer-ledger-search-chip" id="st-transfer-ledger-search-chip">
+    <label class="se-filter-chip-label" for="st-transfer-ledger-search">Search</label>
+    <div class="se-filter-chip-control">
+      <input type="search" id="st-transfer-ledger-search" class="pl-search-input pl-header-search" placeholder="Transfer no…" autocomplete="off" aria-label="Search transfer number">
+    </div>
+  </div>
+
+  <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-outlet-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-change="stTransferLedgerFilterChanged" id="st-transfer-ledger-outlet-listbox">
+    <span class="se-filter-chip-label" id="st-transfer-ledger-outlet-label">Outlet</span>
+    <div class="se-filter-chip-control">
+      <input type="hidden" id="st-transfer-ledger-outlet" name="outlet" value="{{ selected_outlet }}">
+      <button type="button" class="se-filter-chip-trigger" id="st-transfer-ledger-outlet-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-transfer-ledger-outlet-list" aria-labelledby="st-transfer-ledger-outlet-label st-transfer-ledger-outlet-value">
+        <span class="se-filter-chip-value" id="st-transfer-ledger-outlet-value">{{ selected_outlet_label }}</span>
+      </button>
+      <span class="se-filter-chip-chev" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </span>
+    </div>
+    <div class="se-filter-listbox" id="st-transfer-ledger-outlet-list" role="listbox" aria-labelledby="st-transfer-ledger-outlet-label" hidden>
+      {% for outlet in stores_outlets %}
+      <button type="button" class="se-filter-listbox-option{% if selected_outlet == outlet.key %} is-selected{% endif %}" role="option" data-value="{{ outlet.key }}" data-name="{{ outlet.label|lower }}" data-label="{{ outlet.label }}" aria-selected="{{ 'true' if selected_outlet == outlet.key else 'false' }}">{{ outlet.label }}</button>
+      {% endfor %}
+    </div>
+  </div>
+
+  <input type="hidden" id="st-transfer-ledger-date-from" name="date_from" value="{{ date_from }}">
+  <input type="hidden" id="st-transfer-ledger-date-to" name="date_to" value="{{ date_to }}">
+  <div class="se-filter-chip-date-host pl-date-range-host pl-header-field" id="st-transfer-ledger-date-range-host">
+    <span class="se-filter-chip-label" id="st-transfer-ledger-date-range-label">Date</span>
+    <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range pl-header-field-listbox ep-form-listbox{% if active_date_filter %} is-filtered{% endif %}">
+      <div class="se-filter-chip-control">
+        <div class="an-range-wrap an-range-wrap--sales" id="st-transfer-ledger-date-range-wrap" data-max-date="{{ transfer_ledger_today_iso }}">
+          <button type="button" class="an-range-trigger se-filter-chip-trigger" id="st-transfer-ledger-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="st-transfer-ledger-date-range-panel" aria-labelledby="st-transfer-ledger-date-range-label st-transfer-ledger-date-range-display">
+            <span class="an-range-trigger-label">
+              <span id="st-transfer-ledger-date-range-display">{% if active_date_filter %}{{ date_from|report_date }}{% if date_to %} – {{ date_to|report_date }}{% endif %}{% else %}Select date…{% endif %}</span>
+            </span>
+          </button>
+          <div class="an-range-backdrop" id="st-transfer-ledger-date-range-backdrop" aria-hidden="true"></div>
+          <div class="an-range-panel" id="st-transfer-ledger-date-range-panel" role="dialog" aria-labelledby="st-transfer-ledger-date-range-panel-title" hidden>
+            <div class="an-range-panel-inner">
+              <div class="an-range-panel-h" id="st-transfer-ledger-date-range-panel-title">Date range</div>
+              <p class="an-range-hint">Click a start date, then an end date. Use arrows to change months.</p>
+              <div class="an-cal-dual">
+                <div class="an-cal-pane">
+                  <div class="an-cal-pane-hdr">
+                    <button type="button" class="an-cal-nav-btn" id="st-transfer-ledger-cal-prev" aria-label="Previous months">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
+                    <h4 class="an-cal-month-title" id="st-transfer-ledger-cal-title0">—</h4>
+                    <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                  </div>
+                  <div class="an-cal-dow" aria-hidden="true">
+                    <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                  </div>
+                  <div class="an-cal-grid" id="st-transfer-ledger-cal-grid0"></div>
+                </div>
+                <div class="an-cal-pane">
+                  <div class="an-cal-pane-hdr">
+                    <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                    <h4 class="an-cal-month-title" id="st-transfer-ledger-cal-title1">—</h4>
+                    <button type="button" class="an-cal-nav-btn" id="st-transfer-ledger-cal-next" aria-label="Next months">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                  </div>
+                  <div class="an-cal-dow" aria-hidden="true">
+                    <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                  </div>
+                  <div class="an-cal-grid" id="st-transfer-ledger-cal-grid1"></div>
+                </div>
+              </div>
+            </div>
+            <div class="an-range-actions">
+              <button type="button" class="btn" id="st-transfer-ledger-date-range-clear">Clear</button>
+              <button type="button" class="btn btn-primary" id="st-transfer-ledger-date-range-apply">Apply</button>
+            </div>
+          </div>
+        </div>
+        <span class="se-filter-chip-chev" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+        </span>
+      </div>
+    </div>
+  </div>
+</form>

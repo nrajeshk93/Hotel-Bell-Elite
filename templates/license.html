@@ -110,6 +110,10 @@
           <dt>Last Updated On</dt>
           <dd data-lic-updated>{{ license.updated_at_display }}</dd>
         </div>
+        <div class="lic-detail-row">
+          <dt>WhatsApp Message limit</dt>
+          <dd data-lic-wa-limit>{{ license.whatsapp_message_limit_display|default('0 / 1000') }}</dd>
+        </div>
       </dl>
     </article>
 

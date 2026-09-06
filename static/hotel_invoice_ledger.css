@@ -321,7 +321,7 @@ body.hotel-invoice-ledger-module #hotel-room-transfer-ledger-page .cp-status-pil
 }
 body.hotel-invoice-ledger-module .hil-ledger-table th.pl-col-actions,
 body.hotel-invoice-ledger-module .hil-ledger-table td.pl-col-actions{
-  min-width:148px;
+  min-width:176px;
   white-space:nowrap;
 }
 body.hotel-invoice-ledger-module .hil-ledger-table .pl-col-amount{
@@ -330,6 +330,26 @@ body.hotel-invoice-ledger-module .hil-ledger-table .pl-col-amount{
 body.su-module.hotel-invoice-ledger-module .pl-action-btns .act-btn.cancel:hover{
   color:#B91C1C;
   background:#FEF2F2;
+}
+
+body.su-module.hotel-invoice-ledger-module .pl-action-btns .act-btn.whatsapp{
+  color:#128C7E;
+}
+body.su-module.hotel-invoice-ledger-module .pl-action-btns .act-btn.whatsapp svg{
+  fill:currentColor;
+  stroke:none;
+  stroke-width:0;
+}
+body.su-module.hotel-invoice-ledger-module .pl-action-btns .act-btn.whatsapp:hover:not(:disabled):not(.is-disabled){
+  color:#075E54;
+  background:#ECFDF5;
+}
+body.su-module.hotel-invoice-ledger-module .pl-action-btns .act-btn.whatsapp:disabled,
+body.su-module.hotel-invoice-ledger-module .pl-action-btns .act-btn.whatsapp.is-disabled{
+  color:#94A3B8;
+  background:transparent;
+  cursor:not-allowed;
+  opacity:0.72;
 }
 body.hotel-invoice-ledger-module .cp-status-pill--cancelled{
   background:rgba(220,38,38,.1);

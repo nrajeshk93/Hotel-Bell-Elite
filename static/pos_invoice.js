@@ -2902,6 +2902,75 @@
     printCustomerBill(page, null, { autoPrint: false, skipAgent: true });
   }
 
+  function sendInvoiceWhatsApp(page) {
+    if (!state.invoiceGenerated) {
+      toast('Generate the invoice before sending on WhatsApp.');
+      return;
+    }
+    if (!state.invoiceId) {
+      toast('Sync required before WhatsApp send. Reconnect to the network.');
+      return;
+    }
+    if (!isBrowserOnline()) {
+      toast('WhatsApp send requires an internet connection.');
+      return;
+    }
+    var mobile = digitsOnly(fieldValue('pos-inv-customer-mobile', page), 10);
+    if (mobile.length !== 10) {
+      toast('Enter a valid 10-digit customer mobile before sending on WhatsApp.');
+      var mobileEl = $('#pos-inv-customer-mobile', page);
+      if (mobileEl) mobileEl.focus();
+      return;
+    }
+
+    var btn =
+      $('#pos-inv-send-whatsapp', page) ||
+      page.querySelector('[data-inv-action="send-whatsapp"]');
+    if (btn) btn.disabled = true;
+
+    fetch(INVOICE_API + '/' + encodeURIComponent(state.invoiceId) + '/send-whatsapp', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' }
+    })
+      .then(function (res) {
+        return res
+          .json()
+          .catch(function () {
+            return {};
+          })
+          .then(function (data) {
+            return { ok: res.ok && !!(data && data.ok), data: data || {}, status: res.status };
+          });
+      })
+      .then(function (result) {
+        if (result.ok) {
+          var dry = !!(result.data && result.data.dry_run);
+          toast(
+            dry
+              ? 'WhatsApp dry-run OK for ' +
+                  ((result.data && result.data.template_params && result.data.template_params[2]) ||
+                    state.orderNo) +
+                  '.'
+              : 'Invoice sent on WhatsApp to +91 ' + mobile + '.'
+          );
+          return;
+        }
+        var err =
+          (result.data && result.data.error) ||
+          (result.status === 400
+            ? 'Could not send on WhatsApp.'
+            : 'WhatsApp send failed.');
+        toast(err);
+      })
+      .catch(function () {
+        toast('WhatsApp send failed. Check your connection and try again.');
+      })
+      .then(function () {
+        updatePrintTools(page);
+      });
+  }
+
   function syncKotSentFromInvoice(invoice) {
     if (!invoice || !Array.isArray(invoice.lines)) return;
     invoice.lines.forEach(function (serverLine) {
@@ -3792,9 +3861,17 @@
           hydrateFromInvoice(page, data.invoice, { silent: !!opts.silent });
           return;
         }
-        /* Online miss: server has no open pre-invoice. Do not hydrate leftover
-           IndexedDB drafts that still carry a server invoiceId (ghost cart).
-           Purge those, then blank via notFound. True offline resumes stay on catch. */
+        /* Online miss / localShouldDrop: server has no open pre-invoice. Do not
+           hydrate leftover IndexedDB drafts that still carry a server invoiceId
+           (ghost cart). Purge those, then blank via notFound. True offline
+           resumes stay on catch. */
+        var shouldDrop =
+          !!(data && data.localShouldDrop) ||
+          !!(data && data.ok && !data.invoice);
+        if (!shouldDrop && data && data.ok === false) {
+          if (typeof opts.notFound === 'function') opts.notFound();
+          return null;
+        }
         return purgeLocalOrderDrafts(page, null, {
           table: name,
           onlyServerLinked: true
@@ -4049,6 +4126,16 @@
       } else {
         el.setAttribute('aria-disabled', 'true');
         el.title = 'Generate Invoice before printing';
+      }
+    });
+    page.querySelectorAll('[data-inv-action="send-whatsapp"]').forEach(function (el) {
+      el.disabled = !canPrint;
+      if (canPrint) {
+        el.removeAttribute('aria-disabled');
+        el.title = 'Send invoice to customer on WhatsApp';
+      } else {
+        el.setAttribute('aria-disabled', 'true');
+        el.title = 'Generate Invoice before sending on WhatsApp';
       }
     });
   }
@@ -5752,6 +5839,10 @@
       openToolbarPdfPage(page);
       return;
     }
+    if (action === 'send-whatsapp') {
+      sendInvoiceWhatsApp(page);
+      return;
+    }
     if (action === 'send') {
       sendToCustomer(page);
       return;
@@ -6504,6 +6595,9 @@
           toast('Dropped offline orders older than 7 days.');
         }
       }).catch(function () {});
+    }
+    if (offlineApiRef && typeof offlineApiRef.purgeLegacyServerDraftZombies === 'function') {
+      offlineApiRef.purgeLegacyServerDraftZombies().catch(function () {});
     }
     flushOfflineOutbox();
     registerInvoiceLeaveHooks();

@@ -43,6 +43,9 @@
     }
     setText(qs(root, '[data-lic-created]'), license.created_at_display);
     setText(qs(root, '[data-lic-updated]'), license.updated_at_display);
+    if (license.whatsapp_message_limit_display != null && license.whatsapp_message_limit_display !== '') {
+      setText(qs(root, '[data-lic-wa-limit]'), license.whatsapp_message_limit_display);
+    }
 
     var form = qs(root, '[data-lic-update-form]');
     if (form) {

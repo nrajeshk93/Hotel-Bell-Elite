@@ -71,6 +71,14 @@ STATUS_LABELS = {
     "cancelled": "Cancelled",
 }
 
+# Stock transfer document statuses (store_stock_transfers.status).
+TRANSFER_STATUS_LABELS = {
+    "pending": "In progress",
+    "received": "Completed",
+    "cancelled": "Cancelled",
+}
+TRANSFER_STATUS_KEYS = set(TRANSFER_STATUS_LABELS)
+
 INDENT_LIST_VIEWS = (
     ("draft", "Draft"),
     ("pending", "Pending Approval"),
@@ -163,6 +171,13 @@ PAGE_META = {
         "subtitle": "What is currently in the store for this outlet.",
         "step": "4 · Store",
         "list_endpoint": "stores_stock",
+        "cta": None,
+    },
+    "transfer_ledger": {
+        "title": "Transfer Ledger",
+        "subtitle": "All stock transfers — in progress, completed, and cancelled.",
+        "step": "4 · Store · Transfers",
+        "list_endpoint": "stores_stock_transfers",
         "cta": None,
     },
     "stock_audit": {
@@ -406,15 +421,88 @@ def _parse_stock_place(raw: str | None) -> str:
     return _normalize_stock_place(raw, default=STOCK_PLACE_WAREHOUSE)
 
 
-def _stock_qty_on_hand(conn, outlet: str, place: str, item_name: str, unit: str) -> float:
-    row = conn.execute(
+
+def _normalize_stock_item_name(name) -> str:
+    """Trim + collapse internal whitespace for stock identity."""
+    return re.sub(r"\s+", " ", str(name or "").strip())
+
+
+def _stock_unit_match_key(unit) -> str:
+    """Case/alias-insensitive unit key for stock row identity."""
+    return _normalize_pos_menu_unit(unit)
+
+
+def _stock_identity_keys(item_name, unit) -> tuple[str, str]:
+    return _normalize_stock_item_name(item_name).lower(), _stock_unit_match_key(unit)
+
+
+def _resolve_stock_product_identity(conn, outlet, item_name, unit) -> tuple[str, str]:
+    """Return canonical (item_name, unit) preferring Product Master.
+
+    Lookup is by normalized name + unit key. When a Product Master row matches
+    the outlet (or both) and unit family, use its name + default_unit so stock
+    stays linked to the master spelling (e.g. mL not ml).
+    """
+    name = _normalize_stock_item_name(item_name)
+    unit_raw = str(unit or "").strip() or "pcs"
+    if not name:
+        return name, unit_raw
+    name_key, unit_key = _stock_identity_keys(name, unit_raw)
+    outlet_key = _normalize_outlet_key(outlet)
+    rows = conn.execute(
         """
-        SELECT qty_on_hand FROM store_stock_items
-        WHERE outlet = ? AND place = ?
-          AND lower(item_name) = lower(?) AND lower(unit) = lower(?)
+        SELECT name, default_unit, outlet
+        FROM store_products
+        WHERE is_active = 1
+          AND lower(trim(name)) = ?
+        ORDER BY id
         """,
-        (outlet, place, item_name, unit),
-    ).fetchone()
+        (name_key,),
+    ).fetchall()
+    if not rows:
+        return name, unit_raw
+    candidates = [dict(r) for r in rows]
+    match = None
+    for preferred in (
+        lambda p: _normalize_outlet_key(p.get("outlet")) == outlet_key
+        and _stock_unit_match_key(p.get("default_unit")) == unit_key,
+        lambda p: _normalize_outlet_key(p.get("outlet")) == "both"
+        and _stock_unit_match_key(p.get("default_unit")) == unit_key,
+        lambda p: _normalize_outlet_key(p.get("outlet")) == outlet_key,
+        lambda p: _normalize_outlet_key(p.get("outlet")) == "both",
+        lambda p: _stock_unit_match_key(p.get("default_unit")) == unit_key,
+        lambda p: True,
+    ):
+        for cand in candidates:
+            if preferred(cand):
+                match = cand
+                break
+        if match:
+            break
+    if not match:
+        return name, unit_raw
+    canon_name = _normalize_stock_item_name(match.get("name")) or name
+    canon_unit = str(match.get("default_unit") or "").strip() or unit_raw
+    if _stock_unit_match_key(canon_unit) != unit_key:
+        canon_unit = unit_raw
+    return canon_name, canon_unit
+
+
+def _stock_qty_on_hand(conn, outlet: str, place: str, item_name: str, unit: str) -> float:
+    name_key, unit_key = _stock_identity_keys(item_name, unit)
+    rows = conn.execute(
+        """
+        SELECT qty_on_hand, item_name, unit FROM store_stock_items
+        WHERE outlet = ? AND place = ?
+        """,
+        (outlet, place),
+    ).fetchall()
+    row = None
+    for candidate in rows:
+        c_name, c_unit = _stock_identity_keys(candidate["item_name"], candidate["unit"])
+        if c_name == name_key and c_unit == unit_key:
+            row = candidate
+            break
     if row is None:
         return 0.0
     try:
@@ -602,6 +690,40 @@ def _next_indent_no(conn, outlet: str, when=None) -> str:
             continue
         max_n = max(max_n, int(match_old.group(2)))
     return f"IND/{outlet_code}/{short_fy}/{max_n + 1}"
+
+
+# Stock transfer: TRF-BAR-26-27-1 (outlet + short FY + seq). Legacy TRF-BAR-YYYYMMDD-001 ignored for seq.
+_TRF_FY_NO_RE = re.compile(
+    r"^TRF-([A-Z]{2,4})-(\d{2}-\d{2})-(\d+)$",
+    re.IGNORECASE,
+)
+
+
+def _next_transfer_no(conn, outlet: str, when=None) -> str:
+    """Allocate TRF-{OUTLET}-{YY-YY}-{n}, series per outlet + fiscal year from 1."""
+    outlet_key = _parse_outlet(outlet)
+    outlet_code = _indent_outlet_code(outlet_key)
+    short_fy = _short_fiscal_year_label(when)
+    rows = conn.execute(
+        """
+        SELECT transfer_no
+        FROM store_stock_transfers
+        WHERE upper(coalesce(transfer_no, '')) LIKE ?
+        """,
+        (f"TRF-{outlet_code}-%",),
+    ).fetchall()
+    max_n = 0
+    for row in rows:
+        text_no = str(row["transfer_no"] or "").strip()
+        match = _TRF_FY_NO_RE.match(text_no)
+        if not match:
+            continue
+        if match.group(1).upper() != outlet_code:
+            continue
+        if match.group(2) != short_fy:
+            continue
+        max_n = max(max_n, int(match.group(3)))
+    return f"TRF-{outlet_code}-{short_fy}-{max_n + 1}"
 
 
 def _parse_lines_from_form(form) -> list[dict[str, Any]]:
@@ -1552,14 +1674,22 @@ def _adjust_stock(
     if abs(qty_delta) < 0.0001:
         return 0.0
 
-    existing = conn.execute(
+    item_name, unit = _resolve_stock_product_identity(conn, outlet, item_name, unit)
+    name_key, unit_key = _stock_identity_keys(item_name, unit)
+    candidates = conn.execute(
         """
-        SELECT id, qty_on_hand FROM store_stock_items
+        SELECT id, qty_on_hand, item_name, unit FROM store_stock_items
         WHERE outlet = ? AND place = ?
-          AND lower(item_name) = lower(?) AND lower(unit) = lower(?)
+        ORDER BY id
         """,
-        (outlet, place, item_name, unit),
-    ).fetchone()
+        (outlet, place),
+    ).fetchall()
+    existing = None
+    for candidate in candidates:
+        c_name, c_unit = _stock_identity_keys(candidate["item_name"], candidate["unit"])
+        if c_name == name_key and c_unit == unit_key:
+            existing = candidate
+            break
     if existing:
         on_hand = float(existing["qty_on_hand"] or 0)
         new_qty = on_hand + qty_delta
@@ -7370,6 +7500,7 @@ def stores_purchase_requests():
     selected_transfer_lines: list[dict[str, Any]] = []
     transfer_receive_url = ""
     transfer_cancel_url = ""
+    transfer_pdf_url = ""
 
     conn = get_db()
     expense_categories = app_module.EXPENSE_CATEGORIES
@@ -7430,6 +7561,10 @@ def stores_purchase_requests():
                     )
                     transfer_cancel_url = url_for(
                         "stores_stock_transfer_cancel",
+                        transfer_id=int(detail["id"]),
+                    )
+                    transfer_pdf_url = url_for(
+                        "stores_stock_transfer_pdf",
                         transfer_id=int(detail["id"]),
                     )
                 else:
@@ -7594,6 +7729,7 @@ def stores_purchase_requests():
         selected_transfer_lines=selected_transfer_lines,
         transfer_receive_url=transfer_receive_url,
         transfer_cancel_url=transfer_cancel_url,
+        transfer_pdf_url=transfer_pdf_url,
         suppliers=suppliers,
         expense_categories=expense_categories,
         expense_payment_types=app_module.EXPENSE_PAYMENT_TYPES,
@@ -8776,6 +8912,7 @@ def stores_stock():
         "stores_stock_export", **_stock_export_filter_args(outlet, place=place)
     )
     transfer_url = url_for("stores_stock_transfer")
+    transfer_ledger_url = url_for("stores_stock_transfers", outlet=outlet)
     return _page_render(
         "stock",
         outlet=outlet,
@@ -8786,6 +8923,7 @@ def stores_stock():
         stock_has_inward_prices=has_inward_prices,
         stock_export_url=stock_export_url,
         stock_transfer_url=transfer_url,
+        transfer_ledger_url=transfer_ledger_url,
         stock_product_packs=stock_product_packs,
         movements=[dict(row) for row in movements],
     )
@@ -8969,13 +9107,17 @@ def _stock_transfer_direction_key(from_place: str, to_place: str) -> str:
 
 
 def _load_pending_stock_transfers(conn, outlet: str | None = None) -> list[dict[str, Any]]:
-    """Pending TRF docs for Stock Inward Transfers picker."""
+    """Pending TRF docs for Stock Inward Transfers picker (receiving outlet).
+
+    Warehouse → Bar Counter lists under Outlet Bar; Warehouse → Restaurant
+    Counter under Restaurant. Filter is ``to_outlet`` (destination), not source.
+    """
     outlet_key = _parse_outlet_filter(outlet) if outlet is not None else "both"
     params: list[Any] = ["pending"]
     outlet_sql = ""
     if outlet_key in OUTLET_KEYS:
-        outlet_sql = " AND (t.from_outlet = ? OR t.to_outlet = ?)"
-        params.extend([outlet_key, outlet_key])
+        outlet_sql = " AND t.to_outlet = ?"
+        params.append(outlet_key)
     rows = conn.execute(
         f"""
         SELECT t.*,
@@ -9176,9 +9318,7 @@ def stores_stock_transfer():
                         ),
                     }
                 ), 400
-        transfer_no = _next_doc_no(
-            conn, "store_stock_transfers", "transfer_no", "TRF", from_outlet
-        )
+        transfer_no = _next_transfer_no(conn, from_outlet)
         cur = conn.execute(
             """
             INSERT INTO store_stock_transfers
@@ -9230,6 +9370,7 @@ def stores_stock_transfer():
                 f"Created {transfer_no} with {len(lines)} items ({route}). "
                 "Receive it under Stock Inward → Transfers."
             )
+        pdf_url = url_for("stores_stock_transfer_pdf", transfer_id=transfer_id)
         return jsonify(
             {
                 "ok": True,
@@ -9244,6 +9385,7 @@ def stores_stock_transfer():
                 "from_place": from_place,
                 "to_place": to_place,
                 "count": len(lines),
+                "pdf_url": pdf_url,
                 "items": [
                     {
                         "outlet": line["outlet"],
@@ -9265,6 +9407,248 @@ def stores_stock_transfer():
         return jsonify({"ok": False, "error": "Could not create transfer."}), 500
     finally:
         conn.close()
+
+
+
+def _transfer_status_label(status: str | None) -> str:
+    key = str(status or "").strip().lower()
+    return TRANSFER_STATUS_LABELS.get(key, (status or "—").title() or "—")
+
+
+def _parse_transfer_ledger_status(raw: str | None) -> str:
+    key = str(raw or "").strip().lower()
+    if key in TRANSFER_STATUS_KEYS:
+        return key
+    return "all"
+
+
+def _parse_transfer_ledger_filters() -> dict[str, Any]:
+    outlet = _parse_outlet_filter(request.args.get("outlet"))
+    status = _parse_transfer_ledger_status(request.args.get("status"))
+    raw_from = str(request.args.get("date_from") or "").strip()
+    raw_to = str(request.args.get("date_to") or "").strip()
+    date_from = _parse_report_date(raw_from) if raw_from else None
+    date_to = _parse_report_date(raw_to) if raw_to else None
+    if date_from is None and date_to is not None:
+        date_from = date_to
+    if date_to is None and date_from is not None:
+        date_to = date.today()
+    if date_from and date_to and date_from > date_to:
+        date_from, date_to = date_to, date_from
+    q = str(request.args.get("q") or request.args.get("search") or "").strip()
+    return {
+        "outlet": outlet,
+        "status": status,
+        "date_from": date_from,
+        "date_to": date_to,
+        "q": q,
+    }
+
+
+def _user_display_name(conn, user_id: Any) -> str:
+    try:
+        uid = int(user_id or 0)
+    except (TypeError, ValueError):
+        uid = 0
+    if not uid:
+        return ""
+    row = conn.execute(
+        "SELECT full_name, username FROM users WHERE id = ?",
+        (uid,),
+    ).fetchone()
+    if not row:
+        return ""
+    return (
+        str(row["full_name"] or "").strip()
+        or str(row["username"] or "").strip()
+    )
+
+
+def _transfer_line_summary(lines: list[dict[str, Any]]) -> str:
+    if not lines:
+        return "No items"
+    parts: list[str] = []
+    for line in lines[:3]:
+        name = str(line.get("item_name") or "").strip() or "Item"
+        unit = str(line.get("unit") or "").strip()
+        try:
+            qty = float(line.get("qty_base") or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+        qty_s = f"{qty:g}"
+        parts.append(f"{name} {qty_s} {unit}".strip())
+    extra = len(lines) - 3
+    if extra > 0:
+        parts.append(f"+{extra} more")
+    return " · ".join(parts)
+
+
+def _load_stock_transfer_ledger(
+    conn,
+    *,
+    outlet: str = "both",
+    status: str = "all",
+    date_from: date | None = None,
+    date_to: date | None = None,
+    q: str = "",
+) -> list[dict[str, Any]]:
+    """All stock transfers for Transfer Ledger (pending / received / cancelled)."""
+    clauses: list[str] = ["1=1"]
+    params: list[Any] = []
+    outlet_key = _parse_outlet_filter(outlet)
+    if outlet_key in OUTLET_KEYS:
+        clauses.append("(t.from_outlet = ? OR t.to_outlet = ?)")
+        params.extend([outlet_key, outlet_key])
+    status_key = _parse_transfer_ledger_status(status)
+    if status_key in TRANSFER_STATUS_KEYS:
+        clauses.append("lower(coalesce(t.status, '')) = ?")
+        params.append(status_key)
+    if date_from is not None:
+        clauses.append("date(t.created_at) >= date(?)")
+        params.append(date_from.isoformat())
+    if date_to is not None:
+        clauses.append("date(t.created_at) <= date(?)")
+        params.append(date_to.isoformat())
+    needle = str(q or "").strip()
+    if needle:
+        clauses.append("lower(coalesce(t.transfer_no, '')) LIKE ?")
+        params.append(f"%{needle.lower()}%")
+    rows = conn.execute(
+        f"""
+        SELECT t.*,
+               (SELECT COUNT(*) FROM store_stock_transfer_lines l
+                 WHERE l.transfer_id = t.id) AS line_count,
+               (SELECT COALESCE(SUM(l.qty_base), 0) FROM store_stock_transfer_lines l
+                 WHERE l.transfer_id = t.id) AS total_qty
+        FROM store_stock_transfers t
+        WHERE {' AND '.join(clauses)}
+        ORDER BY t.created_at DESC, t.id DESC
+        LIMIT 500
+        """,
+        tuple(params),
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        transfer = dict(row)
+        transfer_id = int(transfer.get("id") or 0)
+        _, lines = _load_stock_transfer_detail(conn, transfer_id)
+        status_val = str(transfer.get("status") or "").strip().lower()
+        route_label = _stock_transfer_route_label(
+            transfer.get("from_outlet") or "",
+            transfer.get("from_place") or "",
+            transfer.get("to_outlet") or "",
+            transfer.get("to_place") or "",
+        )
+        created_by_name = _user_display_name(conn, transfer.get("created_by"))
+        received_by_name = _user_display_name(conn, transfer.get("received_by"))
+        cancelled_by_name = _user_display_name(conn, transfer.get("cancelled_by"))
+        pdf_url = url_for("stores_stock_transfer_pdf", transfer_id=transfer_id)
+        cancel_url = (
+            url_for("stores_stock_transfer_cancel", transfer_id=transfer_id)
+            if status_val == "pending"
+            else ""
+        )
+        line_summary = _transfer_line_summary(lines)
+        from_label = (
+            f"{_outlet_label(_normalize_outlet_key(transfer.get('from_outlet')))} "
+            f"{_stock_place_label(transfer.get('from_place'))}"
+        ).strip()
+        to_label = (
+            f"{_outlet_label(_normalize_outlet_key(transfer.get('to_outlet')))} "
+            f"{_stock_place_label(transfer.get('to_place'))}"
+        ).strip()
+        meta_bits: list[str] = []
+        if status_val == "received":
+            when = _format_stores_dt(transfer.get("received_at"))
+            who = received_by_name or "—"
+            meta_bits.append(f"Received {when}" if when else "Received")
+            meta_bits.append(f"by {who}")
+        elif status_val == "cancelled":
+            when = _format_stores_dt(transfer.get("cancelled_at"))
+            who = cancelled_by_name or "—"
+            meta_bits.append(f"Cancelled {when}" if when else "Cancelled")
+            meta_bits.append(f"by {who}")
+        search_blob = " ".join(
+            [
+                str(transfer.get("transfer_no") or ""),
+                route_label,
+                from_label,
+                to_label,
+                str(transfer.get("note") or ""),
+                created_by_name,
+                line_summary,
+                _transfer_status_label(status_val),
+            ]
+        ).lower()
+        out.append(
+            {
+                **transfer,
+                "status": status_val,
+                "status_label": _transfer_status_label(status_val),
+                "route_label": route_label,
+                "from_label": from_label,
+                "to_label": to_label,
+                "created_at_display": _format_stores_dt(transfer.get("created_at")),
+                "created_by_name": created_by_name,
+                "received_at_display": _format_stores_dt(transfer.get("received_at")),
+                "received_by_name": received_by_name,
+                "cancelled_at_display": _format_stores_dt(transfer.get("cancelled_at")),
+                "cancelled_by_name": cancelled_by_name,
+                "status_meta": " · ".join(meta_bits),
+                "line_count": int(transfer.get("line_count") or len(lines) or 0),
+                "total_qty": float(transfer.get("total_qty") or 0),
+                "line_summary": line_summary,
+                "lines": lines,
+                "pdf_url": pdf_url,
+                "cancel_url": cancel_url,
+                "can_cancel": status_val == "pending",
+                "search_text": search_blob,
+            }
+        )
+    return out
+
+
+@stores_bp.route("/stores/stock/transfers", methods=["GET"])
+def stores_stock_transfers():
+    """Transfer Ledger — all stock transfers with status / outlet / date filters."""
+    filters = _parse_transfer_ledger_filters()
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        transfers = _load_stock_transfer_ledger(
+            conn,
+            outlet=filters["outlet"],
+            status=filters["status"],
+            date_from=filters["date_from"],
+            date_to=filters["date_to"],
+            q=filters["q"],
+        )
+    finally:
+        conn.close()
+    date_from = filters["date_from"]
+    date_to = filters["date_to"]
+    return _page_render(
+        "transfer_ledger",
+        outlet=filters["outlet"],
+        de_nav_stores_view="stock",
+        back_href=url_for("stores_stock", outlet=filters["outlet"]),
+        back_label="Back to Store",
+        transfer_ledger_rows=transfers,
+        transfer_ledger_today_iso=date.today().isoformat(),
+        transfer_ledger_filters={
+            "status": filters["status"],
+            "date_from": date_from.isoformat() if date_from else "",
+            "date_to": date_to.isoformat() if date_to else "",
+            "q": filters["q"] or "",
+        },
+        transfer_status_options=(
+            ("all", "All statuses"),
+            ("pending", TRANSFER_STATUS_LABELS["pending"]),
+            ("received", TRANSFER_STATUS_LABELS["received"]),
+            ("cancelled", TRANSFER_STATUS_LABELS["cancelled"]),
+        ),
+        transfer_status_label=_transfer_status_label,
+    )
 
 
 @stores_bp.route("/stores/stock/transfers/<int:transfer_id>/receive", methods=["POST"])
@@ -9313,6 +9697,56 @@ def stores_stock_transfer_cancel(transfer_id: int):
         return jsonify({"ok": False, "error": "Could not cancel transfer."}), 500
     finally:
         conn.close()
+
+
+@stores_bp.route("/stores/stock/transfers/<int:transfer_id>/pdf", methods=["GET"])
+def stores_stock_transfer_pdf(transfer_id: int):
+    """Printable transfer slip PDF for handover / Inward verify."""
+    user = _get_user() if _get_user else None
+    if not user:
+        return jsonify({"ok": False, "error": "You must be logged in."}), 401
+    from stock_transfer_pdf import build_stock_transfer_pdf, transfer_pdf_filename
+
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        transfer, lines = _load_stock_transfer_detail(conn, int(transfer_id))
+        if not transfer:
+            return jsonify({"ok": False, "error": "Transfer not found."}), 404
+        created_by_name = ""
+        try:
+            uid = int(transfer.get("created_by") or 0)
+        except (TypeError, ValueError):
+            uid = 0
+        if uid:
+            row = conn.execute(
+                "SELECT full_name, username FROM users WHERE id = ?",
+                (uid,),
+            ).fetchone()
+            if row:
+                created_by_name = (
+                    str(row["full_name"] or "").strip()
+                    or str(row["username"] or "").strip()
+                )
+        pdf_bytes = build_stock_transfer_pdf(
+            transfer,
+            lines,
+            created_by_name=created_by_name,
+            route_label=str(transfer.get("route_label") or ""),
+        )
+        fname = transfer_pdf_filename(
+            str(transfer.get("transfer_no") or transfer_id),
+            transfer,
+        )
+    finally:
+        conn.close()
+
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=fname,
+    )
 
 
 STOCK_AUDIT_REASONS_NEGATIVE = (
@@ -9458,11 +9892,47 @@ def _audit_refresh_line_statuses(
 
 
 def _audit_concrete_outlet(outlet: str) -> str:
-    """Audits are per concrete outlet; All defaults to Restaurant."""
+    """Resolve a single operational outlet (never All).
+
+    Used by write paths / mobile when a concrete outlet is required.
+    UI filters keep All via ``_parse_outlet_filter`` instead.
+    """
     key = (outlet or "").strip().lower()
     if key in OUTLET_KEYS:
         return key
     return "restaurant"
+
+
+def _audit_filter_outlets(filter_outlet: str) -> tuple[str, ...]:
+    """Concrete outlets covered by a Stock Audit outlet filter."""
+    key = _parse_outlet_filter(filter_outlet)
+    if key in OUTLET_KEYS:
+        return (key,)
+    return tuple(item["key"] for item in STORES_OUTLETS)
+
+
+def _prepare_open_audit_for_outlet(
+    conn,
+    outlet: str,
+    user_id: int | None,
+    place: str,
+) -> tuple[dict[str, Any], list[dict[str, Any]], bool]:
+    """Ensure an open audit exists for outlet+place; refresh/sync lines; return lines."""
+    audit = _get_or_create_open_audit(conn, outlet, user_id, place)
+    changed = False
+    if _audit_refresh_line_statuses(conn, int(audit["id"]), outlet, place):
+        changed = True
+    if _sync_audit_lines_from_stock(conn, int(audit["id"]), outlet, place):
+        changed = True
+    lines = _load_audit_lines(conn, audit["id"])
+    if not lines:
+        _seed_audit_lines(conn, audit["id"], outlet, place)
+        changed = True
+        lines = _load_audit_lines(conn, audit["id"])
+    for line in lines:
+        line["outlet"] = outlet
+        line["outlet_label"] = _outlet_label(outlet)
+    return audit, lines, changed
 
 
 def _audit_week_label(when: datetime | None = None) -> str:
@@ -9564,15 +10034,16 @@ def _last_purchase_dates(
 ) -> dict[tuple[str, str], str]:
     if not lines:
         return {}
+    outlet_sql, outlet_params = _outlet_match_sql("outlet", outlet)
     rows = conn.execute(
-        """
+        f"""
         SELECT lower(item_name) AS name_key, lower(unit) AS unit_key,
                MAX(created_at) AS last_at
         FROM store_stock_movements
-        WHERE outlet = ? AND movement_type = 'receive' AND qty_delta > 0
+        WHERE {outlet_sql} AND movement_type = 'receive' AND qty_delta > 0
         GROUP BY lower(item_name), lower(unit)
         """,
-        (outlet,),
+        outlet_params,
     ).fetchall()
     return {
         ((row["name_key"] or "").strip(), (row["unit_key"] or "").strip()): row["last_at"]
@@ -9814,8 +10285,8 @@ def _serialize_audit_line(line: dict[str, Any]) -> dict[str, Any]:
 
 @stores_bp.route("/stores/stock-audit")
 def stores_stock_audit():
+    # Keep All (both) as the selected filter — do not coerce to Restaurant.
     filter_outlet = _parse_outlet_filter(request.args.get("outlet"))
-    outlet = _audit_concrete_outlet(filter_outlet)
     place = _parse_stock_place(request.args.get("place"))
     line_id_raw = request.args.get("line_id")
     try:
@@ -9824,28 +10295,32 @@ def stores_stock_audit():
         selected_line_id = None
     user = _get_user() if _get_user else None
     user_id = user.get("id") if user else None
+    outlets = _audit_filter_outlets(filter_outlet)
     conn = get_db()
     try:
         ensure_stores_schema(conn)
-        audit = _get_or_create_open_audit(conn, outlet, user_id, place)
+        audits: list[dict[str, Any]] = []
+        lines: list[dict[str, Any]] = []
         changed = False
-        if _audit_refresh_line_statuses(conn, int(audit["id"]), outlet, place):
-            changed = True
-        if _sync_audit_lines_from_stock(conn, int(audit["id"]), outlet, place):
-            changed = True
+        for concrete in outlets:
+            audit, outlet_lines, outlet_changed = _prepare_open_audit_for_outlet(
+                conn, concrete, user_id, place
+            )
+            audits.append(audit)
+            lines.extend(outlet_lines)
+            changed = changed or outlet_changed
         if changed:
             conn.commit()
-        lines = _load_audit_lines(conn, audit["id"])
-        if not lines:
-            _seed_audit_lines(conn, audit["id"], outlet, place)
-            conn.commit()
-            lines = _load_audit_lines(conn, audit["id"])
-        purchases = _last_purchase_dates(conn, outlet, lines)
+        purchases = _last_purchase_dates(conn, filter_outlet, lines)
+        outlet_sql, outlet_params = _outlet_match_sql("outlet", filter_outlet)
         stock_meta = {
             int(row["id"]): row["updated_at"]
             for row in conn.execute(
-                "SELECT id, updated_at FROM store_stock_items WHERE outlet = ? AND place = ?",
-                (outlet, place),
+                f"""
+                SELECT id, updated_at FROM store_stock_items
+                WHERE {outlet_sql} AND place = ?
+                """,
+                (*outlet_params, place),
             ).fetchall()
             if row["id"] is not None
         }
@@ -9859,6 +10334,13 @@ def stores_stock_audit():
             except (TypeError, ValueError):
                 sid_i = None
             line["stock_updated_at"] = stock_meta.get(sid_i, "") if sid_i else ""
+        # Stable queue order: outlet then original line id.
+        lines.sort(
+            key=lambda row: (
+                str(row.get("outlet") or ""),
+                int(row.get("id") or 0),
+            )
+        )
         kpis = _audit_kpis(lines)
         selected = None
         if selected_line_id:
@@ -9879,20 +10361,28 @@ def stores_stock_audit():
                 if int(line.get("id") or 0) == int(selected.get("id") or 0):
                     selected_index = idx
                     break
+        hist_sql, hist_params = _outlet_match_sql("a.outlet", filter_outlet)
         history = conn.execute(
-            """
+            f"""
             SELECT a.*, u.full_name AS started_by_name,
                    (SELECT COUNT(*) FROM store_stock_audit_lines l WHERE l.audit_id = a.id) AS line_count,
                    (SELECT COUNT(*) FROM store_stock_audit_lines l
                     WHERE l.audit_id = a.id AND l.status = 'verified') AS verified_count
             FROM store_stock_audits a
             LEFT JOIN users u ON u.id = a.started_by
-            WHERE a.outlet = ? AND a.place = ? AND a.status = 'completed'
+            WHERE {hist_sql} AND a.place = ? AND a.status = 'completed'
             ORDER BY a.completed_at DESC, a.id DESC
             LIMIT 20
             """,
-            (outlet, place),
+            (*hist_params, place),
         ).fetchall()
+        audit = audits[0] if len(audits) == 1 else {
+            "id": None,
+            "outlet": filter_outlet,
+            "place": place,
+            "status": "open",
+            "label": "All outlets",
+        }
     finally:
         conn.close()
     audit_categories = sorted(
@@ -9904,7 +10394,7 @@ def stores_stock_audit():
     )
     return _page_render(
         "stock_audit",
-        outlet=outlet,
+        outlet=filter_outlet,
         stock_place=place,
         audit=audit,
         audit_lines=lines,
@@ -10128,29 +10618,37 @@ def stock_audit_skip_action(conn, user, data) -> tuple[int, dict[str, Any]]:
 
 
 def stock_audit_history_payload(conn, outlet: str, place: str, limit: int = 50) -> dict[str, Any]:
-    """Completed audits for an outlet+place (JSON)."""
+    """Completed audits for an outlet filter+place (JSON). Supports All."""
     ensure_stores_schema(conn)
+    filter_outlet = _parse_outlet_filter(outlet)
+    outlet_sql, outlet_params = _outlet_match_sql("a.outlet", filter_outlet)
     rows = conn.execute(
-        """
+        f"""
         SELECT a.*, u.full_name AS started_by_name,
                (SELECT COUNT(*) FROM store_stock_audit_lines l WHERE l.audit_id = a.id) AS line_count,
                (SELECT COUNT(*) FROM store_stock_audit_lines l
                 WHERE l.audit_id = a.id AND l.status = 'verified') AS verified_count
         FROM store_stock_audits a
         LEFT JOIN users u ON u.id = a.started_by
-        WHERE a.outlet = ? AND a.place = ? AND a.status = 'completed'
+        WHERE {outlet_sql} AND a.place = ? AND a.status = 'completed'
         ORDER BY a.completed_at DESC, a.id DESC
         LIMIT ?
         """,
-        (outlet, place, int(limit)),
+        (*outlet_params, place, int(limit)),
     ).fetchall()
     history = []
     for row in rows:
         item = dict(row)
+        label = item.get("label") or ""
+        if filter_outlet == "both":
+            outlet_label = _outlet_label(item.get("outlet") or "")
+            if outlet_label:
+                label = f"{outlet_label} · {label}" if label else outlet_label
         history.append(
             {
                 "id": item.get("id"),
-                "label": item.get("label") or "",
+                "label": label,
+                "outlet": item.get("outlet") or "",
                 "started_at": item.get("started_at") or "",
                 "completed_at": item.get("completed_at") or "",
                 "started_by_name": item.get("started_by_name") or "",
@@ -10158,52 +10656,58 @@ def stock_audit_history_payload(conn, outlet: str, place: str, limit: int = 50) 
                 "verified_count": int(item.get("verified_count") or 0),
             }
         )
-    return {"ok": True, "outlet": outlet, "place": place, "history": history}
+    return {"ok": True, "outlet": filter_outlet, "place": place, "history": history}
 
 
 def stock_audit_new_action(conn, user, data) -> tuple[int, dict[str, Any]]:
-    """Complete the open audit (if any) and seed a new one. Shared by web + mobile."""
+    """Complete open audit(s) and seed new ones. Supports All (both outlets)."""
     if not user:
         return 401, {"ok": False, "error": "You must be logged in."}
     filter_outlet = _parse_outlet_filter(
         data.get("outlet") if data.get("outlet") is not None else None
     )
-    outlet = _audit_concrete_outlet(filter_outlet)
     place = _parse_stock_place(
         data.get("place") if data.get("place") is not None else None
     )
+    outlets = _audit_filter_outlets(filter_outlet)
     try:
         ensure_stores_schema(conn)
-        open_row = conn.execute(
-            """
-            SELECT id FROM store_stock_audits
-            WHERE outlet = ? AND place = ? AND status = 'open'
-            ORDER BY id DESC LIMIT 1
-            """,
-            (outlet, place),
-        ).fetchone()
-        if open_row:
-            conn.execute(
+        total_lines = 0
+        audit_ids: list[int] = []
+        for outlet in outlets:
+            open_row = conn.execute(
                 """
-                UPDATE store_stock_audits
-                SET status = 'completed', completed_at = ?
-                WHERE id = ?
+                SELECT id FROM store_stock_audits
+                WHERE outlet = ? AND place = ? AND status = 'open'
+                ORDER BY id DESC LIMIT 1
                 """,
-                (_now(), open_row["id"]),
-            )
-        audit = _get_or_create_open_audit(conn, outlet, user.get("id"), place)
-        if _sync_audit_lines_from_stock(conn, int(audit["id"]), outlet, place):
-            conn.commit()
-        lines = _load_audit_lines(conn, audit["id"])
-        if not lines:
-            _seed_audit_lines(conn, audit["id"], outlet, place)
-            conn.commit()
+                (outlet, place),
+            ).fetchone()
+            if open_row:
+                conn.execute(
+                    """
+                    UPDATE store_stock_audits
+                    SET status = 'completed', completed_at = ?
+                    WHERE id = ?
+                    """,
+                    (_now(), open_row["id"]),
+                )
+            audit = _get_or_create_open_audit(conn, outlet, user.get("id"), place)
+            if _sync_audit_lines_from_stock(conn, int(audit["id"]), outlet, place):
+                pass
             lines = _load_audit_lines(conn, audit["id"])
+            if not lines:
+                _seed_audit_lines(conn, audit["id"], outlet, place)
+                lines = _load_audit_lines(conn, audit["id"])
+            audit_ids.append(int(audit["id"]))
+            total_lines += len(lines)
+        conn.commit()
         return 200, {
             "ok": True,
-            "audit_id": audit["id"],
-            "line_count": len(lines),
-            "outlet": outlet,
+            "audit_id": audit_ids[0] if len(audit_ids) == 1 else None,
+            "audit_ids": audit_ids,
+            "line_count": total_lines,
+            "outlet": filter_outlet,
             "place": place,
         }
     except Exception as exc:
@@ -10239,13 +10743,12 @@ def stores_stock_audit_skip():
 @stores_bp.route("/stores/stock-audit/history")
 def stores_stock_audit_history():
     filter_outlet = _parse_outlet_filter(request.args.get("outlet"))
-    outlet = _audit_concrete_outlet(filter_outlet)
     place = _parse_stock_place(
         request.args.get("place") if request.args.get("place") is not None else None
     )
     conn = get_db()
     try:
-        payload = stock_audit_history_payload(conn, outlet, place, limit=50)
+        payload = stock_audit_history_payload(conn, filter_outlet, place, limit=50)
     finally:
         conn.close()
     return jsonify(payload)

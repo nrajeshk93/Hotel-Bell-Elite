@@ -1556,6 +1556,26 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;
   pointer-events:none;
 }
+.pos-inv-tool--whatsapp{
+  color:#128C7E;
+  border-color:#A7F3D0;
+}
+.pos-inv-tool--whatsapp:hover{
+  background:#ECFDF5;
+  border-color:#6EE7B7;
+  color:#075E54;
+}
+.pos-inv-tool--whatsapp svg{
+  width:16px;height:16px;
+  fill:currentColor;
+  stroke:none;
+}
+.pos-inv-tool--whatsapp:disabled,
+.pos-inv-tool--whatsapp[aria-disabled="true"]{
+  color:#94A3B8;
+  border-color:var(--pos-border);
+}
+
 .pos-inv-toolbar-primary{
   margin-left:auto;
   min-height:var(--pos-ctrl-h);
@@ -1993,7 +2013,7 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   display:block;
 }
 
-/* Generated invoice — cart locked until settle; print/PDF + pending KOT stay active */
+/* Generated invoice — cart locked until settle; print/PDF/WhatsApp + pending KOT stay active */
 .pos-invoice-page.is-invoice-generated .pos-inv-search-card,
 .pos-invoice-page.is-invoice-generated .pos-inv-lines-card,
 .pos-invoice-page.is-invoice-generated .pos-inv-toolbar{
@@ -2003,13 +2023,14 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
 .pos-invoice-page.is-invoice-generated .pos-inv-qty button,
 .pos-invoice-page.is-invoice-generated .pos-inv-del,
 .pos-invoice-page.is-invoice-generated .pos-inv-note-btn,
-.pos-invoice-page.is-invoice-generated .pos-inv-tool:not([data-inv-action="print"]):not([data-inv-action="pdf"]):not([data-hri-action="print"]):not([data-hri-action="pdf"]),
+.pos-invoice-page.is-invoice-generated .pos-inv-tool:not([data-inv-action="print"]):not([data-inv-action="pdf"]):not([data-inv-action="send-whatsapp"]):not([data-hri-action="print"]):not([data-hri-action="pdf"]),
 .pos-invoice-page.is-invoice-generated #pos-inv-more-btn{
   pointer-events:none;
   cursor:not-allowed;
 }
 .pos-invoice-page.is-invoice-generated .pos-inv-tool[data-inv-action="print"],
 .pos-invoice-page.is-invoice-generated .pos-inv-tool[data-inv-action="pdf"],
+.pos-invoice-page.is-invoice-generated .pos-inv-tool[data-inv-action="send-whatsapp"],
 .pos-invoice-page.is-invoice-generated .pos-inv-tool[data-hri-action="print"],
 .pos-invoice-page.is-invoice-generated .pos-inv-tool[data-hri-action="pdf"]{
   pointer-events:auto;

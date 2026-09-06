@@ -70,15 +70,16 @@ class InvoiceSalesKpisTests(unittest.TestCase):
         status="closed",
         payments=None,
         is_active=1,
+        customer_bill_sent=0,
     ):
         cur = self.conn.execute(
             """
             INSERT INTO pos_invoices
                (order_no, order_date, order_type, table_label, customer_name, customer_mobile,
                 captain, status, outlet, subtotal, discount_amount, gst_amount, service_amount,
-                tip, round_off, grand_total, saved_at, is_active)
+                tip, round_off, grand_total, saved_at, is_active, customer_bill_sent)
             VALUES (?, ?, 'dine_in', 'T1', 'Guest', '', '', ?, ?, ?, 0, 0, 0, 0, 0, ?,
-                    datetime('now'), ?)
+                    datetime('now'), ?, ?)
             """,
             (
                 order_no,
@@ -88,6 +89,7 @@ class InvoiceSalesKpisTests(unittest.TestCase):
                 float(grand_total),
                 float(grand_total),
                 int(is_active),
+                int(customer_bill_sent),
             ),
         )
         invoice_id = cur.lastrowid
@@ -102,7 +104,7 @@ class InvoiceSalesKpisTests(unittest.TestCase):
             )
         return invoice_id
 
-    def test_settled_ledger_only_excludes_unsettled(self):
+    def test_generated_ledger_includes_open_excludes_provisional(self):
         # Hotel open (unsettled payment) — still counts toward Hotel Total billed
         self._insert_hotel(
             invoice_number="HBE/RM/KPI/1",
@@ -110,7 +112,7 @@ class InvoiceSalesKpisTests(unittest.TestCase):
             total=1000.0,
             status="open",
         )
-        # Restaurant closed with UPI — digital (ledger settled)
+        # Restaurant closed with UPI — digital
         self._insert_pos(
             order_no="SPC/KPI/1",
             outlet=db_mod.POS_OUTLET_RESTAURANT,
@@ -119,14 +121,25 @@ class InvoiceSalesKpisTests(unittest.TestCase):
             status="closed",
             payments=[{"method": "upi", "amount": 500.0}],
         )
-        # Bar open unpaid — excluded from POS settled ledger
+        # Bar generated but unsettled — counts toward TOTAL SALES (Sales Update parity)
         self._insert_pos(
-            order_no="BEB/KPI/1",
+            order_no="INV/1977/2026-27",
             outlet=db_mod.POS_OUTLET_BAR,
             order_date="2026-05-01",
             grand_total=200.0,
             status="open",
             payments=[],
+            customer_bill_sent=1,
+        )
+        # Bar provisional draft — excluded
+        self._insert_pos(
+            order_no="INV/ABCDEF/26-27",
+            outlet=db_mod.POS_OUTLET_BAR,
+            order_date="2026-05-01",
+            grand_total=999.0,
+            status="open",
+            payments=[],
+            customer_bill_sent=0,
         )
         # Out of range — ignored
         self._insert_hotel(
@@ -150,13 +163,13 @@ class InvoiceSalesKpisTests(unittest.TestCase):
             self.conn, "2026-04-01", "2026-05-04"
         )
 
-        # Hotel open 1000 + restaurant settled 500; bar open excluded
-        self.assertEqual(kpis["actual_sales"], 1500.0)
+        # Hotel open 1000 + restaurant 500 + bar generated open 200
+        self.assertEqual(kpis["actual_sales"], 1700.0)
         self.assertEqual(kpis["digital_transactions"], 500.0)
         self.assertEqual(kpis["cash"], 0.0)
         self.assertEqual(kpis["room_credit"], 0.0)
-        # Hotel open has no tenders → difference gap 1000
-        self.assertEqual(kpis["difference"], 1000.0)
+        # Hotel open + bar open have no tenders → difference gap 1200
+        self.assertEqual(kpis["difference"], 1200.0)
 
     def test_cancelled_pos_excluded(self):
         self._insert_pos(

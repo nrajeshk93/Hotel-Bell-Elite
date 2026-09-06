@@ -193,12 +193,14 @@
             {% endif %}
           </div>
         </div>
-        <div class="rdx-spark" id="rdx-spark-{{ loop.index0 }}" aria-hidden="true"></div>
+        <div class="rdx-spark-ltr-mask" data-md-kpi-spark-mask style="--rdx-kpi-i: {{ loop.index0 }}">
+          <div class="rdx-spark" id="rdx-spark-{{ loop.index0 }}" aria-hidden="true"></div>
+        </div>
       </article>
       {% endfor %}
     </section>
 
-    <article class="rdx-card rdx-card-full rdx-sales-trend">
+    <article class="rdx-card rdx-card-full rdx-sales-trend" data-md-sales-trend>
       <div class="rdx-st-head">
         <div class="rdx-st-title-wrap">
           <h2 class="rdx-st-title">Sales trend</h2>
@@ -206,34 +208,36 @@
         </div>
       </div>
       <div class="rdx-st-stats">
-        <div class="rdx-st-stat">
+        <div class="rdx-st-stat" style="--rdx-st-i: 0">
           <div class="rdx-st-stat-label">Average daily sales</div>
-          <div class="rdx-st-stat-value">{{ dashboard.sales_trend.avg_daily_compact }}</div>
+          <div class="rdx-st-stat-value" data-value="{{ dashboard.sales_trend.avg_daily }}">{{ dashboard.sales_trend.avg_daily_compact }}</div>
         </div>
-        <div class="rdx-st-stat">
+        <div class="rdx-st-stat" style="--rdx-st-i: 1">
           <div class="rdx-st-stat-label">Best day</div>
           {% if dashboard.sales_trend.best_day %}
-          <div class="rdx-st-stat-value">{{ dashboard.sales_trend.best_day.value_compact }}</div>
+          <div class="rdx-st-stat-value" data-value="{{ dashboard.sales_trend.best_day.value }}">{{ dashboard.sales_trend.best_day.value_compact }}</div>
           <div class="rdx-st-stat-meta">{{ dashboard.sales_trend.best_day.label }}</div>
           {% else %}
           <div class="rdx-st-stat-value">—</div>
           {% endif %}
         </div>
-        <div class="rdx-st-stat">
+        <div class="rdx-st-stat" style="--rdx-st-i: 2">
           <div class="rdx-st-stat-label">Lowest day</div>
           {% if dashboard.sales_trend.lowest_day %}
-          <div class="rdx-st-stat-value">{{ dashboard.sales_trend.lowest_day.value_compact }}</div>
+          <div class="rdx-st-stat-value" data-value="{{ dashboard.sales_trend.lowest_day.value }}">{{ dashboard.sales_trend.lowest_day.value_compact }}</div>
           <div class="rdx-st-stat-meta">{{ dashboard.sales_trend.lowest_day.label }}</div>
           {% else %}
           <div class="rdx-st-stat-value">—</div>
           {% endif %}
         </div>
       </div>
-      <div class="rdx-chart rdx-chart-sales" id="rdx-chart-trend"></div>
+      <div class="rdx-chart-ltr-mask" data-md-st-chart-mask>
+        <div class="rdx-chart rdx-chart-sales" id="rdx-chart-trend"></div>
+      </div>
     </article>
 
     <div class="rdx-grid-2">
-      <article class="rdx-card rdx-co-leaderboard">
+      <article class="rdx-card rdx-co-leaderboard" data-md-co-leaderboard>
         <div class="rdx-co-head">
           <div class="rdx-co-title-wrap">
             <h2 class="rdx-co-title">
@@ -244,14 +248,14 @@
         </div>
         <div class="rdx-co-list">
           {% for row in dashboard.company_leaderboard %}
-          <div class="rdx-co-row">
+          <div class="rdx-co-row" style="--rdx-co-i: {{ loop.index0 }}">
             <div class="rdx-co-row-top">
               <span class="rdx-co-rank">{{ row.rank }}</span>
               <span class="rdx-co-name">{{ row.label }}</span>
               <span class="rdx-co-sales">{{ row.sales_compact }}</span>
             </div>
             <div class="rdx-co-bar" aria-hidden="true">
-              <div class="rdx-co-bar-fill" style="width: {{ row.share_pct }}%"></div>
+              <div class="rdx-co-bar-fill" data-md-co-bar-fill data-width="{{ row.share_pct }}" style="width: 0%"></div>
             </div>
             <div class="rdx-co-row-meta">
               <span class="rdx-co-share">{{ row.share_pct }}%</span>
@@ -266,12 +270,8 @@
           <p class="rdx-co-empty">No settled outlet sales in this period.</p>
           {% endfor %}
         </div>
-        <div class="rdx-co-foot">
-          <span>% = Contribution</span>
-          <span>▲▼ = Growth vs previous period</span>
-        </div>
       </article>
-      <article class="rdx-card rdx-sales-contrib">
+      <article class="rdx-card rdx-sales-contrib" data-md-sales-contrib>
         <div class="rdx-sc-head">
           <h2 class="rdx-sc-title">Sales contribution</h2>
           <p class="rdx-sc-subtitle">Contribution by sales</p>
@@ -286,7 +286,7 @@
           </div>
           <div class="rdx-sc-list">
             {% for item in dashboard.sales_contribution.entries %}
-            <div class="rdx-sc-row">
+            <div class="rdx-sc-row" style="--rdx-sc-i: {{ loop.index0 }}">
               <div class="rdx-sc-row-top">
                 <span class="rdx-sc-dot" style="background: {{ item.color }}"></span>
                 <span class="rdx-sc-name">{{ item.name }}</span>
@@ -308,7 +308,7 @@
       </article>
     </div>
 
-    <article class="rdx-card rdx-card-full rdx-payment-mode">
+    <article class="rdx-card rdx-card-full rdx-payment-mode" data-md-payment-mode>
       <h2 class="rdx-pm-title">Payment mode analysis</h2>
       <div class="rdx-pm-body">
         <div class="rdx-pm-chart-col">
@@ -316,21 +316,23 @@
             <span class="rdx-pm-legend-item rdx-pm-legend-digital"><span class="rdx-pm-swatch"></span>Digital (%)</span>
             <span class="rdx-pm-legend-item rdx-pm-legend-cash"><span class="rdx-pm-swatch"></span>Cash (%)</span>
           </div>
-          <div class="rdx-pm-chart" id="rdx-chart-digital-cash"></div>
+          <div class="rdx-chart-ltr-mask" data-md-pm-chart-mask>
+            <div class="rdx-pm-chart" id="rdx-chart-digital-cash"></div>
+          </div>
         </div>
         <div class="rdx-pm-kpis">
-          <div class="rdx-pm-kpi rdx-pm-kpi-digital">
+          <div class="rdx-pm-kpi rdx-pm-kpi-digital" style="--rdx-pm-i: 0">
             <div class="rdx-pm-kpi-label">Digital</div>
-            <div class="rdx-pm-kpi-value">{{ dashboard.payment_mode.digital_pct }}%</div>
+            <div class="rdx-pm-kpi-value" data-md-pm-value data-value="{{ dashboard.payment_mode.digital_pct }}">{{ dashboard.payment_mode.digital_pct }}%</div>
             {% if dashboard.payment_mode.digital_trend != 0 %}
             <div class="rdx-pm-kpi-trend {% if dashboard.payment_mode.digital_trend > 0 %}up{% else %}down{% endif %}">
               {% if dashboard.payment_mode.digital_trend > 0 %}▲{% else %}▼{% endif %} {{ dashboard.payment_mode.digital_trend | abs }}%
             </div>
             {% endif %}
           </div>
-          <div class="rdx-pm-kpi rdx-pm-kpi-cash">
+          <div class="rdx-pm-kpi rdx-pm-kpi-cash" style="--rdx-pm-i: 1">
             <div class="rdx-pm-kpi-label">Cash</div>
-            <div class="rdx-pm-kpi-value">{{ dashboard.payment_mode.cash_pct }}%</div>
+            <div class="rdx-pm-kpi-value" data-md-pm-value data-value="{{ dashboard.payment_mode.cash_pct }}">{{ dashboard.payment_mode.cash_pct }}%</div>
             {% if dashboard.payment_mode.cash_trend != 0 %}
             <div class="rdx-pm-kpi-trend {% if dashboard.payment_mode.cash_trend > 0 %}up{% else %}down{% endif %}">
               {% if dashboard.payment_mode.cash_trend > 0 %}▲{% else %}▼{% endif %} {{ dashboard.payment_mode.cash_trend | abs }}%
@@ -342,11 +344,37 @@
     </article>
 
     <div class="rdx-grid-2 rdx-grid-dow-top">
-      <article class="rdx-card rdx-dow-card">
-        <div class="rdx-card-head"><div><h2>Day of week</h2><p>Average settled sales by weekday</p></div></div>
-        <div class="rdx-chart rdx-chart-sm" id="rdx-chart-dow"></div>
+      <article class="rdx-card rdx-top-items" data-md-top-items data-md-ti-outlet="restaurant">
+        <div class="rdx-card-head">
+          <div>
+            <h2>Top Selling Items — Restaurant</h2>
+          </div>
+          <div class="rdx-ti-sort" role="group" aria-label="Rank restaurant top items by">
+            <button type="button" class="rdx-ti-sort-btn is-active" data-md-ti-sort="qty" aria-pressed="true">Quantity</button>
+            <button type="button" class="rdx-ti-sort-btn" data-md-ti-sort="revenue" aria-pressed="false">Revenue</button>
+          </div>
+        </div>
+        <div class="rdx-ti-cols" aria-hidden="true">
+          <span class="rdx-ti-col rdx-ti-col--name">Product Name</span>
+          <span class="rdx-ti-col rdx-ti-col--qty">Quantity sold</span>
+          <span class="rdx-ti-col rdx-ti-col--price">Price</span>
+        </div>
+        <div class="rdx-ti-list" data-md-ti-list>
+          {% for row in dashboard.top_selling_items_restaurant %}
+          <div class="rdx-ti-row">
+            <div class="rdx-ti-product">
+              <span class="rdx-ti-rank">{{ row.rank }}</span>
+              <span class="rdx-ti-name">{{ row.name }}</span>
+            </div>
+            <span class="rdx-ti-qty">{{ row.qty_display }}</span>
+            <span class="rdx-ti-sale" title="Total sales {{ row.sale_value_compact }}">{{ row.sale_value_compact }}</span>
+          </div>
+          {% else %}
+          <p class="rdx-ti-empty">No menu sales in this period.</p>
+          {% endfor %}
+        </div>
       </article>
-      <article class="rdx-card rdx-sales-heatmap-card">
+      <article class="rdx-card rdx-sales-heatmap-card" data-md-sales-heatmap>
         <div class="rdx-card-head"><div><h2>Sales heatmap (daily)</h2><p>Daily intensity across weeks</p></div></div>
         <div class="rdx-heatmap-scroll">
           <div class="rdx-heatmap" id="rdx-sales-heatmap" aria-label="Daily sales heatmap"></div>
@@ -358,13 +386,12 @@
         </div>
         <div class="rdx-heatmap-tooltip" id="rdx-heatmap-tooltip" role="tooltip" hidden></div>
       </article>
-      <article class="rdx-card rdx-top-items" data-md-top-items>
+      <article class="rdx-card rdx-top-items" data-md-top-items data-md-ti-outlet="bar">
         <div class="rdx-card-head">
           <div>
-            <h2>Top Selling Items</h2>
-            <p data-md-ti-subtitle>By quantity sold</p>
+            <h2>Top Selling Items — Bar</h2>
           </div>
-          <div class="rdx-ti-sort" role="group" aria-label="Rank top items by">
+          <div class="rdx-ti-sort" role="group" aria-label="Rank bar top items by">
             <button type="button" class="rdx-ti-sort-btn is-active" data-md-ti-sort="qty" aria-pressed="true">Quantity</button>
             <button type="button" class="rdx-ti-sort-btn" data-md-ti-sort="revenue" aria-pressed="false">Revenue</button>
           </div>
@@ -375,7 +402,7 @@
           <span class="rdx-ti-col rdx-ti-col--price">Price</span>
         </div>
         <div class="rdx-ti-list" data-md-ti-list>
-          {% for row in dashboard.top_selling_items %}
+          {% for row in dashboard.top_selling_items_bar %}
           <div class="rdx-ti-row">
             <div class="rdx-ti-product">
               <span class="rdx-ti-rank">{{ row.rank }}</span>

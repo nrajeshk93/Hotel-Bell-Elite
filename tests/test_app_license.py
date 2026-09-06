@@ -109,12 +109,15 @@ class AppLicenseTests(unittest.TestCase):
 
     def test_admin_can_view_license_page_and_nav(self):
         self._user = self.admin
-        page = self.client.get("/license")
+        with mock.patch.dict(os.environ, {"WHATSAPP_MESSAGE_LIMIT": "1000"}, clear=False):
+            page = self.client.get("/license")
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
         self.assertIn('id="license-page"', html)
         self.assertIn("License Status", html)
         self.assertIn("License Details", html)
+        self.assertIn("WhatsApp Message limit", html)
+        self.assertIn("0 / 1000", html)
         self.assertNotIn("Update license", html)
         self.assertIn("de-nav-license-group", html)
         self.assertIn("Hotel Bell Elite", html)

@@ -144,6 +144,83 @@
     window.alert(msg);
   }
 
+  function digitsOnly(value, maxLen) {
+    var digits = String(value == null ? '' : value).replace(/\D+/g, '');
+    if (maxLen && digits.length > maxLen) digits = digits.slice(0, maxLen);
+    return digits;
+  }
+
+  function sendInvoiceWhatsApp(btn) {
+    if (!btn || btn.disabled) return;
+    var invoiceId = String(btn.getAttribute('data-invoice-id') || '').trim();
+    if (!invoiceId || invoiceId.indexOf('local-') === 0) {
+      toast('Sync required before WhatsApp send. Reconnect to the network.');
+      return;
+    }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      toast('WhatsApp send requires an internet connection.');
+      return;
+    }
+    var mobile = digitsOnly(btn.getAttribute('data-customer-mobile') || '', 10);
+    if (mobile.length !== 10) {
+      toast('Enter a valid 10-digit customer mobile on the invoice before sending on WhatsApp.');
+      return;
+    }
+
+    preserveFullscreenGesture();
+    btn.disabled = true;
+    fetch(
+      resolvePosApiBase() +
+        '/api/invoices/' +
+        encodeURIComponent(invoiceId) +
+        '/send-whatsapp',
+      {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: apiHeaders()
+      }
+    )
+      .then(function (res) {
+        return res
+          .json()
+          .catch(function () {
+            return {};
+          })
+          .then(function (data) {
+            return { ok: res.ok && !!(data && data.ok), data: data || {}, status: res.status };
+          });
+      })
+      .then(function (result) {
+        if (result.ok) {
+          var dry = !!(result.data && result.data.dry_run);
+          var orderNo =
+            (result.data &&
+              result.data.template_params &&
+              result.data.template_params[2]) ||
+            btn.getAttribute('data-order-no') ||
+            invoiceId;
+          toast(
+            dry
+              ? 'WhatsApp dry-run OK for ' + orderNo + '.'
+              : 'Invoice sent on WhatsApp to +91 ' + mobile + '.'
+          );
+          return;
+        }
+        var err =
+          (result.data && result.data.error) ||
+          (result.status === 400
+            ? 'Could not send on WhatsApp.'
+            : 'WhatsApp send failed.');
+        toast(err);
+      })
+      .catch(function () {
+        toast('WhatsApp send failed. Check your connection and try again.');
+      })
+      .then(function () {
+        btn.disabled = false;
+      });
+  }
+
   function formatAmounts(root) {
     $all('.pl-amount[data-amount]', root).forEach(function (el) {
       if (typeof global.formatAmountNode === 'function') {
@@ -1029,10 +1106,18 @@
         openVoidInvoiceModal(voidBtn);
         return;
       }
+      var whatsappBtn = ev.target.closest('.pos-il-whatsapp-btn');
+      if (whatsappBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (whatsappBtn.disabled) return;
+        sendInvoiceWhatsApp(whatsappBtn);
+        return;
+      }
 
       if (
         ev.target.closest(
-          '.pos-il-view-btn, .pos-il-edit-btn, .pos-il-resettle-btn, .pos-il-delete-btn, .pos-il-cancel-btn, .pos-il-local-open-btn, .pos-il-local-discard-btn'
+          '.pos-il-view-btn, .pos-il-edit-btn, .pos-il-resettle-btn, .pos-il-delete-btn, .pos-il-cancel-btn, .pos-il-whatsapp-btn, .pos-il-local-open-btn, .pos-il-local-discard-btn'
         )
       ) {
         return;
@@ -1642,6 +1727,11 @@
     if (!btn) return false;
     preserveFullscreenGesture();
     openVoidInvoiceModal(btn);
+    return false;
+  };
+  global.posIlWhatsAppClick = function (btn) {
+    if (!btn) return false;
+    sendInvoiceWhatsApp(btn);
     return false;
   };
 

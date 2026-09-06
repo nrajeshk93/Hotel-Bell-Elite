@@ -490,9 +490,51 @@ body.su-module #pos-invoice-ledger-page .pl-date-range-host .se-filter-chip.is-f
   font-size: 1rem;
 }
 
-body.su-module .pl-action-btns .act-btn.cancel:hover{
+/* Resting brand colors — match WhatsApp icon treatment (not gray until hover). */
+body.su-module .pl-action-btns .act-btn.pos-il-view-btn{
+  color:#2563EB;
+}
+body.su-module .pl-action-btns .act-btn.pos-il-view-btn:hover{
+  color:#1D4ED8;
+  background:#EFF6FF;
+}
+
+body.su-module .pl-action-btns .act-btn.pos-il-edit-btn,
+body.su-module .pl-action-btns .act-btn.pos-il-resettle-btn{
+  color:#1877F2;
+}
+body.su-module .pl-action-btns .act-btn.pos-il-edit-btn:hover,
+body.su-module .pl-action-btns .act-btn.pos-il-resettle-btn:hover{
+  color:#0B5FCC;
+  background:#EEF5FF;
+}
+
+body.su-module .pl-action-btns .act-btn.cancel,
+body.su-module .pl-action-btns .act-btn.del{
+  color:#DC2626;
+}
+body.su-module .pl-action-btns .act-btn.cancel:hover,
+body.su-module .pl-action-btns .act-btn.del:hover{
   color:#B91C1C;
   background:#FEF2F2;
+}
+
+body.su-module .pl-action-btns .act-btn.whatsapp{
+  color:#128C7E;
+}
+body.su-module .pl-action-btns .act-btn.whatsapp svg{
+  fill:currentColor;
+  stroke:none;
+  stroke-width:0;
+}
+body.su-module .pl-action-btns .act-btn.whatsapp:hover{
+  color:#075E54;
+  background:#ECFDF5;
+}
+body.su-module .pl-action-btns .act-btn.whatsapp:disabled,
+body.su-module .pl-action-btns .act-btn.whatsapp.is-disabled{
+  color:#94A3B8;
+  background:transparent;
 }
 
 .pos-il-void-modal[hidden]{display:none !important}

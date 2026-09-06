@@ -1,0 +1,305 @@
+<script>
+(function () {
+  function submitTransferLedgerFilters() {
+    var form = document.getElementById('st-transfer-ledger-filter-form');
+    if (!form) return;
+    var dateFrom = document.getElementById('st-transfer-ledger-date-from');
+    var dateTo = document.getElementById('st-transfer-ledger-date-to');
+    if (dateFrom && !dateFrom.value) dateFrom.removeAttribute('name');
+    if (dateTo && !dateTo.value) dateTo.removeAttribute('name');
+    var status = document.getElementById('st-transfer-ledger-status');
+    if (status && String(status.value || '').toLowerCase() === 'all') status.removeAttribute('name');
+    form.submit();
+  }
+
+  window.stTransferLedgerFilterChanged = function () {
+    submitTransferLedgerFilters();
+  };
+
+
+  function initTransferLedgerSearch() {
+    var searchInput = document.getElementById('st-transfer-ledger-search');
+    if (!searchInput || searchInput.getAttribute('data-bound') === '1') return;
+    searchInput.setAttribute('data-bound', '1');
+    var searchChip = searchInput.closest('.pl-search-chip');
+    var countEl = document.getElementById('st-transfer-ledger-count');
+    var emptyEl = document.getElementById('st-transfer-ledger-search-empty');
+
+    function applySearch() {
+      var needle = String(searchInput.value || '').trim();
+      if (searchChip) searchChip.classList.toggle('is-active', !!needle);
+      var rows = Array.prototype.slice.call(
+        document.querySelectorAll('.st-transfer-ledger-table tbody tr.st-transfer-ledger-row')
+      );
+      var visible = 0;
+      if (!needle) {
+        rows.forEach(function (row) { row.hidden = false; visible += 1; });
+      } else {
+        var ranked = rows.map(function (row) {
+          var fields = [
+            row.getAttribute('data-transfer-no') || '',
+            row.getAttribute('data-search') || row.textContent || ''
+          ];
+          var score = typeof window.hbeBestSearchScore === 'function'
+            ? window.hbeBestSearchScore(fields, needle)
+            : (String(fields.join(' ')).toLowerCase().indexOf(needle.toLowerCase()) >= 0 ? 1 : -1);
+          return { row: row, score: score };
+        }).sort(function (a, b) { return b.score - a.score; });
+        ranked.forEach(function (entry) {
+          var match = entry.score >= 0;
+          entry.row.hidden = !match;
+          if (match) {
+            visible += 1;
+            if (entry.row.parentNode) entry.row.parentNode.appendChild(entry.row);
+          }
+        });
+      }
+      if (countEl) {
+        countEl.textContent = visible + ' transfer' + (visible === 1 ? '' : 's');
+      }
+      if (emptyEl) emptyEl.hidden = visible > 0 || !rows.length;
+    }
+
+    searchInput.addEventListener('input', applySearch);
+    searchInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        searchInput.value = '';
+        applySearch();
+        searchInput.blur();
+      }
+      if (e.key === 'Enter') e.preventDefault();
+    });
+    applySearch();
+  }
+
+  function initTransferLedgerDateRange() {
+    var form = document.getElementById('st-transfer-ledger-filter-form');
+    if (!form) return;
+    var dateFrom = document.getElementById('st-transfer-ledger-date-from');
+    var dateTo = document.getElementById('st-transfer-ledger-date-to');
+    if (window.SalesDateRangePicker) {
+      SalesDateRangePicker.init({
+        wrapId: 'st-transfer-ledger-date-range-wrap',
+        triggerId: 'st-transfer-ledger-date-range-trigger',
+        backdropId: 'st-transfer-ledger-date-range-backdrop',
+        panelId: 'st-transfer-ledger-date-range-panel',
+        displayId: 'st-transfer-ledger-date-range-display',
+        formId: 'st-transfer-ledger-filter-form',
+        fromInputId: 'st-transfer-ledger-date-from',
+        toInputId: 'st-transfer-ledger-date-to',
+        applyId: 'st-transfer-ledger-date-range-apply',
+        prevId: 'st-transfer-ledger-cal-prev',
+        nextId: 'st-transfer-ledger-cal-next',
+        title0Id: 'st-transfer-ledger-cal-title0',
+        title1Id: 'st-transfer-ledger-cal-title1',
+        grid0Id: 'st-transfer-ledger-cal-grid0',
+        grid1Id: 'st-transfer-ledger-cal-grid1',
+        emptyLabel: 'Select date…',
+        onBeforeSubmit: function () {
+          if (dateFrom && !dateFrom.value) dateFrom.removeAttribute('name');
+          if (dateTo && !dateTo.value) dateTo.removeAttribute('name');
+          var status = document.getElementById('st-transfer-ledger-status');
+          if (status && String(status.value || '').toLowerCase() === 'all') status.removeAttribute('name');
+        }
+      });
+    }
+    var clearBtn = document.getElementById('st-transfer-ledger-date-range-clear');
+    if (clearBtn && clearBtn.getAttribute('data-bound') !== '1') {
+      clearBtn.setAttribute('data-bound', '1');
+      clearBtn.addEventListener('click', function () {
+        if (dateFrom) dateFrom.value = '';
+        if (dateTo) dateTo.value = '';
+        submitTransferLedgerFilters();
+      });
+    }
+  }
+
+  function mountTlPdfModal(modal) {
+    if (!modal) return;
+    /* Prefer fullscreen app host (same as hotel hri-preview), else main wrapper. */
+    var host =
+      document.getElementById('de-fs-app') ||
+      document.querySelector('.main-wrapper') ||
+      document.body;
+    if (host && modal.parentElement !== host) host.appendChild(modal);
+  }
+
+  function isTlPdfModalOpen(modal) {
+    return !!(modal && !modal.hidden && modal.getAttribute('aria-hidden') !== 'true');
+  }
+
+  function closeTlPdfModal() {
+    var modal = document.getElementById('st-tl-pdf-modal');
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute('hidden', '');
+    modal.setAttribute('aria-hidden', 'true');
+    modal.classList.remove('open');
+    var frame = document.getElementById('st-tl-pdf-frame');
+    if (frame) frame.src = 'about:blank';
+  }
+
+  function printTlPdfUrl(pdfUrl) {
+    if (!pdfUrl) return;
+    var frame = document.getElementById('st-tl-pdf-frame');
+    if (frame && frame.src && frame.src.indexOf('about:blank') < 0) {
+      try {
+        if (frame.contentWindow) {
+          frame.contentWindow.focus();
+          frame.contentWindow.print();
+          return;
+        }
+      } catch (eFrame) {}
+    }
+    var w = window.open(pdfUrl, '_blank', 'noopener');
+    if (w) {
+      try {
+        w.addEventListener('load', function () {
+          try { w.focus(); w.print(); } catch (ePrint) {}
+        });
+      } catch (eListen) {}
+    }
+  }
+
+  function openTlPdfModal(url, title) {
+    var modal = document.getElementById('st-tl-pdf-modal');
+    var frame = document.getElementById('st-tl-pdf-frame');
+    var titleEl = document.getElementById('st-tl-pdf-title');
+    var download = document.getElementById('st-tl-pdf-download');
+    if (!modal || !frame || !url) {
+      if (url) window.open(url, '_blank', 'noopener');
+      return;
+    }
+    mountTlPdfModal(modal);
+    if (titleEl) titleEl.textContent = String(title || '').trim() || 'Stock Transfer';
+    if (download) {
+      download.href = url;
+      download.setAttribute('download', '');
+    }
+    modal.setAttribute('data-pdf-url', url);
+    var sep = url.indexOf('?') >= 0 ? '&' : '?';
+    frame.src = url + sep + '_=' + Date.now();
+    modal.hidden = false;
+    modal.removeAttribute('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    modal.classList.add('open');
+  }
+
+  function softRefreshTransferLedger() {
+    var paths = ['/stores/stock', '/stores/purchase-requests', '/stores/inward', '/stores/stock/transfers'];
+    try {
+      if (typeof window.deInvalidateSoftNavCacheByPath === 'function') {
+        paths.forEach(function (p) {
+          try { window.deInvalidateSoftNavCacheByPath(p); } catch (e1) {}
+        });
+      }
+    } catch (e2) {}
+    var url = window.location.pathname + window.location.search;
+    if (typeof window.deSoftRefresh === 'function') window.deSoftRefresh(url);
+    else if (typeof window.deNavigateWithTransition === 'function') window.deNavigateWithTransition(url);
+    else window.location.reload();
+  }
+
+  function initTransferLedgerActions() {
+    /* Soft-nav: bind document once; resolve page/modal live so handlers stay valid. */
+    if (document.documentElement.getAttribute('data-st-tl-doc-bound') === '1') {
+      mountTlPdfModal(document.getElementById('st-tl-pdf-modal'));
+      return;
+    }
+    document.documentElement.setAttribute('data-st-tl-doc-bound', '1');
+    mountTlPdfModal(document.getElementById('st-tl-pdf-modal'));
+
+    document.addEventListener('click', function (event) {
+      var page = document.getElementById('st-transfer-ledger-page');
+      var modal = document.getElementById('st-tl-pdf-modal');
+      var openLink = event.target.closest('[data-st-tl-pdf]');
+      if (openLink && page && page.contains(openLink)) {
+        var href = openLink.getAttribute('href') || '';
+        if (!href || href === '#') return;
+        event.preventDefault();
+        event.stopPropagation();
+        openTlPdfModal(href, openLink.getAttribute('data-transfer-title') || '');
+        return;
+      }
+      if (event.target.closest('#st-tl-pdf-close') || event.target.closest('.st-tl-preview-close')) {
+        event.preventDefault();
+        closeTlPdfModal();
+        return;
+      }
+      if (event.target.closest('#st-tl-pdf-print') || event.target.closest('.st-tl-preview-print')) {
+        event.preventDefault();
+        var previewUrl =
+          (modal && modal.getAttribute('data-pdf-url')) ||
+          (document.getElementById('st-tl-pdf-download') &&
+            document.getElementById('st-tl-pdf-download').getAttribute('href')) ||
+          '';
+        if (previewUrl && previewUrl !== '#') printTlPdfUrl(previewUrl);
+        return;
+      }
+      if (modal && isTlPdfModalOpen(modal) && event.target === modal) {
+        closeTlPdfModal();
+        return;
+      }
+      var printBtn = event.target.closest('.st-tl-print-btn');
+      if (printBtn && page && page.contains(printBtn)) {
+        event.preventDefault();
+        var pdfUrl = printBtn.getAttribute('data-pdf-url') || '';
+        if (!pdfUrl) return;
+        printTlPdfUrl(pdfUrl);
+        return;
+      }
+      var cancelBtn = event.target.closest('.st-tl-cancel-btn');
+      if (cancelBtn && page && page.contains(cancelBtn)) {
+        event.preventDefault();
+        var cancelUrl = cancelBtn.getAttribute('data-cancel-url') || '';
+        var no = cancelBtn.getAttribute('data-transfer-no') || 'this transfer';
+        if (!cancelUrl) return;
+        if (!window.confirm('Cancel ' + no + '? Stock will not move.')) return;
+        cancelBtn.disabled = true;
+        fetch(cancelUrl, {
+          method: 'POST',
+          headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+          body: '{}'
+        }).then(function (res) {
+          return res.json().then(function (data) {
+            return { ok: res.ok, data: data };
+          }).catch(function () { return { ok: res.ok, data: {} }; });
+        }).then(function (result) {
+          if (!result.data || !result.data.ok) {
+            cancelBtn.disabled = false;
+            window.alert((result.data && result.data.error) || 'Could not cancel transfer.');
+            return;
+          }
+          var msg = (result.data && result.data.message) || ('Cancelled ' + no + '.');
+          try { sessionStorage.setItem('hbe.st.flash', JSON.stringify({ message: msg, category: 'ok' })); } catch (eFlash) {}
+          softRefreshTransferLedger();
+        }).catch(function () {
+          cancelBtn.disabled = false;
+          window.alert('Could not cancel transfer.');
+        });
+      }
+    }, true);
+
+    document.addEventListener('keydown', function (event) {
+      if (event.key !== 'Escape') return;
+      var modal = document.getElementById('st-tl-pdf-modal');
+      if (isTlPdfModalOpen(modal)) closeTlPdfModal();
+    });
+  }
+
+  function initTransferLedgerPage() {
+    if (!document.getElementById('st-transfer-ledger-page')) return;
+    /* Status filter uses data-se-listbox + stTransferLedgerFilterChanged (ep_form_listbox). */
+    initTransferLedgerSearch();
+    initTransferLedgerDateRange();
+    initTransferLedgerActions();
+  }
+
+  window.initStoresTransferLedgerPage = initTransferLedgerPage;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initTransferLedgerPage);
+  } else {
+    initTransferLedgerPage();
+  }
+})();
+</script>

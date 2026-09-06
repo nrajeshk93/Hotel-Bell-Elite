@@ -31,6 +31,7 @@ What staff call a “cache issue” on Tables is usually **stuck open bills** or
 - Available table click must not resume IndexedDB drafts with a server
   `invoiceId` / after an online by-table miss — purge those leftovers; only
   offline-unsynced drafts (no `invoiceId`) may hydrate locally.
+- **POS invoice WhatsApp:** toolbar control next to PDF sends the generated bill via Meta template `hotel_bell_elite_invoice` (DOCUMENT header PDF + 4 body vars: guest first name, brand title case, invoice no, amount without ₹). Exact Meta body (blank lines + `*{{n}}*` bold + `₹` before `{{4}}`) is documented in `docs/whatsapp_pos_invoice_template.md` — Meta Business Manager must match; code cannot sync template text. The PDF must match the printed Spice thermal customer bill (`static/pos_customer_bill.js` / POS Print), not a separate A4 layout — see `pos_invoice_pdf.py`. Requires customer mobile; env `WHATSAPP_POS_INVOICE_TEMPLATE` / `_LANGUAGE` (defaults match Meta). Uses existing `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID` (must be Meta id `1241737459022736` for sender **+91 96112 32344** / `+919611232344`; optional `WHATSAPP_SENDER_E164` mismatch check). Outbound Cloud API "from" is that phone_number_id, not body digits. Dry-run under `WHATSAPP_DRY_RUN` / tests.
 - After **Generate Invoice** (`customer_bill_sent` or `customer_bill_at`), the
   bill drops out of Pending Kitchen even if `sent_qty` was never marked. Floor
   occupancy / `kot_sent` still do not filter that list; Settle can continue.
@@ -42,6 +43,21 @@ What staff call a “cache issue” on Tables is usually **stuck open bills** or
   is the source of truth. Offline may use the snapshot.
 - Never “fix” occupancy by only hard-refreshing — repair open invoices /
   settle zombies, then refresh.
+
+### Permanent Available-click / ghost-cart contract
+
+- **Available click:** `GET …/api/invoices/by-table` with no open pre-invoice
+  returns `invoice: null` + `localShouldDrop: true`; client must purge
+  server-linked IndexedDB drafts and start blank (never hydrate ghosts).
+- **Settle sets inactive:** successful settle/close sets `is_active=0` so
+  settled rows never look active to floor/open queries; ledger still sees
+  them via `_pos_invoice_row_visible_sql`.
+- **Always bump build with POS static:** changing `pos_invoice.js` /
+  `pos_offline.js` / `pos_tables.js` (or related) must ship so
+  `/hbe-build.json` `cacheVersion` (content digest) flips — otherwise
+  PWA/soft-nav can stick old JS.
+- **Never treat staff “cache” as CDN** until `by-table` + IndexedDB drafts
+  are checked (ghost cart is usually local leftovers, not Cloudflare).
 
 ## Local `python app.py` (port 8002)
 
@@ -109,7 +125,7 @@ loading bar every open.
 - App UI fonts are self-hosted (`hbe_fonts.css` / `hbe_login_fonts.css`). Do not
   reintroduce `fonts.googleapis.com` in templates.
 
-- **Stock transfer** creates a pending `TRF-…` document (no qty change); receive under **Stock Inward → Transfers** to move stock and soft-refresh Stock/Inward (`deSoftRefresh` + invalidate `/stores/stock` / inward paths).
+- **Stock transfer** creates a pending `TRF-…` document only (no qty change at create). Print/PDF slip opens for handover; receive under **Stock Inward → Transfers** (lists by **receiving** `to_outlet` — warehouse→Bar shows under Bar) → Verify & Receive to move stock. Soft-refresh Stock/Inward/Transfer Ledger (`deSoftRefresh` + invalidate `/stores/stock`, inward, `/stores/stock/transfers`). PDF: `GET /stores/stock/transfers/<id>/pdf`. **Transfer Ledger** (`/stores/stock/transfers`, header button on Store before Export) lists pending/received/cancelled with View/Download/Print/Cancel (cancel pending only).
 
 ## Deploying
 
