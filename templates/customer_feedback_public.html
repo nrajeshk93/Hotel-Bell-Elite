@@ -3,47 +3,93 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Guest feedback{% if invite and invite.customer_name %} - {{ invite.customer_name }}{% endif %}</title>
-{% include 'partials/hbe_fonts.html' %}
+<meta name="theme-color" content="#FFFFFF">
+<title>Guest feedback — {{ hotel_name or "Hotel Bell Elite" }}</title>
+{% include "partials/hbe_fonts.html" %}
 <style>
   :root{
     --ink:#0F172A;
     --muted:#64748B;
     --line:#E2E8F0;
-    --accent:#2563EB;
+    --accent:#1D4ED8;
     --star:#F59E0B;
-    --bg:#F8FAFC;
+    --star-empty:#CBD5E1;
+    --bg:#FFFFFF;
+    --card:#ffffff;
   }
   *{box-sizing:border-box}
   body{
     margin:0;
     min-height:100vh;
-    font-family:'Inter','Segoe UI',system-ui,sans-serif;
+    font-family:"Inter","Segoe UI",system-ui,sans-serif;
     color:var(--ink);
-    background:
-      radial-gradient(1200px 500px at 10% -10%, #DBEAFE 0%, transparent 55%),
-      radial-gradient(900px 420px at 100% 0%, #FEF3C7 0%, transparent 50%),
-      var(--bg);
+    background:#FFFFFF;
   }
   .wrap{
     max-width:440px;
     margin:0 auto;
-    padding:32px 18px 48px;
+    padding:16px 14px 40px;
+  }
+  .brand-bar{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:12px;
+    margin:0 0 14px;
+    color:#0F172A;
+    text-align:left;
+    background:#FFFFFF;
+  }
+  .brand-bar img{
+    width:48px;
+    height:48px;
+    object-fit:contain;
+    border-radius:10px;
+    background:#FFFFFF;
+    padding:4px;
+  }
+  .brand-bar h1{
+    margin:0;
+    font-size:1.15rem;
+    font-weight:700;
+    letter-spacing:0.01em;
+    line-height:1.25;
+    color:#0F172A;
+  }
+  .brand-bar p{
+    margin:2px 0 0;
+    font-size:0.78rem;
+    color:#334155;
+  }
+  .hero{
+    position:relative;
+    border-radius:16px;
+    overflow:hidden;
+    margin-bottom:14px;
+    aspect-ratio:16/10;
+    background:#1E293B;
+    box-shadow:0 10px 28px rgba(15,23,42,0.12);
+  }
+  .hero img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
   }
   .card{
-    background:#fff;
+    background:var(--card);
     border:1px solid var(--line);
     border-radius:16px;
-    padding:22px 20px 24px;
-    box-shadow:0 10px 30px rgba(15,23,42,0.06);
+    padding:20px 18px 22px;
+    box-shadow:0 10px 30px rgba(15,23,42,0.08);
   }
-  h1{
+  .card h2{
     margin:0 0 6px;
-    font-size:1.45rem;
+    font-size:1.28rem;
     line-height:1.25;
   }
   .sub{
-    margin:0 0 18px;
+    margin:0 0 16px;
     color:var(--muted);
     font-size:0.95rem;
     line-height:1.45;
@@ -80,23 +126,25 @@
   .stars{
     display:flex;
     gap:8px;
-    flex-wrap:wrap;
+    justify-content:space-between;
   }
   .stars input{position:absolute;opacity:0;pointer-events:none}
   .stars label{
-    width:44px;
-    height:44px;
+    flex:1;
+    height:52px;
     border-radius:12px;
     border:1px solid var(--line);
     display:grid;
     place-items:center;
     cursor:pointer;
-    color:#CBD5E1;
-    font-size:1.35rem;
+    color:var(--star-empty);
+    font-size:1.55rem;
+    line-height:1;
     background:#fff;
-    transition:border-color .15s, color .15s, background .15s;
+    transition:border-color .15s, color .15s, background .15s, transform .1s;
+    user-select:none;
   }
-  .stars input:checked + label,
+  .stars label.is-on,
   .stars label:hover{
     color:var(--star);
     border-color:#FCD34D;
@@ -106,36 +154,26 @@
     outline:2px solid var(--accent);
     outline-offset:2px;
   }
+  .stars label:active{transform:scale(0.96)}
+  .hint{
+    margin:8px 0 0;
+    font-size:0.85rem;
+    color:var(--muted);
+    min-height:1.2em;
+  }
+  .low-block[hidden]{display:none !important}
   textarea{
     width:100%;
-    min-height:110px;
+    min-height:120px;
     border:1px solid #D1D5DB;
     border-radius:12px;
     padding:12px;
     font:inherit;
     resize:vertical;
   }
-  .row{
-    display:grid;
-    grid-template-columns:1fr 1fr 1fr;
-    gap:8px;
-    margin-bottom:14px;
-  }
-  @media (max-width:420px){
-    .row{grid-template-columns:1fr}
-  }
-  .mini select{
+  button[type=submit], .btn-google{
     width:100%;
-    height:40px;
-    border:1px solid #D1D5DB;
-    border-radius:10px;
-    padding:0 10px;
-    font:inherit;
-    background:#fff;
-  }
-  button[type=submit]{
-    width:100%;
-    height:46px;
+    height:48px;
     border:0;
     border-radius:12px;
     background:var(--accent);
@@ -144,74 +182,322 @@
     font-weight:700;
     cursor:pointer;
   }
-  button[type=submit]:hover{filter:brightness(0.96)}
-  .brand{
+  button[type=submit]:disabled{
+    opacity:0.65;
+    cursor:wait;
+  }
+  button[type=submit]:hover, .btn-google:hover{filter:brightness(0.96)}
+  .foot{
     margin-top:16px;
     text-align:center;
     color:#94A3B8;
     font-size:0.8rem;
   }
+  .busy{opacity:0.7;pointer-events:none}
+
+  .logo-rotator{
+    margin:16px 0 0;
+    width:100%;
+    max-width:100%;
+    height:112px;
+    overflow:hidden;
+    border-radius:16px;
+    background:#fff;
+    border:1px solid var(--line);
+    box-shadow:0 10px 30px rgba(15,23,42,0.06);
+    position:relative;
+  }
+  .logo-rotator-track{
+    display:flex;
+    width:300%;
+    height:100%;
+    animation:fb-logo-slide 8s ease-in-out infinite;
+  }
+  .logo-rotator-slide{
+    width:33.333%;
+    height:100%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:14px 22px;
+    box-sizing:border-box;
+    flex-shrink:0;
+  }
+  .logo-rotator-slide img{
+    max-width:88%;
+    max-height:84px;
+    width:auto;
+    height:auto;
+    object-fit:contain;
+    display:block;
+  }
+  @keyframes fb-logo-slide{
+    0%, 38%{ transform:translateX(0); }
+    50%, 88%{ transform:translateX(-33.333%); }
+    100%{ transform:translateX(-66.666%); }
+  }
+  @media (prefers-reduced-motion: reduce){
+    .logo-rotator-track{ animation:none; }
+  }
 </style>
 </head>
 <body>
-  <div class="wrap">
+  <div class="wrap" id="fb-root"
+       data-google-url="{{ google_review_url|e }}"
+       data-gate-min="{{ google_gate_min_rating or 4 }}"
+       data-already="{% if done and not thank_you %}1{% else %}0{% endif %}"
+       {% if invite %}data-submit-url="{{ url_for("customer_feedback_public", token=invite.token) }}"{% endif %}>
+    <div class="brand-bar">
+      <img src="{{ asset("hbe_logo_sm.png") }}" width="48" height="48" alt="Hotel Bell Elite logo">
+      <div>
+        <h1>{{ hotel_name or "Hotel Bell Elite" }}</h1>
+        <p>Guest feedback</p>
+      </div>
+    </div>
+
+    <div class="hero" aria-hidden="true">
+      <img
+        src="{{ asset("feedback_hero_sm.jpg") }}"
+        srcset="{{ asset("feedback_hero_sm.jpg") }} 900w, {{ asset("feedback_hero.jpg") }} 1600w"
+        sizes="(max-width:440px) 100vw, 440px"
+        width="1600"
+        height="1000"
+        alt="Hotel Bell Elite exterior at night"
+        decoding="async"
+        fetchpriority="high">
+    </div>
+
     <div class="card">
       {% if error %}
-      <p class="err">{{ error }}</p>
+      <p class="err" id="fb-err">{{ error }}</p>
+      {% else %}
+      <p class="err" id="fb-err" hidden></p>
       {% endif %}
 
-      {% if thank_you or done %}
+      {% if thank_you %}
       <div class="ok">
-        <h2>{% if thank_you %}Thank you{% else %}Already submitted{% endif %}</h2>
-        <p>{% if thank_you %}Your feedback helps us improve every stay and meal.{% else %}This link has already been used. Thank you again.{% endif %}</p>
+        <h2>Thank you</h2>
+        <p>Your feedback helps us improve every stay and meal. We truly value hearing from you.</p>
+      </div>
+      {% elif expired %}
+      <div class="ok">
+        <h2>Link expired</h2>
+        <p>This feedback link was valid for 24 hours and has now expired. Please ask the hotel for a new link.</p>
       </div>
       {% elif invite %}
-      <h1>How was your experience?</h1>
+      <h2>We value your feedback</h2>
       <p class="sub">
-        {% if invite.customer_name %}Hi {{ invite.customer_name }} - {% endif %}
-        Please rate your visit. This takes under a minute.
+        {% if invite.customer_name %}Hi {{ invite.customer_name }} — {% endif %}
+        Please tell us how your visit was. It only takes a moment.
       </p>
-      <form method="post" action="{{ url_for('customer_feedback_public', token=invite.token) }}">
+      <form method="post" action="{{ url_for("customer_feedback_public", token=invite.token) }}" id="fb-form">
         <fieldset>
-          <legend>Overall rating *</legend>
-          <div class="stars">
+          <legend>Overall rating</legend>
+          <div class="stars" id="fb-stars" role="radiogroup" aria-label="Overall rating">
             {% for n in range(1, 6) %}
-            <input type="radio" name="rating" id="r{{ n }}" value="{{ n }}" required{% if n == 5 %} checked{% endif %}>
-            <label for="r{{ n }}" title="{{ n }} star{{ 's' if n != 1 else '' }}">?</label>
+            <input type="radio" name="rating" id="r{{ n }}" value="{{ n }}" required>
+            <label for="r{{ n }}" data-n="{{ n }}" title="{{ n }} star{{ "s" if n != 1 else "" }}">★</label>
             {% endfor %}
           </div>
+          <p class="hint" id="fb-hint">Tap a star to rate your experience</p>
         </fieldset>
-        <div class="row">
-          <label class="mini">
-            <span class="lbl">Service</span>
-            <select name="service_rating">
-              <option value="">-</option>
-              {% for n in range(1, 6) %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
-            </select>
-          </label>
-          <label class="mini">
-            <span class="lbl">Food</span>
-            <select name="food_rating">
-              <option value="">-</option>
-              {% for n in range(1, 6) %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
-            </select>
-          </label>
-          <label class="mini">
-            <span class="lbl">Ambience</span>
-            <select name="ambience_rating">
-              <option value="">-</option>
-              {% for n in range(1, 6) %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
-            </select>
-          </label>
+
+        <div class="low-block" id="fb-low" hidden>
+          <label class="lbl" for="comment">What could we improve?</label>
+          <textarea id="comment" name="comment" maxlength="2000" placeholder="Please share a few details so we can make things better."></textarea>
+          <div style="height:14px"></div>
+          <button type="submit" id="fb-submit">Send feedback</button>
         </div>
-        <label class="lbl" for="comment">Comment</label>
-        <textarea id="comment" name="comment" maxlength="2000" placeholder="What went well? What can we improve?"></textarea>
-        <div style="height:14px"></div>
-        <button type="submit">Submit feedback</button>
       </form>
+      {% else %}
+      <div class="ok">
+        <h2>Link unavailable</h2>
+        <p>This feedback link is invalid or has expired.</p>
+      </div>
       {% endif %}
     </div>
-    <p class="brand">Hotel Bell Elite</p>
+
+    <div class="logo-rotator" aria-label="Restaurant and bar logos">
+      <div class="logo-rotator-track">
+        <div class="logo-rotator-slide">
+          <img src="{{ asset("feedback_logo_irish.png") }}" alt="Irish Barrel House">
+        </div>
+        <div class="logo-rotator-slide">
+          <img src="{{ asset("feedback_logo_spice.jpg") }}" alt="The Spices">
+        </div>
+        <div class="logo-rotator-slide" aria-hidden="true">
+          <img src="{{ asset("feedback_logo_irish.png") }}" alt="">
+        </div>
+      </div>
+    </div>
+    <p class="foot">{{ hotel_name or "Hotel Bell Elite" }}</p>
   </div>
+{% if invite and not thank_you and not expired %}
+<script>
+(function () {
+  var root = document.getElementById("fb-root");
+  if (!root) return;
+  function readGoogleUrl(raw) {
+    raw = (raw || "").trim();
+    if (!raw) return "";
+    try {
+      // Handles quoted |tojson values and \u0026 ampersand escapes.
+      if (raw.charAt(0) === '"') return JSON.parse(raw);
+    } catch (e) {}
+    return raw.split("\\u0026").join("&").split("&amp;").join("&");
+  }
+  var googleUrl = readGoogleUrl(root.getAttribute("data-google-url"));
+  var gateMin = parseInt(root.getAttribute("data-gate-min") || "4", 10) || 4;
+  var submitUrl = root.getAttribute("data-submit-url") || "";
+  var form = document.getElementById("fb-form");
+  var low = document.getElementById("fb-low");
+  var hint = document.getElementById("fb-hint");
+  var errEl = document.getElementById("fb-err");
+  var labels = Array.prototype.slice.call(document.querySelectorAll("#fb-stars label"));
+  var busy = false;
+
+  function showErr(msg) {
+    if (!errEl) return;
+    var text = String(msg || "").trim();
+    errEl.hidden = !text;
+    errEl.textContent = text;
+  }
+
+  function paint(n) {
+    labels.forEach(function (lab) {
+      var v = parseInt(lab.getAttribute("data-n"), 10);
+      if (v <= n) lab.classList.add("is-on");
+      else lab.classList.remove("is-on");
+    });
+  }
+
+  function selectedRating() {
+    var checked = form && form.querySelector("input[name=rating]:checked");
+    return checked ? parseInt(checked.value, 10) : 0;
+  }
+
+  function setBusy(on) {
+    busy = !!on;
+    if (root) root.classList.toggle("busy", busy);
+    var btn = document.getElementById("fb-submit");
+    if (btn) btn.disabled = busy;
+  }
+
+  function postFeedback(payload) {
+    return fetch(submitUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      body: JSON.stringify(payload),
+      credentials: "same-origin"
+    }).then(function (res) {
+      return res.json().then(function (data) {
+        return { status: res.status, data: data || {} };
+      }).catch(function () {
+        return { status: res.status, data: { ok: false, error: "Could not save feedback." } };
+      });
+    });
+  }
+
+  function goGoogle(url) {
+    var target = (url || googleUrl || "").trim();
+    if (!target) return;
+    target = readGoogleUrl(target);
+    if (target.indexOf("http") !== 0) return;
+    window.location.assign(target);
+  }
+
+  function onRating(n) {
+    paint(n);
+    showErr("");
+    if (n >= gateMin) {
+      if (low) low.hidden = true;
+      if (hint) hint.textContent = "Thank you — opening Google reviews…";
+      setBusy(true);
+      postFeedback({ rating: n, comment: "" }).then(function (result) {
+        var data = result.data || {};
+        if (data.redirect_google || data.google_url || (data.ok && n >= gateMin)) {
+          goGoogle(data.google_url || googleUrl);
+          return;
+        }
+        setBusy(false);
+        showErr(data.error || "Could not continue to Google reviews.");
+        if (hint) hint.textContent = "Tap a star to rate your experience";
+      }).catch(function () {
+        // Still allow Google for high ratings if network fails after intent
+        goGoogle();
+      });
+      return;
+    }
+    if (low) low.hidden = false;
+    if (hint) hint.textContent = "Please share a short comment so we can improve.";
+    var ta = document.getElementById("comment");
+    if (ta) ta.focus();
+  }
+
+  labels.forEach(function (lab) {
+    lab.addEventListener("mouseenter", function () {
+      paint(parseInt(lab.getAttribute("data-n"), 10));
+    });
+  });
+  var starWrap = document.getElementById("fb-stars");
+  if (starWrap) {
+    starWrap.addEventListener("mouseleave", function () {
+      paint(selectedRating());
+    });
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll("input[name=rating]"), function (input) {
+    input.addEventListener("change", function () {
+      if (busy) return;
+      onRating(parseInt(input.value, 10));
+    });
+  });
+
+  if (form) {
+    form.addEventListener("submit", function (ev) {
+      var n = selectedRating();
+      if (n >= gateMin) {
+        ev.preventDefault();
+        onRating(n);
+        return;
+      }
+      if (!n) {
+        ev.preventDefault();
+        showErr("Please choose a rating from 1 to 5.");
+        return;
+      }
+      // Low-star: allow normal POST (also try JSON for consistency)
+      ev.preventDefault();
+      setBusy(true);
+      var comment = (document.getElementById("comment") || {}).value || "";
+      postFeedback({ rating: n, comment: comment }).then(function (result) {
+        var data = result.data || {};
+        if (data.ok && !data.redirect_google) {
+          var card = root.querySelector(".card");
+          if (card) {
+            card.innerHTML = "<div class=\"ok\"><h2>Thank you</h2><p>Your feedback helps us improve every stay and meal. We truly value hearing from you.</p></div>";
+          }
+          setBusy(false);
+          return;
+        }
+        if (data.redirect_google || data.google_url) {
+          goGoogle(data.google_url || googleUrl);
+          return;
+        }
+        setBusy(false);
+        showErr(data.error || "Could not save feedback.");
+      }).catch(function () {
+        setBusy(false);
+        form.submit();
+      });
+    });
+  }
+})();
+</script>
+{% endif %}
 </body>
 </html>

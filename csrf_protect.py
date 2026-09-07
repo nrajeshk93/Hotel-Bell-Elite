@@ -38,6 +38,8 @@ EXEMPT_ENDPOINTS = frozenset(
         "service_worker",
         "robots_txt",
         "sitemap_xml",
+        "customer_feedback_public",
+        "customer_feedback_review",
     }
 )
 
@@ -94,6 +96,9 @@ def _path_is_exempt() -> bool:
     if path.startswith("/static/"):
         return True
     if path.startswith("/preview-api/"):
+        return True
+    # Public guest feedback (invite links + QR /review) — no login CSRF.
+    if path.startswith("/f/") or path == "/review":
         return True
     return False
 

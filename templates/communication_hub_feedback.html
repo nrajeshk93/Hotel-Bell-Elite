@@ -54,12 +54,16 @@
           <div class="su-title-row">
             <h1>Feedback</h1>
           </div>
+          <p class="ch-fb-page-sub">See what your users think and keep improving.</p>
         </div>
       </div>
       <div class="su-header-tools ch-header-tools">
-        <button type="button" class="btn btn-primary" id="ch-fb-create-link">
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        <button type="button" class="btn btn-primary ch-fb-btn-new" id="ch-fb-create-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
           <span>New feedback link</span>
+        </button>
+        <button type="button" class="ch-fb-icon-btn" id="ch-fb-expand-tools" title="Focus create link" aria-label="Focus create link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
         </button>
       </div>
     </div>
@@ -70,51 +74,101 @@
 
     <div class="ch-fb-kpis" id="ch-fb-kpis" aria-live="polite">
       <div class="ch-fb-kpi">
-        <div class="ch-fb-kpi-label">Responses</div>
-        <div class="ch-fb-kpi-value" data-kpi="responses">-</div>
+        <div class="ch-fb-kpi-icon ch-fb-kpi-icon--blue" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <div class="ch-fb-kpi-body">
+          <div class="ch-fb-kpi-label">Responses</div>
+          <div class="ch-fb-kpi-value" data-kpi="responses">-</div>
+          <div class="ch-fb-kpi-trend" data-kpi-trend="responses" hidden></div>
+        </div>
       </div>
       <div class="ch-fb-kpi">
-        <div class="ch-fb-kpi-label">Average rating</div>
-        <div class="ch-fb-kpi-value" data-kpi="avg">-</div>
+        <div class="ch-fb-kpi-icon ch-fb-kpi-icon--amber" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </div>
+        <div class="ch-fb-kpi-body">
+          <div class="ch-fb-kpi-label">Average Rating</div>
+          <div class="ch-fb-kpi-value" data-kpi="avg">-</div>
+          <div class="ch-fb-kpi-trend" data-kpi-trend="avg" hidden></div>
+        </div>
       </div>
       <div class="ch-fb-kpi">
-        <div class="ch-fb-kpi-label">Response rate</div>
-        <div class="ch-fb-kpi-value" data-kpi="rate">-</div>
+        <div class="ch-fb-kpi-icon ch-fb-kpi-icon--purple" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+        </div>
+        <div class="ch-fb-kpi-body">
+          <div class="ch-fb-kpi-label">Response Rate</div>
+          <div class="ch-fb-kpi-value" data-kpi="rate">-</div>
+          <div class="ch-fb-kpi-trend" data-kpi-trend="rate" hidden></div>
+        </div>
       </div>
       <div class="ch-fb-kpi">
-        <div class="ch-fb-kpi-label">This month</div>
-        <div class="ch-fb-kpi-value" data-kpi="month">-</div>
+        <div class="ch-fb-kpi-icon ch-fb-kpi-icon--green" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        </div>
+        <div class="ch-fb-kpi-body">
+          <div class="ch-fb-kpi-label">This Month</div>
+          <div class="ch-fb-kpi-value" data-kpi="month">-</div>
+          <div class="ch-fb-kpi-trend" data-kpi-trend="month" hidden></div>
+        </div>
       </div>
     </div>
 
     <div class="ch-fb-panels">
-      <div class="ch-fb-panel">
-        <h2 class="ch-fb-panel-title">Rating mix</h2>
+      <div class="ch-fb-panel ch-fb-panel--mix">
+        <div class="ch-fb-panel-head">
+          <div>
+            <h2 class="ch-fb-panel-title">Rating mix</h2>
+            <p class="ch-fb-panel-sub">Distribution of ratings from your feedback.</p>
+          </div>
+          <div class="ch-fb-total-chip" id="ch-fb-total-chip" title="Total responses">Total responses: <strong data-kpi="responses-chip">0</strong></div>
+        </div>
         <div class="ch-fb-dist" id="ch-fb-dist"></div>
       </div>
-      <div class="ch-fb-panel ch-fb-panel--link">
-        <h2 class="ch-fb-panel-title">Create link</h2>
-        <p class="ch-fb-help">Generate a private link to send the guest (WhatsApp, SMS, or email). When they submit, analytics update here.</p>
+
+      <div class="ch-fb-panel ch-fb-panel--link" id="ch-fb-create-panel">
+        <div class="ch-fb-panel-head ch-fb-panel-head--link">
+          <div class="ch-fb-panel-icon ch-fb-panel-icon--blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          </div>
+          <div>
+            <h2 class="ch-fb-panel-title">Create feedback link</h2>
+            <p class="ch-fb-panel-sub">Generate a private link to send the guest (WhatsApp, SMS, or email).</p>
+          </div>
+        </div>
         <form id="ch-fb-invite-form" class="ch-fb-invite-form" autocomplete="off">
           <label class="ch-fb-field">
             <span>Guest name</span>
-            <input type="text" name="customer_name" id="ch-fb-name" maxlength="200" placeholder="Optional">
+            <div class="ch-fb-input-wrap">
+              <svg class="ch-fb-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              <input type="text" name="customer_name" id="ch-fb-name" maxlength="200" placeholder="Optional">
+            </div>
           </label>
           <label class="ch-fb-field">
             <span>Mobile</span>
-            <input type="tel" name="phone" id="ch-fb-phone" maxlength="20" placeholder="Optional">
+            <div class="ch-fb-input-wrap">
+              <svg class="ch-fb-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+              <input type="tel" name="phone" id="ch-fb-phone" maxlength="20" placeholder="Optional">
+            </div>
           </label>
           <label class="ch-fb-field">
             <span>Source</span>
-            <select name="source" id="ch-fb-source">
-              <option value="manual">Manual</option>
-              <option value="hotel">Hotel</option>
-              <option value="restaurant">Restaurant</option>
-              <option value="bar">Bar</option>
-              <option value="whatsapp">WhatsApp</option>
-            </select>
+            <div class="ch-fb-input-wrap">
+              <svg class="ch-fb-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              <select name="source" id="ch-fb-source">
+                <option value="manual">Manual</option>
+                <option value="hotel">Hotel</option>
+                <option value="restaurant">Restaurant</option>
+                <option value="bar">Bar</option>
+                <option value="whatsapp">WhatsApp</option>
+              </select>
+            </div>
           </label>
-          <button type="submit" class="btn btn-primary" id="ch-fb-invite-submit">Create link</button>
+          <button type="submit" class="btn btn-primary ch-fb-create-submit" id="ch-fb-invite-submit">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            <span>Create link</span>
+          </button>
         </form>
         <div class="ch-fb-link-result" id="ch-fb-link-result" hidden>
           <label class="ch-fb-field">
@@ -124,28 +178,41 @@
               <button type="button" class="btn" id="ch-fb-copy-link">Copy</button>
             </div>
           </label>
+          <p class="ch-fb-muted" id="ch-fb-link-expiry" hidden></p>
         </div>
       </div>
     </div>
 
     <div class="ch-fb-panel ch-fb-panel--table">
       <div class="ch-fb-table-head">
-        <h2 class="ch-fb-panel-title">Recent feedback</h2>
-        <button type="button" class="btn" id="ch-fb-refresh">Refresh</button>
+        <div class="ch-fb-panel-head ch-fb-panel-head--table">
+          <div class="ch-fb-panel-icon ch-fb-panel-icon--blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div>
+            <h2 class="ch-fb-panel-title">Recent feedback</h2>
+            <p class="ch-fb-panel-sub">Latest responses from your guests.</p>
+          </div>
+        </div>
+        <button type="button" class="btn ch-fb-refresh-btn" id="ch-fb-refresh">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          <span>Refresh</span>
+        </button>
       </div>
       <div class="ch-fb-table-wrap">
         <table class="ch-fb-table">
           <thead>
             <tr>
-              <th>When</th>
+              <th class="ch-fb-th-when">When <span class="ch-fb-sort-hint" aria-hidden="true">▾</span></th>
               <th>Guest</th>
               <th>Rating</th>
               <th>Source</th>
               <th>Comment</th>
+              <th class="ch-fb-th-action">Action</th>
             </tr>
           </thead>
           <tbody id="ch-fb-rows">
-            <tr class="ch-fb-empty"><td colspan="5">Loading…</td></tr>
+            <tr class="ch-fb-empty"><td colspan="6">Loading…</td></tr>
           </tbody>
         </table>
       </div>

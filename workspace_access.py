@@ -733,6 +733,7 @@ _PUBLIC_ENDPOINTS = {
     "mobile_shell_ota_manifest",
     "mobile_shell_ota_apk",
     "customer_feedback_public",
+    "customer_feedback_review",
 }
 
 _OUTLET_WRITE_ENDPOINTS = {

@@ -11295,10 +11295,19 @@ def ensure_customer_feedback_schema(conn):
             status         TEXT    NOT NULL DEFAULT 'open',
             created_by     INTEGER,
             created_at     TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            expires_at     TEXT,
             submitted_at   TEXT
         )
         """
     )
+    invite_cols = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(customer_feedback_invites)").fetchall()
+    }
+    if "expires_at" not in invite_cols:
+        conn.execute(
+            "ALTER TABLE customer_feedback_invites ADD COLUMN expires_at TEXT"
+        )
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS customer_feedback_responses (

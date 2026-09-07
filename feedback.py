@@ -5,9 +5,10 @@ from __future__ import annotations
 import logging
 import re
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
+from urllib.parse import urlparse
 
-from flask import jsonify, render_template, request, url_for
+from flask import jsonify, redirect, render_template, request, url_for
 
 from db import (
     ensure_customer_feedback_schema,
@@ -21,7 +22,16 @@ _pop_auth_notice = None
 _get_user = None
 
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
-_SOURCES = frozenset({"manual", "hotel", "restaurant", "bar", "whatsapp"})
+_SOURCES = frozenset({"manual", "hotel", "restaurant", "bar", "whatsapp", "public"})
+
+# Single source of truth for the Google review gate (4–5★).
+GOOGLE_REVIEW_URL = (
+    "https://search.google.com/local/writereview"
+    "?placeid=ChIJSTl7KeOViDARrKxuDpxfEo8"
+    "&source=g.page.m.ia._"
+    "&laa=nmx-review-solicitation-ia2"
+)  # keep & as real ampersands; do not HTML/JSON-escape this constant
+GOOGLE_GATE_MIN_RATING = 4
 
 
 def _bind_helpers(*, pop_auth_notice, get_user):
@@ -44,15 +54,102 @@ def _clamp_rating(value) -> int | None:
     return n
 
 
-def _public_feedback_url(token: str) -> str:
-    base = (app_base_url() or "").rstrip("/")
-    path = f"/f/{token}"
-    if base:
-        return f"{base}{path}"
+_PUBLIC_FEEDBACK_BASE_FALLBACK = "https://belleliteaccounts.com"
+INVITE_TTL_HOURS = 24
+
+
+def _parse_ts(value) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(raw[:19], fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _is_local_share_base(base: str) -> bool:
+    raw = (base or "").strip()
+    if not raw:
+        return True
     try:
-        return url_for("customer_feedback_public", token=token, _external=True)
+        parsed = urlparse(raw if "://" in raw else f"https://{raw}")
+        host = (parsed.hostname or "").strip().lower()
     except Exception:
-        return path
+        host = ""
+    if not host:
+        return True
+    if host in {"127.0.0.1", "localhost", "0.0.0.0", "::1"}:
+        return True
+    if host.startswith("192.168.") or host.startswith("10."):
+        return True
+    if host.startswith("172."):
+        try:
+            second = int(host.split(".")[1])
+            return 16 <= second <= 31
+        except (IndexError, ValueError):
+            return False
+    return False
+
+
+def _feedback_share_base_url() -> str:
+    """Production domain for staff share links (never localhost)."""
+    base = (app_base_url() or "").strip().rstrip("/")
+    if not base or _is_local_share_base(base):
+        return _PUBLIC_FEEDBACK_BASE_FALLBACK
+    return base
+
+
+def _public_feedback_url(token: str) -> str:
+    base = _feedback_share_base_url().rstrip("/")
+    return f"{base}/f/{token}"
+
+
+def invite_is_expired(invite) -> bool:
+    """True when invite expires_at (or created_at+24h) is in the past."""
+    if invite is None:
+        return True
+    try:
+        expires_raw = invite["expires_at"]
+    except (KeyError, TypeError, IndexError):
+        expires_raw = None
+    expires_dt = _parse_ts(expires_raw)
+    if expires_dt is None:
+        try:
+            created_raw = invite["created_at"]
+        except (KeyError, TypeError, IndexError):
+            created_raw = None
+        created_dt = _parse_ts(created_raw)
+        if created_dt is None:
+            return False
+        expires_dt = created_dt + timedelta(hours=INVITE_TTL_HOURS)
+    return datetime.now() >= expires_dt
+
+
+def _wants_json() -> bool:
+    if request.is_json:
+        return True
+    accept = (request.headers.get("Accept") or "").lower()
+    if "application/json" in accept and "text/html" not in accept.split(",")[0]:
+        return True
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return True
+    return False
+
+
+def _request_feedback_payload() -> dict:
+    data = request.get_json(silent=True)
+    if isinstance(data, dict):
+        return data
+    return {
+        "rating": request.form.get("rating"),
+        "comment": request.form.get("comment") or "",
+        "service_rating": request.form.get("service_rating"),
+        "food_rating": request.form.get("food_rating"),
+        "ambience_rating": request.form.get("ambience_rating"),
+    }
 
 
 def create_feedback_invite(
@@ -75,13 +172,27 @@ def create_feedback_invite(
     note_clean = (note or "").strip()[:500]
     outlet_clean = (outlet or "").strip()[:80]
     now = _now()
+    expires_at = (datetime.now() + timedelta(hours=INVITE_TTL_HOURS)).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
     cur = conn.execute(
         """
         INSERT INTO customer_feedback_invites
-            (token, customer_name, phone_e164, source, outlet, note, status, created_by, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?)
+            (token, customer_name, phone_e164, source, outlet, note, status,
+             created_by, created_at, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)
         """,
-        (token, name, phone_clean, src, outlet_clean, note_clean, user_id, now),
+        (
+            token,
+            name,
+            phone_clean,
+            src,
+            outlet_clean,
+            note_clean,
+            user_id,
+            now,
+            expires_at,
+        ),
     )
     conn.commit()
     invite_id = int(cur.lastrowid)
@@ -95,7 +206,14 @@ def create_feedback_invite(
         "outlet": outlet_clean,
         "status": "open",
         "created_at": now,
+        "expires_at": expires_at,
+        "expires_in_hours": INVITE_TTL_HOURS,
     }
+
+
+def get_or_create_public_review_invite(conn) -> dict:
+    """QR entry: mint a fresh public invite per visit (stable /review URL)."""
+    return create_feedback_invite(conn, source="public", note="qr-review")
 
 
 def feedback_summary(conn) -> dict:
@@ -210,6 +328,10 @@ def submit_feedback(
     invite = get_invite_by_token(conn, token)
     if not invite:
         raise ValueError("This feedback link is invalid or has expired.")
+    if invite_is_expired(invite):
+        raise ValueError(
+            "This feedback link has expired. Please ask the hotel for a new link."
+        )
     if (invite["status"] or "") == "submitted":
         raise ValueError("Feedback was already submitted for this link.")
     overall = _clamp_rating(rating)
@@ -247,6 +369,23 @@ def submit_feedback(
         "rating": overall,
         "submitted_at": now,
         "customer_name": invite["customer_name"] or "",
+        "google_url": GOOGLE_REVIEW_URL if overall >= GOOGLE_GATE_MIN_RATING else None,
+        "redirect_google": overall >= GOOGLE_GATE_MIN_RATING,
+    }
+
+
+def _public_template_kwargs(
+    invite=None, *, error=None, done=False, thank_you=False, expired=False
+):
+    return {
+        "error": error,
+        "done": done,
+        "thank_you": thank_you,
+        "expired": expired,
+        "invite": invite,
+        "google_review_url": GOOGLE_REVIEW_URL,
+        "google_gate_min_rating": GOOGLE_GATE_MIN_RATING,
+        "hotel_name": "Hotel Bell Elite",
     }
 
 
@@ -327,61 +466,155 @@ def register_feedback(app, *, pop_auth_notice, get_user):
         finally:
             conn.close()
 
+    @app.route("/review", methods=["GET"])
+    def customer_feedback_review():
+        """QR-friendly permanent entry: reuse/create an open public invite, then /f/<token>."""
+        conn = get_db()
+        try:
+            invite = get_or_create_public_review_invite(conn)
+            return redirect(url_for("customer_feedback_public", token=invite["token"]))
+        finally:
+            conn.close()
+
     @app.route("/f/<token>", methods=["GET", "POST"])
     def customer_feedback_public(token):
-        """Public guest form � no login. Linked from WhatsApp / SMS."""
+        """Public guest form — no login. Linked from WhatsApp / SMS / QR."""
         conn = get_db()
         try:
             invite = get_invite_by_token(conn, token)
             if not invite:
+                if _wants_json() and request.method == "POST":
+                    return (
+                        jsonify(
+                            {
+                                "ok": False,
+                                "error": "This feedback link is invalid or has expired.",
+                            }
+                        ),
+                        404,
+                    )
                 return (
                     render_template(
                         "customer_feedback_public.html",
-                        error="This feedback link is invalid or has expired.",
-                        done=False,
-                        invite=None,
+                        **_public_template_kwargs(
+                            None,
+                            error="This feedback link is invalid or has expired.",
+                            done=False,
+                        ),
                     ),
                     404,
                 )
+            invite_dict = dict(invite)
             already = (invite["status"] or "") == "submitted"
-            if request.method == "POST":
-                if already:
-                    return render_template(
-                        "customer_feedback_public.html",
-                        error="Feedback was already submitted for this link.",
-                        done=True,
-                        invite=dict(invite),
-                    )
-                try:
-                    submit_feedback(
-                        conn,
-                        token,
-                        rating=request.form.get("rating"),
-                        comment=request.form.get("comment") or "",
-                        service_rating=request.form.get("service_rating"),
-                        food_rating=request.form.get("food_rating"),
-                        ambience_rating=request.form.get("ambience_rating"),
-                    )
-                    return render_template(
-                        "customer_feedback_public.html",
+            expired = invite_is_expired(invite_dict)
+            # Expiry wins over already-submitted (friendly expired state).
+            if expired:
+                expired_msg = (
+                    "This feedback link has expired. "
+                    "Please ask the hotel for a new link."
+                )
+                if request.method == "POST":
+                    if _wants_json():
+                        return (
+                            jsonify(
+                                {
+                                    "ok": False,
+                                    "error": expired_msg,
+                                    "expired": True,
+                                }
+                            ),
+                            410,
+                        )
+                return render_template(
+                    "customer_feedback_public.html",
+                    **_public_template_kwargs(
+                        invite_dict,
                         error=None,
                         done=True,
-                        invite=dict(invite),
-                        thank_you=True,
-                    )
-                except ValueError as exc:
+                        expired=True,
+                    ),
+                )
+            if request.method == "POST":
+                payload = _request_feedback_payload()
+                rating = _clamp_rating(payload.get("rating"))
+                # Already submitted: still allow Google redirect for high ratings.
+                if already:
+                    if rating is not None and rating >= GOOGLE_GATE_MIN_RATING:
+                        if _wants_json():
+                            return jsonify(
+                                {
+                                    "ok": True,
+                                    "already": True,
+                                    "rating": rating,
+                                    "google_url": GOOGLE_REVIEW_URL,
+                                    "redirect_google": True,
+                                }
+                            )
+                        return redirect(GOOGLE_REVIEW_URL)
+                    msg = "Feedback was already submitted for this link."
+                    if _wants_json():
+                        return jsonify({"ok": False, "error": msg, "already": True}), 409
                     return render_template(
                         "customer_feedback_public.html",
-                        error=str(exc),
-                        done=False,
-                        invite=dict(invite),
+                        **_public_template_kwargs(
+                            invite_dict, error=msg, done=True
+                        ),
                     )
+                try:
+                    result = submit_feedback(
+                        conn,
+                        token,
+                        rating=payload.get("rating"),
+                        comment=str(payload.get("comment") or ""),
+                        service_rating=payload.get("service_rating"),
+                        food_rating=payload.get("food_rating"),
+                        ambience_rating=payload.get("ambience_rating"),
+                    )
+                    if result.get("redirect_google"):
+                        if _wants_json():
+                            return jsonify(
+                                {
+                                    "ok": True,
+                                    "rating": result["rating"],
+                                    "google_url": GOOGLE_REVIEW_URL,
+                                    "redirect_google": True,
+                                    "submitted_at": result.get("submitted_at"),
+                                }
+                            )
+                        return redirect(GOOGLE_REVIEW_URL)
+                    if _wants_json():
+                        return jsonify(
+                            {
+                                "ok": True,
+                                "rating": result["rating"],
+                                "redirect_google": False,
+                                "thank_you": True,
+                                "submitted_at": result.get("submitted_at"),
+                            }
+                        )
+                    return render_template(
+                        "customer_feedback_public.html",
+                        **_public_template_kwargs(
+                            invite_dict, thank_you=True, done=True
+                        ),
+                    )
+                except ValueError as exc:
+                    if _wants_json():
+                        return jsonify({"ok": False, "error": str(exc)}), 400
+                    return render_template(
+                        "customer_feedback_public.html",
+                        **_public_template_kwargs(
+                            invite_dict, error=str(exc), done=False
+                        ),
+                    )
+            # GET: if already submitted, still show star gate so high ratings can open Google.
             return render_template(
                 "customer_feedback_public.html",
-                error=None,
-                done=already,
-                invite=dict(invite),
-                thank_you=False,
+                **_public_template_kwargs(
+                    invite_dict,
+                    done=already,
+                    thank_you=False,
+                ),
             )
         finally:
             conn.close()
