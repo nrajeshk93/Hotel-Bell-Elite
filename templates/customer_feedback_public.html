@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#FFFFFF">
 <title>Guest feedback — {{ hotel_name or "Hotel Bell Elite" }}</title>
 <script>
-/* Force real mobile layout — WhatsApp/in-app browsers often use a ~980px desktop viewport. */
+/* Fix WhatsApp/in-app browsers that use a ~980px desktop viewport. */
 (function () {
   try {
     var content = "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover";
@@ -20,30 +20,16 @@
       document.head.insertBefore(vp, document.head.firstChild);
     }
     vp.setAttribute("content", content);
-    function isCoarseOrNarrow() {
-      try {
-        if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) return true;
-        if (window.matchMedia && window.matchMedia("(hover: none)").matches) return true;
-      } catch (e) {}
-      var sw = Math.min(screen.width || 0, screen.height || 0) || 0;
-      return sw > 0 && sw <= 920;
-    }
     function fitMobile() {
       var sw = Math.min(screen.width || 0, screen.height || 0) || 0;
       var cw = document.documentElement.clientWidth || window.innerWidth || 0;
-      var force = false;
-      if (sw > 0 && cw > sw * 1.05) force = true;
-      if (isCoarseOrNarrow()) force = true;
-      if (force) {
+      // Only force when the layout CSS width is clearly a desktop shell on a phone.
+      if (sw > 0 && sw <= 920 && cw > Math.max(sw * 1.2, sw + 80)) {
         document.documentElement.classList.add("fb-force-mobile");
-        if (sw > 0 && cw > sw * 1.05) {
-          vp.setAttribute(
-            "content",
-            "width=" + sw + ", initial-scale=1, maximum-scale=1, viewport-fit=cover"
-          );
-        } else {
-          vp.setAttribute("content", content);
-        }
+        vp.setAttribute(
+          "content",
+          "width=" + sw + ", initial-scale=1, maximum-scale=1, viewport-fit=cover"
+        );
       } else {
         document.documentElement.classList.remove("fb-force-mobile");
         vp.setAttribute("content", content);
@@ -66,9 +52,9 @@
     --accent:#1D4ED8;
     --star:#F59E0B;
     --star-empty:#CBD5E1;
-    --bg:#FFFFFF;
+    --bg:#F1F5F9;
     --card:#ffffff;
-    --pad:4px;
+    --pad:14px;
   }
   *{box-sizing:border-box}
   html{
@@ -85,130 +71,150 @@
     min-height:100dvh;
     font-family:"Inter","Segoe UI",system-ui,sans-serif;
     color:var(--ink);
-    background:#FFFFFF;
+    background:var(--bg);
     overflow-x:hidden;
+    display:flex;
+    flex-direction:column;
   }
-  /* Mobile-first: edge-to-edge phone card. Never use a width-only 480px cap. */
+  /* Phone: full-width readable card, comfortable padding — not ultra-tight, not 480 gutter. */
   .wrap{
-    width:100% !important;
-    max-width:100% !important;
+    width:100%;
+    max-width:440px;
     margin:0 auto;
-    padding:4px 4px 10px;
-    padding-left:max(4px, env(safe-area-inset-left, 0px));
-    padding-right:max(4px, env(safe-area-inset-right, 0px));
-    padding-bottom:max(10px, env(safe-area-inset-bottom, 0px));
+    padding:6px var(--pad) 16px;
+    padding-left:max(var(--pad), env(safe-area-inset-left, 0px));
+    padding-right:max(var(--pad), env(safe-area-inset-right, 0px));
+    padding-bottom:max(20px, env(safe-area-inset-bottom, 0px));
     box-sizing:border-box;
+    flex:1 0 auto;
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-start;
   }
-  html.fb-force-mobile,
-  html.fb-force-mobile body,
+  html.fb-force-mobile body{ background:var(--bg); }
   html.fb-force-mobile .wrap{
     width:100% !important;
-    max-width:100% !important;
-  }
-  html.fb-force-mobile .wrap{
-    padding-left:max(4px, env(safe-area-inset-left, 0px)) !important;
-    padding-right:max(4px, env(safe-area-inset-right, 0px)) !important;
-  }
-  html.fb-force-mobile .hero,
-  html.fb-force-mobile .card,
-  html.fb-force-mobile .logo-rotator{
-    width:100% !important;
-    max-width:100% !important;
+    max-width:440px !important;
+    margin-left:auto !important;
+    margin-right:auto !important;
+    padding-left:max(14px, env(safe-area-inset-left, 0px)) !important;
+    padding-right:max(14px, env(safe-area-inset-right, 0px)) !important;
   }
   .brand-bar{
     display:flex;
     align-items:center;
     justify-content:center;
-    gap:8px;
-    margin:2px 0 6px;
-    padding:2px 0;
+    gap:10px;
+    margin:0 0 8px;
     color:#0F172A;
-    background:#FFFFFF;
+    background:transparent;
   }
   .brand-bar img{
-    width:32px;
-    height:32px;
+    width:44px;
+    height:44px;
     object-fit:contain;
-    border-radius:8px;
+    border-radius:10px;
     background:#FFFFFF;
-    padding:2px;
+    padding:4px;
     flex-shrink:0;
+    box-shadow:0 1px 4px rgba(15,23,42,0.06);
   }
   .brand-bar h1{
     margin:0;
-    font-size:0.95rem;
+    font-size:1.1rem;
     font-weight:700;
     letter-spacing:0.01em;
-    line-height:1.15;
+    line-height:1.25;
     color:#0F172A;
   }
   .brand-bar p{
-    margin:1px 0 0;
-    font-size:0.68rem;
+    margin:2px 0 0;
+    font-size:0.78rem;
     color:#475569;
-    line-height:1.2;
   }
   .hero{
     position:relative;
     width:100%;
-    border-radius:10px;
+    border-radius:14px;
     overflow:hidden;
-    margin:0 0 6px;
-    aspect-ratio:2.35 / 1;
-    max-height:132px;
+    margin:0 0 10px;
+    aspect-ratio:16 / 9;
+    max-height:200px;
     background:#1E293B;
-    box-shadow:0 4px 12px rgba(15,23,42,0.08);
+    box-shadow:0 8px 20px rgba(15,23,42,0.1);
   }
-  .hero img{
+  .hero-track{
+    display:flex;
+    width:800%;
+    height:100%;
+    animation:fb-hero-slide 17s ease-in-out infinite;
+  }
+  .hero-slide{
+    width:12.500000%;
+    height:100%;
+    flex-shrink:0;
+  }
+  .hero-slide img{
     width:100%;
     height:100%;
     object-fit:cover;
     object-position:center 40%;
     display:block;
   }
+  @keyframes fb-hero-slide{
+    0%, 7.00%{ transform:translateX(0); }
+    12.50%, 19.50%{ transform:translateX(-12.500000%); }
+    25.00%, 32.00%{ transform:translateX(-25.000000%); }
+    37.50%, 44.50%{ transform:translateX(-37.500000%); }
+    50.00%, 57.00%{ transform:translateX(-50.000000%); }
+    62.50%, 69.50%{ transform:translateX(-62.500000%); }
+    75.00%, 82.00%{ transform:translateX(-75.000000%); }
+    87.50%, 94.50%{ transform:translateX(-87.500000%); }
+    100%{ transform:translateX(0); }
+  }
   .card{
     width:100%;
     background:var(--card);
     border:1px solid var(--line);
-    border-radius:12px;
-    padding:12px 12px 12px;
-    box-shadow:0 4px 14px rgba(15,23,42,0.05);
+    border-radius:14px;
+    padding:16px 14px 18px;
+    box-shadow:0 8px 22px rgba(15,23,42,0.06);
   }
   .card h2{
-    margin:0 0 4px;
-    font-size:1.05rem;
-    line-height:1.2;
+    margin:0 0 6px;
+    font-size:1.2rem;
+    line-height:1.25;
   }
   .sub{
-    margin:0 0 10px;
+    margin:0 0 14px;
     color:var(--muted);
-    font-size:0.82rem;
-    line-height:1.35;
+    font-size:0.92rem;
+    line-height:1.45;
   }
   .err{
-    margin:0 0 8px;
-    padding:8px 10px;
-    border-radius:8px;
+    margin:0 0 12px;
+    padding:10px 12px;
+    border-radius:10px;
     background:#FEF2F2;
     color:#B91C1C;
-    font-size:0.82rem;
+    font-size:0.9rem;
   }
-  .ok{margin:0;padding:14px 6px;text-align:center}
-  .ok h2{margin:0 0 6px;font-size:1.1rem}
-  .ok p{margin:0;color:var(--muted);line-height:1.4;font-size:0.88rem}
-  fieldset{border:0;margin:0 0 8px;padding:0}
+  .ok{margin:0;padding:18px 8px;text-align:center}
+  .ok h2{margin:0 0 8px;font-size:1.25rem}
+  .ok p{margin:0;color:var(--muted);line-height:1.45}
+  fieldset{border:0;margin:0 0 14px;padding:0}
   legend,label.lbl{
     display:block;
-    font-size:0.7rem;
+    font-size:0.78rem;
     font-weight:700;
-    letter-spacing:0.04em;
+    letter-spacing:0.03em;
     text-transform:uppercase;
     color:#475569;
-    margin-bottom:6px;
+    margin-bottom:8px;
   }
   .stars{
     display:flex;
-    gap:4px;
+    gap:6px;
     justify-content:space-between;
     width:100%;
   }
@@ -216,16 +222,16 @@
   .stars label{
     flex:1 1 0;
     min-width:0;
-    height:44px;
+    height:48px;
     border-radius:10px;
-    border:1px solid transparent;
+    border:1px solid var(--line);
     display:grid;
     place-items:center;
     cursor:pointer;
     color:var(--star-empty);
-    font-size:1.55rem;
+    font-size:1.45rem;
     line-height:1;
-    background:#F8FAFC;
+    background:#fff;
     transition:border-color .15s, color .15s, background .15s, transform .1s;
     user-select:none;
     -webkit-tap-highlight-color:transparent;
@@ -241,23 +247,22 @@
     outline-offset:2px;
   }
   .stars label:active{transform:scale(0.96)}
-  .hint{margin:6px 0 0;font-size:0.78rem;color:var(--muted);min-height:1.15em}
+  .hint{margin:8px 0 0;font-size:0.85rem;color:var(--muted);min-height:1.2em}
   .low-block[hidden]{display:none !important}
   textarea{
     width:100%;
-    min-height:88px;
+    min-height:110px;
     border:1px solid #D1D5DB;
-    border-radius:10px;
-    padding:10px;
+    border-radius:12px;
+    padding:12px;
     font:inherit;
-    font-size:0.92rem;
     resize:vertical;
   }
   button[type=submit], .btn-google{
     width:100%;
-    height:44px;
+    height:48px;
     border:0;
-    border-radius:10px;
+    border-radius:12px;
     background:var(--accent);
     color:#fff;
     font:inherit;
@@ -267,21 +272,21 @@
   button[type=submit]:disabled{opacity:0.65;cursor:wait}
   button[type=submit]:hover, .btn-google:hover{filter:brightness(0.96)}
   .foot{
-    margin-top:8px;
+    margin-top:12px;
     text-align:center;
     color:#94A3B8;
-    font-size:0.72rem;
+    font-size:0.8rem;
   }
   .busy{opacity:0.7;pointer-events:none}
   .logo-rotator{
-    margin:8px 0 0;
+    margin:12px 0 0;
     width:100%;
-    height:64px;
+    height:96px;
     overflow:hidden;
-    border-radius:10px;
+    border-radius:14px;
     background:#fff;
     border:1px solid var(--line);
-    box-shadow:0 4px 12px rgba(15,23,42,0.04);
+    box-shadow:0 8px 20px rgba(15,23,42,0.05);
     position:relative;
   }
   .logo-rotator-track{
@@ -296,13 +301,13 @@
     display:flex;
     align-items:center;
     justify-content:center;
-    padding:6px 10px;
+    padding:10px 14px;
     box-sizing:border-box;
     flex-shrink:0;
   }
   .logo-rotator-slide img{
     max-width:90%;
-    max-height:48px;
+    max-height:72px;
     width:auto;
     height:auto;
     object-fit:contain;
@@ -314,60 +319,38 @@
     100%{ transform:translateX(-66.666%); }
   }
   @media (prefers-reduced-motion: reduce){
-    .logo-rotator-track{ animation:none; }
+    .logo-rotator-track, .hero-track{ animation:none; }
   }
-  /* Extra-tight phones / short viewports: keep one-screen rhythm */
-  @media (max-height:700px){
-    .hero{ max-height:110px; aspect-ratio:2.5 / 1; }
-    .brand-bar{ margin:0 0 4px; }
-    .brand-bar img{ width:28px; height:28px; }
-    .card{ padding:10px 10px 10px; }
-    .logo-rotator{ height:56px; }
-    .logo-rotator-slide img{ max-height:40px; }
+  /* Narrow phones still full usable width up to 440px column */
+  @media (max-width:360px){
+    :root{ --pad:10px; }
+    .hero{ max-height:160px; }
+    .card{ padding:14px 12px 16px; }
+    .logo-rotator{ height:84px; }
+    .logo-rotator-slide img{ max-height:60px; }
   }
-  /* True desktop only — never fire on phones/in-app browsers. */
+  /* Large phones / tablets: keep centered readable column, not stretched edge-to-edge desktop feel */
+  @media (min-width:500px){
+    .wrap{ max-width:440px; }
+  }
+  /* True desktop */
   @media (min-width:1024px) and (pointer:fine) and (hover:hover){
     html:not(.fb-force-mobile) .wrap{
-      max-width:480px !important;
-      padding:16px 16px 40px;
+      max-width:480px;
+      padding:24px 16px 40px;
+      justify-content:flex-start;
     }
-    html:not(.fb-force-mobile) .brand-bar{
-      margin:0 0 12px;
-      gap:10px;
-    }
-    html:not(.fb-force-mobile) .brand-bar img{
-      width:44px;
-      height:44px;
-      border-radius:10px;
-      padding:4px;
-    }
-    html:not(.fb-force-mobile) .brand-bar h1{ font-size:1.1rem; }
-    html:not(.fb-force-mobile) .brand-bar p{ font-size:0.78rem; }
     html:not(.fb-force-mobile) .hero{
       aspect-ratio:16/10;
       max-height:none;
       border-radius:16px;
-      margin:0 0 10px;
-      box-shadow:0 8px 20px rgba(15,23,42,0.1);
     }
     html:not(.fb-force-mobile) .card{
       padding:20px 18px 22px;
       border-radius:16px;
-      box-shadow:0 8px 22px rgba(15,23,42,0.06);
     }
-    html:not(.fb-force-mobile) .card h2{ font-size:1.2rem; }
-    html:not(.fb-force-mobile) .sub{ font-size:0.92rem; margin:0 0 14px; }
-    html:not(.fb-force-mobile) .stars{ gap:6px; }
-    html:not(.fb-force-mobile) .stars label{
-      height:48px;
-      border:1px solid var(--line);
-      background:#fff;
-      font-size:1.45rem;
-    }
-    html:not(.fb-force-mobile) .logo-rotator{ height:112px; margin:12px 0 0; border-radius:14px; }
-    html:not(.fb-force-mobile) .logo-rotator-slide{ padding:10px 14px; }
+    html:not(.fb-force-mobile) .logo-rotator{ height:112px; }
     html:not(.fb-force-mobile) .logo-rotator-slide img{ max-height:84px; }
-    html:not(.fb-force-mobile) .foot{ margin-top:12px; font-size:0.8rem; }
   }
 </style>
 </head>
@@ -378,27 +361,45 @@
        data-already="{% if done and not thank_you %}1{% else %}0{% endif %}"
        {% if invite %}data-submit-url="{{ url_for("customer_feedback_public", token=invite.token) }}"{% endif %}>
     <div class="brand-bar">
-      <img src="{{ asset("hbe_logo_sm.png") }}" width="32" height="32" alt="Hotel Bell Elite logo">
+      <img src="{{ asset("hbe_logo_sm.png") }}" width="44" height="44" alt="Hotel Bell Elite logo">
       <div>
         <h1>{{ hotel_name or "Hotel Bell Elite" }}</h1>
         <p>Guest feedback</p>
       </div>
     </div>
 
-    <div class="hero" aria-hidden="true">
-      <img
-        src="{{ asset("feedback_hero_sm.jpg") }}"
-        srcset="{{ asset("feedback_hero_sm.jpg") }} 900w, {{ asset("feedback_hero.jpg") }} 1600w"
-        sizes="100vw"
-        width="1600"
-        height="1000"
-        alt="Hotel Bell Elite exterior at night"
-        decoding="async"
-        fetchpriority="high">
+    <div class="hero" aria-label="Hotel photos">
+      <div class="hero-track">
+        <div class="hero-slide">
+          <img src="{{ asset("feedback_hero_slide_0.jpg") }}" width="1600" height="900" alt="Hotel Bell Elite" decoding="async" fetchpriority="high">
+        </div>
+        <div class="hero-slide">
+          <img src="{{ asset("feedback_hero_slide_1.jpg") }}" width="1600" height="900" alt="Hotel Bell Elite" decoding="async" loading="lazy">
+        </div>
+        <div class="hero-slide">
+          <img src="{{ asset("feedback_hero_slide_2.jpg") }}" width="1600" height="900" alt="Hotel Bell Elite" decoding="async" loading="lazy">
+        </div>
+        <div class="hero-slide">
+          <img src="{{ asset("feedback_hero_slide_3.jpg") }}" width="1600" height="900" alt="Hotel Bell Elite" decoding="async" loading="lazy">
+        </div>
+        <div class="hero-slide">
+          <img src="{{ asset("feedback_hero_slide_4.jpg") }}" width="1600" height="900" alt="Hotel Bell Elite" decoding="async" loading="lazy">
+        </div>
+        <div class="hero-slide">
+          <img src="{{ asset("feedback_hero_slide_5.jpg") }}" width="1600" height="900" alt="Hotel Bell Elite" decoding="async" loading="lazy">
+        </div>
+        <div class="hero-slide">
+          <img src="{{ asset("feedback_hero_slide_6.jpg") }}" width="1600" height="900" alt="Hotel Bell Elite" decoding="async" loading="lazy">
+        </div>
+        <div class="hero-slide">
+          <img src="{{ asset("feedback_hero_slide_7.jpg") }}" width="1600" height="900" alt="Hotel Bell Elite" decoding="async" loading="lazy">
+        </div>
+      </div>
     </div>
 
     <div class="card">
-      {% if error %}
+      {# Only show the red banner for form/submit errors while the form is still available. #}
+      {% if error and invite and not expired and not thank_you %}
       <p class="err" id="fb-err">{{ error }}</p>
       {% else %}
       <p class="err" id="fb-err" hidden></p>
@@ -418,7 +419,7 @@
       <h2>We value your feedback</h2>
       <p class="sub">
         {% if invite.customer_name %}Hi {{ invite.customer_name }} — {% endif %}
-        Please tell us how your visit was. It only takes a moment.
+        Your feedback matters to us. It helps us serve you better every time.
       </p>
       <form method="post" action="{{ url_for("customer_feedback_public", token=invite.token) }}" id="fb-form">
         <fieldset>

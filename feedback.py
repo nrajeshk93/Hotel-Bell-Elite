@@ -553,7 +553,7 @@ def register_feedback(app, *, pop_auth_notice, get_user):
                         "customer_feedback_public.html",
                         **_public_template_kwargs(
                             None,
-                            error="This feedback link is invalid or has expired.",
+                            error=None,
                             done=False,
                         ),
                     ),

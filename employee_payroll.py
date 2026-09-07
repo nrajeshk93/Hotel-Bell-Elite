@@ -3154,7 +3154,13 @@ def upload_employees():
 
 @payroll_bp.route('/export_employees')
 def export_employees():
-    """Export monthly payroll for Hotel Bell Elite (single company)."""
+    """Export monthly payroll for Hotel Bell Elite (single company).
+
+    Matches the Monthly Payroll Report UI: every *active* employee appears on the
+    primary sheet (including EPF-exempt staff such as HBE27). A secondary
+    "Non EPF Employees" sheet still lists active EPF-exempt rows without EPF/ESIC
+    columns for convenience — it is additive, not exclusive.
+    """
     from openpyxl import Workbook
     from openpyxl.utils import get_column_letter
     from openpyxl.styles import Font, Border, Side, Alignment, PatternFill
@@ -3163,7 +3169,7 @@ def export_employees():
 
     conn = get_db()
     rows = conn.execute(
-        f"SELECT * FROM employees ORDER BY {_EMPLOYEE_DISPLAY_ORDER}"
+        f"SELECT * FROM employees WHERE status='active' ORDER BY {_EMPLOYEE_DISPLAY_ORDER}"
     ).fetchall()
 
     wb = Workbook()
@@ -3237,16 +3243,18 @@ def export_employees():
         for i, w in enumerate(col_widths):
             ws.column_dimensions[get_column_letter(i + 1)].width = w
 
-    regular_rows = []
+    # Primary sheet = full monthly payroll (all active). Non-EPF sheet is a
+    # subset only — EPF-exempt employees must not be omitted from the primary.
+    primary_rows = []
     non_epf_rows = []
     for row in rows:
         item = dict(row) if not isinstance(row, dict) else dict(row)
-        if bool(item.get('epf_exempt', 0)):
+        primary_rows.append(item)
+        wages = _get_month_wages(conn, item, year, month)
+        if bool(wages.get('epf_exempt', item.get('epf_exempt', 0))):
             non_epf_rows.append(item)
-        else:
-            regular_rows.append(item)
 
-    _write_payroll_sheet(wb.active, _DEFAULT_COMPANY, regular_rows)
+    _write_payroll_sheet(wb.active, _DEFAULT_COMPANY, primary_rows)
     if non_epf_rows:
         non_epf_ws = wb.create_sheet()
         _write_payroll_sheet(non_epf_ws, 'Non EPF Employees', non_epf_rows, include_epf_esic=False)
