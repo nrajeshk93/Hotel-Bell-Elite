@@ -40,7 +40,8 @@
      data-communication-hub-feedback
      data-summary-url="{{ url_for('communication_hub_api_feedback_summary') }}"
      data-responses-url="{{ url_for('communication_hub_api_feedback_responses') }}"
-     data-invite-url="{{ url_for('communication_hub_api_feedback_invite_create') }}">
+     data-invite-url="{{ url_for('communication_hub_api_feedback_invite_create') }}"
+     data-invite-fallback-url="{{ url_for('communication_hub_feedback', action='create_invite') }}">
   <header class="se-sales-header su-header" id="se-sales-header">
     <div class="su-header-top">
       <div class="su-header-left">
@@ -218,7 +219,7 @@
   </section>
 </div>
 
-<script src="{{ asset('communication_hub_feedback.js') }}"></script>
+<script src="{{ asset('communication_hub_feedback.js') }}" data-de-rerun="1"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

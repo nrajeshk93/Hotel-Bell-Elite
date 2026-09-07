@@ -206,14 +206,14 @@
     var summaryUrl = page.getAttribute('data-summary-url') || '';
     var responsesUrl = page.getAttribute('data-responses-url') || '';
     return Promise.all([
-      fetch(summaryUrl, { credentials: 'same-origin', headers: { Accept: 'application/json' } }).then(
+      fetch(summaryUrl, { credentials: 'same-origin', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }).then(
         function (r) {
           return r.json();
         }
       ),
       fetch(responsesUrl + (responsesUrl.indexOf('?') >= 0 ? '&' : '?') + 'limit=75', {
         credentials: 'same-origin',
-        headers: { Accept: 'application/json' }
+        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
       }).then(function (r) {
         return r.json();
       })
@@ -350,24 +350,51 @@
       };
       var csrf = readCsrfToken();
       if (csrf) payload.csrf_token = csrf;
-      var headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
+      payload.action = 'create_invite';
+      var headers = {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      };
       if (csrf) {
         headers['X-CSRFToken'] = csrf;
         headers['X-CSRF-Token'] = csrf;
       }
+      var fallbackUrl = page.getAttribute('data-invite-fallback-url') || '';
       pending = true;
       if (submitBtn) {
         submitBtn.disabled = true;
         submitBtn.setAttribute('aria-busy', 'true');
       }
       if (createBtn) createBtn.disabled = true;
-      fetch(inviteUrl, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: headers,
-        body: JSON.stringify(payload)
-      })
-        .then(parseJsonSafe)
+
+      function postInvite(url) {
+        return fetch(url, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: headers,
+          body: JSON.stringify(payload)
+        }).then(parseJsonSafe);
+      }
+
+      postInvite(inviteUrl)
+        .then(function (res) {
+          if (res.okHttp && res.data && res.data.ok && res.data.invite) return res;
+          // Retry on WAF/HTML/5xx/403 via same-page fallback path.
+          var status = res.status || 0;
+          var looksBlocked =
+            !res.data ||
+            status === 403 ||
+            status === 429 ||
+            status === 502 ||
+            status === 503 ||
+            status >= 500 ||
+            (res.text && /cloudflare|attention required|just a moment/i.test(res.text));
+          if (fallbackUrl && fallbackUrl !== inviteUrl && looksBlocked) {
+            return postInvite(fallbackUrl);
+          }
+          return res;
+        })
         .then(function (res) {
           if (!res.okHttp || !res.data || !res.data.ok || !res.data.invite) {
             throw new Error(inviteHttpErrorMessage(res));
@@ -451,14 +478,17 @@
 
   function initFeedbackPage() {
     var page = pageRoot();
-    if (!page || page.getAttribute('data-ch-fb-bound') === '1') return;
-    page.setAttribute('data-ch-fb-bound', '1');
-    bindInvite(page);
-    var refresh = $('#ch-fb-refresh', page);
-    if (refresh) {
-      refresh.addEventListener('click', function () {
-        loadAll(page);
-      });
+    if (!page) return;
+    var already = page.getAttribute('data-ch-fb-bound') === '1';
+    if (!already) {
+      page.setAttribute('data-ch-fb-bound', '1');
+      bindInvite(page);
+      var refresh = $('#ch-fb-refresh', page);
+      if (refresh) {
+        refresh.addEventListener('click', function () {
+          loadAll(page);
+        });
+      }
     }
     loadAll(page);
   }

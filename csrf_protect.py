@@ -101,6 +101,17 @@ def _path_is_exempt() -> bool:
     # Public guest feedback (invite links + QR /review) — no login CSRF.
     if path.startswith("/f/") or path == "/review":
         return True
+    # Staff create-link fallback on the Feedback page itself (WAF-friendly).
+    if path.rstrip("/") == "/communication-hub/feedback":
+        action = (request.args.get("action") or "").strip().lower()
+        if not action and request.form:
+            action = (request.form.get("action") or "").strip().lower()
+        if not action and request.is_json:
+            payload = request.get_json(silent=True) or {}
+            if isinstance(payload, dict):
+                action = str(payload.get("action") or "").strip().lower()
+        if action in {"create_invite", "create-link", "create"}:
+            return True
     return False
 
 

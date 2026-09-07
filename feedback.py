@@ -412,8 +412,71 @@ def register_feedback(app, *, pop_auth_notice, get_user):
         kwargs.setdefault("de_nav_communication_hub_view", "feedback")
         return render_template("communication_hub_feedback.html", **kwargs)
 
-    @app.route("/communication-hub/feedback")
+    def _create_invite_from_request():
+        user = _get_user() if _get_user else None
+        user_id = user.get("id") if user else None
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            data = {}
+        if not data and request.form:
+            data = {
+                "customer_name": request.form.get("customer_name"),
+                "phone": request.form.get("phone") or request.form.get("mobile"),
+                "source": request.form.get("source"),
+                "outlet": request.form.get("outlet"),
+                "note": request.form.get("note"),
+            }
+        conn = get_db()
+        try:
+            ensure_customer_feedback_schema(conn)
+            try:
+                conn.commit()
+            except Exception:
+                pass
+            invite = create_feedback_invite(
+                conn,
+                customer_name=str(data.get("customer_name") or ""),
+                phone=str(data.get("phone") or data.get("mobile") or ""),
+                source=str(data.get("source") or "manual"),
+                outlet=str(data.get("outlet") or ""),
+                note=str(data.get("note") or ""),
+                user_id=user_id,
+            )
+            return invite
+        finally:
+            conn.close()
+
+    @app.route("/communication-hub/feedback", methods=["GET", "POST"])
     def communication_hub_feedback():
+        # POST create-invite fallback (same path as the page) — survives WAFs that
+        # block /communication-hub/api/* POSTs while allowing the HTML page.
+        if request.method == "POST":
+            action = (
+                (request.args.get("action") or "")
+                or (request.form.get("action") if request.form else "")
+                or ""
+            ).strip().lower()
+            if not action and request.is_json:
+                payload = request.get_json(silent=True) or {}
+                if isinstance(payload, dict):
+                    action = str(payload.get("action") or "").strip().lower()
+            if action in {"create_invite", "create-link", "create"}:
+                try:
+                    invite = _create_invite_from_request()
+                    return jsonify({"ok": True, "invite": invite})
+                except Exception as exc:
+                    log.exception("feedback invite create (page POST) failed")
+                    return (
+                        jsonify(
+                            {
+                                "ok": False,
+                                "error": str(exc) or "Could not create link.",
+                            }
+                        ),
+                        400,
+                    )
+            return jsonify({"ok": False, "error": "Unsupported action."}), 400
+
         user = _get_user() if _get_user else None
         return _page_render(
             page_title="Feedback",
@@ -451,42 +514,12 @@ def register_feedback(app, *, pop_auth_notice, get_user):
 
     @app.route("/communication-hub/api/feedback/invites", methods=["POST"])
     def communication_hub_api_feedback_invite_create():
-        user = _get_user() if _get_user else None
-        user_id = user.get("id") if user else None
-        data = request.get_json(silent=True)
-        if not isinstance(data, dict):
-            data = {}
-        # Prefer JSON body; only fall back to form when JSON is absent.
-        if not data and request.form:
-            data = {
-                "customer_name": request.form.get("customer_name"),
-                "phone": request.form.get("phone") or request.form.get("mobile"),
-                "source": request.form.get("source"),
-                "outlet": request.form.get("outlet"),
-                "note": request.form.get("note"),
-            }
-        conn = get_db()
         try:
-            ensure_customer_feedback_schema(conn)
-            try:
-                conn.commit()
-            except Exception:
-                pass
-            invite = create_feedback_invite(
-                conn,
-                customer_name=str(data.get("customer_name") or ""),
-                phone=str(data.get("phone") or data.get("mobile") or ""),
-                source=str(data.get("source") or "manual"),
-                outlet=str(data.get("outlet") or ""),
-                note=str(data.get("note") or ""),
-                user_id=user_id,
-            )
+            invite = _create_invite_from_request()
             return jsonify({"ok": True, "invite": invite})
         except Exception as exc:
             log.exception("feedback invite create failed")
             return jsonify({"ok": False, "error": str(exc) or "Could not create link."}), 400
-        finally:
-            conn.close()
 
     @app.route("/review", methods=["GET"])
     def customer_feedback_review():

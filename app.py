@@ -754,8 +754,13 @@ def _queue_auth_notice(message):
 
 def _permission_denied_response(message):
     message = str(message or "You do not have access to this module.")
-    if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
-        return jsonify({"error": message}), 403
+    accept = (request.headers.get("Accept") or "").lower()
+    if (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or request.is_json
+        or "application/json" in accept
+    ):
+        return jsonify({"ok": False, "error": message}), 403
     _queue_auth_notice(message)
     return redirect(url_for("home"))
 

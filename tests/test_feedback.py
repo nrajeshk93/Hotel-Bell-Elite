@@ -518,3 +518,19 @@ class FeedbackExpiryHttpTests(unittest.TestCase):
         )
         self.assertEqual(post_resp.status_code, 200)
         self.assertIn(b"Thank you", post_resp.data)
+
+
+    def test_page_post_create_invite_fallback(self):
+        """WAF-friendly create via POST /communication-hub/feedback?action=create_invite."""
+        with mock.patch.dict(os.environ, {"APP_BASE_URL": "https://belleliteaccounts.com"}, clear=False):
+            client = self.app.test_client()
+            resp = client.post(
+                "/communication-hub/feedback?action=create_invite",
+                json={"customer_name": "WAF", "source": "manual", "action": "create_invite"},
+                headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
+            )
+            self.assertEqual(resp.status_code, 200)
+            data = resp.get_json()
+            self.assertTrue(data["ok"])
+            self.assertTrue(data["invite"]["url"].startswith("https://belleliteaccounts.com/f/"))
+
