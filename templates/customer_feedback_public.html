@@ -18,17 +18,61 @@
     --card:#ffffff;
   }
   *{box-sizing:border-box}
+  html,body{width:100%;overflow-x:hidden}
   body{
     margin:0;
     min-height:100vh;
+    min-height:100dvh;
     font-family:"Inter","Segoe UI",system-ui,sans-serif;
     color:var(--ink);
     background:#FFFFFF;
+    -webkit-text-size-adjust:100%;
   }
   .wrap{
-    max-width:440px;
+    width:100%;
+    max-width:100%;
     margin:0 auto;
-    padding:16px 14px 40px;
+    padding:12px max(10px, env(safe-area-inset-left, 0px)) 28px max(10px, env(safe-area-inset-right, 0px));
+    box-sizing:border-box;
+  }
+  /* Phone / mobile: edge-to-edge compact column (no empty side gutters). */
+  @media (max-width:640px){
+    .wrap{
+      max-width:100%;
+      padding-top:10px;
+      padding-bottom:24px;
+    }
+    .hero{
+      border-radius:14px;
+      margin-bottom:12px;
+      aspect-ratio:16/9;
+      box-shadow:0 8px 20px rgba(15,23,42,0.1);
+    }
+    .card{
+      padding:16px 14px 18px;
+      border-radius:14px;
+    }
+    .card h2{font-size:1.2rem}
+    .brand-bar{margin-bottom:10px;gap:10px}
+    .brand-bar img{width:42px;height:42px}
+    .brand-bar h1{font-size:1.05rem}
+    .stars{gap:6px}
+    .stars label{height:48px;font-size:1.4rem;border-radius:10px}
+    .logo-rotator{
+      height:96px;
+      border-radius:14px;
+      margin-top:12px;
+    }
+    .logo-rotator-slide{padding:10px 14px}
+    .logo-rotator-slide img{max-height:72px}
+    .foot{margin-top:12px}
+  }
+  /* Larger phones / tablets in portrait still use full width up to a readable cap. */
+  @media (min-width:641px){
+    .wrap{
+      max-width:480px;
+      padding:16px 16px 40px;
+    }
   }
   .brand-bar{
     display:flex;
