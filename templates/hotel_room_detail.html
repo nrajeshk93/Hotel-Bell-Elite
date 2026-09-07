@@ -11,6 +11,17 @@
 {% set guest_mobile = guest_mobile|trim %}
 {% set guest_rid = (stay.reservationId or stay.reservationBookingId or '')|string|trim %}
 {% if guest_rid[:2]|upper == 'BK' %}{% set guest_rid = '' %}{% endif %}
+{% set _meal_ns = namespace(meal=(stay.mealPlan or stay.meal_plan or '')|trim) %}
+{% if not _meal_ns.meal %}
+  {% set _rp = (stay.ratePlan or stay.rate_plan or '')|string|trim|upper %}
+  {% if _rp == 'EP' %}{% set _meal_ns.meal = 'EP · Room only' %}
+  {% elif _rp == 'CP' or _rp == 'BB' %}{% set _meal_ns.meal = 'CP · Breakfast' %}
+  {% elif _rp == 'MAP' %}{% set _meal_ns.meal = 'MAP · Breakfast & dinner' %}
+  {% elif _rp == 'AP' or _rp == 'AI' %}{% set _meal_ns.meal = 'AP · All meals' %}
+  {% elif _rp %}{% set _meal_ns.meal = _rp %}
+  {% endif %}
+{% endif %}
+{% set guest_meal = _meal_ns.meal %}
 {% set show_guest = room_status in ('occupied', 'reserved') %}
 {% set agency_name = (stay.agencyName or stay.agency_name or '')|trim %}
 {% set agency_gst = (stay.agencyGst or stay.agency_gst or '')|trim %}
@@ -302,6 +313,7 @@
             </div>
             <div><dt>Mobile</dt><dd id="hrd-guest-mobile">{{ guest_mobile or '—' }}</dd></div>
             <div><dt>Email</dt><dd id="hrd-guest-email">{{ stay.email or '—' }}</dd></div>
+            <div><dt>Meal Plan</dt><dd id="hrd-guest-mealplan">{{ guest_meal or '—' }}</dd></div>
           </dl>
           <dl class="hrd-dl hrd-dl--guest-stay">
             <div><dt>Check In</dt><dd id="hrd-guest-checkin">{{ stay.checkInDate or '—' }}</dd></div>

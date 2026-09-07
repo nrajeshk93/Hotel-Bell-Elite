@@ -212,6 +212,37 @@
     return text === 'vip' || text === 'yes' || text === 'true';
   }
 
+
+  function stayMealPlanLabel(stay) {
+    var raw = String(
+      (stay && (stay.mealPlan || stay.meal_plan)) || ''
+    ).trim();
+    if (raw) return raw;
+    var plan = String(
+      (stay && (stay.ratePlan || stay.rate_plan)) || ''
+    )
+      .trim()
+      .toUpperCase();
+    if (!plan && stay) {
+      var nightly = stay.nightlyRates || stay.nightly_rates || stay.nightly || [];
+      if (Array.isArray(nightly) && nightly.length) {
+        var row = nightly[0] || {};
+        plan = String(row.ratePlan || row.rate_plan || '')
+          .trim()
+          .toUpperCase();
+      }
+    }
+    var labels = {
+      EP: 'EP · Room only',
+      CP: 'CP · Breakfast',
+      MAP: 'MAP · Breakfast & dinner',
+      AP: 'AP · All meals',
+      AI: 'AP · All meals',
+      BB: 'CP · Breakfast'
+    };
+    return labels[plan] || plan || '';
+  }
+
   function guestTipRowHtml(iconSvg, label, value) {
     if (!value) return '';
     return (
@@ -248,6 +279,7 @@
     var booking = String(
       (stay && (stay.bookingNumber || stay.booking_number)) || ''
     ).trim();
+    var mealPlan = stayMealPlanLabel(stay);
     var vip = isVipStay(stay);
     var icoCal =
       '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
@@ -259,12 +291,15 @@
       '<svg viewBox="0 0 24 24"><path d="M8 3h3l1 4-2 1a12 12 0 0 0 5 5l1-2 4 1v3a2 2 0 0 1-2 2A14 14 0 0 1 6 5a2 2 0 0 1 2-2z"/></svg>';
     var icoId =
       '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="12" r="2.2"/><path d="M13.5 10.5h5M13.5 13.5h4"/></svg>';
+    var icoMeal =
+      '<svg viewBox="0 0 24 24"><path d="M4 3v8a3 3 0 0 0 3 3h1v7"/><path d="M8 3v8"/><path d="M12 3c0 4 2 5 2 8v10"/><path d="M16 3c1.5 0 4 1 4 5v3h-4"/></svg>';
     var rows =
       guestTipRowHtml(icoCal, 'Check-in', checkIn) +
       guestTipRowHtml(icoClock, 'Check-out', checkOut) +
       guestTipRowHtml(icoPeople, 'Guests', party) +
       guestTipRowHtml(icoPhone, 'Phone', phone) +
-      guestTipRowHtml(icoId, 'Booking ID', booking);
+      guestTipRowHtml(icoId, 'Booking ID', booking) +
+      guestTipRowHtml(icoMeal, 'Meal Plan', mealPlan);
     return (
       '<div class="hotel-room-guest-tip" role="tooltip">' +
       '<div class="hotel-room-guest-tip-card">' +

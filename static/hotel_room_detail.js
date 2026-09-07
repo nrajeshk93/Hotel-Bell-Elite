@@ -367,6 +367,37 @@
     };
   }
 
+
+  function stayMealPlanLabel(stay) {
+    var raw = String(
+      (stay && (stay.mealPlan || stay.meal_plan)) || ''
+    ).trim();
+    if (raw) return raw;
+    var plan = String(
+      (stay && (stay.ratePlan || stay.rate_plan)) || ''
+    )
+      .trim()
+      .toUpperCase();
+    if (!plan && stay) {
+      var nightly = stay.nightlyRates || stay.nightly_rates || stay.nightly || [];
+      if (Array.isArray(nightly) && nightly.length) {
+        var row = nightly[0] || {};
+        plan = String(row.ratePlan || row.rate_plan || '')
+          .trim()
+          .toUpperCase();
+      }
+    }
+    var labels = {
+      EP: 'EP · Room only',
+      CP: 'CP · Breakfast',
+      MAP: 'MAP · Breakfast & dinner',
+      AP: 'AP · All meals',
+      AI: 'AP · All meals',
+      BB: 'CP · Breakfast'
+    };
+    return labels[plan] || plan || '';
+  }
+
   function guestCardDisplayName(stay) {
     if (!stay || typeof stay !== 'object') return '';
     var name = String(stay.guestName || stay.guest_name || '').trim();
@@ -854,6 +885,8 @@
       }
       var emailEl = $('#hrd-guest-email', root);
       if (emailEl) emailEl.textContent = dash(stay.email);
+      var mealEl = $('#hrd-guest-mealplan', root);
+      if (mealEl) mealEl.textContent = dash(stayMealPlanLabel(stay));
       var checkInEl = $('#hrd-guest-checkin', root);
       if (checkInEl) {
         checkInEl.textContent = dash(

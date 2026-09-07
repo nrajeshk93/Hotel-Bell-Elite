@@ -574,8 +574,8 @@ body.hotel-rooms-module .hotel-kpi.hbe-kpi-card.is-active{
   right:auto;
   bottom:auto;
   z-index:80;
-  width:292px;
-  max-width:min(292px, calc(100vw - 24px));
+  width:320px;
+  max-width:min(320px, calc(100vw - 24px));
   margin:0;
   padding:0;
   border:0;
@@ -614,7 +614,7 @@ body.hotel-rooms-module .hotel-kpi.hbe-kpi-card.is-active{
   bottom:auto;
   z-index:5200;
   transform:none;
-  max-width:min(292px, calc(100vw - 16px));
+  max-width:min(320px, calc(100vw - 16px));
 }
 .hotel-room-guest-tip--measuring{
   opacity:0 !important;
@@ -717,7 +717,7 @@ body.hotel-rooms-module .hotel-kpi.hbe-kpi-card.is-active{
 }
 .hotel-room-guest-tip-row{
   display:grid;
-  grid-template-columns:18px 78px minmax(0,1fr);
+  grid-template-columns:18px 86px minmax(0,1fr);
   align-items:center;
   column-gap:8px;
   min-height:36px;
@@ -751,10 +751,11 @@ body.hotel-rooms-module .hotel-kpi.hbe-kpi-card.is-active{
 .hotel-room-guest-tip-value{
   font:650 12.5px/1.25 Inter,system-ui,sans-serif;
   color:#0F172A;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
+  white-space:normal;
+  overflow:visible;
+  text-overflow:clip;
   text-align:left;
+  word-break:break-word;
 }
 @media (hover:hover){
   .hotel-room-tile--has-guest:hover .hotel-room-guest-tip{

@@ -2,9 +2,61 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="format-detection" content="telephone=no">
 <meta name="theme-color" content="#FFFFFF">
 <title>Guest feedback — {{ hotel_name or "Hotel Bell Elite" }}</title>
+<script>
+/* Force real mobile layout — WhatsApp/in-app browsers often use a ~980px desktop viewport. */
+(function () {
+  try {
+    var content = "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover";
+    var vp = document.querySelector('meta[name="viewport"]');
+    if (!vp) {
+      vp = document.createElement("meta");
+      vp.setAttribute("name", "viewport");
+      document.head.insertBefore(vp, document.head.firstChild);
+    }
+    vp.setAttribute("content", content);
+    function isCoarseOrNarrow() {
+      try {
+        if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) return true;
+        if (window.matchMedia && window.matchMedia("(hover: none)").matches) return true;
+      } catch (e) {}
+      var sw = Math.min(screen.width || 0, screen.height || 0) || 0;
+      return sw > 0 && sw <= 920;
+    }
+    function fitMobile() {
+      var sw = Math.min(screen.width || 0, screen.height || 0) || 0;
+      var cw = document.documentElement.clientWidth || window.innerWidth || 0;
+      var force = false;
+      if (sw > 0 && cw > sw * 1.05) force = true;
+      if (isCoarseOrNarrow()) force = true;
+      if (force) {
+        document.documentElement.classList.add("fb-force-mobile");
+        if (sw > 0 && cw > sw * 1.05) {
+          vp.setAttribute(
+            "content",
+            "width=" + sw + ", initial-scale=1, maximum-scale=1, viewport-fit=cover"
+          );
+        } else {
+          vp.setAttribute("content", content);
+        }
+      } else {
+        document.documentElement.classList.remove("fb-force-mobile");
+        vp.setAttribute("content", content);
+      }
+    }
+    fitMobile();
+    window.addEventListener("orientationchange", function () {
+      setTimeout(fitMobile, 50);
+    });
+    window.addEventListener("resize", fitMobile);
+  } catch (e) {}
+})();
+</script>
 {% include "partials/hbe_fonts.html" %}
 <style>
   :root{
@@ -16,85 +68,67 @@
     --star-empty:#CBD5E1;
     --bg:#FFFFFF;
     --card:#ffffff;
+    --pad:12px;
   }
   *{box-sizing:border-box}
-  html,body{width:100%;overflow-x:hidden}
+  html{
+    width:100%;
+    max-width:100%;
+    -webkit-text-size-adjust:100%;
+    text-size-adjust:100%;
+  }
   body{
     margin:0;
+    width:100%;
+    max-width:100%;
     min-height:100vh;
     min-height:100dvh;
     font-family:"Inter","Segoe UI",system-ui,sans-serif;
     color:var(--ink);
     background:#FFFFFF;
-    -webkit-text-size-adjust:100%;
+    overflow-x:hidden;
   }
+  /* Mobile-first: fill the screen. Never use a width-only 480px cap (phones/in-app browsers lie). */
   .wrap{
-    width:100%;
-    max-width:100%;
+    width:100% !important;
+    max-width:100% !important;
     margin:0 auto;
-    padding:12px max(10px, env(safe-area-inset-left, 0px)) 28px max(10px, env(safe-area-inset-right, 0px));
+    padding:8px 8px 20px;
+    padding-left:max(8px, env(safe-area-inset-left, 0px));
+    padding-right:max(8px, env(safe-area-inset-right, 0px));
     box-sizing:border-box;
   }
-  /* Phone / mobile: edge-to-edge compact column (no empty side gutters). */
-  @media (max-width:640px){
-    .wrap{
-      max-width:100%;
-      padding-top:10px;
-      padding-bottom:24px;
-    }
-    .hero{
-      border-radius:14px;
-      margin-bottom:12px;
-      aspect-ratio:16/9;
-      box-shadow:0 8px 20px rgba(15,23,42,0.1);
-    }
-    .card{
-      padding:16px 14px 18px;
-      border-radius:14px;
-    }
-    .card h2{font-size:1.2rem}
-    .brand-bar{margin-bottom:10px;gap:10px}
-    .brand-bar img{width:42px;height:42px}
-    .brand-bar h1{font-size:1.05rem}
-    .stars{gap:6px}
-    .stars label{height:48px;font-size:1.4rem;border-radius:10px}
-    .logo-rotator{
-      height:96px;
-      border-radius:14px;
-      margin-top:12px;
-    }
-    .logo-rotator-slide{padding:10px 14px}
-    .logo-rotator-slide img{max-height:72px}
-    .foot{margin-top:12px}
+  html.fb-force-mobile,
+  html.fb-force-mobile body,
+  html.fb-force-mobile .wrap{
+    width:100% !important;
+    max-width:100% !important;
   }
-  /* Larger phones / tablets in portrait still use full width up to a readable cap. */
-  @media (min-width:641px){
-    .wrap{
-      max-width:480px;
-      padding:16px 16px 40px;
-    }
+  html.fb-force-mobile .wrap{
+    padding-left:max(8px, env(safe-area-inset-left, 0px)) !important;
+    padding-right:max(8px, env(safe-area-inset-right, 0px)) !important;
   }
   .brand-bar{
     display:flex;
     align-items:center;
     justify-content:center;
-    gap:12px;
-    margin:0 0 14px;
+    gap:10px;
+    margin:0 0 12px;
     color:#0F172A;
-    text-align:left;
     background:#FFFFFF;
   }
   .brand-bar img{
-    width:48px;
-    height:48px;
+    width:44px;
+    height:44px;
     object-fit:contain;
     border-radius:10px;
     background:#FFFFFF;
     padding:4px;
+    flex-shrink:0;
   }
   .brand-bar h1{
     margin:0;
-    font-size:1.15rem;
+    font-size:1.1rem;
     font-weight:700;
     letter-spacing:0.01em;
     line-height:1.25;
@@ -107,12 +141,13 @@
   }
   .hero{
     position:relative;
-    border-radius:16px;
+    width:100%;
+    border-radius:12px;
     overflow:hidden;
-    margin-bottom:14px;
-    aspect-ratio:16/10;
+    margin:0 0 10px;
+    aspect-ratio:16/9;
     background:#1E293B;
-    box-shadow:0 10px 28px rgba(15,23,42,0.12);
+    box-shadow:0 8px 20px rgba(15,23,42,0.1);
   }
   .hero img{
     width:100%;
@@ -121,43 +156,36 @@
     display:block;
   }
   .card{
+    width:100%;
     background:var(--card);
     border:1px solid var(--line);
-    border-radius:16px;
-    padding:20px 18px 22px;
-    box-shadow:0 10px 30px rgba(15,23,42,0.08);
+    border-radius:14px;
+    padding:16px 14px 18px;
+    box-shadow:0 8px 22px rgba(15,23,42,0.06);
   }
   .card h2{
     margin:0 0 6px;
-    font-size:1.28rem;
+    font-size:1.2rem;
     line-height:1.25;
   }
   .sub{
-    margin:0 0 16px;
+    margin:0 0 14px;
     color:var(--muted);
-    font-size:0.95rem;
+    font-size:0.92rem;
     line-height:1.45;
   }
   .err{
-    margin:0 0 14px;
+    margin:0 0 12px;
     padding:10px 12px;
     border-radius:10px;
     background:#FEF2F2;
     color:#B91C1C;
     font-size:0.9rem;
   }
-  .ok{
-    margin:0;
-    padding:18px 8px;
-    text-align:center;
-  }
+  .ok{margin:0;padding:18px 8px;text-align:center}
   .ok h2{margin:0 0 8px;font-size:1.25rem}
   .ok p{margin:0;color:var(--muted);line-height:1.45}
-  fieldset{
-    border:0;
-    margin:0 0 14px;
-    padding:0;
-  }
+  fieldset{border:0;margin:0 0 14px;padding:0}
   legend,label.lbl{
     display:block;
     font-size:0.78rem;
@@ -169,20 +197,22 @@
   }
   .stars{
     display:flex;
-    gap:8px;
+    gap:6px;
     justify-content:space-between;
+    width:100%;
   }
   .stars input{position:absolute;opacity:0;pointer-events:none}
   .stars label{
-    flex:1;
-    height:52px;
-    border-radius:12px;
+    flex:1 1 0;
+    min-width:0;
+    height:48px;
+    border-radius:10px;
     border:1px solid var(--line);
     display:grid;
     place-items:center;
     cursor:pointer;
     color:var(--star-empty);
-    font-size:1.55rem;
+    font-size:1.45rem;
     line-height:1;
     background:#fff;
     transition:border-color .15s, color .15s, background .15s, transform .1s;
@@ -199,16 +229,11 @@
     outline-offset:2px;
   }
   .stars label:active{transform:scale(0.96)}
-  .hint{
-    margin:8px 0 0;
-    font-size:0.85rem;
-    color:var(--muted);
-    min-height:1.2em;
-  }
+  .hint{margin:8px 0 0;font-size:0.85rem;color:var(--muted);min-height:1.2em}
   .low-block[hidden]{display:none !important}
   textarea{
     width:100%;
-    min-height:120px;
+    min-height:110px;
     border:1px solid #D1D5DB;
     border-radius:12px;
     padding:12px;
@@ -226,29 +251,24 @@
     font-weight:700;
     cursor:pointer;
   }
-  button[type=submit]:disabled{
-    opacity:0.65;
-    cursor:wait;
-  }
+  button[type=submit]:disabled{opacity:0.65;cursor:wait}
   button[type=submit]:hover, .btn-google:hover{filter:brightness(0.96)}
   .foot{
-    margin-top:16px;
+    margin-top:12px;
     text-align:center;
     color:#94A3B8;
     font-size:0.8rem;
   }
   .busy{opacity:0.7;pointer-events:none}
-
   .logo-rotator{
-    margin:16px 0 0;
+    margin:12px 0 0;
     width:100%;
-    max-width:100%;
-    height:112px;
+    height:96px;
     overflow:hidden;
-    border-radius:16px;
+    border-radius:14px;
     background:#fff;
     border:1px solid var(--line);
-    box-shadow:0 10px 30px rgba(15,23,42,0.06);
+    box-shadow:0 8px 20px rgba(15,23,42,0.05);
     position:relative;
   }
   .logo-rotator-track{
@@ -263,13 +283,13 @@
     display:flex;
     align-items:center;
     justify-content:center;
-    padding:14px 22px;
+    padding:10px 14px;
     box-sizing:border-box;
     flex-shrink:0;
   }
   .logo-rotator-slide img{
-    max-width:88%;
-    max-height:84px;
+    max-width:90%;
+    max-height:72px;
     width:auto;
     height:auto;
     object-fit:contain;
@@ -282,6 +302,18 @@
   }
   @media (prefers-reduced-motion: reduce){
     .logo-rotator-track{ animation:none; }
+  }
+  /* Only constrain on large desktop screens with a mouse — never on phones/tablets. */
+  /* True desktop only — never fire on phones/in-app browsers. */
+  @media (min-width:1024px) and (pointer:fine) and (hover:hover){
+    html:not(.fb-force-mobile) .wrap{
+      max-width:480px !important;
+      padding:16px 16px 40px;
+    }
+    html:not(.fb-force-mobile) .hero{ aspect-ratio:16/10; border-radius:16px; }
+    html:not(.fb-force-mobile) .card{ padding:20px 18px 22px; border-radius:16px; }
+    html:not(.fb-force-mobile) .logo-rotator{ height:112px; }
+    html:not(.fb-force-mobile) .logo-rotator-slide img{ max-height:84px; }
   }
 </style>
 </head>
@@ -303,7 +335,7 @@
       <img
         src="{{ asset("feedback_hero_sm.jpg") }}"
         srcset="{{ asset("feedback_hero_sm.jpg") }} 900w, {{ asset("feedback_hero.jpg") }} 1600w"
-        sizes="(max-width:440px) 100vw, 440px"
+        sizes="100vw"
         width="1600"
         height="1000"
         alt="Hotel Bell Elite exterior at night"

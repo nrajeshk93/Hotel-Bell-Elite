@@ -11006,6 +11006,7 @@ def hotel_reservation_assign_api(reservation_id):
                         "email": updated.get("email") or "",
                         "roomRate": nightly,
                         "ratePlan": rate_plan,
+                        "mealPlan": meal,
                         "additionalRequests": notes,
                         "reservationId": reservation_id_val,
                         "reservationBookingId": reservation_booking_id,

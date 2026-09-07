@@ -18144,6 +18144,7 @@ def _normalize_hotel_room_stay(stay, tax_rates=None):
         "adults": max(1, adults),
         "children": max(0, children),
         "ratePlan": _hotel_str(stay.get("ratePlan") or stay.get("rate_plan"), 60),
+        "mealPlan": _hotel_str(stay.get("mealPlan") or stay.get("meal_plan"), 120),
         "roomRate": room_rate,
         "totalRate": total_rate,
         "paymentMethod": _hotel_str(
@@ -21178,6 +21179,7 @@ def save_hotel_room_reservation(
         "billingName",
         "roomRate",
         "ratePlan",
+        "mealPlan",
         "totalRate",
         "advancePaid",
         "additionalRequests",
