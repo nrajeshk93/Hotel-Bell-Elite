@@ -11308,6 +11308,10 @@ def ensure_customer_feedback_schema(conn):
         conn.execute(
             "ALTER TABLE customer_feedback_invites ADD COLUMN expires_at TEXT"
         )
+        try:
+            conn.commit()
+        except Exception:
+            pass
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS customer_feedback_responses (

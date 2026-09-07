@@ -40,6 +40,7 @@ EXEMPT_ENDPOINTS = frozenset(
         "sitemap_xml",
         "customer_feedback_public",
         "customer_feedback_review",
+        "communication_hub_api_feedback_invite_create",
     }
 )
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sqlite3
+
 import logging
 import re
 import secrets
@@ -175,26 +177,38 @@ def create_feedback_invite(
     expires_at = (datetime.now() + timedelta(hours=INVITE_TTL_HOURS)).strftime(
         "%Y-%m-%d %H:%M:%S"
     )
-    cur = conn.execute(
-        """
+    params = (
+        token,
+        name,
+        phone_clean,
+        src,
+        outlet_clean,
+        note_clean,
+        user_id,
+        now,
+        expires_at,
+    )
+    insert_sql = """
         INSERT INTO customer_feedback_invites
             (token, customer_name, phone_e164, source, outlet, note, status,
              created_by, created_at, expires_at)
         VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)
-        """,
-        (
-            token,
-            name,
-            phone_clean,
-            src,
-            outlet_clean,
-            note_clean,
-            user_id,
-            now,
-            expires_at,
-        ),
-    )
-    conn.commit()
+        """
+    try:
+        cur = conn.execute(insert_sql, params)
+        conn.commit()
+    except sqlite3.OperationalError as exc:
+        # Production DBs that predate expires_at can miss the column until migrate.
+        msg = str(exc).lower()
+        if "expires_at" not in msg and "no such column" not in msg:
+            raise
+        ensure_customer_feedback_schema(conn)
+        try:
+            conn.commit()
+        except Exception:
+            pass
+        cur = conn.execute(insert_sql, params)
+        conn.commit()
     invite_id = int(cur.lastrowid)
     return {
         "id": invite_id,
@@ -439,8 +453,11 @@ def register_feedback(app, *, pop_auth_notice, get_user):
     def communication_hub_api_feedback_invite_create():
         user = _get_user() if _get_user else None
         user_id = user.get("id") if user else None
-        data = request.get_json(silent=True) or {}
-        if request.form:
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            data = {}
+        # Prefer JSON body; only fall back to form when JSON is absent.
+        if not data and request.form:
             data = {
                 "customer_name": request.form.get("customer_name"),
                 "phone": request.form.get("phone") or request.form.get("mobile"),
@@ -450,6 +467,11 @@ def register_feedback(app, *, pop_auth_notice, get_user):
             }
         conn = get_db()
         try:
+            ensure_customer_feedback_schema(conn)
+            try:
+                conn.commit()
+            except Exception:
+                pass
             invite = create_feedback_invite(
                 conn,
                 customer_name=str(data.get("customer_name") or ""),

@@ -300,6 +300,10 @@
 
   function readCsrfToken() {
     try {
+      if (global.HbeCsrf && typeof global.HbeCsrf.getToken === 'function') {
+        var t = String(global.HbeCsrf.getToken() || '').trim();
+        if (t) return t;
+      }
       var meta = document.querySelector('meta[name="csrf-token"]');
       if (meta && meta.content) return String(meta.content).trim();
       var m = document.cookie.match(/(?:^|; )hbe_csrf=([^;]*)/);
@@ -369,7 +373,11 @@
             throw new Error(inviteHttpErrorMessage(res));
           }
           var invite = res.data.invite || {};
-          if (result) result.hidden = false;
+          if (result) {
+            result.hidden = false;
+            result.removeAttribute('hidden');
+            result.style.display = 'block';
+          }
           if (urlInput) {
             urlInput.value = invite.url || '';
             try {

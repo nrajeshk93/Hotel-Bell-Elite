@@ -944,6 +944,19 @@ def enforce_access():
             or request.path.startswith("/hotel/api/id-documents/")
         ):
             return jsonify({"ok": False, "error": "Please sign in again."}), 401
+        if (
+            xhr
+            or "application/json" in (request.headers.get("Accept") or "").lower()
+        ) and (
+            endpoint
+            in {
+                "communication_hub_api_feedback_summary",
+                "communication_hub_api_feedback_responses",
+                "communication_hub_api_feedback_invite_create",
+            }
+            or request.path.startswith("/communication-hub/api/feedback/")
+        ):
+            return jsonify({"ok": False, "error": "Please sign in again."}), 401
         if endpoint == "mobile_session" or (
             request.path.startswith("/api/mobile/")
             and endpoint not in {"mobile_ota_manifest", "mobile_ota_apk", "mobile_login"}
