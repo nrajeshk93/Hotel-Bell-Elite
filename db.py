@@ -12841,6 +12841,17 @@ def _hotel_invoice_history_entries(stay, kind=None):
                     "snapshotStay": None,
                 },
             )
+        # Single HBE after ledger charge edit: mint-time history cap can lag behind
+        # hotelInvoicedEstimatedTotal — heal so allocate/ledger balance stay correct.
+        snap_est = round(float(stay.get("hotelInvoicedEstimatedTotal") or 0), 2)
+        hotel_entries = [e for e in entries if e.get("kind") == "hotel"]
+        if (
+            primary
+            and len(hotel_entries) == 1
+            and hotel_entries[0].get("invoiceNumber") == primary
+            and snap_est > round(float(hotel_entries[0].get("estimatedTotal") or 0), 2) + 0.009
+        ):
+            hotel_entries[0]["estimatedTotal"] = snap_est
     if kind == "fb" or kind is None:
         primary_fb = _hotel_str(
             stay.get("fbTransferInvoiceNumber") or stay.get("fb_transfer_invoice_number"), 60
@@ -13025,6 +13036,124 @@ def _hotel_allocate_hotel_invoice_balances(stay):
     return out
 
 
+def _hotel_invoice_payments_total_from_payload(payload, *, source=""):
+    """Sum tender amounts recorded on a ledger payload (hotel or F&B)."""
+    total = 0.0
+    for pay in _hotel_invoice_payment_rows_from_payload(payload, source=source):
+        if not isinstance(pay, dict):
+            continue
+        try:
+            amt = round(float(pay.get("amount") or 0), 2)
+        except (TypeError, ValueError):
+            amt = 0.0
+        if amt > 0.009:
+            total = round(total + amt, 2)
+    return total
+
+
+def _hotel_reconcile_unsettled_ledger_balance(estimated, advance_paid, payments_total=0.0):
+    """Single rule: unsettled ledger balance = amount − paid (never below zero).
+
+    Used by upsert + heal so Extra Bed / early / late / folio raises Amount and
+    Balance together, and payment-only sync cannot leave Balance behind.
+    """
+    estimated = round(float(estimated or 0), 2)
+    paid = round(max(float(advance_paid or 0), float(payments_total or 0), 0.0), 2)
+    return round(max(estimated - paid, 0.0), 2)
+
+
+def _hotel_heal_unsettled_invoice_balance_mismatch(conn, invoice_number=None, *, limit=500):
+    """Persist amount−paid balance when Extra Bed raised estimated but not balance.
+
+    Runs on ledger load/get so stale open rows self-heal without manual SQL.
+    Settled/cancelled rows are left unchanged.
+    """
+    ensure_hotel_room_invoices_schema(conn)
+    params = []
+    where = "WHERE status = 'open'"
+    if invoice_number:
+        where += " AND invoice_number = ?"
+        params.append(_hotel_str(invoice_number, 60))
+    rows = conn.execute(
+        f"""
+        SELECT invoice_number, estimated_total, advance_paid, balance_amount,
+               status, source, payload_json
+        FROM hotel_room_invoices
+        {where}
+        ORDER BY invoice_generated_at DESC, invoice_number DESC
+        LIMIT ?
+        """,
+        (*params, int(limit)),
+    ).fetchall()
+    healed = []
+    for row in rows:
+        source = _hotel_invoice_source_value(row["source"] if "source" in row.keys() else "")
+        if source in (HOTEL_INVOICE_SOURCE_POS_TRANSFER, HOTEL_INVOICE_SOURCE_FB_COMBINED):
+            continue
+        estimated = round(float(row["estimated_total"] or 0), 2)
+        advance = round(float(row["advance_paid"] or 0), 2)
+        balance = round(float(row["balance_amount"] or 0), 2)
+        try:
+            payload = json.loads(row["payload_json"] or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        payments_total = _hotel_invoice_payments_total_from_payload(payload, source=source)
+        stay = payload.get("stay") if isinstance(payload.get("stay"), dict) else {}
+        if isinstance(stay, dict):
+            try:
+                stay_adv = round(float(stay.get("advancePaid") or 0), 2)
+            except (TypeError, ValueError):
+                stay_adv = 0.0
+            advance = max(advance, stay_adv)
+        expected = _hotel_reconcile_unsettled_ledger_balance(
+            estimated, advance, payments_total
+        )
+        if abs(expected - balance) <= 0.009:
+            # Also heal payload stay.balanceAmount when column is already correct.
+            if isinstance(stay, dict):
+                try:
+                    stay_bal = round(float(stay.get("balanceAmount") or 0), 2)
+                except (TypeError, ValueError):
+                    stay_bal = balance
+                try:
+                    stay_est = round(float(stay.get("estimatedTotal") or 0), 2)
+                except (TypeError, ValueError):
+                    stay_est = estimated
+                if abs(stay_bal - expected) <= 0.009 and abs(stay_est - estimated) <= 0.009:
+                    continue
+            else:
+                continue
+        status = _hotel_invoice_status(expected)
+        if isinstance(stay, dict):
+            stay = dict(stay)
+            stay["estimatedTotal"] = estimated
+            stay["balanceAmount"] = expected
+            stay["advancePaid"] = advance
+            stay["combinedBalanceDue"] = round(
+                expected + round(float(stay.get("fbTransferBalance") or 0), 2), 2
+            )
+            payload = dict(payload)
+            payload["stay"] = stay
+        blob = json.dumps(payload, separators=(",", ":"))
+        conn.execute(
+            """
+            UPDATE hotel_room_invoices
+            SET balance_amount = ?,
+                advance_paid = ?,
+                status = ?,
+                payload_json = ?,
+                updated_at = datetime('now','localtime')
+            WHERE invoice_number = ?
+              AND status = 'open'
+            """,
+            (expected, advance, status, blob, row["invoice_number"]),
+        )
+        healed.append(row["invoice_number"])
+    return healed
+
+
 def _hotel_allocate_fb_invoice_balances(stay):
     entries = [e for e in _hotel_invoice_history_entries(stay, kind="fb") if e.get("invoiceNumber")]
     remaining = round(float(stay.get("fbTransferBalance") or 0), 2)
@@ -13131,7 +13260,58 @@ def _hotel_get_invoice_ledger_row(conn, invoice_number):
     ).fetchone()
 
 
-def _hotel_merge_live_payments_into_payload(existing_payload, stay):
+# Invoice-ledger charge fields that must follow stay edits (Extra Bed, overstay
+# extras, folio/custom charges, discounts, and hotelInvoiced* snapshots).
+_HOTEL_INVOICE_LEDGER_CHARGE_KEYS = (
+    "ratePlan",
+    "roomRate",
+    "totalRate",
+    "nightlyRates",
+    "nights",
+    "billableNights",
+    "overstayNights",
+    "mergeRoomRates",
+    "chargeLabels",
+    "extraBedQty",
+    "extraBedRate",
+    "extraBedNights",
+    "extraBedAmount",
+    "extraBedNote",
+    "earlyCheckinQty",
+    "earlyCheckinRate",
+    "earlyCheckinNights",
+    "earlyCheckinAmount",
+    "earlyCheckinNote",
+    "lateCheckoutQty",
+    "lateCheckoutRate",
+    "lateCheckoutNights",
+    "lateCheckoutAmount",
+    "lateCheckoutNote",
+    "folioCharges",
+    "discountType",
+    "discountValue",
+    "discountAmount",
+    "discountReason",
+    "estimatedTotal",
+    "hotelInvoicedBillableNights",
+    "hotelInvoicedEstimatedTotal",
+    "hotelInvoicedExtraBedAmount",
+    "hotelInvoicedEarlyCheckinAmount",
+    "hotelInvoicedLateCheckoutAmount",
+)
+
+
+def _hotel_merge_live_payments_into_payload(existing_payload, stay, *, sync_charges=False):
+    """Merge live stay fields into a ledger invoice payload.
+
+    Permanent invoice↔ledger rule:
+    - Payments / advance / edit flags always sync.
+    - Extra Bed / early check-in / late checkout / folio / discount / estimated
+      totals copy only when ``sync_charges`` is True (edit persist / regenerate).
+    - Payment-only refreshes must NOT copy ``balanceAmount`` from a live stay that
+      may omit Extra Bed — callers set balance via
+      ``_hotel_reconcile_unsettled_ledger_balance`` so Amount/Balance cannot drift.
+    """
     if not isinstance(existing_payload, dict):
         existing_payload = {}
     payload = dict(existing_payload)
@@ -13140,7 +13320,6 @@ def _hotel_merge_live_payments_into_payload(existing_payload, stay):
         for key in (
             "payments",
             "advancePaid",
-            "balanceAmount",
             "combinedBalanceDue",
             "fbTransferBalance",
             "invoiceEditOpen",
@@ -13148,6 +13327,13 @@ def _hotel_merge_live_payments_into_payload(existing_payload, stay):
         ):
             if key in stay:
                 payload_stay[key] = stay.get(key)
+        # balanceAmount only with charge sync; otherwise upsert reconciles it.
+        if sync_charges and "balanceAmount" in stay:
+            payload_stay["balanceAmount"] = stay.get("balanceAmount")
+        if sync_charges:
+            for key in _HOTEL_INVOICE_LEDGER_CHARGE_KEYS:
+                if key in stay:
+                    payload_stay[key] = stay.get(key)
         inv_no = _hotel_str(
             payload_stay.get("fbTransferInvoiceNumber")
             or payload_stay.get("invoiceNumber")
@@ -14025,7 +14211,7 @@ def _hotel_append_stay_folio_charge(
 
 
 def _hotel_persist_archived_invoice_edit(conn, item, archived_room):
-    upsert_hotel_room_invoice_from_room(conn, archived_room)
+    upsert_hotel_room_invoice_from_room(conn, archived_room, sync_charges=True)
     _hotel_sync_invoice_edit_to_live_room(conn, item, archived_room)
     inv_no = _hotel_str(item.get("invoice_number"), 60)
     refreshed = get_hotel_room_invoice(conn, inv_no)
@@ -14116,9 +14302,26 @@ def _hotel_preserve_invoice_merge_roster(payload, stay):
 
 
 def upsert_hotel_room_invoice_from_room(
-    conn, room, invoice_number=None, snapshot_stay=None, estimated_total=None, created_by=""
+    conn,
+    room,
+    invoice_number=None,
+    snapshot_stay=None,
+    estimated_total=None,
+    created_by="",
+    sync_charges=None,
 ):
-    """Persist / refresh a ledger row from an occupied (or snapshot) room dict."""
+    """Persist / refresh a ledger row from an occupied (or snapshot) room dict.
+
+    Invariant (all additional charges — Extra Bed, early check-in, late checkout,
+    folio/custom): after any charge change, invoice payload totals AND ledger
+    ``estimated_total`` + ``balance_amount`` stay consistent, with
+    ``balance = amount − payments`` for unsettled rows.
+
+    ``sync_charges``: True forces charge fields and ``estimated_total`` onto the
+    ledger (invoice edit persist / regenerate / open edit session). None follows
+    the open edit-session flag; False is payment-only (charges stay frozen, but
+    balance is still reconciled to frozen amount − paid so Extra Bed cannot drop).
+    """
     if not isinstance(room, dict):
         return None
     room = dict(room)
@@ -14140,10 +14343,7 @@ def upsert_hotel_room_invoice_from_room(
     ensure_hotel_room_invoices_schema(conn)
 
     existing = _hotel_get_invoice_ledger_row(conn, invoice_number)
-    balances = _hotel_allocate_hotel_invoice_balances(stay)
-    balance = round(float(balances.get(invoice_number, stay.get("balanceAmount") or 0)), 2)
     advance = round(float(stay.get("advancePaid") or 0), 2)
-    status = _hotel_invoice_status(balance)
     generated_at = _hotel_str(
         stay.get("invoiceGeneratedAt") or stay.get("invoice_generated_at"), 40
     ) or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -14151,22 +14351,42 @@ def upsert_hotel_room_invoice_from_room(
     if existing and str(existing["status"] or "").strip().lower() == "cancelled":
         return invoice_number
 
+    # Detect charge-sync before allocating balances so edit sessions are not
+    # capped by a stale hotelInvoicedEstimatedTotal snapshot.
+    payload_preview = {}
     if existing:
         try:
-            payload = json.loads(existing["payload_json"] or "{}")
+            payload_preview = json.loads(existing["payload_json"] or "{}")
         except (TypeError, ValueError):
-            payload = {}
-        if not isinstance(payload, dict):
-            payload = {}
+            payload_preview = {}
+        if not isinstance(payload_preview, dict):
+            payload_preview = {}
+    payload_stay_preview = (
+        payload_preview.get("stay")
+        if isinstance(payload_preview.get("stay"), dict)
+        else {}
+    )
+    editing = _hotel_stay_edit_unlocked(stay) or _hotel_stay_edit_unlocked(
+        payload_stay_preview
+    )
+    apply_charges = editing if sync_charges is None else bool(sync_charges)
+    # Provisional balance; reconciled to estimated − paid after estimated is final.
+    if apply_charges:
+        balance = round(float(stay.get("balanceAmount") or 0), 2)
+    else:
+        balances = _hotel_allocate_hotel_invoice_balances(stay)
+        balance = round(
+            float(balances.get(invoice_number, stay.get("balanceAmount") or 0)), 2
+        )
+
+    if existing:
+        payload = dict(payload_preview)
         payload_stay = (
             payload.get("stay") if isinstance(payload.get("stay"), dict) else {}
         )
-        # While an invoice edit session is open (or being closed), replace the
-        # snapshot stay so charge edits persist on the ledger row.
-        editing = _hotel_stay_edit_unlocked(stay) or _hotel_stay_edit_unlocked(
-            payload_stay
-        )
-        if editing:
+        # Open edit session, or explicit sync_charges (regenerate / persist edit):
+        # write full stay so Extra Bed and other additional charges reach the ledger.
+        if apply_charges:
             payload = dict(payload)
             for key in (
                 "id",
@@ -14179,16 +14399,26 @@ def upsert_hotel_room_invoice_from_room(
                 if room.get(key) is not None:
                     payload[key] = room.get(key)
             payload = _hotel_preserve_invoice_merge_roster(payload, stay)
+            # Prefer full stay replace; merge helper also covers charge keys when
+            # callers pass a partial stay dict.
             payload["stay"] = stay
+            payload = _hotel_merge_live_payments_into_payload(
+                payload, stay, sync_charges=True
+            )
+            payload["stay"] = _normalize_hotel_room_stay(payload.get("stay") or stay)
             estimated = round(
-                float(stay.get("estimatedTotal") or existing["estimated_total"] or 0),
+                float(
+                    (payload.get("stay") or {}).get("estimatedTotal")
+                    or stay.get("estimatedTotal")
+                    or existing["estimated_total"]
+                    or 0
+                ),
                 2,
             )
         else:
             payload = _hotel_merge_live_payments_into_payload(payload, stay)
             estimated = round(float(existing["estimated_total"] or 0), 2)
         generated_at = _hotel_str(existing["invoice_generated_at"], 40) or generated_at
-        blob = json.dumps(payload, separators=(",", ":"))
     else:
         snap = snapshot_stay if isinstance(snapshot_stay, dict) else stay
         if estimated_total is not None:
@@ -14222,7 +14452,46 @@ def upsert_hotel_room_invoice_from_room(
             "mergeRoomLabel": stay.get("mergeRoomLabel") or "",
             "stay": snap,
         }
-        blob = json.dumps(payload, separators=(",", ":"))
+
+    # Keep ledger balance = amount − paid after Extra Bed / charge sync.
+    # Payment-only refresh must not leave frozen estimated_total above a live
+    # stay.balanceAmount that omits Extra Bed already on the payload.
+    hotel_entries = [
+        e
+        for e in _hotel_invoice_history_entries(stay, kind="hotel")
+        if e.get("invoiceNumber")
+    ]
+    payments_total = _hotel_invoice_payments_total_from_payload(payload)
+    paid = round(max(float(advance or 0), float(payments_total or 0), 0.0), 2)
+    if existing:
+        try:
+            paid = max(paid, round(float(existing["advance_paid"] or 0), 2))
+        except (KeyError, IndexError, TypeError, ValueError):
+            pass
+    if apply_charges or len(hotel_entries) <= 1:
+        balance = _hotel_reconcile_unsettled_ledger_balance(estimated, paid)
+    else:
+        # Multi-HBE: FIFO allocate remaining stay balance, but never understate
+        # this row below amount−paid when frozen estimated already includes
+        # Extra Bed / additional charges (paid or unpaid).
+        balances = _hotel_allocate_hotel_invoice_balances(stay)
+        allocated = round(
+            float(balances.get(invoice_number, stay.get("balanceAmount") or 0)), 2
+        )
+        reconciled = _hotel_reconcile_unsettled_ledger_balance(estimated, paid)
+        if reconciled > allocated + 0.009:
+            balance = reconciled
+        else:
+            balance = allocated
+    status = _hotel_invoice_status(balance)
+    payload_stay = payload.get("stay") if isinstance(payload.get("stay"), dict) else None
+    if isinstance(payload_stay, dict):
+        payload_stay = dict(payload_stay)
+        payload_stay["estimatedTotal"] = round(float(estimated or 0), 2)
+        payload_stay["balanceAmount"] = balance
+        payload_stay["advancePaid"] = round(float(advance or 0), 2)
+        payload["stay"] = payload_stay
+    blob = json.dumps(payload, separators=(",", ":"))
 
     room_number_display = _hotel_invoice_frozen_room_display(existing, stay, room)
     creator = _hotel_str(created_by, 160)
@@ -14255,10 +14524,7 @@ def upsert_hotel_room_invoice_from_room(
                 NULLIF(hotel_room_invoices.invoice_generated_at, ''),
                 excluded.invoice_generated_at
             ),
-            estimated_total = COALESCE(
-                NULLIF(hotel_room_invoices.estimated_total, 0),
-                excluded.estimated_total
-            ),
+            estimated_total = excluded.estimated_total,
             advance_paid = excluded.advance_paid,
             balance_amount = excluded.balance_amount,
             status = excluded.status,
@@ -14607,7 +14873,13 @@ def upsert_fb_combined_transfer_invoice(
 
 
 def _hotel_sync_all_invoice_rows(conn, room):
-    """Refresh payment balances on every minted HBE/FBE row without mutating charges."""
+    """Refresh ledger rows for every minted HBE/FBE on the stay.
+
+    Shared path for live charge edits, folio append, discount, and payment sync.
+    Payment balances always update. While an invoice edit session is open,
+    Extra Bed / early / late / folio also sync onto the primary HBE payload and
+    estimated_total (same durable rule as archived invoice edit persist).
+    """
     if not isinstance(room, dict):
         return
     stay = room.get("stay") if isinstance(room.get("stay"), dict) else None
@@ -14616,15 +14888,21 @@ def _hotel_sync_all_invoice_rows(conn, room):
     stay = _normalize_hotel_room_stay(stay)
     room = dict(room)
     room["stay"] = stay
+    sync_charges = _hotel_stay_edit_unlocked(stay)
+    primary_inv = _hotel_str(stay.get("invoiceNumber") or stay.get("invoice_number"), 60)
     for entry in _hotel_invoice_history_entries(stay, kind="hotel"):
         inv = entry.get("invoiceNumber")
         snap = entry.get("snapshotStay")
+        # Only the invoice currently under edit gets charge fields; older
+        # additional HBE snapshots stay payment-balance-only.
+        entry_sync = bool(sync_charges) and inv == primary_inv
         upsert_hotel_room_invoice_from_room(
             conn,
             room,
             invoice_number=inv,
             snapshot_stay=snap,
             estimated_total=entry.get("estimatedTotal"),
+            sync_charges=entry_sync,
         )
     for entry in _hotel_invoice_history_entries(stay, kind="fb"):
         inv = entry.get("invoiceNumber")
@@ -15465,6 +15743,7 @@ def list_hotel_room_invoices(
     ensure_hotel_room_invoices_schema(conn)
     backfill_hotel_room_invoices_from_layout(conn)
     backfill_pos_room_transfer_invoices_from_layout(conn)
+    _hotel_heal_unsettled_invoice_balance_mismatch(conn)
 
     clauses = []
     params = []
@@ -16201,6 +16480,7 @@ def get_hotel_room_invoice(conn, invoice_number):
     number = _hotel_str(invoice_number, 60)
     if not number:
         return None
+    _hotel_heal_unsettled_invoice_balance_mismatch(conn, number)
     row = conn.execute(
         """
         SELECT invoice_number, room_id, room_number, room_type_label,
@@ -16388,6 +16668,56 @@ def reopen_hotel_room_invoice_for_edit(conn, invoice_number):
     }
 
 
+
+def _hotel_refresh_primary_history_after_charge_edit(stay):
+    """Keep the primary HBE history cap/snapshot aligned after Extra Bed edits."""
+    if not isinstance(stay, dict):
+        return stay
+    primary = _hotel_str(stay.get("invoiceNumber") or stay.get("invoice_number"), 60)
+    if not primary:
+        return stay
+    est = round(
+        float(stay.get("hotelInvoicedEstimatedTotal") or stay.get("estimatedTotal") or 0),
+        2,
+    )
+    bal = round(float(stay.get("balanceAmount") or 0), 2)
+    history = _hotel_invoice_history_raw(stay)
+    changed = False
+    for entry in history:
+        if _hotel_str(entry.get("invoiceNumber") or entry.get("invoice_number"), 60) != primary:
+            continue
+        kind = _hotel_str(entry.get("kind"), 10).lower()
+        if kind and kind != "hotel":
+            continue
+        entry["estimatedTotal"] = est
+        entry["balanceAmount"] = bal
+        nights = max(
+            1,
+            int(
+                _hotel_num(
+                    stay.get("hotelInvoicedBillableNights") or stay.get("billableNights"),
+                    1,
+                )
+            ),
+        )
+        entry["billableNights"] = nights
+        snap = entry.get("snapshotStay")
+        if isinstance(snap, dict):
+            snap = dict(snap)
+            for key in _HOTEL_INVOICE_LEDGER_CHARGE_KEYS:
+                if key in stay:
+                    snap[key] = stay.get(key)
+            snap["estimatedTotal"] = est
+            snap["balanceAmount"] = bal
+            snap["invoiceEditOpen"] = False
+            snap["invoiceGenerated"] = True
+            entry["snapshotStay"] = snap
+        changed = True
+        break
+    if changed:
+        stay["invoiceHistory"] = history
+    return stay
+
 def apply_hotel_invoice_ledger_edit(conn, invoice_number, action, data=None):
     """Apply charge/discount/regenerate actions to a ledger invoice edit session."""
     ensure_hotel_room_invoices_schema(conn)
@@ -16435,6 +16765,7 @@ def apply_hotel_invoice_ledger_edit(conn, invoice_number, action, data=None):
                 float(stay.get("lateCheckoutAmount") or 0), 2
             )
             stay = _normalize_hotel_room_stay(stay)
+            stay = _hotel_refresh_primary_history_after_charge_edit(stay)
             live_room = dict(live_room)
             live_room["stay"] = stay
             layout = get_hotel_rooms_layout(conn)
@@ -16444,7 +16775,7 @@ def apply_hotel_invoice_ledger_edit(conn, invoice_number, action, data=None):
                     rooms[idx] = live_room
                     break
             save_hotel_rooms_layout(conn, layout.get("floors") or [], rooms)
-            upsert_hotel_room_invoice_from_room(conn, live_room)
+            upsert_hotel_room_invoice_from_room(conn, live_room, sync_charges=True)
             refreshed_live = get_hotel_room(conn, room_id)
             _hotel_sync_live_invoice_row(conn, refreshed_live or live_room)
             refreshed = get_hotel_room_invoice(conn, inv_no)
@@ -16474,8 +16805,10 @@ def apply_hotel_invoice_ledger_edit(conn, invoice_number, action, data=None):
         stay["hotelInvoicedLateCheckoutAmount"] = round(
             float(stay.get("lateCheckoutAmount") or 0), 2
         )
-        archived_room["stay"] = _normalize_hotel_room_stay(stay)
-        upsert_hotel_room_invoice_from_room(conn, archived_room)
+        stay = _normalize_hotel_room_stay(stay)
+        stay = _hotel_refresh_primary_history_after_charge_edit(stay)
+        archived_room["stay"] = stay
+        upsert_hotel_room_invoice_from_room(conn, archived_room, sync_charges=True)
         refreshed = get_hotel_room_invoice(conn, inv_no)
         return {
             "room": (refreshed.get("room") if refreshed else archived_room),
@@ -19207,7 +19540,11 @@ def append_hotel_room_folio_charge(
         if str(item.get("id") or "") == room_id:
             room = item
             break
-    return {"room": room, "charge": line}
+    # Same durable ledger path as update_hotel_room_charge: Extra Bed / folio
+    # edits must refresh hotel_room_invoices while an edit session is open.
+    refreshed = get_hotel_room(conn, target.get("id") or room_id)
+    _hotel_sync_live_invoice_row(conn, refreshed or room or target)
+    return {"room": refreshed or room, "charge": line}
 
 
 def _hotel_mobile_digits(value):

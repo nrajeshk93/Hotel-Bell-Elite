@@ -68,7 +68,7 @@
     --star-empty:#CBD5E1;
     --bg:#FFFFFF;
     --card:#ffffff;
-    --pad:12px;
+    --pad:4px;
   }
   *{box-sizing:border-box}
   html{
@@ -88,14 +88,15 @@
     background:#FFFFFF;
     overflow-x:hidden;
   }
-  /* Mobile-first: fill the screen. Never use a width-only 480px cap (phones/in-app browsers lie). */
+  /* Mobile-first: edge-to-edge phone card. Never use a width-only 480px cap. */
   .wrap{
     width:100% !important;
     max-width:100% !important;
     margin:0 auto;
-    padding:8px 8px 20px;
-    padding-left:max(8px, env(safe-area-inset-left, 0px));
-    padding-right:max(8px, env(safe-area-inset-right, 0px));
+    padding:4px 4px 10px;
+    padding-left:max(4px, env(safe-area-inset-left, 0px));
+    padding-right:max(4px, env(safe-area-inset-right, 0px));
+    padding-bottom:max(10px, env(safe-area-inset-bottom, 0px));
     box-sizing:border-box;
   }
   html.fb-force-mobile,
@@ -105,99 +106,109 @@
     max-width:100% !important;
   }
   html.fb-force-mobile .wrap{
-    padding-left:max(8px, env(safe-area-inset-left, 0px)) !important;
-    padding-right:max(8px, env(safe-area-inset-right, 0px)) !important;
+    padding-left:max(4px, env(safe-area-inset-left, 0px)) !important;
+    padding-right:max(4px, env(safe-area-inset-right, 0px)) !important;
+  }
+  html.fb-force-mobile .hero,
+  html.fb-force-mobile .card,
+  html.fb-force-mobile .logo-rotator{
+    width:100% !important;
+    max-width:100% !important;
   }
   .brand-bar{
     display:flex;
     align-items:center;
     justify-content:center;
-    gap:10px;
-    margin:0 0 12px;
+    gap:8px;
+    margin:2px 0 6px;
+    padding:2px 0;
     color:#0F172A;
     background:#FFFFFF;
   }
   .brand-bar img{
-    width:44px;
-    height:44px;
+    width:32px;
+    height:32px;
     object-fit:contain;
-    border-radius:10px;
+    border-radius:8px;
     background:#FFFFFF;
-    padding:4px;
+    padding:2px;
     flex-shrink:0;
   }
   .brand-bar h1{
     margin:0;
-    font-size:1.1rem;
+    font-size:0.95rem;
     font-weight:700;
     letter-spacing:0.01em;
-    line-height:1.25;
+    line-height:1.15;
     color:#0F172A;
   }
   .brand-bar p{
-    margin:2px 0 0;
-    font-size:0.78rem;
-    color:#334155;
+    margin:1px 0 0;
+    font-size:0.68rem;
+    color:#475569;
+    line-height:1.2;
   }
   .hero{
     position:relative;
     width:100%;
-    border-radius:12px;
+    border-radius:10px;
     overflow:hidden;
-    margin:0 0 10px;
-    aspect-ratio:16/9;
+    margin:0 0 6px;
+    aspect-ratio:2.35 / 1;
+    max-height:132px;
     background:#1E293B;
-    box-shadow:0 8px 20px rgba(15,23,42,0.1);
+    box-shadow:0 4px 12px rgba(15,23,42,0.08);
   }
   .hero img{
     width:100%;
     height:100%;
     object-fit:cover;
+    object-position:center 40%;
     display:block;
   }
   .card{
     width:100%;
     background:var(--card);
     border:1px solid var(--line);
-    border-radius:14px;
-    padding:16px 14px 18px;
-    box-shadow:0 8px 22px rgba(15,23,42,0.06);
+    border-radius:12px;
+    padding:12px 12px 12px;
+    box-shadow:0 4px 14px rgba(15,23,42,0.05);
   }
   .card h2{
-    margin:0 0 6px;
-    font-size:1.2rem;
-    line-height:1.25;
+    margin:0 0 4px;
+    font-size:1.05rem;
+    line-height:1.2;
   }
   .sub{
-    margin:0 0 14px;
+    margin:0 0 10px;
     color:var(--muted);
-    font-size:0.92rem;
-    line-height:1.45;
+    font-size:0.82rem;
+    line-height:1.35;
   }
   .err{
-    margin:0 0 12px;
-    padding:10px 12px;
-    border-radius:10px;
+    margin:0 0 8px;
+    padding:8px 10px;
+    border-radius:8px;
     background:#FEF2F2;
     color:#B91C1C;
-    font-size:0.9rem;
+    font-size:0.82rem;
   }
-  .ok{margin:0;padding:18px 8px;text-align:center}
-  .ok h2{margin:0 0 8px;font-size:1.25rem}
-  .ok p{margin:0;color:var(--muted);line-height:1.45}
-  fieldset{border:0;margin:0 0 14px;padding:0}
+  .ok{margin:0;padding:14px 6px;text-align:center}
+  .ok h2{margin:0 0 6px;font-size:1.1rem}
+  .ok p{margin:0;color:var(--muted);line-height:1.4;font-size:0.88rem}
+  fieldset{border:0;margin:0 0 8px;padding:0}
   legend,label.lbl{
     display:block;
-    font-size:0.78rem;
+    font-size:0.7rem;
     font-weight:700;
-    letter-spacing:0.03em;
+    letter-spacing:0.04em;
     text-transform:uppercase;
     color:#475569;
-    margin-bottom:8px;
+    margin-bottom:6px;
   }
   .stars{
     display:flex;
-    gap:6px;
+    gap:4px;
     justify-content:space-between;
     width:100%;
   }
@@ -205,18 +216,19 @@
   .stars label{
     flex:1 1 0;
     min-width:0;
-    height:48px;
+    height:44px;
     border-radius:10px;
-    border:1px solid var(--line);
+    border:1px solid transparent;
     display:grid;
     place-items:center;
     cursor:pointer;
     color:var(--star-empty);
-    font-size:1.45rem;
+    font-size:1.55rem;
     line-height:1;
-    background:#fff;
+    background:#F8FAFC;
     transition:border-color .15s, color .15s, background .15s, transform .1s;
     user-select:none;
+    -webkit-tap-highlight-color:transparent;
   }
   .stars label.is-on,
   .stars label:hover{
@@ -229,22 +241,23 @@
     outline-offset:2px;
   }
   .stars label:active{transform:scale(0.96)}
-  .hint{margin:8px 0 0;font-size:0.85rem;color:var(--muted);min-height:1.2em}
+  .hint{margin:6px 0 0;font-size:0.78rem;color:var(--muted);min-height:1.15em}
   .low-block[hidden]{display:none !important}
   textarea{
     width:100%;
-    min-height:110px;
+    min-height:88px;
     border:1px solid #D1D5DB;
-    border-radius:12px;
-    padding:12px;
+    border-radius:10px;
+    padding:10px;
     font:inherit;
+    font-size:0.92rem;
     resize:vertical;
   }
   button[type=submit], .btn-google{
     width:100%;
-    height:48px;
+    height:44px;
     border:0;
-    border-radius:12px;
+    border-radius:10px;
     background:var(--accent);
     color:#fff;
     font:inherit;
@@ -254,21 +267,21 @@
   button[type=submit]:disabled{opacity:0.65;cursor:wait}
   button[type=submit]:hover, .btn-google:hover{filter:brightness(0.96)}
   .foot{
-    margin-top:12px;
+    margin-top:8px;
     text-align:center;
     color:#94A3B8;
-    font-size:0.8rem;
+    font-size:0.72rem;
   }
   .busy{opacity:0.7;pointer-events:none}
   .logo-rotator{
-    margin:12px 0 0;
+    margin:8px 0 0;
     width:100%;
-    height:96px;
+    height:64px;
     overflow:hidden;
-    border-radius:14px;
+    border-radius:10px;
     background:#fff;
     border:1px solid var(--line);
-    box-shadow:0 8px 20px rgba(15,23,42,0.05);
+    box-shadow:0 4px 12px rgba(15,23,42,0.04);
     position:relative;
   }
   .logo-rotator-track{
@@ -283,13 +296,13 @@
     display:flex;
     align-items:center;
     justify-content:center;
-    padding:10px 14px;
+    padding:6px 10px;
     box-sizing:border-box;
     flex-shrink:0;
   }
   .logo-rotator-slide img{
     max-width:90%;
-    max-height:72px;
+    max-height:48px;
     width:auto;
     height:auto;
     object-fit:contain;
@@ -303,17 +316,58 @@
   @media (prefers-reduced-motion: reduce){
     .logo-rotator-track{ animation:none; }
   }
-  /* Only constrain on large desktop screens with a mouse — never on phones/tablets. */
+  /* Extra-tight phones / short viewports: keep one-screen rhythm */
+  @media (max-height:700px){
+    .hero{ max-height:110px; aspect-ratio:2.5 / 1; }
+    .brand-bar{ margin:0 0 4px; }
+    .brand-bar img{ width:28px; height:28px; }
+    .card{ padding:10px 10px 10px; }
+    .logo-rotator{ height:56px; }
+    .logo-rotator-slide img{ max-height:40px; }
+  }
   /* True desktop only — never fire on phones/in-app browsers. */
   @media (min-width:1024px) and (pointer:fine) and (hover:hover){
     html:not(.fb-force-mobile) .wrap{
       max-width:480px !important;
       padding:16px 16px 40px;
     }
-    html:not(.fb-force-mobile) .hero{ aspect-ratio:16/10; border-radius:16px; }
-    html:not(.fb-force-mobile) .card{ padding:20px 18px 22px; border-radius:16px; }
-    html:not(.fb-force-mobile) .logo-rotator{ height:112px; }
+    html:not(.fb-force-mobile) .brand-bar{
+      margin:0 0 12px;
+      gap:10px;
+    }
+    html:not(.fb-force-mobile) .brand-bar img{
+      width:44px;
+      height:44px;
+      border-radius:10px;
+      padding:4px;
+    }
+    html:not(.fb-force-mobile) .brand-bar h1{ font-size:1.1rem; }
+    html:not(.fb-force-mobile) .brand-bar p{ font-size:0.78rem; }
+    html:not(.fb-force-mobile) .hero{
+      aspect-ratio:16/10;
+      max-height:none;
+      border-radius:16px;
+      margin:0 0 10px;
+      box-shadow:0 8px 20px rgba(15,23,42,0.1);
+    }
+    html:not(.fb-force-mobile) .card{
+      padding:20px 18px 22px;
+      border-radius:16px;
+      box-shadow:0 8px 22px rgba(15,23,42,0.06);
+    }
+    html:not(.fb-force-mobile) .card h2{ font-size:1.2rem; }
+    html:not(.fb-force-mobile) .sub{ font-size:0.92rem; margin:0 0 14px; }
+    html:not(.fb-force-mobile) .stars{ gap:6px; }
+    html:not(.fb-force-mobile) .stars label{
+      height:48px;
+      border:1px solid var(--line);
+      background:#fff;
+      font-size:1.45rem;
+    }
+    html:not(.fb-force-mobile) .logo-rotator{ height:112px; margin:12px 0 0; border-radius:14px; }
+    html:not(.fb-force-mobile) .logo-rotator-slide{ padding:10px 14px; }
     html:not(.fb-force-mobile) .logo-rotator-slide img{ max-height:84px; }
+    html:not(.fb-force-mobile) .foot{ margin-top:12px; font-size:0.8rem; }
   }
 </style>
 </head>
@@ -324,7 +378,7 @@
        data-already="{% if done and not thank_you %}1{% else %}0{% endif %}"
        {% if invite %}data-submit-url="{{ url_for("customer_feedback_public", token=invite.token) }}"{% endif %}>
     <div class="brand-bar">
-      <img src="{{ asset("hbe_logo_sm.png") }}" width="48" height="48" alt="Hotel Bell Elite logo">
+      <img src="{{ asset("hbe_logo_sm.png") }}" width="32" height="32" alt="Hotel Bell Elite logo">
       <div>
         <h1>{{ hotel_name or "Hotel Bell Elite" }}</h1>
         <p>Guest feedback</p>
@@ -381,7 +435,7 @@
         <div class="low-block" id="fb-low" hidden>
           <label class="lbl" for="comment">What could we improve?</label>
           <textarea id="comment" name="comment" maxlength="2000" placeholder="Please share a few details so we can make things better."></textarea>
-          <div style="height:14px"></div>
+          <div style="height:10px"></div>
           <button type="submit" id="fb-submit">Send feedback</button>
         </div>
       </form>

@@ -3444,6 +3444,16 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(edited.get_json()["room"]["stay"]["extraBedAmount"], 800)
         live_after_edit = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]["stay"]
         self.assertEqual(live_after_edit["extraBedAmount"], 800)
+        mid = self.client.get(f"/hotel/invoice-ledger/api/{inv_no}")
+        self.assertEqual(mid.status_code, 200)
+        mid_inv = mid.get_json()["invoice"]
+        mid_stay = (mid_inv.get("room") or {}).get("stay") or {}
+        self.assertEqual(float(mid_stay.get("extraBedAmount") or 0), 800.0)
+        self.assertAlmostEqual(
+            float(mid_inv["estimated_total"]),
+            float(mid_stay.get("estimatedTotal") or 0),
+            places=2,
+        )
 
         regen = self.client.put(
             f"/hotel/invoice-ledger/api/{inv_no}/edit",
@@ -3455,6 +3465,15 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertFalse(regen_body.get("minted"))
         self.assertEqual(regen_body["room"]["stay"]["invoiceNumber"], inv_no)
         self.assertTrue(regen_body["room"]["stay"]["invoiceGenerated"])
+        after = self.client.get(f"/hotel/invoice-ledger/api/{inv_no}").get_json()["invoice"]
+        after_stay = (after.get("room") or {}).get("stay") or {}
+        self.assertEqual(float(after_stay.get("extraBedAmount") or 0), 800.0)
+        self.assertEqual(float(after_stay.get("hotelInvoicedExtraBedAmount") or 0), 800.0)
+        self.assertAlmostEqual(
+            float(after["estimated_total"]),
+            float(after_stay.get("estimatedTotal") or 0),
+            places=2,
+        )
 
         cancel = self.client.post(
             f"/hotel/invoice-ledger/api/{inv_no}/cancel",
@@ -3547,6 +3566,21 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(invoice["invoice_number"], inv_no)
         self.assertEqual(invoice["status"], "open")
         self.assertGreater(float(invoice["estimated_total"]), 0)
+        # Extra Bed must land on both invoice payload and ledger estimated_total.
+        stay = (invoice.get("room") or {}).get("stay") or {}
+        self.assertEqual(float(stay.get("extraBedAmount") or 0), 900.0)
+        self.assertEqual(float(stay.get("hotelInvoicedExtraBedAmount") or 0), 900.0)
+        self.assertAlmostEqual(
+            float(invoice["estimated_total"]),
+            float(stay.get("estimatedTotal") or 0),
+            places=2,
+        )
+        self.assertGreaterEqual(float(invoice["estimated_total"]), 900.0)
+        self.assertAlmostEqual(
+            float(invoice["balance_amount"]),
+            float(stay.get("balanceAmount") or 0),
+            places=2,
+        )
 
     def test_invoice_ledger_edit_blocked_when_room_reoccupied(self):
         self._checkin_with_charges(advance=0)
@@ -5165,6 +5199,412 @@ class HotelRoomsTests(unittest.TestCase):
         )
         self.assertEqual(checkout.status_code, 400, checkout.get_data(as_text=True))
         self.assertIn("Additional Invoice", checkout.get_data(as_text=True))
+
+    def test_invoice_ledger_extra_bed_and_folio_sync_estimated_total(self):
+        """Editing Extra Bed + folio on ledger must update ledger estimated_total."""
+        self._checkin_with_charges(advance=0)
+        room = self._generate_stay_invoice()
+        inv_no = room["stay"]["invoiceNumber"]
+        before = self.client.get(f"/hotel/invoice-ledger/api/{inv_no}").get_json()["invoice"]
+        before_est = float(before["estimated_total"])
+
+        reopen = self.client.post(
+            f"/hotel/invoice-ledger/api/{inv_no}/reopen-edit",
+            json={},
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(reopen.status_code, 200, reopen.get_data(as_text=True))
+
+        edited = self.client.put(
+            f"/hotel/invoice-ledger/api/{inv_no}/edit",
+            json={"action": "update_charge", "chargeKey": "extra_bed", "amount": 1200},
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(edited.status_code, 200, edited.get_data(as_text=True))
+
+        early = self.client.put(
+            f"/hotel/invoice-ledger/api/{inv_no}/edit",
+            json={"action": "update_charge", "chargeKey": "early_checkin", "amount": 300},
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(early.status_code, 200, early.get_data(as_text=True))
+
+        late = self.client.put(
+            f"/hotel/invoice-ledger/api/{inv_no}/edit",
+            json={"action": "update_charge", "chargeKey": "late_checkout", "amount": 200},
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(late.status_code, 200, late.get_data(as_text=True))
+
+        custom = self.client.put(
+            f"/hotel/invoice-ledger/api/{inv_no}/edit",
+            json={
+                "action": "add_custom_charge",
+                "label": "Airport transfer",
+                "amount": 450,
+            },
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(custom.status_code, 200, custom.get_data(as_text=True))
+
+        mid = self.client.get(f"/hotel/invoice-ledger/api/{inv_no}").get_json()["invoice"]
+        mid_stay = (mid.get("room") or {}).get("stay") or {}
+        self.assertEqual(float(mid_stay.get("extraBedAmount") or 0), 1200.0)
+        self.assertEqual(float(mid_stay.get("earlyCheckinAmount") or 0), 300.0)
+        self.assertEqual(float(mid_stay.get("lateCheckoutAmount") or 0), 200.0)
+        labels = [f.get("label") for f in (mid_stay.get("folioCharges") or [])]
+        self.assertIn("Airport transfer", labels)
+        self.assertAlmostEqual(
+            float(mid["estimated_total"]),
+            float(mid_stay.get("estimatedTotal") or 0),
+            places=2,
+        )
+        self.assertGreater(float(mid["estimated_total"]), before_est)
+        # Amount and Balance must both include Extra Bed / early / late / folio.
+        mid_paid = max(
+            float(mid.get("advance_paid") or 0),
+            float(mid_stay.get("advancePaid") or 0),
+        )
+        self.assertAlmostEqual(
+            float(mid["balance_amount"]),
+            round(float(mid["estimated_total"]) - mid_paid, 2),
+            places=2,
+        )
+        self.assertAlmostEqual(
+            float(mid["balance_amount"]),
+            float(mid_stay.get("balanceAmount") or 0),
+            places=2,
+        )
+
+        regen = self.client.put(
+            f"/hotel/invoice-ledger/api/{inv_no}/edit",
+            json={"action": "generate_invoice", "payment_splits": []},
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(regen.status_code, 200, regen.get_data(as_text=True))
+        after = self.client.get(f"/hotel/invoice-ledger/api/{inv_no}").get_json()["invoice"]
+        after_stay = (after.get("room") or {}).get("stay") or {}
+        self.assertFalse(after_stay.get("invoiceEditOpen"))
+        self.assertEqual(float(after_stay.get("extraBedAmount") or 0), 1200.0)
+        self.assertEqual(float(after_stay.get("hotelInvoicedExtraBedAmount") or 0), 1200.0)
+        self.assertEqual(float(after_stay.get("hotelInvoicedEarlyCheckinAmount") or 0), 300.0)
+        self.assertEqual(float(after_stay.get("hotelInvoicedLateCheckoutAmount") or 0), 200.0)
+        self.assertAlmostEqual(
+            float(after["estimated_total"]),
+            float(after_stay.get("estimatedTotal") or 0),
+            places=2,
+        )
+        self.assertAlmostEqual(
+            float(after["balance_amount"]),
+            float(after_stay.get("balanceAmount") or 0),
+            places=2,
+        )
+        after_paid = max(
+            float(after.get("advance_paid") or 0),
+            float(after_stay.get("advancePaid") or 0),
+        )
+        self.assertAlmostEqual(
+            float(after["balance_amount"]),
+            round(float(after["estimated_total"]) - after_paid, 2),
+            places=2,
+        )
+
+    def test_invoice_ledger_heals_extra_bed_balance_mismatch_58400(self):
+        """Unsettled Extra Bed gap (Amount 58400 / Balance 55600) must heal to amount−paid."""
+        self._checkin_with_charges(advance=0)
+        room = self._generate_stay_invoice()
+        inv_no = room["stay"]["invoiceNumber"]
+        before = self.client.get(f"/hotel/invoice-ledger/api/{inv_no}").get_json()["invoice"]
+        base_est = float(before["estimated_total"])
+
+        # Stale ledger row: Extra Bed 2800 on payload + estimated_total, balance left behind.
+        conn = db_mod.get_db()
+        try:
+            row = conn.execute(
+                "SELECT payload_json, estimated_total, balance_amount, advance_paid "
+                "FROM hotel_room_invoices WHERE invoice_number = ?",
+                (inv_no,),
+            ).fetchone()
+            payload = json.loads(row["payload_json"] or "{}")
+            stay = dict(payload.get("stay") or {})
+            stay["extraBedAmount"] = 2800.0
+            stay["extraBedQty"] = 1
+            stay["extraBedRate"] = 2800.0
+            stay["extraBedNights"] = 1
+            stay["estimatedTotal"] = 58400.0
+            stay["balanceAmount"] = 55600.0
+            stay["advancePaid"] = 0.0
+            stay["payments"] = []
+            payload["stay"] = stay
+            conn.execute(
+                """
+                UPDATE hotel_room_invoices
+                SET estimated_total = 58400.0,
+                    advance_paid = 0.0,
+                    balance_amount = 55600.0,
+                    status = 'open',
+                    payload_json = ?,
+                    updated_at = datetime('now','localtime')
+                WHERE invoice_number = ?
+                """,
+                (json.dumps(payload, separators=(",", ":")), inv_no),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        stale = self.client.get(f"/hotel/invoice-ledger/api/{inv_no}").get_json()["invoice"]
+        # get_hotel_room_invoice heals on load
+        self.assertAlmostEqual(float(stale["estimated_total"]), 58400.0, places=2)
+        self.assertAlmostEqual(float(stale["balance_amount"]), 58400.0, places=2)
+        self.assertEqual(stale["status"], "open")
+        stay_out = (stale.get("room") or {}).get("stay") or {}
+        self.assertAlmostEqual(float(stay_out.get("extraBedAmount") or 0), 2800.0, places=2)
+        self.assertAlmostEqual(float(stay_out.get("balanceAmount") or 0), 58400.0, places=2)
+        self.assertGreater(58400.0, base_est)
+
+        # Payment-only upsert must not reintroduce the Extra Bed gap.
+        conn = db_mod.get_db()
+        try:
+            item = db_mod.get_hotel_room_invoice(conn, inv_no)
+            archived = dict(item.get("room") or {})
+            stay = dict(archived.get("stay") or {})
+            stay["invoiceEditOpen"] = False
+            # Live-like stay without Extra Bed (lower balance) — classic corrupt sync input.
+            live_like = dict(stay)
+            live_like["extraBedAmount"] = 0.0
+            live_like["extraBedQty"] = 0
+            live_like["estimatedTotal"] = 55600.0
+            live_like["balanceAmount"] = 55600.0
+            live_like["advancePaid"] = 0.0
+            archived["stay"] = live_like
+            # Keep frozen Extra Bed on existing payload via payment-only path.
+            db_mod.upsert_hotel_room_invoice_from_room(
+                conn, archived, invoice_number=inv_no, sync_charges=False
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT estimated_total, balance_amount, payload_json "
+                "FROM hotel_room_invoices WHERE invoice_number = ?",
+                (inv_no,),
+            ).fetchone()
+            self.assertAlmostEqual(float(row["estimated_total"]), 58400.0, places=2)
+            self.assertAlmostEqual(float(row["balance_amount"]), 58400.0, places=2)
+            payload_stay = json.loads(row["payload_json"] or "{}").get("stay") or {}
+            self.assertAlmostEqual(float(payload_stay.get("extraBedAmount") or 0), 2800.0, places=2)
+            self.assertAlmostEqual(float(payload_stay.get("balanceAmount") or 0), 58400.0, places=2)
+        finally:
+            conn.close()
+
+    def test_additional_charges_each_update_ledger_amount_and_balance(self):
+        """Extra Bed, early/late, and custom folio each raise ledger Amount AND Balance."""
+        self._checkin_with_charges(advance=0)
+        room = self._generate_stay_invoice()
+        inv_no = room["stay"]["invoiceNumber"]
+        before = self.client.get(f"/hotel/invoice-ledger/api/{inv_no}").get_json()["invoice"]
+        before_est = float(before["estimated_total"])
+        before_bal = float(before["balance_amount"])
+
+        reopen = self.client.post(
+            f"/hotel/invoice-ledger/api/{inv_no}/reopen-edit",
+            json={},
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(reopen.status_code, 200, reopen.get_data(as_text=True))
+
+        def _ledger():
+            return self.client.get(f"/hotel/invoice-ledger/api/{inv_no}").get_json()["invoice"]
+
+        def _assert_amount_balance_grew(prev_est, prev_bal, *, charge_field=None, charge_amt=None, folio_label=None):
+            inv = _ledger()
+            stay = (inv.get("room") or {}).get("stay") or {}
+            est = float(inv["estimated_total"])
+            bal = float(inv["balance_amount"])
+            paid = max(float(inv.get("advance_paid") or 0), float(stay.get("advancePaid") or 0))
+            self.assertGreater(est, prev_est)
+            self.assertGreater(bal, prev_bal)
+            self.assertAlmostEqual(bal, round(est - paid, 2), places=2)
+            self.assertAlmostEqual(est, float(stay.get("estimatedTotal") or 0), places=2)
+            self.assertAlmostEqual(bal, float(stay.get("balanceAmount") or 0), places=2)
+            if charge_field is not None:
+                self.assertAlmostEqual(float(stay.get(charge_field) or 0), float(charge_amt), places=2)
+            if folio_label:
+                labels = [f.get("label") for f in (stay.get("folioCharges") or [])]
+                self.assertIn(folio_label, labels)
+            return est, bal
+
+        edited = self.client.put(
+            f"/hotel/invoice-ledger/api/{inv_no}/edit",
+            json={"action": "update_charge", "chargeKey": "extra_bed", "amount": 1500},
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(edited.status_code, 200, edited.get_data(as_text=True))
+        est, bal = _assert_amount_balance_grew(
+            before_est, before_bal, charge_field="extraBedAmount", charge_amt=1500
+        )
+
+        early = self.client.put(
+            f"/hotel/invoice-ledger/api/{inv_no}/edit",
+            json={"action": "update_charge", "chargeKey": "early_checkin", "amount": 400},
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(early.status_code, 200, early.get_data(as_text=True))
+        est, bal = _assert_amount_balance_grew(
+            est, bal, charge_field="earlyCheckinAmount", charge_amt=400
+        )
+
+        late = self.client.put(
+            f"/hotel/invoice-ledger/api/{inv_no}/edit",
+            json={"action": "update_charge", "chargeKey": "late_checkout", "amount": 350},
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(late.status_code, 200, late.get_data(as_text=True))
+        est, bal = _assert_amount_balance_grew(
+            est, bal, charge_field="lateCheckoutAmount", charge_amt=350
+        )
+
+        custom = self.client.put(
+            f"/hotel/invoice-ledger/api/{inv_no}/edit",
+            json={
+                "action": "add_custom_charge",
+                "label": "Laundry service",
+                "amount": 275,
+            },
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(custom.status_code, 200, custom.get_data(as_text=True))
+        est, bal = _assert_amount_balance_grew(
+            est, bal, folio_label="Laundry service"
+        )
+
+        regen = self.client.put(
+            f"/hotel/invoice-ledger/api/{inv_no}/edit",
+            json={"action": "generate_invoice", "payment_splits": []},
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(regen.status_code, 200, regen.get_data(as_text=True))
+        after = _ledger()
+        after_stay = (after.get("room") or {}).get("stay") or {}
+        self.assertFalse(after_stay.get("invoiceEditOpen"))
+        self.assertAlmostEqual(float(after["estimated_total"]), est, places=2)
+        self.assertAlmostEqual(
+            float(after["balance_amount"]),
+            round(float(after["estimated_total"]) - float(after.get("advance_paid") or 0), 2),
+            places=2,
+        )
+        self.assertEqual(float(after_stay.get("extraBedAmount") or 0), 1500.0)
+        self.assertEqual(float(after_stay.get("earlyCheckinAmount") or 0), 400.0)
+        self.assertEqual(float(after_stay.get("lateCheckoutAmount") or 0), 350.0)
+
+    def test_payment_only_sync_preserves_extra_bed_on_amount_and_balance(self):
+        """Recording a payment must not wipe Extra Bed from Amount or Balance."""
+        self._checkin_with_charges(advance=0)
+        room = self._generate_stay_invoice()
+        inv_no = room["stay"]["invoiceNumber"]
+
+        reopen = self.client.post(
+            f"/hotel/invoice-ledger/api/{inv_no}/reopen-edit",
+            json={},
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(reopen.status_code, 200, reopen.get_data(as_text=True))
+        edited = self.client.put(
+            f"/hotel/invoice-ledger/api/{inv_no}/edit",
+            json={"action": "update_charge", "chargeKey": "extra_bed", "amount": 2200},
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(edited.status_code, 200, edited.get_data(as_text=True))
+        regen = self.client.put(
+            f"/hotel/invoice-ledger/api/{inv_no}/edit",
+            json={"action": "generate_invoice", "payment_splits": []},
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(regen.status_code, 200, regen.get_data(as_text=True))
+
+        with_extra = self.client.get(f"/hotel/invoice-ledger/api/{inv_no}").get_json()["invoice"]
+        est_with_extra = float(with_extra["estimated_total"])
+        bal_with_extra = float(with_extra["balance_amount"])
+        stay_with = (with_extra.get("room") or {}).get("stay") or {}
+        self.assertEqual(float(stay_with.get("extraBedAmount") or 0), 2200.0)
+        self.assertAlmostEqual(bal_with_extra, est_with_extra, places=2)
+
+        pay = self.client.post(
+            f"/hotel/invoice-ledger/api/{inv_no}/settle",
+            json={"payment_splits": [{"method": "cash", "amount": 500}]},
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        # Partial settle endpoint may be settle or record-payment — accept either path.
+        if pay.status_code != 200:
+            pay = self.client.put(
+                f"/hotel/invoice-ledger/api/{inv_no}/edit",
+                json={
+                    "action": "record_payment",
+                    "payment_splits": [{"method": "cash", "amount": 500}],
+                },
+                headers={"X-Requested-With": "XMLHttpRequest"},
+            )
+        if pay.status_code != 200:
+            # Direct DB payment-only upsert as the durable path under test.
+            conn = db_mod.get_db()
+            try:
+                item = db_mod.get_hotel_room_invoice(conn, inv_no)
+                archived = dict(item.get("room") or {})
+                stay = dict(archived.get("stay") or {})
+                stay["invoiceEditOpen"] = False
+                stay["payments"] = list(stay.get("payments") or []) + [
+                    {
+                        "id": "pay-test-1",
+                        "amount": 500.0,
+                        "method": "cash",
+                        "at": "2026-09-07 12:00:00",
+                    }
+                ]
+                stay["advancePaid"] = 500.0
+                stay["balanceAmount"] = round(est_with_extra - 500.0, 2)
+                # Corrupt live-like omission of Extra Bed (classic payment-sync bug input).
+                stay["extraBedAmount"] = 0.0
+                stay["estimatedTotal"] = round(est_with_extra - 2200.0, 2)
+                archived["stay"] = stay
+                db_mod.upsert_hotel_room_invoice_from_room(
+                    conn, archived, invoice_number=inv_no, sync_charges=False
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        else:
+            # Even after a successful payment API, force a corrupt payment-only upsert.
+            conn = db_mod.get_db()
+            try:
+                item = db_mod.get_hotel_room_invoice(conn, inv_no)
+                archived = dict(item.get("room") or {})
+                stay = dict(archived.get("stay") or {})
+                stay["invoiceEditOpen"] = False
+                stay["extraBedAmount"] = 0.0
+                stay["estimatedTotal"] = round(est_with_extra - 2200.0, 2)
+                stay["balanceAmount"] = round(float(stay.get("balanceAmount") or 0), 2)
+                archived["stay"] = stay
+                db_mod.upsert_hotel_room_invoice_from_room(
+                    conn, archived, invoice_number=inv_no, sync_charges=False
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+        after = self.client.get(f"/hotel/invoice-ledger/api/{inv_no}").get_json()["invoice"]
+        after_stay = (after.get("room") or {}).get("stay") or {}
+        self.assertAlmostEqual(float(after["estimated_total"]), est_with_extra, places=2)
+        self.assertAlmostEqual(float(after_stay.get("extraBedAmount") or 0), 2200.0, places=2)
+        paid = max(float(after.get("advance_paid") or 0), float(after_stay.get("advancePaid") or 0))
+        self.assertGreaterEqual(paid, 500.0 - 0.009)
+        self.assertAlmostEqual(
+            float(after["balance_amount"]),
+            round(float(after["estimated_total"]) - paid, 2),
+            places=2,
+        )
+        self.assertGreater(
+            float(after["balance_amount"]),
+            round(est_with_extra - 2200.0 - paid, 2) + 0.009,
+        )
 
     def test_extra_bed_after_invoice_allows_additional_then_checkout(self):
         """Extra Bed added after HBE must mint Additional — then checkout works."""
