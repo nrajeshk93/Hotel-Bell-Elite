@@ -267,8 +267,16 @@
     if (status === 419) {
       return serverMsg || 'Session expired. Refresh the page and try again.';
     }
+    if (status === 400) {
+      return (
+        serverMsg ||
+        'Could not create link (CSRF). Refresh the page and try again.'
+      );
+    }
     if (serverMsg) return serverMsg;
     if (!res.okHttp) {
+      var snippet = String((res && res.text) || '').replace(/<[^>]+>/g, ' ').trim();
+      if (snippet && snippet.length < 180) return snippet;
       return 'Could not create link (HTTP ' + status + ').';
     }
     return 'Could not create link.';
@@ -290,110 +298,125 @@
     }
   }
 
+  function readCsrfToken() {
+    try {
+      var meta = document.querySelector('meta[name="csrf-token"]');
+      if (meta && meta.content) return String(meta.content).trim();
+      var m = document.cookie.match(/(?:^|; )hbe_csrf=([^;]*)/);
+      if (m && m[1]) return decodeURIComponent(m[1]);
+    } catch (e) {}
+    return '';
+  }
+
   function bindInvite(page) {
     var form = $('#ch-fb-invite-form', page);
     var createBtn = $('#ch-fb-create-link', page);
-    var expandBtn = $('#ch-fb-expand-tools', page);
     var submitBtn = $('#ch-fb-invite-submit', page);
     var result = $('#ch-fb-link-result', page);
     var urlInput = $('#ch-fb-link-url', page);
     var expiryEl = $('#ch-fb-link-expiry', page);
     var copyBtn = $('#ch-fb-copy-link', page);
-    var err = $('#ch-fb-error', page);
+    var errTop = $('#ch-fb-error', page);
+    var errLocal = $('#ch-fb-invite-error', page);
     var inviteUrl = page.getAttribute('data-invite-url') || '';
     var pending = false;
+
+    function showInviteError(msg) {
+      showError(errTop, msg);
+      showError(errLocal, msg);
+      if (msg && errLocal && errLocal.scrollIntoView) {
+        try {
+          errLocal.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } catch (eScroll) {}
+      }
+    }
+
+    function createInvite(opts) {
+      opts = opts || {};
+      if (pending) return;
+      showInviteError('');
+      if (!inviteUrl) {
+        showInviteError('Invite API URL is missing. Refresh the page.');
+        return;
+      }
+      var payload = {
+        customer_name: ($('#ch-fb-name', page) || {}).value || '',
+        phone: ($('#ch-fb-phone', page) || {}).value || '',
+        source: ($('#ch-fb-source', page) || {}).value || 'manual'
+      };
+      var csrf = readCsrfToken();
+      if (csrf) payload.csrf_token = csrf;
+      var headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
+      if (csrf) {
+        headers['X-CSRFToken'] = csrf;
+        headers['X-CSRF-Token'] = csrf;
+      }
+      pending = true;
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.setAttribute('aria-busy', 'true');
+      }
+      if (createBtn) createBtn.disabled = true;
+      fetch(inviteUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: headers,
+        body: JSON.stringify(payload)
+      })
+        .then(parseJsonSafe)
+        .then(function (res) {
+          if (!res.okHttp || !res.data || !res.data.ok || !res.data.invite) {
+            throw new Error(inviteHttpErrorMessage(res));
+          }
+          var invite = res.data.invite || {};
+          if (result) result.hidden = false;
+          if (urlInput) {
+            urlInput.value = invite.url || '';
+            try {
+              urlInput.focus();
+              urlInput.select();
+            } catch (eSel) {}
+          }
+          if (expiryEl) {
+            var expiresAt = invite.expires_at || '';
+            var hours =
+              invite.expires_in_hours != null ? invite.expires_in_hours : 24;
+            expiryEl.hidden = false;
+            expiryEl.textContent = expiresAt
+              ? 'Valid for ' + hours + ' hours — expires ' + expiresAt + ' (belleliteaccounts.com).'
+              : 'Valid for ' + hours + ' hours on belleliteaccounts.com.';
+          }
+          if (result && result.scrollIntoView) {
+            try {
+              result.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            } catch (eRes) {}
+          }
+          loadAll(page);
+        })
+        .catch(function (e) {
+          showInviteError((e && e.message) || 'Could not create link.');
+        })
+        .then(function () {
+          pending = false;
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.removeAttribute('aria-busy');
+          }
+          if (createBtn) createBtn.disabled = false;
+        });
+    }
 
     if (createBtn) {
       createBtn.addEventListener('click', function () {
         focusCreateForm(page);
-      });
-    }
-    if (expandBtn) {
-      expandBtn.addEventListener('click', function () {
-        focusCreateForm(page);
+        createInvite({ fromHeader: true });
       });
     }
 
     if (form) {
       form.addEventListener('submit', function (ev) {
         ev.preventDefault();
-        if (pending) return;
-        showError(err, '');
-        if (!inviteUrl) {
-          showError(err, 'Invite API URL is missing. Refresh the page.');
-          return;
-        }
-        var payload = {
-          customer_name: ($('#ch-fb-name', page) || {}).value || '',
-          phone: ($('#ch-fb-phone', page) || {}).value || '',
-          source: ($('#ch-fb-source', page) || {}).value || 'manual'
-        };
-        var headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
-        try {
-          var csrf =
-            (document.querySelector('meta[name="csrf-token"]') || {}).content ||
-            (document.cookie.match(/(?:^|; )hbe_csrf=([^;]*)/) || [])[1];
-          if (csrf) {
-            csrf = decodeURIComponent(csrf);
-            headers['X-CSRFToken'] = csrf;
-            headers['X-CSRF-Token'] = csrf;
-          }
-        } catch (eCsrf) {}
-        pending = true;
-        if (submitBtn) {
-          submitBtn.disabled = true;
-          submitBtn.setAttribute('aria-busy', 'true');
-        }
-        fetch(inviteUrl, {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: headers,
-          body: JSON.stringify(payload)
-        })
-          .then(parseJsonSafe)
-          .then(function (res) {
-            if (!res.okHttp || !res.data || !res.data.ok || !res.data.invite) {
-              throw new Error(inviteHttpErrorMessage(res));
-            }
-            var invite = res.data.invite || {};
-            if (result) result.hidden = false;
-            if (urlInput) {
-              urlInput.value = invite.url || '';
-              try {
-                urlInput.focus();
-                urlInput.select();
-              } catch (eSel) {}
-            }
-            if (expiryEl) {
-              var expiresAt = invite.expires_at || '';
-              var hours =
-                invite.expires_in_hours != null ? invite.expires_in_hours : 24;
-              if (expiresAt) {
-                expiryEl.hidden = false;
-                expiryEl.textContent =
-                  'Valid for ' +
-                  hours +
-                  ' hours — expires ' +
-                  expiresAt +
-                  ' (belleliteaccounts.com).';
-              } else {
-                expiryEl.hidden = false;
-                expiryEl.textContent =
-                  'Valid for ' + hours + ' hours on belleliteaccounts.com.';
-              }
-            }
-            loadAll(page);
-          })
-          .catch(function (e) {
-            showError(err, (e && e.message) || 'Could not create link.');
-          })
-          .then(function () {
-            pending = false;
-            if (submitBtn) {
-              submitBtn.disabled = false;
-              submitBtn.removeAttribute('aria-busy');
-            }
-          });
+        createInvite({ fromForm: true });
       });
     }
 

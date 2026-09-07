@@ -502,3 +502,22 @@ body.ch-feedback-module{
   color:#475569;
 }
 .ch-fb-action-btn svg{ width:16px; height:16px; }
+
+
+.ch-fb-invite-error{
+  margin:0 0 12px;
+  padding:10px 12px;
+  border-radius:10px;
+  background:#FEF2F2;
+  color:#B91C1C;
+  border:1px solid #FECACA;
+  font-size:0.9rem;
+  line-height:1.4;
+}
+.ch-fb-invite-error[hidden]{ display:none !important; }
+.ch-fb-link-result:not([hidden]){
+  display:block;
+  margin-top:14px;
+  padding-top:14px;
+  border-top:1px solid #E2E8F0;
+}

@@ -128,6 +128,19 @@ def csrf_protect_request(app) -> None:
         return
     if submitted and cookie and _tokens_match(submitted, cookie):
         return
+    accept = (request.headers.get("Accept") or "").lower()
+    wants_json = "application/json" in accept or request.is_json
+    if wants_json:
+        from flask import jsonify
+
+        resp = jsonify(
+            {
+                "ok": False,
+                "error": "CSRF token missing or invalid. Refresh the page and try again.",
+            }
+        )
+        resp.status_code = 400
+        abort(resp)
     abort(400, description="CSRF token missing or invalid.")
 
 
