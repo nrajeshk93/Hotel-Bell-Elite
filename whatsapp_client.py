@@ -474,8 +474,15 @@ def send_template_message(
     header_document_id: str = "",
     header_document_filename: str = "",
     header_image_id: str = "",
+    url_button_parameters=None,
 ) -> tuple[bool, str, dict]:
-    """Send a WhatsApp template. Buttons are defined on the Meta template itself."""
+    """Send a WhatsApp template.
+
+    Static buttons live on the Meta template. Dynamic URL buttons need a
+    ``components`` entry (``type=button``, ``sub_type=url``, ``index``, text
+    parameter = URL suffix). Pass ``url_button_parameters`` as a string (index 0)
+    or a list of suffixes (index 0..n-1).
+    """
     payload = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
@@ -513,6 +520,20 @@ def send_template_message(
         else:
             body_params = [{"type": "text", "text": str(value)} for value in body_parameters]
         components.append({"type": "body", "parameters": body_params})
+    url_params = url_button_parameters
+    if isinstance(url_params, str):
+        url_params = [url_params]
+    if url_params:
+        for index, suffix in enumerate(url_params):
+            text = str(suffix or "").strip()
+            if not text:
+                continue
+            components.append({
+                "type": "button",
+                "sub_type": "url",
+                "index": str(index),
+                "parameters": [{"type": "text", "text": text[:2000]}],
+            })
     if components:
         payload["template"]["components"] = components
     return send_payload(payload)

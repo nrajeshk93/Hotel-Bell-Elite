@@ -1309,6 +1309,119 @@
     }, 2200);
   }
 
+  /** Fullscreen-safe confirm (prefer deConfirm; never block native confirm alone). */
+  function confirmAction(message) {
+    var text = message == null ? '' : String(message);
+    if (typeof global.deConfirm === 'function') {
+      return global.deConfirm(text);
+    }
+    try {
+      return Promise.resolve(!!global.confirm(text));
+    } catch (err) {
+      return Promise.resolve(false);
+    }
+  }
+
+  /**
+   * Restaurant/Bar Generate Invoice → feedback WhatsApp.
+   * Returns null when outlet is not restaurant/bar OR guest mobile is missing —
+   * no popup in that case (unlike hotel checkout which still asks).
+   */
+  function posFeedbackSnapshot(page, invoice, payload) {
+    var outlet = resolvePosOutlet();
+    if (outlet !== 'restaurant' && outlet !== 'bar') return null;
+    var name =
+      (invoice && (invoice.customer_name || invoice.customerName)) ||
+      (payload && (payload.customerName || payload.customer_name)) ||
+      fieldValue('pos-inv-customer-name', page) ||
+      '';
+    var mobile =
+      (invoice && (invoice.customer_mobile || invoice.customerMobile)) ||
+      (payload && (payload.customerMobile || payload.customer_mobile)) ||
+      fieldValue('pos-inv-customer-mobile', page) ||
+      '';
+    mobile = digitsOnly(String(mobile || ''), 10);
+    if (mobile.length !== 10) return null;
+    return {
+      customer_name: String(name || '').trim(),
+      mobile: mobile,
+      mobile_country: '+91',
+      outlet: outlet,
+      order_no:
+        (invoice && (invoice.order_no || invoice.orderNo)) || state.orderNo || '',
+      invoice_id: invoice && invoice.id
+        ? String(invoice.id)
+        : state.invoiceId
+          ? String(state.invoiceId)
+          : ''
+    };
+  }
+
+  /* Back-compat alias used by older call sites / tests. */
+  function restaurantFeedbackSnapshot(page, invoice, payload) {
+    return posFeedbackSnapshot(page, invoice, payload);
+  }
+
+  function offerPosFeedbackWhatsApp(snapshot) {
+    if (!snapshot) return Promise.resolve(null);
+    if (!isBrowserOnline()) return Promise.resolve(null);
+    var outlet = String(snapshot.outlet || resolvePosOutlet() || 'restaurant');
+    var url =
+      outlet === 'bar'
+        ? '/bar-point-of-sale/api/feedback/send-whatsapp'
+        : '/point-of-sale/api/feedback/send-whatsapp';
+    var ask =
+      typeof global.deConfirmFeedbackWhatsApp === 'function'
+        ? global.deConfirmFeedbackWhatsApp()
+        : confirmAction('Send a feedback link to the guest on WhatsApp?');
+    return ask.then(function (ok) {
+      if (!ok) return null;
+      return fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(snapshot)
+      })
+        .then(function (resp) {
+          return resp
+            .json()
+            .catch(function () {
+              return {};
+            })
+            .then(function (data) {
+              return { ok: resp.ok && !!(data && data.ok), data: data || {}, status: resp.status };
+            });
+        })
+        .then(function (result) {
+          if (result.ok) {
+            var dry = !!(result.data && result.data.dry_run);
+            toast(
+              dry
+                ? 'WhatsApp dry-run OK — feedback invite created.'
+                : 'Feedback link sent on WhatsApp.'
+            );
+            return result.data;
+          }
+          var err =
+            (result.data && result.data.error) ||
+            'Could not send feedback link on WhatsApp.';
+          toast(err);
+          return null;
+        })
+        .catch(function () {
+          toast('WhatsApp feedback send failed. Check your connection.');
+          return null;
+        });
+    });
+  }
+
+  function offerRestaurantFeedbackWhatsApp(snapshot) {
+    return offerPosFeedbackWhatsApp(snapshot);
+  }
+
   /** Keep browser fullscreen across KOT save/print (same pattern as invoice ledger). */
   function preserveFullscreenGesture() {
     if (global.deFullscreen && typeof global.deFullscreen.preserveForNavigation === 'function') {
@@ -3327,6 +3440,8 @@
     if (btn) btn.disabled = true;
 
     function finishCustomerBill(invoice) {
+      /* Capture before auto-settle reset clears name/mobile fields. */
+      var feedbackSnap = posFeedbackSnapshot(page, invoice, payload);
       if (invoice) {
         state.invoiceId = invoice.id;
         state.tableForOrder = invoice.table_label || invoice.table || state.tableForOrder;
@@ -3359,6 +3474,8 @@
             (isBrowserOnline() ? '. Settle the bill to continue.' : ' (offline — will sync).')
         );
       }
+      /* Restaurant/Bar + mobile present: ask to send feedback WhatsApp. */
+      offerPosFeedbackWhatsApp(feedbackSnap);
     }
 
     function runCustomerSave() {

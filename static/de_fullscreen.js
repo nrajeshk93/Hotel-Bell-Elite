@@ -298,13 +298,26 @@
   }
 
   /**
-   * In-app confirm that does NOT call window.confirm (native dialogs exit fullscreen).
-   * Always preferred when fullscreen is active/locked; otherwise uses native confirm.
+   * In-app confirm that does NOT call window.confirm (native dialogs exit
+   * fullscreen and appear as a browser chrome prompt). Always use the
+   * in-app modal so confirms match Cancel Invoice / other app dialogs.
    */
   function confirmAsync(message){
     var text = message == null ? '' : String(message);
-    if(!getPreference() && !getFullscreenElement()){
-      return Promise.resolve(nativeConfirm(text));
+    var lower = text.toLowerCase();
+    if(
+      lower.indexOf('feedback link') !== -1 &&
+      lower.indexOf('whatsapp') !== -1 &&
+      typeof confirmFeedbackWhatsAppAsync === 'function'
+    ){
+      return confirmFeedbackWhatsAppAsync({ message: text });
+    }
+    if(
+      lower.indexOf('feedback link') !== -1 &&
+      lower.indexOf('whatsapp') !== -1 &&
+      typeof window.deConfirmFeedbackWhatsApp === 'function'
+    ){
+      return window.deConfirmFeedbackWhatsApp({ message: text });
     }
     return new Promise(function(resolve){
       if(confirmResolver){
@@ -314,11 +327,111 @@
       var backdrop = ensureConfirmModal();
       var msg = backdrop.querySelector('#de-confirm-message');
       if(msg) msg.textContent = text;
+      var title = backdrop.querySelector('#de-confirm-title');
+      if(title) title.textContent = 'Please confirm';
+      var cancelBtn = backdrop.querySelector('#de-confirm-cancel');
+      if(cancelBtn) cancelBtn.textContent = 'Cancel';
+      var okBtn = backdrop.querySelector('#de-confirm-ok');
+      if(okBtn) okBtn.textContent = 'Confirm';
       confirmResolver = resolve;
+      /* Mount on fullscreen root when active so the dialog stays on-screen. */
+      var mount = document.getElementById(FS_ROOT_ID) || document.body;
+      if(backdrop.parentNode !== mount){
+        mount.appendChild(backdrop);
+      }
       backdrop.classList.add('open');
       backdrop.setAttribute('aria-hidden', 'false');
-      var okBtn = backdrop.querySelector('#de-confirm-ok');
       if(okBtn) okBtn.focus();
+    });
+  }
+
+
+  var feedbackConfirmResolver = null;
+
+  function ensureFeedbackWhatsAppModal(){
+    var existing = document.getElementById('de-fb-wa-modal');
+    if(existing && existing.parentNode) existing.parentNode.removeChild(existing);
+    var backdrop = document.createElement('div');
+    backdrop.id = 'de-fb-wa-modal';
+    backdrop.className = 'de-fb-wa-backdrop';
+    backdrop.setAttribute('aria-hidden', 'true');
+    backdrop.innerHTML =
+      '<div class="de-fb-wa-box" role="dialog" aria-modal="true" aria-labelledby="de-fb-wa-title">' +
+        '<button type="button" class="de-fb-wa-close" id="de-fb-wa-close" aria-label="Close">&times;</button>' +
+        '<div class="de-fb-wa-row">' +
+          '<div class="de-fb-wa-icon" aria-hidden="true"><img class="de-fb-wa-icon-img" src="/static/whatsapp_feedback_icon.png" alt="" width="52" height="52" decoding="async"></div>' +
+          '<div class="de-fb-wa-copy">' +
+            '<div class="de-fb-wa-title" id="de-fb-wa-title">Send Feedback Link?</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="de-fb-wa-actions">' +
+          '<button type="button" class="de-fb-wa-cancel" id="de-fb-wa-cancel">Cancel</button>' +
+          '<button type="button" class="de-fb-wa-send" id="de-fb-wa-send">' +
+            '<svg class="de-fb-wa-send-glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="#FFFFFF" d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm.01 1.67c2.2 0 4.26.86 5.82 2.42a8.23 8.23 0 0 1 2.41 5.83c0 4.54-3.7 8.23-8.24 8.23-1.48 0-2.93-.39-4.19-1.15l-.3-.17-3.12.82.83-3.04-.2-.32a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24zM8.68 7.57c-.16 0-.34.01-.52.09-.18.07-.49.24-.71.58-.22.34-.84.82-.84 2 0 1.18.86 2.32.98 2.48.12.16 1.67 2.66 4.13 3.63 2.05.8 2.47.64 2.92.6.45-.04 1.45-.59 1.65-1.16.2-.57.2-1.06.14-1.16-.06-.1-.22-.16-.46-.28-.24-.12-1.45-.72-1.67-.8-.22-.08-.39-.12-.55.12-.16.24-.63.8-.77.96-.14.16-.28.18-.52.06-.24-.12-1.01-.37-1.93-1.19-.71-.64-1.19-1.42-1.33-1.66-.14-.24-.01-.37.1-.49.11-.11.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.55-1.35-.76-1.85-.2-.48-.4-.4-.55-.41-.14-.01-.31-.01-.48-.01z"/></svg><span>Send on WhatsApp</span>' +
+          '</button>' +
+        '</div>' +
+      '</div>';
+    (document.getElementById(FS_ROOT_ID) || document.body).appendChild(backdrop);
+
+    function finish(result){
+      backdrop.classList.remove('open');
+      backdrop.setAttribute('aria-hidden', 'true');
+      var resolve = feedbackConfirmResolver;
+      feedbackConfirmResolver = null;
+      if(resolve) resolve(!!result);
+    }
+    backdrop.querySelector('#de-fb-wa-cancel').addEventListener('click', function(){ finish(false); });
+    backdrop.querySelector('#de-fb-wa-close').addEventListener('click', function(){ finish(false); });
+    backdrop.querySelector('#de-fb-wa-send').addEventListener('click', function(){ finish(true); });
+    backdrop.addEventListener('click', function(event){
+      if(event.target === backdrop) finish(false);
+    });
+    document.addEventListener('keydown', function(event){
+      if(!backdrop.classList.contains('open')) return;
+      if(event.key === 'Escape'){
+        event.preventDefault();
+        finish(false);
+      } else if(event.key === 'Enter'){
+        event.preventDefault();
+        finish(true);
+      }
+    });
+    return backdrop;
+  }
+
+  /**
+   * Dedicated confirm for Hotel / Restaurant / Bar feedback WhatsApp sends.
+   * Matches the Send Feedback Link mockup (icon + green Send on WhatsApp).
+   */
+  function confirmFeedbackWhatsAppAsync(opts){
+    opts = opts || {};
+    var title = opts.title != null ? String(opts.title) : 'Send Feedback Link?';
+    return new Promise(function(resolve){
+      if(feedbackConfirmResolver){
+        feedbackConfirmResolver(false);
+        feedbackConfirmResolver = null;
+      }
+      if(confirmResolver){
+        confirmResolver(false);
+        confirmResolver = null;
+        var generic = document.getElementById('de-confirm-modal');
+        if(generic){
+          generic.classList.remove('open');
+          generic.setAttribute('aria-hidden', 'true');
+        }
+      }
+      var backdrop = ensureFeedbackWhatsAppModal();
+      var titleEl = backdrop.querySelector('#de-fb-wa-title');
+      if(titleEl) titleEl.textContent = title;
+      feedbackConfirmResolver = resolve;
+      var mount = document.getElementById(FS_ROOT_ID) || document.body;
+      if(backdrop.parentNode !== mount){
+        mount.appendChild(backdrop);
+      }
+      backdrop.classList.add('open');
+      backdrop.setAttribute('aria-hidden', 'false');
+      var sendBtn = backdrop.querySelector('#de-fb-wa-send');
+      if(sendBtn) sendBtn.focus();
     });
   }
 
@@ -827,6 +940,7 @@
     armForSoftNav: armForSoftNav,
     preserveForNavigation: preserveFullscreenForNavigation,
     confirm: confirmAsync,
+    confirmFeedbackWhatsApp: confirmFeedbackWhatsAppAsync,
     reinit: reinit,
     updateUi: updateButtons,
     setSoftNavInProgress: setSoftNavInProgress,
@@ -836,6 +950,7 @@
     }
   };
   window.deConfirm = confirmAsync;
+  window.deConfirmFeedbackWhatsApp = confirmFeedbackWhatsAppAsync;
 
   if(document.readyState === 'loading'){
     document.addEventListener('DOMContentLoaded', init);

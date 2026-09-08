@@ -839,10 +839,10 @@ def ensure_official_pos_order_no(conn, invoice_id):
     except (TypeError, ValueError) as exc:
         raise ValueError("Invalid invoice id.") from exc
     row = conn.execute(
-        """
+        f"""
         SELECT id, order_no, outlet, order_date, gst_amount, vat_amount
         FROM pos_invoices
-        WHERE id = ? AND is_active = 1
+        WHERE id = ? AND {_pos_invoice_row_visible_sql("")}
         """,
         (invoice_id,),
     ).fetchone()
@@ -6737,8 +6737,8 @@ def settle_pos_invoice(
     When any split uses room_transfer, hotel_room_id must reference an occupied
     hotel room; the room-transfer amount is posted onto that stay's folio.
 
-    Settlement edit: a bill settled within the last 4 hours may replace payment
-    modes (does not re-run stock deduction / table free).
+    Settlement edit: a bill settled earlier the same local day may replace payment
+    modes until day-end (does not re-run stock deduction / table free).
     """
     ensure_pos_schema(conn)
     try:
@@ -6803,7 +6803,7 @@ def settle_pos_invoice(
         _remove_hotel_folio_charges_for_pos_invoice(conn, invoice_id)
         if order_no:
             _retire_pos_room_transfer_invoice(
-                conn, order_no, reason="Settlement edited within 4 hours"
+                conn, order_no, reason="Settlement edited same day"
             )
 
     # Room transfer / cash settle must take a sequential series number, not
@@ -23901,6 +23901,28 @@ def init_db():
             updated_by_user_id      INTEGER,
             created_at              TEXT    NOT NULL,
             updated_at              TEXT    NOT NULL,
+            UNIQUE(company, location, sales_date)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sales_update_whatsapp_reports (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            company         TEXT    NOT NULL,
+            location        TEXT    NOT NULL DEFAULT 'All',
+            sales_date      TEXT    NOT NULL,
+            template_name   TEXT    NOT NULL DEFAULT '',
+            recipients      TEXT    NOT NULL DEFAULT '',
+            status          TEXT    NOT NULL DEFAULT 'pending',
+            error_message   TEXT    NOT NULL DEFAULT '',
+            sent_count      INTEGER NOT NULL DEFAULT 0,
+            failed_count    INTEGER NOT NULL DEFAULT 0,
+            image_path      TEXT    NOT NULL DEFAULT '',
+            body_params     TEXT    NOT NULL DEFAULT '[]',
+            source_notes    TEXT    NOT NULL DEFAULT '',
+            sent_at         TEXT,
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
             UNIQUE(company, location, sales_date)
         )
     """)

@@ -13103,6 +13103,102 @@ def hotel_room_detail_api(room_id):
         conn.close()
 
 
+@app.route(
+    "/hotel/api/feedback/send-whatsapp",
+    methods=["POST"],
+    endpoint="hotel_feedback_send_whatsapp",
+)
+def hotel_feedback_send_whatsapp():
+    """After checkout: mint a 24h feedback invite and send Meta template hotel_feedback."""
+    import importlib
+    import hotel_feedback_whatsapp as _hfw
+
+    importlib.reload(_hfw)
+    send_hotel_feedback_whatsapp = _hfw.send_hotel_feedback_whatsapp
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    user = get_current_user()
+    user_id = user.get("id") if user else None
+    result = send_hotel_feedback_whatsapp(data, user_id=user_id)
+    if not result.get("ok"):
+        status = int(result.get("status") or 400)
+        return jsonify(result), status
+    invite = result.get("invite") if isinstance(result.get("invite"), dict) else {}
+    activity_audit.set_activity_audit(
+        "WhatsApp hotel feedback "
+        f"{invite.get('token') or result.get('share_url') or ''} "
+        "(hotel feedback send whatsapp)",
+        entity_id=str(invite.get("id") or invite.get("token") or ""),
+    )
+    return jsonify(result)
+
+
+@app.route(
+    "/point-of-sale/api/feedback/send-whatsapp",
+    methods=["POST"],
+    endpoint="point_of_sale_api_feedback_send_whatsapp",
+)
+def point_of_sale_api_feedback_send_whatsapp():
+    """After restaurant Generate Invoice: mint 24h invite + spices_feedback_template."""
+    import importlib
+    import restaurant_feedback_whatsapp as _rfw
+
+    importlib.reload(_rfw)
+    send_restaurant_feedback_whatsapp = _rfw.send_restaurant_feedback_whatsapp
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    user = get_current_user()
+    user_id = user.get("id") if user else None
+    result = send_restaurant_feedback_whatsapp(data, user_id=user_id)
+    if not result.get("ok"):
+        status = int(result.get("status") or 400)
+        return jsonify(result), status
+    invite = result.get("invite") if isinstance(result.get("invite"), dict) else {}
+    activity_audit.set_activity_audit(
+        "WhatsApp restaurant feedback "
+        f"{invite.get('token') or result.get('share_url') or ''} "
+        "(point of sale api feedback send whatsapp)",
+        entity_id=str(invite.get("id") or invite.get("token") or ""),
+    )
+    return jsonify(result)
+
+
+@app.route(
+    "/bar-point-of-sale/api/feedback/send-whatsapp",
+    methods=["POST"],
+    endpoint="bar_point_of_sale_api_feedback_send_whatsapp",
+)
+def bar_point_of_sale_api_feedback_send_whatsapp():
+    """After bar Generate Invoice: mint 24h invite + bar_feedback template."""
+    import importlib
+    import bar_feedback_whatsapp as _bfw
+
+    importlib.reload(_bfw)
+    send_bar_feedback_whatsapp = _bfw.send_bar_feedback_whatsapp
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    user = get_current_user()
+    user_id = user.get("id") if user else None
+    result = send_bar_feedback_whatsapp(data, user_id=user_id)
+    if not result.get("ok"):
+        status = int(result.get("status") or 400)
+        return jsonify(result), status
+    invite = result.get("invite") if isinstance(result.get("invite"), dict) else {}
+    activity_audit.set_activity_audit(
+        "WhatsApp bar feedback "
+        f"{invite.get('token') or result.get('share_url') or ''} "
+        "(bar point of sale api feedback send whatsapp)",
+        entity_id=str(invite.get("id") or invite.get("token") or ""),
+    )
+    return jsonify(result)
+
+
 @app.route("/point-of-sale/invoice", endpoint="point_of_sale_invoice")
 @app.route("/bar-point-of-sale/invoice", endpoint="bar_point_of_sale_invoice")
 def point_of_sale_invoice():
@@ -13631,7 +13727,7 @@ def point_of_sale_invoice_ledger():
             can_cancel and (not is_settled) and (not is_cancelled) and is_generated
         )
         inv["ledger_can_edit"] = can_edit and (not is_settled) and (not is_cancelled)
-        # All users: edit settlement modes for 4 hours after settle.
+        # All users: edit settlement modes until end of the local settle day.
         inv["ledger_can_resettle"] = pos_invoice_can_resettle_same_day(inv)
 
     selected_order_type = filters["selected_order_type"]

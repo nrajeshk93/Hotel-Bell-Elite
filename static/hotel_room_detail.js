@@ -2707,7 +2707,78 @@
     modal.setAttribute('aria-hidden', 'true');
   }
 
+  function stayFeedbackSnapshot(stay, room) {
+    if (!stay || typeof stay !== 'object') return null;
+    var name = guestCardDisplayName(stay);
+    var mobile = String(stay.mobile || stay.phone || '').trim();
+    var country = String(stay.mobileCountry || stay.mobile_country || '+91').trim();
+    return {
+      customer_name: name,
+      title: String(stay.title || '').trim(),
+      first_name: String(stay.firstName || stay.first_name || '').trim(),
+      last_name: String(stay.lastName || stay.last_name || '').trim(),
+      mobile: mobile,
+      mobile_country: country,
+      room_id: room && room.id ? String(room.id) : '',
+      room_number: room && room.number ? String(room.number) : '',
+      outlet: room && room.number ? String(room.number) : ''
+    };
+  }
+
+  function offerHotelFeedbackWhatsApp(snapshot) {
+    if (!snapshot) return Promise.resolve(null);
+    var ask =
+      typeof global.deConfirmFeedbackWhatsApp === 'function'
+        ? global.deConfirmFeedbackWhatsApp()
+        : confirmAction('Send a feedback link to the guest on WhatsApp?');
+    return ask.then(function (ok) {
+      if (!ok) return null;
+      var mobile = String(snapshot.mobile || '').trim();
+      if (!mobile) {
+        showToast('Update the guest mobile number to send feedback on WhatsApp.', true);
+        return null;
+      }
+      return fetch('/hotel/api/feedback/send-whatsapp', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: apiHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(snapshot)
+      })
+        .then(function (resp) {
+          return resp
+            .json()
+            .catch(function () {
+              return {};
+            })
+            .then(function (data) {
+              return { ok: resp.ok && !!(data && data.ok), data: data || {}, status: resp.status };
+            });
+        })
+        .then(function (result) {
+          if (result.ok) {
+            var dry = !!(result.data && result.data.dry_run);
+            showToast(
+              dry
+                ? 'WhatsApp dry-run OK — feedback invite created.'
+                : 'Feedback link sent on WhatsApp.'
+            );
+            return result.data;
+          }
+          var err =
+            (result.data && result.data.error) ||
+            'Could not send feedback link on WhatsApp.';
+          showToast(err, true);
+          return null;
+        })
+        .catch(function () {
+          showToast('WhatsApp feedback send failed. Check your connection.', true);
+          return null;
+        });
+    });
+  }
+
   function checkoutGuest(root) {
+
     var api = root.getAttribute('data-room-api') || '';
     if (!api) {
       showToast('Room API unavailable.', true);
@@ -2742,6 +2813,7 @@
     }
     return confirmPromise.then(function (ok) {
       if (!ok) return null;
+      var feedbackSnap = stayFeedbackSnapshot(stay, lastRoom);
       return putRoomAction(root, { action: 'checkout' })
         .then(function (result) {
           if (!result.ok || !result.data || !result.data.ok) {
@@ -2756,7 +2828,9 @@
           paintRoom(root, result.data.room);
           clearCheckinDraft(root);
           showToast('Guest checked out. Room is dirty.');
-          return result.data.room;
+          return offerHotelFeedbackWhatsApp(feedbackSnap).then(function () {
+            return result.data.room;
+          });
         })
         .catch(function (err) {
           showToast(err.message || 'Checkout failed.', true);
@@ -2778,6 +2852,8 @@
     var partners = ((lastRoom && lastRoom.mergePartnerNumbers) || []).join(', ');
     var here = (lastRoom && lastRoom.number) || '';
     var rooms = [here].concat(partners ? partners.split(/,\s*/) : []).filter(Boolean);
+    var mergeStay = (lastRoom && lastRoom.stay) || null;
+    var feedbackSnap = stayFeedbackSnapshot(mergeStay, lastRoom);
     return confirmAction(
       'Check out all rooms in this merge' +
         (rooms.length ? ' (' + rooms.join(', ') + ')' : '') +
@@ -2798,7 +2874,10 @@
           paintRoom(root, result.data.room);
           clearCheckinDraft(root);
           showToast('All merged rooms checked out. Rooms are dirty.');
-          return result.data.room;
+          // One feedback prompt for the primary guest on merge-group checkout.
+          return offerHotelFeedbackWhatsApp(feedbackSnap).then(function () {
+            return result.data.room;
+          });
         })
         .catch(function (err) {
           showToast(err.message || 'Checkout failed.', true);

@@ -222,3 +222,55 @@ body.am-module .am-header > .de-fullscreen-slot--corner,
 .de-confirm-actions .btn{
   min-height:34px;
 }
+
+/* WhatsApp feedback link confirm (Hotel / Restaurant / Bar) — shell fallback */
+.de-fb-wa-backdrop{
+  position:fixed;inset:0;z-index:10065;display:none;align-items:center;justify-content:center;
+  padding:24px;background:rgba(15,23,42,.48);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+}
+.de-fb-wa-backdrop.open{display:flex}
+.de-fb-wa-box{
+  position:relative;width:min(520px,calc(100vw - 48px));background:#fff;
+  border:1px solid #E8EEF5;border-radius:18px;padding:28px 28px 22px;
+  box-shadow:0 28px 64px rgba(15,23,42,.18),0 2px 8px rgba(15,23,42,.06);
+}
+.de-fb-wa-close{
+  position:absolute;top:14px;right:14px;width:36px;height:36px;border:0;border-radius:10px;
+  background:transparent;color:#64748B;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;
+}
+.de-fb-wa-close:hover{background:#F1F5F9;color:#0F172A}
+.de-fb-wa-close svg{width:18px;height:18px;display:block}
+.de-fb-wa-row{display:flex;align-items:center;gap:18px;padding-right:36px}
+.de-fb-wa-icon{
+  flex:0 0 auto;width:52px;height:52px;border-radius:14px;overflow:hidden;
+  display:inline-flex;align-items:center;justify-content:center;background:transparent;
+  box-shadow:0 8px 18px rgba(37,211,102,.22);
+}
+.de-fb-wa-icon svg{width:28px;height:28px;display:block}
+.de-fb-wa-icon svg path{fill:#FFFFFF !important}
+.de-fb-wa-send svg path{fill:#FFFFFF !important}
+.de-fb-wa-copy{min-width:0;flex:1}
+.de-fb-wa-title{
+  margin:0;font:700 22px/1.25 Inter,Segoe UI,system-ui,-apple-system,sans-serif;
+  letter-spacing:-0.02em;color:#0B1B34;
+}
+.de-fb-wa-actions{display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:26px}
+.de-fb-wa-cancel{
+  min-height:44px;padding:0 18px;border-radius:12px;border:1px solid #D8E0EA;background:#fff;
+  color:#334155;font:600 14px/1 Inter,Segoe UI,system-ui,-apple-system,sans-serif;cursor:pointer;
+}
+.de-fb-wa-cancel:hover{background:#F8FAFC;border-color:#CBD5E1}
+.de-fb-wa-send{
+  min-height:44px;padding:0 20px;border-radius:12px;border:0;background:#25D366;color:#fff;
+  font:700 14px/1 Inter,Segoe UI,system-ui,-apple-system,sans-serif;cursor:pointer;
+  display:inline-flex;align-items:center;gap:10px;box-shadow:0 10px 22px rgba(37,211,102,.28);
+}
+.de-fb-wa-send:hover{background:#1EBE57}
+.de-fb-wa-send:focus-visible{outline:2px solid #128C7E;outline-offset:2px}
+.de-fb-wa-send svg{width:16px;height:16px;display:block;flex:0 0 auto}
+
+.de-fb-wa-icon-img{width:52px;height:52px;display:block;object-fit:cover;border-radius:14px}
+.de-fb-wa-send-img{width:20px;height:20px;display:block;flex:0 0 auto;border-radius:5px;object-fit:cover}
+
+.de-fb-wa-send-glyph{width:18px;height:18px;display:block;flex:0 0 auto}
+.de-fb-wa-send-glyph path{fill:#FFFFFF !important}

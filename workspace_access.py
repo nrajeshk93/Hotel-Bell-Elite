@@ -401,6 +401,7 @@ _POINT_OF_SALE_ENDPOINT_GROUPS = {
         "point_of_sale_api_kot_tokens",
         "point_of_sale_api_kot_tokens_reduce",
         "point_of_sale_api_menu_products",
+        "point_of_sale_api_feedback_send_whatsapp",
     },
     "invoice_ledger": {
         "point_of_sale_invoice_ledger",
@@ -452,6 +453,7 @@ _POINT_OF_SALE_BAR_ENDPOINT_GROUPS = {
         "bar_point_of_sale_api_kot_tokens",
         "bar_point_of_sale_api_kot_tokens_reduce",
         "bar_point_of_sale_api_menu_products",
+        "bar_point_of_sale_api_feedback_send_whatsapp",
     },
     "invoice_ledger": {
         "bar_point_of_sale_invoice_ledger",
@@ -500,6 +502,7 @@ _HOTEL_ROOMS_ENDPOINT_GROUPS = {
         "hotel_rooms_api",
         "hotel_room_detail",
         "hotel_room_detail_api",
+        "hotel_feedback_send_whatsapp",
         "hotel_room_invoice_page",
         "hotel_guest_lookup_api",
         "hotel_customers_api",
