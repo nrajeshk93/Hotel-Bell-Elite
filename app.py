@@ -11836,6 +11836,8 @@ def hotel_invoice_ledger_edit_page(invoice_number):
     try:
         ensure_hotel_rooms_schema(conn)
         item = get_hotel_room_invoice(conn, invoice_number)
+        ensure_agencies_schema(conn)
+        agencies = list_agencies(conn)
         conn.commit()
     finally:
         conn.close()
@@ -11860,6 +11862,8 @@ def hotel_invoice_ledger_edit_page(invoice_number):
         open_settle=False,
         today_iso=date.today().isoformat(),
         can_edit_invoices=True,
+        agencies=agencies,
+        agencies_api_url=url_for("list_agencies_api"),
     )
 
 

@@ -16913,6 +16913,31 @@ def apply_hotel_invoice_ledger_edit(conn, invoice_number, action, data=None):
             payment_splits=data.get("payment_splits") or data.get("paymentSplits"),
             note=data.get("note") or data.get("notes") or "",
         )
+    elif action == "update_billing":
+        if _hotel_invoice_has_live_stay(conn, item, inv_no) and room_id:
+            live_room = get_hotel_room(conn, room_id)
+            if not live_room or not isinstance(live_room.get("stay"), dict):
+                raise ValueError("Invoice stay is no longer available on this room.")
+            live_stay = _hotel_apply_invoice_billing_edit(live_room.get("stay"), data)
+            live_room = dict(live_room)
+            live_room["stay"] = live_stay
+            layout = get_hotel_rooms_layout(conn)
+            rooms = list(layout.get("rooms") or [])
+            for idx, candidate in enumerate(rooms):
+                if str(candidate.get("id") or "") == str(room_id):
+                    rooms[idx] = live_room
+                    break
+            save_hotel_rooms_layout(conn, layout.get("floors") or [], rooms)
+            upsert_hotel_room_invoice_from_room(conn, live_room, sync_charges=True)
+            refreshed_live = get_hotel_room(conn, room_id)
+            _hotel_sync_live_invoice_row(conn, refreshed_live or live_room)
+            refreshed = get_hotel_room_invoice(conn, inv_no)
+            return {
+                "room": refreshed_live
+                or (refreshed.get("room") if refreshed else live_room),
+                "invoice": refreshed,
+            }
+        stay = _hotel_apply_invoice_billing_edit(stay, data)
     else:
         raise ValueError("Unsupported invoice edit action.")
 
@@ -17047,6 +17072,54 @@ def _hotel_validate_agency_billing(stay):
     room, fb = _hotel_stay_agency_bill_flags(stay)
     if (room or fb) and not _hotel_stay_has_agency(stay):
         raise ValueError("Agency Name is required for Agency Billing.")
+
+
+def _hotel_apply_invoice_billing_edit(stay, data):
+    """Apply Customer/Agency billing mode (+ optional agency contact) on ledger edit."""
+    stay = dict(stay) if isinstance(stay, dict) else {}
+    data = data if isinstance(data, dict) else {}
+    mode = str(data.get("billingMode") or data.get("billing_mode") or "").strip().lower()
+    if mode not in ("customer", "agency"):
+        raise ValueError("billingMode must be customer or agency.")
+
+    if "agencyName" in data or "agency_name" in data:
+        stay["agencyName"] = _hotel_str(
+            data.get("agencyName") if "agencyName" in data else data.get("agency_name"),
+            160,
+        )
+    if "agencyGst" in data or "agency_gst" in data:
+        gst = _normalize_agency_gst(
+            data.get("agencyGst") if "agencyGst" in data else data.get("agency_gst")
+        )
+        if gst and not is_valid_agency_gst(gst):
+            raise ValueError(
+                "GST must be a valid 15-character GSTIN (e.g. 35AANFH8592H1ZS)."
+            )
+        stay["agencyGst"] = gst
+    if "agencyAddress" in data or "agency_address" in data:
+        stay["agencyAddress"] = _hotel_str(
+            data.get("agencyAddress")
+            if "agencyAddress" in data
+            else data.get("agency_address"),
+            300,
+        )
+
+    if mode == "agency":
+        stay["agencyRoomBilling"] = True
+        stay["agencyFbBilling"] = True
+        stay["agencyBilling"] = True
+    else:
+        stay["agencyRoomBilling"] = False
+        stay["agencyFbBilling"] = False
+        stay["agencyBilling"] = False
+
+    _hotel_validate_agency_billing(stay)
+    stay = _normalize_hotel_room_stay(stay)
+    if mode == "agency" and stay.get("agencyName"):
+        # Ledger edit intentionally rebills to the current agency name.
+        stay["invoiceTo"] = stay["agencyName"]
+        stay["billingName"] = stay["agencyName"]
+    return stay
 
 
 def _hotel_stay_has_agency(stay):

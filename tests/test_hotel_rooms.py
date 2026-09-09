@@ -3721,6 +3721,117 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertIn("data-ledger-edit=\"1\"", html)
         self.assertIn("Edit Invoice", html)
         self.assertIn("/hotel/invoice-ledger", html)
+        self.assertIn("data-hri-billing-block", html)
+        self.assertIn("data-hri-billing-mode=\"customer\"", html)
+        self.assertIn("data-hri-billing-mode=\"agency\"", html)
+        self.assertIn("hri-agency-name", html)
+        self.assertIn("hri-agency-suggest", html)
+        self.assertIn("data-agencies-api=", html)
+
+    def test_invoice_ledger_edit_update_billing_customer_agency(self):
+        self._checkin_with_charges(advance=0)
+        room = self._generate_stay_invoice()
+        inv_no = room["stay"]["invoiceNumber"]
+
+        reopen_live = self.client.post(
+            f"/hotel/invoice-ledger/api/{inv_no}/reopen-edit",
+            json={},
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(reopen_live.status_code, 200, reopen_live.get_data(as_text=True))
+
+        live_agency = self.client.put(
+            f"/hotel/invoice-ledger/api/{inv_no}/edit",
+            json={
+                "action": "update_billing",
+                "billingMode": "agency",
+                "agencyName": "Live Agency Pvt Ltd",
+                "agencyGst": "",
+                "agencyAddress": "Chennai",
+            },
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(live_agency.status_code, 200, live_agency.get_data(as_text=True))
+        live_stay = ((live_agency.get_json() or {}).get("room") or {}).get("stay") or {}
+        self.assertTrue(live_stay.get("agencyRoomBilling"))
+        self.assertTrue(live_stay.get("agencyFbBilling"))
+        self.assertEqual(live_stay.get("agencyName"), "Live Agency Pvt Ltd")
+        self.assertEqual(live_stay.get("invoiceTo"), "Live Agency Pvt Ltd")
+        room_live = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]["stay"]
+        self.assertTrue(room_live.get("agencyRoomBilling"))
+        self.assertEqual(room_live.get("agencyName"), "Live Agency Pvt Ltd")
+
+        checkout = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "checkout"},
+        )
+        self.assertEqual(checkout.status_code, 200, checkout.get_data(as_text=True))
+
+        reopen = self.client.post(
+            f"/hotel/invoice-ledger/api/{inv_no}/reopen-edit",
+            json={},
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(reopen.status_code, 200, reopen.get_data(as_text=True))
+
+        missing_name = self.client.put(
+            f"/hotel/invoice-ledger/api/{inv_no}/edit",
+            json={
+                "action": "update_billing",
+                "billingMode": "agency",
+                "agencyName": "",
+                "agencyGst": "",
+                "agencyAddress": "",
+            },
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(missing_name.status_code, 400, missing_name.get_data(as_text=True))
+        self.assertIn(
+            "Agency Name is required",
+            (missing_name.get_json() or {}).get("error") or "",
+        )
+
+        to_agency = self.client.put(
+            f"/hotel/invoice-ledger/api/{inv_no}/edit",
+            json={
+                "action": "update_billing",
+                "billingMode": "agency",
+                "agencyName": "Travel Desk Co",
+                "agencyGst": "29AABCT1332L1ZV",
+                "agencyAddress": "MG Road, Bengaluru",
+            },
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(to_agency.status_code, 200, to_agency.get_data(as_text=True))
+        agency_stay = ((to_agency.get_json() or {}).get("room") or {}).get("stay") or {}
+        self.assertTrue(agency_stay.get("agencyRoomBilling"))
+        self.assertTrue(agency_stay.get("agencyFbBilling"))
+        self.assertTrue(agency_stay.get("agencyBilling"))
+        self.assertEqual(agency_stay.get("agencyName"), "Travel Desk Co")
+        self.assertEqual(agency_stay.get("agencyGst"), "29AABCT1332L1ZV")
+        self.assertEqual(agency_stay.get("agencyAddress"), "MG Road, Bengaluru")
+        self.assertEqual(agency_stay.get("invoiceTo"), "Travel Desk Co")
+        self.assertEqual(agency_stay.get("billingName"), "Travel Desk Co")
+
+        to_customer = self.client.put(
+            f"/hotel/invoice-ledger/api/{inv_no}/edit",
+            json={
+                "action": "update_billing",
+                "billingMode": "customer",
+                "agencyName": "Travel Desk Co",
+                "agencyGst": "29AABCT1332L1ZV",
+                "agencyAddress": "MG Road, Bengaluru",
+            },
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(to_customer.status_code, 200, to_customer.get_data(as_text=True))
+        customer_stay = ((to_customer.get_json() or {}).get("room") or {}).get("stay") or {}
+        self.assertFalse(customer_stay.get("agencyRoomBilling"))
+        self.assertFalse(customer_stay.get("agencyFbBilling"))
+        self.assertFalse(customer_stay.get("agencyBilling"))
+        self.assertEqual(customer_stay.get("agencyName"), "Travel Desk Co")
+        self.assertEqual(customer_stay.get("invoiceTo") or "", "")
+        self.assertEqual(customer_stay.get("billingName") or "", "")
 
     def test_merge_rooms_combines_billing_onto_primary(self):
         self._checkin_with_charges("room-101", advance=500)

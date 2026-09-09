@@ -53,6 +53,8 @@
   data-invoice-api="{{ url_for('hotel_invoice_ledger_api', invoice_number=invoice_number) }}"
   data-invoice-edit-api="{{ url_for('hotel_invoice_ledger_edit_api', invoice_number=invoice_number) }}"
   data-ledger-back-url="{{ url_for('hotel_invoice_ledger') }}"
+  data-agencies-api="{{ agencies_api_url|default(url_for('list_agencies_api')) }}"
+  data-agencies="{{ agencies|default([])|tojson|e }}"
   {% else %}
   data-room-api="{{ url_for('hotel_room_detail_api', room_id=room.id) }}"
   data-room-detail-url="{{ url_for('hotel_room_detail', room_id=room.id) }}"
@@ -131,6 +133,30 @@
               <span class="pos-inv-meta-stat-value" data-hri-room-type>{{ room.roomTypeLabel|default(room.roomType)|default('—') }}</span>
             </div>
           </div>
+          {% if ledger_edit %}
+          <div class="pos-inv-meta-item pos-inv-meta-item--billing" data-hri-billing-block>
+            <span class="pos-inv-meta-stat-label" id="hri-billing-mode-label">Billing</span>
+            <div class="hri-billing-mode" role="group" aria-labelledby="hri-billing-mode-label">
+              <button type="button" class="hri-billing-mode-btn is-active" data-hri-billing-mode="customer" aria-pressed="true">Customer Billing</button>
+              <button type="button" class="hri-billing-mode-btn" data-hri-billing-mode="agency" aria-pressed="false">Agency Billing</button>
+            </div>
+            <div class="hri-billing-agency-fields" data-hri-agency-fields hidden>
+              <label class="pos-inv-field hri-agency-name-field" for="hri-agency-name">
+                <span>Agency Name <abbr title="required">*</abbr></span>
+                <input type="text" id="hri-agency-name" name="agencyName" autocomplete="off" spellcheck="false" placeholder="Search agency master" maxlength="160" aria-autocomplete="list" aria-controls="hri-agency-suggest" aria-expanded="false">
+                <div class="hri-agency-suggest" id="hri-agency-suggest" role="listbox" hidden></div>
+              </label>
+              <label class="pos-inv-field" for="hri-agency-gst">
+                <span>GSTIN</span>
+                <input type="text" id="hri-agency-gst" name="agencyGst" autocomplete="off" spellcheck="false" placeholder="15-character GSTIN" maxlength="15">
+              </label>
+              <label class="pos-inv-field hri-billing-agency-address" for="hri-agency-address">
+                <span>Address</span>
+                <textarea id="hri-agency-address" name="agencyAddress" rows="2" maxlength="300" placeholder="Agency billing address"></textarea>
+              </label>
+            </div>
+          </div>
+          {% endif %}
         </div>
       </section>
 

@@ -1,25 +1,32 @@
-"""Daily Hotel Bell Elite sales WhatsApp report via Meta template ``hotel_sales_update``.
+"""Daily Hotel Bell Elite sales WhatsApp report via Meta template.
 
-Meta template (APPROVED, language ``en``):
+Live template (APPROVED, language ``en``): ``hotel_sales_update`` — **7** body params.
+Pending Room Transfer template (not live until env says so) — **8** body params:
+
   HEADER: IMAGE (generated daily JPEG)
-  BODY positional:
-    {{1}} date label  e.g. ``07 Sep 26``
+  BODY positional (index order for Meta send):
+    {{1}} date label  e.g. ``08 Sep 26``
     {{2}} Actual Sales
     {{3}} Cash
     {{4}} UPI
     {{5}} Card
-    {{6}} Credit
+    {{6}} Credit  (excludes Room Transfer when 8-param mode)
     {{7}} Difference
+    {{8}} Room Transfer  (8-param mode only)
 
 Amounts are plain Indian-grouped integers without the ₹ glyph (template has ₹).
 
 Env:
   WHATSAPP_SALES_REPORT_TEMPLATE=hotel_sales_update
   WHATSAPP_SALES_REPORT_TEMPLATE_LANGUAGE=en
-  WHATSAPP_SALES_REPORT_RECIPIENTS=+918940651222,+919176560522,+919531825665,+919933268361
+  WHATSAPP_SALES_REPORT_RECIPIENTS=+918940651222,+919150000267,+919531825665,+919933268361
   WHATSAPP_SALES_REPORT_SCHEDULE=1
   WHATSAPP_SALES_REPORT_SCHEDULE_TIME=23:59
   WHATSAPP_SALES_REPORT_SCHEDULE_TZ=Asia/Kolkata
+  # Keep 0 until the new Meta template is approved, then set template name + INCLUDE=1
+  WHATSAPP_SALES_REPORT_INCLUDE_ROOM_TRANSFER=0
+  # Also auto-enables 8-param mode when template name ends with ``_rt``
+  # (e.g. hotel_sales_update_rt) or equals a pending RT template name.
 
 Reuses ``whatsapp_client`` (``upload_media_file`` / ``send_template_message``) — same
 path as ``hotel_feedback_whatsapp`` / ``pos_invoice_whatsapp``.
@@ -39,6 +46,7 @@ import whatsapp_client as wa
 from db import (
     get_db,
     hotel_sales_entry_from_invoices,
+    list_pos_invoices,
     pos_sales_entry_from_invoices,
 )
 from sales_whatsapp_report_image import (
@@ -54,7 +62,7 @@ DEFAULT_TEMPLATE_NAME = "hotel_sales_update"
 DEFAULT_TEMPLATE_LANGUAGE = "en"
 DEFAULT_COMPANY = "HBE"
 DEFAULT_RECIPIENTS = (
-    "+918940651222,+919176560522,+919531825665,+919933268361"
+    "+918940651222,+919150000267,+919531825665,+919933268361"
 )
 DEFAULT_SCHEDULE_TIME = "23:59"
 DEFAULT_SCHEDULE_TZ = "Asia/Kolkata"
@@ -71,6 +79,60 @@ _TENDER_KEYS_FOR_DIFFERENCE = (
 )
 # Body {{6}} Credit — Guest Credit + Employee Credit + BOR.
 _CREDIT_KEYS = ("room_credit", "staff_account", "bor")
+
+
+
+def sales_report_include_room_transfer() -> bool:
+    """True when the Meta body should include {{8}} Room Transfer (8 params).
+
+    Default **False** so live ``hotel_sales_update`` keeps sending **7** body params.
+
+    Enable by either:
+      - ``WHATSAPP_SALES_REPORT_INCLUDE_ROOM_TRANSFER`` = 1/true/yes/on, or
+      - template name (``WHATSAPP_SALES_REPORT_TEMPLATE``) ends with ``_rt``
+        (e.g. ``hotel_sales_update_rt``) or equals a known pending RT name.
+    After Meta approval: set the new template name and INCLUDE_ROOM_TRANSFER=1.
+    """
+    raw = (
+        os.environ.get("WHATSAPP_SALES_REPORT_INCLUDE_ROOM_TRANSFER") or ""
+    ).strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    name, _ = sales_report_template_config()
+    name_l = (name or "").strip().lower()
+    if name_l.endswith("_rt"):
+        return True
+    # Pending / draft Meta names (document markers; do not switch live env yet).
+    if name_l in {"hotel_sales_update_rt", "hotel_sales_update_with_rt"}:
+        return True
+    return False
+
+
+def sum_pos_room_transfer_for_sales_date(conn, sales_date: str) -> float:
+    """Sum ``room_transfer`` payments for restaurant+bar invoices on ``sales_date``.
+
+    Uses the same invoice set as Sales Entry / the WhatsApp report day
+    (``list_pos_invoices`` with ``generated_only=True``, ``order_date`` window),
+    reading ``payment_amounts['room_transfer']`` (from ``pos_invoice_payments``).
+    """
+    day = str(sales_date)[:10]
+    total = 0.0
+    for outlet_key in ("restaurant", "bar"):
+        invoices = list_pos_invoices(
+            conn,
+            date_from=day,
+            date_to=day,
+            outlet=outlet_key,
+            generated_only=True,
+        )
+        for inv in invoices or []:
+            if str((inv or {}).get("status") or "open").strip().lower() == "cancelled":
+                continue
+            amounts = (inv or {}).get("payment_amounts")
+            if not isinstance(amounts, dict):
+                amounts = {}
+            total += _money(amounts.get("room_transfer"))
+    return _round2(total)
 
 
 def sales_report_template_config() -> tuple[str, str]:
@@ -263,7 +325,12 @@ def outlet_difference(vals: dict[str, Any], location: str) -> float:
 
 
 def collect_sales_report_metrics(conn, sales_date: str) -> dict[str, Any]:
-    """Aggregate Hotel + Restaurant + Bar body metrics for one sales date."""
+    """Aggregate Hotel + Restaurant + Bar body metrics for one sales date.
+
+    Always collects ``room_transfer`` (true POS RT payments). Body length is 7
+    unless ``sales_report_include_room_transfer()`` — then Credit excludes RT and
+    {{8}} is Room Transfer. Difference formula is unchanged.
+    """
     day = str(sales_date)[:10]
     per_outlet: dict[str, Any] = {}
     source_notes: list[str] = []
@@ -274,6 +341,7 @@ def collect_sales_report_metrics(conn, sales_date: str) -> dict[str, Any]:
         "card": 0.0,
         "credit": 0.0,
         "difference": 0.0,
+        "room_transfer": 0.0,
     }
     for location in OUTLETS:
         su = _load_sales_update_values(conn, location, day)
@@ -295,8 +363,18 @@ def collect_sales_report_metrics(conn, sales_date: str) -> dict[str, Any]:
         totals["credit"] += credit
         totals["difference"] += diff
 
+    room_transfer = sum_pos_room_transfer_for_sales_date(conn, day)
+    totals["room_transfer"] = room_transfer
+
     for key in totals:
         totals[key] = _round2(totals[key])
+
+    include_rt = sales_report_include_room_transfer()
+    credit_for_body = totals["credit"]
+    if include_rt:
+        # Peel RT out of Credit for {{6}}; RT is reported as {{8}}.
+        credit_for_body = _round2(totals["credit"] - room_transfer)
+        totals["credit"] = credit_for_body
 
     body_params = [
         sales_report_date_label(day),
@@ -304,14 +382,17 @@ def collect_sales_report_metrics(conn, sales_date: str) -> dict[str, Any]:
         whatsapp_template_amount_text(totals["cash"]),
         whatsapp_template_amount_text(totals["upi"]),
         whatsapp_template_amount_text(totals["card"]),
-        whatsapp_template_amount_text(totals["credit"]),
+        whatsapp_template_amount_text(credit_for_body),
         whatsapp_template_amount_text(totals["difference"]),
     ]
+    if include_rt:
+        body_params.append(whatsapp_template_amount_text(room_transfer))
     return {
         "sales_date": day,
         "date_label": body_params[0],
         "totals": totals,
         "body_params": body_params,
+        "include_room_transfer": include_rt,
         "per_outlet": per_outlet,
         "source_notes": "; ".join(source_notes),
     }

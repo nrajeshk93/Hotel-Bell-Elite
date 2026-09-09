@@ -268,9 +268,39 @@
     font:inherit;
     font-weight:700;
     cursor:pointer;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    text-decoration:none;
   }
   button[type=submit]:disabled{opacity:0.65;cursor:wait}
   button[type=submit]:hover, .btn-google:hover{filter:brightness(0.96)}
+  .btn-google{
+    background:#1A73E8;
+    margin-top:14px;
+  }
+  .browser-banner{
+    display:none;
+    margin:0 0 12px;
+    padding:12px 14px;
+    border-radius:12px;
+    background:#FFF7ED;
+    border:1px solid #FDBA74;
+    color:#9A3412;
+    font-size:0.9rem;
+    line-height:1.35;
+  }
+  .browser-banner.is-on{display:block}
+  .browser-banner strong{display:block;margin-bottom:4px}
+  .google-gate .ok h2{margin-bottom:6px}
+  .google-gate .ok p{margin:0 0 4px}
+  .google-gate .tip{
+    margin-top:12px;
+    font-size:0.82rem;
+    color:var(--muted);
+    line-height:1.4;
+  }
   .foot{
     margin-top:12px;
     text-align:center;
@@ -404,6 +434,10 @@
       {% else %}
       <p class="err" id="fb-err" hidden></p>
       {% endif %}
+      <div class="browser-banner" id="fb-browser-banner" hidden>
+        <strong>Open in your browser</strong>
+        WhatsApp’s built-in browser can’t use your Google login. Continue in Chrome or Safari so your review posts with one tap.
+      </div>
 
       {% if thank_you %}
       <div class="ok">
@@ -472,7 +506,6 @@
     raw = (raw || "").trim();
     if (!raw) return "";
     try {
-      // Handles quoted |tojson values and \u0026 ampersand escapes.
       if (raw.charAt(0) === '"') return JSON.parse(raw);
     } catch (e) {}
     return raw.split("\\u0026").join("&").split("&amp;").join("&");
@@ -484,8 +517,21 @@
   var low = document.getElementById("fb-low");
   var hint = document.getElementById("fb-hint");
   var errEl = document.getElementById("fb-err");
+  var banner = document.getElementById("fb-browser-banner");
   var labels = Array.prototype.slice.call(document.querySelectorAll("#fb-stars label"));
   var busy = false;
+  var ua = navigator.userAgent || "";
+
+  function isAndroid() { return /Android/i.test(ua); }
+  function isIOS() { return /iPhone|iPad|iPod/i.test(ua); }
+  function isInAppBrowser() {
+    if (/WhatsApp|FBAN|FBAV|FB_IAB|Instagram|Line\/|Twitter|LinkedInApp|MicroMessenger|Snapchat/i.test(ua)) {
+      return true;
+    }
+    if (isAndroid() && /\bwv\b|; wv\)/i.test(ua)) return true;
+    if (isIOS() && /AppleWebKit/i.test(ua) && !/Safari/i.test(ua)) return true;
+    return false;
+  }
 
   function showErr(msg) {
     if (!errEl) return;
@@ -533,12 +579,91 @@
     });
   }
 
-  function goGoogle(url) {
-    var target = (url || googleUrl || "").trim();
-    if (!target) return;
-    target = readGoogleUrl(target);
-    if (target.indexOf("http") !== 0) return;
-    window.location.assign(target);
+  function androidIntentUrl(url) {
+    var bare = String(url || "").replace(/^https?:\/\//i, "");
+    return (
+      "intent://" + bare +
+      "#Intent;scheme=https;action=android.intent.action.VIEW;" +
+      "package=com.android.chrome;" +
+      "S.browser_fallback_url=" + encodeURIComponent(url) + ";" +
+      "end"
+    );
+  }
+
+  function iosChromeUrl(url) {
+    return String(url || "")
+      .replace(/^https:\/\//i, "googlechromes://")
+      .replace(/^http:\/\//i, "googlechrome://");
+  }
+
+  function openInSystemBrowser(url) {
+    var target = readGoogleUrl(url || googleUrl || "");
+    if (!target || target.indexOf("http") !== 0) return false;
+
+    if (isAndroid()) {
+      window.location.href = androidIntentUrl(target);
+      return true;
+    }
+    if (isIOS()) {
+      var a = document.createElement("a");
+      a.href = iosChromeUrl(target);
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () {
+        try { document.body.removeChild(a); } catch (e) {}
+      }, 100);
+      return true;
+    }
+    var win = window.open(target, "_blank", "noopener,noreferrer");
+    if (!win) window.location.assign(target);
+    return true;
+  }
+
+  function tipForPlatform() {
+    if (isIOS()) {
+      return "On iPhone: tap ··· (top right) → Open in Safari (or Chrome). That uses your existing Google login.";
+    }
+    if (isAndroid()) {
+      return "If Google still asks you to sign in, tap the button again — it opens Chrome, where your Google account is usually already logged in.";
+    }
+    return "If a login screen appears, open this page in Chrome or your default browser and try again.";
+  }
+
+  function showGoogleGate(preferredUrl) {
+    var target = readGoogleUrl(preferredUrl || googleUrl || "");
+    var card = root.querySelector(".card");
+    if (!card) {
+      openInSystemBrowser(target);
+      return;
+    }
+    root.classList.add("google-gate");
+    if (banner) {
+      banner.hidden = false;
+      banner.classList.add("is-on");
+    }
+    var safeHref = String(target).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+    card.innerHTML =
+      '<div class="ok">' +
+        "<h2>Thank you</h2>" +
+        "<p>Your rating was saved. One last step — leave a quick Google review in your browser.</p>" +
+        '<a class="btn-google" id="fb-open-google" href="' + safeHref + '" rel="noopener noreferrer">' +
+          "Continue in Chrome / Browser" +
+        "</a>" +
+        '<p class="tip" id="fb-browser-tip"></p>' +
+      "</div>";
+    var tip = document.getElementById("fb-browser-tip");
+    if (tip) tip.textContent = tipForPlatform();
+    var btn = document.getElementById("fb-open-google");
+    if (btn) {
+      btn.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        openInSystemBrowser(target);
+      });
+    }
+    if (isAndroid() || !isInAppBrowser()) {
+      setTimeout(function () { openInSystemBrowser(target); }, 250);
+    }
   }
 
   function onRating(n) {
@@ -546,20 +671,20 @@
     showErr("");
     if (n >= gateMin) {
       if (low) low.hidden = true;
-      if (hint) hint.textContent = "Thank you — opening Google reviews…";
+      if (hint) hint.textContent = "Thank you — preparing Google review…";
       setBusy(true);
       postFeedback({ rating: n, comment: "" }).then(function (result) {
         var data = result.data || {};
+        setBusy(false);
         if (data.redirect_google || data.google_url || (data.ok && n >= gateMin)) {
-          goGoogle(data.google_url || googleUrl);
+          showGoogleGate(data.google_url || googleUrl);
           return;
         }
-        setBusy(false);
         showErr(data.error || "Could not continue to Google reviews.");
         if (hint) hint.textContent = "Tap a star to rate your experience";
       }).catch(function () {
-        // Still allow Google for high ratings if network fails after intent
-        goGoogle();
+        setBusy(false);
+        showGoogleGate(googleUrl);
       });
       return;
     }
@@ -567,6 +692,11 @@
     if (hint) hint.textContent = "Please share a short comment so we can improve.";
     var ta = document.getElementById("comment");
     if (ta) ta.focus();
+  }
+
+  if (isInAppBrowser() && banner) {
+    banner.hidden = false;
+    banner.classList.add("is-on");
   }
 
   labels.forEach(function (lab) {
@@ -601,7 +731,6 @@
         showErr("Please choose a rating from 1 to 5.");
         return;
       }
-      // Low-star: allow normal POST (also try JSON for consistency)
       ev.preventDefault();
       setBusy(true);
       var comment = (document.getElementById("comment") || {}).value || "";
@@ -616,7 +745,8 @@
           return;
         }
         if (data.redirect_google || data.google_url) {
-          goGoogle(data.google_url || googleUrl);
+          setBusy(false);
+          showGoogleGate(data.google_url || googleUrl);
           return;
         }
         setBusy(false);

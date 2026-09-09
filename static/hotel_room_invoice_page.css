@@ -65,6 +65,133 @@
   margin-top:0;
 }
 
+.hotel-room-invoice-page .pos-inv-meta-item--billing{
+  grid-column:1 / -1;
+  margin-top:4px;
+  padding-top:12px;
+  border-top:1px solid #E8EEF5;
+}
+.hotel-room-invoice-page .hri-billing-mode{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  min-height:40px;
+  margin:0;
+  padding:4px;
+  box-sizing:border-box;
+  background:#F1F5F9;
+  border:1px solid #E2E8F0;
+  border-radius:10px;
+}
+.hotel-room-invoice-page .hri-billing-mode-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:32px;
+  padding:0 14px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:#64748B;
+  font:700 12px/1 Inter,system-ui,sans-serif;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.hotel-room-invoice-page .hri-billing-mode-btn.is-active{
+  background:#fff;
+  color:#2563EB;
+  box-shadow:0 1px 3px rgba(15,23,42,.08);
+}
+.hotel-room-invoice-page .hri-billing-mode-btn:hover:not(.is-active){
+  color:#0F172A;
+}
+.hotel-room-invoice-page .hri-billing-mode-btn:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+.hotel-room-invoice-page .hri-billing-agency-fields{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:12px 14px;
+  margin-top:12px;
+  overflow:visible;
+}
+.hotel-room-invoice-page .hri-billing-agency-fields[hidden]{
+  display:none !important;
+}
+.hotel-room-invoice-page .hri-billing-agency-address{
+  grid-column:1 / -1;
+  margin-bottom:0;
+}
+.hotel-room-invoice-page .hri-billing-agency-fields .pos-inv-field{
+  margin-bottom:0;
+}
+.hotel-room-invoice-page .hri-billing-agency-fields textarea{
+  min-height:64px;
+  resize:vertical;
+}
+@media (max-width:640px){
+  .hotel-room-invoice-page .hri-billing-agency-fields{
+    grid-template-columns:1fr;
+  }
+  .hotel-room-invoice-page .hri-billing-mode{
+    width:100%;
+  }
+  .hotel-room-invoice-page .hri-billing-mode-btn{
+    flex:1;
+  }
+}
+
+.hotel-room-invoice-page .hri-agency-name-field{
+  position:relative;
+  z-index:4;
+  overflow:visible;
+}
+.hotel-room-invoice-page .hri-agency-suggest{
+  position:absolute;
+  left:0;
+  right:0;
+  top:calc(100% + 4px);
+  z-index:80;
+  max-height:220px;
+  overflow:auto;
+  padding:6px;
+  border-radius:10px;
+  background:#fff;
+  border:1px solid #E5E7EB;
+  box-shadow:0 12px 28px rgba(15,23,42,.12);
+}
+.hotel-room-invoice-page .hri-agency-suggest[hidden]{
+  display:none !important;
+}
+.hotel-room-invoice-page .hri-agency-opt{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  width:100%;
+  padding:10px 12px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  text-align:left;
+  font:inherit;
+  cursor:pointer;
+  color:#111827;
+}
+.hotel-room-invoice-page .hri-agency-opt:hover,
+.hotel-room-invoice-page .hri-agency-opt.is-active{
+  background:#EFF6FF;
+}
+.hotel-room-invoice-page .hri-agency-opt-name{
+  font-size:13.5px;
+  font-weight:700;
+  color:#111827;
+}
+.hotel-room-invoice-page .hri-agency-opt-meta{
+  font-size:12px;
+  color:#64748B;
+}
+
 .hotel-room-invoice-page .pos-inv-customer-card input[readonly]{
   background:#F8FAFC;
   color:#0F172A;

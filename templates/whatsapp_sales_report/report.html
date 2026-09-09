@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<style>
+  @font-face {
+    font-family: "InterVar";
+    src: url("FILE_INTER") format("truetype");
+    font-weight: 100 900;
+    font-style: normal;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 1728px; height: 864px; overflow: hidden;
+    background: #F9FAFD;
+    font-family: "InterVar", "Inter", system-ui, sans-serif;
+    color: #0F172A;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { position: relative; width: 1728px; height: 864px; }
+  .shell {
+    position: absolute; left: 28px; top: 36px; width: 1672px; height: 792px;
+    background: #fff; border-radius: 30px;
+    box-shadow: 0 12px 32px rgba(15,23,42,0.10);
+  }
+  /* Header */
+  .logo {
+    position: absolute; left: 64px; top: 70px; width: 92px; height: 92px;
+    object-fit: contain;
+  }
+  .brand-div {
+    position: absolute; left: 172px; top: 88px; width: 1px; height: 56px;
+    background: #E5E7EB;
+  }
+  .title {
+    position: absolute; left: 196px; top: 88px;
+    font-size: 44px; font-weight: 700; letter-spacing: -0.02em; line-height: 1;
+  }
+  .subtitle {
+    position: absolute; left: 196px; top: 142px;
+    font-size: 16px; font-weight: 600; letter-spacing: 0.28em;
+    color: #64748B; text-transform: uppercase;
+  }
+  .date-pill {
+    position: absolute; right: 64px; top: 78px;
+    min-width: 268px; height: 78px;
+    background: #F3F4FA; border-radius: 18px;
+    display: flex; align-items: center; gap: 14px;
+    padding: 0 24px;
+  }
+  .date-pill .d { font-size: 26px; font-weight: 700; line-height: 1.15; }
+  .date-pill .w { font-size: 16px; font-weight: 500; color: #64748B; margin-top: 3px; }
+
+  /* Hero — matches mockup band ~y 250–485 */
+  .hero {
+    position: absolute; left: 64px; top: 214px; width: 1600px; height: 248px;
+    border-radius: 22px; border: 1px solid #F0E8E0;
+    background:
+      radial-gradient(ellipse 48% 95% at 88% 35%, rgba(253,200,190,0.55) 0%, rgba(253,200,190,0) 72%),
+      #FDFBF9;
+    box-shadow: 0 8px 20px rgba(15,23,42,0.06);
+  }
+  .hero .label {
+    position: absolute; left: 48px; top: 52px;
+    font-size: 18px; font-weight: 600; letter-spacing: 0.16em; color: #64748B;
+  }
+  .hero .amt {
+    position: absolute; left: 48px; top: 92px;
+    display: flex; align-items: baseline; gap: 12px;
+    font-weight: 800; line-height: 1;
+  }
+  .hero .amt .rupee {
+    font-size: 52px; position: relative;
+  }
+  .hero .amt .rupee::after {
+    content: ""; position: absolute; left: 0; bottom: -12px;
+    width: 56px; height: 5px; background: #C9A227; border-radius: 3px;
+  }
+  .hero .amt .num { font-size: 78px; letter-spacing: -0.03em; }
+  .hero .vdiv {
+    position: absolute; left: 1220px; top: 48px; width: 1px; height: 152px;
+    background: #E5E7EB;
+  }
+  .hero .trend {
+    position: absolute; left: 1280px; top: 78px; width: 260px; text-align: center;
+  }
+  .chip {
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    font-weight: 700; border-radius: 14px; line-height: 1;
+  }
+  .chip.lg { padding: 16px 28px; font-size: 30px; border-radius: 16px; min-width: 168px; }
+  .chip.sm { padding: 12px 18px; font-size: 18px; border-radius: 13px; }
+  .chip.down { background: #FEECEB; color: #DC4B4B; }
+  .chip.up { background: #E8F6EF; color: #0A9B5C; }
+  .vs { margin-top: 12px; font-size: 17px; font-weight: 500; color: #64748B; }
+
+  /* Cards — tops ~516, height ~242 */
+  .card {
+    position: absolute; top: 496px; width: 382px; height: 242px;
+    background: #fff; border: 1px solid #E8ECF3; border-radius: 16px;
+    box-shadow: 0 6px 16px rgba(15,23,42,0.07);
+    overflow: hidden;
+  }
+  .card.c1 { left: 64px; }
+  .card.c2 { left: 470px; }
+  .card.c3 { left: 876px; }
+  .card.c4 { left: 1282px; }
+  .card .bar {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 12px;
+  }
+  .card .clabel {
+    position: absolute; left: 34px; top: 28px;
+    font-size: 16px; font-weight: 600; letter-spacing: 0.14em; color: #64748B;
+  }
+  .card .camt {
+    position: absolute; left: 34px; top: 78px;
+    display: flex; align-items: baseline; gap: 8px;
+    font-weight: 700; line-height: 1;
+  }
+  .card .camt .rupee { font-size: 34px; }
+  .card .camt .num { font-size: 44px; letter-spacing: -0.02em; }
+  .card .chip-wrap {
+    position: absolute; left: 34px; top: 168px;
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="shell"></div>
+    <img class="logo" src="FILE_LOGO" alt=""/>
+    <div class="brand-div"></div>
+    <div class="title">Hotel Bell Elite</div>
+    <div class="subtitle">Daily Sales Report</div>
+    <div class="date-pill">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="1.8">
+        <rect x="3.5" y="5" width="17" height="15" rx="2.5"/>
+        <path d="M3.5 9.5h17M8 3.5v3M16 3.5v3"/>
+      </svg>
+      <div>
+        <div class="d">{{DATE}}</div>
+        <div class="w">{{WEEKDAY}}</div>
+      </div>
+    </div>
+
+    <div class="hero">
+      <div class="label">TOTAL SALES</div>
+      <div class="amt"><span class="rupee">₹</span><span class="num">{{TOTAL}}</span></div>
+      <div class="vdiv"></div>
+      <div class="trend">{{TOTAL_TREND}}<div class="vs">{{VS}}</div></div>
+    </div>
+
+    <div class="card c1">
+      <div class="bar" style="background:#3F85F7"></div>
+      <div class="clabel">HOTEL</div>
+      <div class="camt"><span class="rupee">₹</span><span class="num">{{HOTEL}}</span></div>
+      <div class="chip-wrap">{{HOTEL_TREND}}</div>
+    </div>
+    <div class="card c2">
+      <div class="bar" style="background:#EBA822"></div>
+      <div class="clabel">RESTAURANT</div>
+      <div class="camt"><span class="rupee">₹</span><span class="num">{{RESTAURANT}}</span></div>
+      <div class="chip-wrap">{{REST_TREND}}</div>
+    </div>
+    <div class="card c3">
+      <div class="bar" style="background:#A371F5"></div>
+      <div class="clabel">BAR</div>
+      <div class="camt"><span class="rupee">₹</span><span class="num">{{BAR}}</span></div>
+      <div class="chip-wrap">{{BAR_TREND}}</div>
+    </div>
+    <div class="card c4">
+      <div class="bar" style="background:#38A97D"></div>
+      <div class="clabel">DIFFERENCE</div>
+      <div class="camt"><span class="rupee">₹</span><span class="num">{{DIFF}}</span></div>
+    </div>
+  </div>
+</body>
+</html>

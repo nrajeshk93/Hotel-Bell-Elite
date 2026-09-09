@@ -244,6 +244,381 @@
     return String(stay.mobile || stay.phone || stay.guestMobile || '').trim();
   }
 
+  function stayAgencyBillingOn(stay) {
+    if (!stay || typeof stay !== 'object') return false;
+    if (
+      Object.prototype.hasOwnProperty.call(stay, 'agencyRoomBilling') ||
+      Object.prototype.hasOwnProperty.call(stay, 'agency_room_billing') ||
+      Object.prototype.hasOwnProperty.call(stay, 'agencyFbBilling') ||
+      Object.prototype.hasOwnProperty.call(stay, 'agency_fb_billing') ||
+      Object.prototype.hasOwnProperty.call(stay, 'agencyBilling') ||
+      Object.prototype.hasOwnProperty.call(stay, 'agency_billing')
+    ) {
+      return !!(
+        stay.agencyRoomBilling ||
+        stay.agency_room_billing ||
+        stay.agencyFbBilling ||
+        stay.agency_fb_billing ||
+        stay.agencyBilling ||
+        stay.agency_billing
+      );
+    }
+    return false;
+  }
+
+  function billingModeFromStay(stay) {
+    return stayAgencyBillingOn(stay) ? 'agency' : 'customer';
+  }
+
+  function selectedBillingMode(root) {
+    var active = root && root.querySelector('.hri-billing-mode-btn.is-active');
+    var mode = active && active.getAttribute('data-hri-billing-mode');
+    return mode === 'agency' ? 'agency' : 'customer';
+  }
+
+  function setBillingModeUi(root, mode) {
+    var block = root && root.querySelector('[data-hri-billing-block]');
+    if (!block) return;
+    var want = mode === 'agency' ? 'agency' : 'customer';
+    block.querySelectorAll('[data-hri-billing-mode]').forEach(function (btn) {
+      var on = btn.getAttribute('data-hri-billing-mode') === want;
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    var fields = block.querySelector('[data-hri-agency-fields]');
+    if (fields) {
+      if (want === 'agency') {
+        fields.hidden = false;
+        fields.removeAttribute('hidden');
+      } else {
+        fields.hidden = true;
+        fields.setAttribute('hidden', '');
+      }
+    }
+  }
+
+  function paintBillingBlock(root, stay) {
+    var block = root && root.querySelector('[data-hri-billing-block]');
+    if (!block) return;
+    var canEdit = canEditAccess(root) && !invoiceLocked(stay, root);
+    setBillingModeUi(root, billingModeFromStay(stay));
+    var nameEl = $('#hri-agency-name', root);
+    var gstEl = $('#hri-agency-gst', root);
+    var addrEl = $('#hri-agency-address', root);
+    if (nameEl && document.activeElement !== nameEl) {
+      nameEl.value = String((stay && (stay.agencyName || stay.agency_name)) || '');
+    }
+    if (gstEl && document.activeElement !== gstEl) {
+      gstEl.value = String((stay && (stay.agencyGst || stay.agency_gst)) || '');
+    }
+    if (addrEl && document.activeElement !== addrEl) {
+      addrEl.value = String((stay && (stay.agencyAddress || stay.agency_address)) || '');
+    }
+    block.querySelectorAll('.hri-billing-mode-btn').forEach(function (btn) {
+      btn.disabled = !canEdit;
+    });
+    [nameEl, gstEl, addrEl].forEach(function (el) {
+      if (el) el.readOnly = !canEdit;
+    });
+  }
+
+  function collectBillingPayload(root) {
+    var mode = selectedBillingMode(root);
+    var nameEl = $('#hri-agency-name', root);
+    var gstEl = $('#hri-agency-gst', root);
+    var addrEl = $('#hri-agency-address', root);
+    return {
+      action: 'update_billing',
+      billingMode: mode,
+      agencyName: nameEl ? String(nameEl.value || '').trim() : '',
+      agencyGst: gstEl ? String(gstEl.value || '').trim() : '',
+      agencyAddress: addrEl ? String(addrEl.value || '').trim() : ''
+    };
+  }
+
+  function saveBilling(root, opts) {
+    opts = opts || {};
+    if (!isLedgerEdit(root)) {
+      return Promise.resolve(null);
+    }
+    if (!requireEditAccess(root, 'Edit Access is required to change billing.')) {
+      return Promise.reject(new Error('edit access required'));
+    }
+    var payload = collectBillingPayload(root);
+    if (payload.billingMode === 'agency' && !payload.agencyName) {
+      showToast('Agency Name is required for Agency Billing.', true);
+      var nameFocus = $('#hri-agency-name', root);
+      if (nameFocus) nameFocus.focus();
+      return Promise.reject(new Error('agency name required'));
+    }
+    if (saveBilling._inflight) {
+      return saveBilling._inflight;
+    }
+    saveBilling._inflight = putAction(root, payload)
+      .then(function (result) {
+        if (!result.ok || !result.data || !result.data.ok) {
+          throw new Error(
+            (result.data && result.data.error) || 'Could not update billing.'
+          );
+        }
+        paintRoom(root, result.data.room);
+        if (!opts.silent) {
+          showToast(
+            payload.billingMode === 'agency'
+              ? 'Agency billing saved.'
+              : 'Customer billing saved.'
+          );
+        }
+        return result.data.room;
+      })
+      .catch(function (err) {
+        showToast(err.message || 'Could not update billing.', true);
+        paintBillingBlock(root, lastRoom && lastRoom.stay);
+        throw err;
+      })
+      .finally(function () {
+        saveBilling._inflight = null;
+      });
+    return saveBilling._inflight;
+  }
+
+  function parseAgenciesData(root) {
+    try {
+      var raw = root && root.getAttribute('data-agencies');
+      var list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list : [];
+    } catch (err) {
+      return [];
+    }
+  }
+
+  function syncAgencyDatalist(root, agencies) {
+    if (!root) return;
+    try {
+      root.setAttribute('data-agencies', JSON.stringify(agencies || []));
+    } catch (err) {}
+  }
+
+  function agencySearchScore(agency, query) {
+    var fields = [agency && agency.name, agency && agency.gst, agency && agency.address];
+    if (typeof global.hbeBestSearchScore === 'function') {
+      return global.hbeBestSearchScore(fields, query);
+    }
+    var q = String(query || '').trim().toLowerCase();
+    if (!q) return 0;
+    var hay = fields
+      .map(function (part) {
+        return String(part || '').toLowerCase();
+      })
+      .join(' ');
+    return hay.indexOf(q);
+  }
+
+  function filterAgencies(agencies, query) {
+    var q = String(query || '').trim();
+    var list = (agencies || []).filter(function (agency) {
+      return agency && String(agency.name || '').trim();
+    });
+    if (!q) return list.slice(0, 40);
+    return list
+      .map(function (agency) {
+        return { agency: agency, score: agencySearchScore(agency, q) };
+      })
+      .filter(function (row) {
+        return row.score >= 0;
+      })
+      .sort(function (a, b) {
+        return (
+          b.score - a.score ||
+          String(a.agency.name || '').localeCompare(String(b.agency.name || ''))
+        );
+      })
+      .map(function (row) {
+        return row.agency;
+      })
+      .slice(0, 40);
+  }
+
+  function findAgencyByName(agencies, typed) {
+    var needle = String(typed || '').trim().toLowerCase();
+    if (!needle) return null;
+    for (var i = 0; i < (agencies || []).length; i += 1) {
+      if (String(agencies[i].name || '').trim().toLowerCase() === needle) {
+        return agencies[i];
+      }
+    }
+    return null;
+  }
+
+  function refreshAgenciesFromApi(root, done) {
+    var local = parseAgenciesData(root);
+    var api = root && root.getAttribute('data-agencies-api');
+    if (!api) {
+      if (done) done(local);
+      return;
+    }
+    fetch(api, {
+      credentials: 'same-origin',
+      headers: apiHeaders()
+    })
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          return { ok: resp.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (
+          result.ok &&
+          result.data &&
+          result.data.ok &&
+          Array.isArray(result.data.agencies)
+        ) {
+          syncAgencyDatalist(root, result.data.agencies);
+          if (done) done(result.data.agencies);
+          return;
+        }
+        if (done) done(local);
+      })
+      .catch(function () {
+        if (done) done(local);
+      });
+  }
+
+  function fillAgencyFieldsFromMaster(root, agency) {
+    if (!agency) return;
+    var nameEl = $('#hri-agency-name', root);
+    var gstEl = $('#hri-agency-gst', root);
+    var addrEl = $('#hri-agency-address', root);
+    if (nameEl) nameEl.value = String(agency.name || '');
+    if (gstEl) gstEl.value = String(agency.gst || '');
+    if (addrEl) addrEl.value = String(agency.address || '');
+  }
+
+  function bindAgencySuggest(root) {
+    if (!root || !isLedgerEdit(root)) return;
+    var nameInput = $('#hri-agency-name', root);
+    var box = $('#hri-agency-suggest', root);
+    if (!nameInput || !box) return;
+    if (nameInput.getAttribute('data-agency-pick-bound') === '1') return;
+    nameInput.setAttribute('data-agency-pick-bound', '1');
+    nameInput.setAttribute('autocomplete', 'off');
+
+    var timer = null;
+    var results = [];
+    var activeIndex = -1;
+
+    function closeSuggest() {
+      box.hidden = true;
+      box.setAttribute('hidden', '');
+      box.innerHTML = '';
+      nameInput.setAttribute('aria-expanded', 'false');
+      activeIndex = -1;
+      results = [];
+    }
+
+    function applyAgency(agency, fromPick) {
+      if (!agency) return;
+      nameInput.setAttribute('data-agency-pick-saving', '1');
+      fillAgencyFieldsFromMaster(root, agency);
+      closeSuggest();
+      if (fromPick) showToast('Agency details loaded.');
+      saveBilling(root, { silent: true })
+        .catch(function () {})
+        .finally(function () {
+          nameInput.removeAttribute('data-agency-pick-saving');
+        });
+    }
+
+    function renderSuggest(list) {
+      results = list || [];
+      if (!results.length) {
+        closeSuggest();
+        return;
+      }
+      if (activeIndex < 0 || activeIndex >= results.length) activeIndex = 0;
+      box.hidden = false;
+      box.removeAttribute('hidden');
+      nameInput.setAttribute('aria-expanded', 'true');
+      box.innerHTML = results
+        .map(function (agency, idx) {
+          var meta = String(agency.gst || agency.address || '').trim();
+          return (
+            '<button type="button" class="hri-agency-opt' +
+            (idx === activeIndex ? ' is-active' : '') +
+            '" role="option" data-agency-index="' +
+            idx +
+            '">' +
+            '<span class="hri-agency-opt-name">' +
+            escapeHtml(agency.name || '') +
+            '</span>' +
+            (meta
+              ? '<span class="hri-agency-opt-meta">' + escapeHtml(meta) + '</span>'
+              : '') +
+            '</button>'
+          );
+        })
+        .join('');
+    }
+
+    function showForQuery(query) {
+      renderSuggest(filterAgencies(parseAgenciesData(root), query));
+    }
+
+    nameInput.addEventListener('focus', function () {
+      showForQuery(nameInput.value);
+      refreshAgenciesFromApi(root, function () {
+        if (document.activeElement === nameInput) showForQuery(nameInput.value);
+      });
+    });
+    nameInput.addEventListener('click', function () {
+      showForQuery(nameInput.value);
+    });
+    nameInput.addEventListener('input', function () {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () {
+        showForQuery(nameInput.value);
+      }, 120);
+    });
+    nameInput.addEventListener('keydown', function (event) {
+      if (box.hidden || !results.length) return;
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        activeIndex = (activeIndex + 1) % results.length;
+        renderSuggest(results);
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        activeIndex = (activeIndex - 1 + results.length) % results.length;
+        renderSuggest(results);
+      } else if (event.key === 'Enter' && activeIndex >= 0) {
+        event.preventDefault();
+        applyAgency(results[activeIndex], true);
+      } else if (event.key === 'Escape') {
+        closeSuggest();
+      }
+    });
+    box.addEventListener('mousedown', function (event) {
+      var btn = event.target.closest('[data-agency-index]');
+      if (!btn) return;
+      event.preventDefault();
+      var idx = Number(btn.getAttribute('data-agency-index'));
+      if (!isNaN(idx) && results[idx]) applyAgency(results[idx], true);
+    });
+    nameInput.addEventListener('blur', function () {
+      var match = findAgencyByName(parseAgenciesData(root), nameInput.value);
+      if (match) fillAgencyFieldsFromMaster(root, match);
+      setTimeout(closeSuggest, 150);
+    });
+    document.addEventListener('click', function (event) {
+      if (!root.contains(event.target)) closeSuggest();
+      else if (
+        !nameInput.contains(event.target) &&
+        !box.contains(event.target)
+      ) {
+        closeSuggest();
+      }
+    });
+  }
+
   function invoiceNumber(stay) {
     return (stay && (stay.invoiceNumber || stay.invoice_number)) || '';
   }
@@ -827,6 +1202,8 @@
     var mobileInput = $('#hri-customer-mobile', root);
     if (nameInput) nameInput.value = guestName(stay);
     if (mobileInput) mobileInput.value = guestMobile(stay);
+
+    paintBillingBlock(root, stay);
 
     var tbody = $('#hri-lines-body', root);
     var empty = $('#hri-empty', root);
@@ -2257,6 +2634,24 @@
         else if (action === 'pdf') openInvoicePreview({ autoPrint: false, skipAgent: true });
         return;
       }
+      var billingModeBtn = event.target.closest('[data-hri-billing-mode]');
+      if (billingModeBtn && root.contains(billingModeBtn)) {
+        event.preventDefault();
+        if (billingModeBtn.disabled) return;
+        var nextMode = billingModeBtn.getAttribute('data-hri-billing-mode');
+        if (nextMode !== 'agency' && nextMode !== 'customer') return;
+        if (selectedBillingMode(root) === nextMode) return;
+        setBillingModeUi(root, nextMode);
+        if (nextMode === 'agency') {
+          var agencyNameInput = $('#hri-agency-name', root);
+          if (agencyNameInput && !String(agencyNameInput.value || '').trim()) {
+            agencyNameInput.focus();
+            return;
+          }
+        }
+        saveBilling(root);
+        return;
+      }
       var editBtn = event.target.closest('[data-hri-line-edit]');
       if (editBtn && root.contains(editBtn)) {
         event.preventDefault();
@@ -2347,6 +2742,22 @@
       amountEl.__hriDiscBound = true;
       amountEl.addEventListener('input', updateDiscountPreview);
     }
+
+    ['hri-agency-name', 'hri-agency-gst', 'hri-agency-address'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el || el.__hriBillingBound) return;
+      el.__hriBillingBound = true;
+      el.addEventListener('change', function () {
+        if (!isLedgerEdit(root)) return;
+        /* Suggest pick already saves; avoid a second toast on the same change. */
+        if (id === 'hri-agency-name' && el.getAttribute('data-agency-pick-saving') === '1') {
+          return;
+        }
+        saveBilling(root);
+      });
+    });
+
+    bindAgencySuggest(root);
   }
 
   function loadRoom(root) {
