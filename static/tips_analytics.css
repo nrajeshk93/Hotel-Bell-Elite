@@ -332,3 +332,173 @@ body.su-module .tips-payout-actions .btn:disabled{
   body.su-module .tips-payout-metrics{grid-template-columns:1fr}
   body.su-module .tips-payout-table .tips-payout-amount{width:90px}
 }
+
+
+/* ——— Phone / tablet compact (Tips analytics) ——— */
+@media (max-width:900px){
+  #tips-analytics-page .su-header-top{
+    flex-wrap:wrap;
+    align-items:stretch;
+    gap:10px;
+  }
+  #tips-analytics-page .su-header-tools{
+    width:100%;
+    flex:1 1 100%;
+    justify-content:stretch;
+    gap:8px;
+  }
+  #tips-analytics-page .su-header-tools .btn{
+    flex:1 1 calc(50% - 4px);
+    min-width:0;
+    justify-content:center;
+  }
+  #tips-analytics-page .content.se-content,
+  #tips-analytics-page > .content,
+  body.su-module #tips-analytics-page .se-content{
+    padding-bottom:calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+  body.su-module .tips-summary-row{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  body.su-module #tips-filter-form.tips-filter-form{
+    flex-wrap:wrap;
+    justify-content:stretch;
+  }
+  body.su-module .tips-search-chip{
+    flex:1 1 100%;
+    max-width:none;
+  }
+  body.su-module .tips-location-chip{
+    flex:1 1 calc(50% - 6px);
+    max-width:none;
+  }
+  body.su-module .tips-date-range-host{
+    flex:1 1 100%;
+  }
+  body.su-module .tips-date-range-host .an-range-trigger{
+    max-width:none;
+    width:100%;
+  }
+  body.su-module #tips-edit-employee-modal .tips-edit-box,
+  body.su-module #tips-incentive-payout-modal .tips-payout-box{
+    width:min(720px, calc(100vw - 16px));
+    max-width:calc(100vw - 16px);
+    max-height:calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    margin:env(safe-area-inset-top, 0px) auto env(safe-area-inset-bottom, 0px);
+    overflow:auto;
+  }
+}
+
+@media (max-width:640px){
+  #tips-analytics-page .su-header-tools .btn{
+    flex:1 1 100%;
+  }
+  body.su-module .tips-summary-row{
+    grid-template-columns:minmax(0,1fr);
+  }
+  #tips-analytics-page .content.se-content{
+    padding-left:12px;
+    padding-right:12px;
+    padding-bottom:calc(16px + env(safe-area-inset-bottom, 0px));
+    box-sizing:border-box;
+  }
+  body.su-module .tips-location-chip{
+    flex:1 1 100%;
+    width:100%;
+  }
+  body.su-module #tips-analytics-page .act-btn{
+    width:36px;
+    height:36px;
+  }
+  body.su-module #tips-analytics-page .act-btn svg{
+    width:16px;
+    height:16px;
+  }
+
+  #tips-analytics-page .pl-table-wrap{
+    max-height:none;
+    overflow:visible;
+    border:none;
+    border-radius:0;
+    background:transparent;
+  }
+  #tips-analytics-page .pl-table,
+  #tips-analytics-page .pl-table thead,
+  #tips-analytics-page .pl-table tbody,
+  #tips-analytics-page .pl-table tr,
+  #tips-analytics-page .pl-table th,
+  #tips-analytics-page .pl-table td{
+    display:block;
+    width:100%;
+    box-sizing:border-box;
+  }
+  #tips-analytics-page .pl-table thead{display:none}
+  #tips-analytics-page .pl-table tbody{
+    display:flex;
+    flex-direction:column;
+    gap:0;
+  }
+  #tips-analytics-page .pl-table tbody tr.tips-employee-row{
+    border:1px solid var(--border,#E2E8F0);
+    border-radius:12px;
+    padding:12px 14px;
+    margin:0 0 10px;
+    background:#fff;
+    box-shadow:0 1px 2px rgba(15,23,42,.04);
+  }
+  #tips-analytics-page .pl-table tbody tr.tips-employee-row:last-child{margin-bottom:0}
+  #tips-analytics-page .pl-table tbody tr.tips-employee-row td{
+    display:grid;
+    grid-template-columns:minmax(88px,34%) minmax(0,1fr);
+    gap:8px 12px;
+    align-items:start;
+    padding:8px 0;
+    border-bottom:1px solid #F1F5F9;
+    text-align:left;
+    vertical-align:top;
+    white-space:normal;
+  }
+  #tips-analytics-page .pl-table tbody tr.tips-employee-row td:last-child{
+    border-bottom:none;
+    padding-bottom:0;
+  }
+  #tips-analytics-page .pl-table tbody tr.tips-employee-row td:first-child{padding-top:0}
+  #tips-analytics-page .pl-table tbody tr.tips-employee-row td::before{
+    content:attr(data-label);
+    font-size:11px;
+    font-weight:750;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:#64748B;
+    line-height:1.35;
+    padding-top:2px;
+  }
+  #tips-analytics-page .pl-table tbody tr.tips-employee-row td.pl-col-actions .act-grp{
+    justify-content:flex-start;
+  }
+  #tips-analytics-page .pl-table tbody tr.tips-employee-row td.pl-col-amount{
+    text-align:left;
+  }
+  body.su-module .tips-edit-actions,
+  body.su-module .tips-payout-actions{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  body.su-module .tips-edit-actions .btn,
+  body.su-module .tips-payout-actions .btn{
+    width:100%;
+    justify-content:center;
+  }
+  body.su-module .tips-payout-period{
+    grid-template-columns:1fr;
+  }
+}
+
+@media (max-width:520px){
+  #tips-analytics-page .pl-table tbody tr.tips-employee-row{padding:10px 12px}
+  #tips-analytics-page .pl-table tbody tr.tips-employee-row td{
+    grid-template-columns:minmax(72px,32%) minmax(0,1fr);
+    gap:6px 10px;
+    padding:6px 0;
+  }
+}

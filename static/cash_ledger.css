@@ -316,3 +316,125 @@ body.su-module #cl-transfer-modal .cl-transfer-dest-tabs .cl-transfer-dest-tab.i
   color:#2563EB;
   box-shadow:0 1px 2px rgba(15,23,42,.08);
 }
+
+
+/* ——— Phone / tablet compact (Accounts: Cash Ledger) ——— */
+@media (max-width:900px){
+  #cash-ledger-page .content.se-content{
+    padding-bottom:calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+  #cash-ledger-page .pl-summary-row.cl-summary-row,
+  #cash-ledger-page .cl-summary-row{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  body.su-module #cl-load-modal .staff-credit-box,
+  body.su-module #cl-transfer-modal .staff-credit-box{
+    width:min(520px, calc(100vw - 16px));
+    max-width:calc(100vw - 16px);
+    max-height:calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    margin:env(safe-area-inset-top, 0px) auto env(safe-area-inset-bottom, 0px);
+  }
+}
+
+@media (max-width:640px){
+  #cash-ledger-page .pl-summary-row.cl-summary-row,
+  #cash-ledger-page .cl-summary-row{
+    grid-template-columns:minmax(0,1fr);
+  }
+  #cash-ledger-page .content.se-content{
+    padding-left:12px;
+    padding-right:12px;
+    padding-bottom:calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  body.su-module #cash-ledger-filter-form .cl-location-chip{
+    flex:1 1 100%;
+    width:100%;
+    min-width:0;
+    max-width:none;
+  }
+  body.su-module #cash-ledger-page .pl-list-panel .act-btn,
+  body.su-module #cash-ledger-page .pl-action-btns .act-btn{
+    width:36px;
+    height:36px;
+  }
+
+  #cash-ledger-page .pl-table-wrap,
+  #cash-ledger-page .hbe-scroll-panel .pl-table-wrap,
+  #cash-ledger-page .pl-list-panel--scroll .pl-table-wrap{
+    max-height:none;
+    overflow:visible;
+    border:none;
+    border-radius:0;
+    background:transparent;
+  }
+  #cash-ledger-page .pl-table,
+  #cash-ledger-page .pl-table thead,
+  #cash-ledger-page .pl-table tbody,
+  #cash-ledger-page .pl-table tr,
+  #cash-ledger-page .pl-table th,
+  #cash-ledger-page .pl-table td{
+    display:block;
+    width:100%;
+    box-sizing:border-box;
+  }
+  #cash-ledger-page .pl-table thead{display:none}
+  #cash-ledger-page .pl-table tbody{
+    display:flex;
+    flex-direction:column;
+    gap:0;
+  }
+  #cash-ledger-page .pl-table tbody tr.cl-ledger-row{
+    border:1px solid var(--border,#E2E8F0);
+    border-radius:12px;
+    padding:12px 14px;
+    margin:0 0 10px;
+    background:#fff;
+    box-shadow:0 1px 2px rgba(15,23,42,.04);
+  }
+  #cash-ledger-page .pl-table tbody tr.cl-ledger-row:last-child{margin-bottom:0}
+  #cash-ledger-page .pl-table tbody tr.cl-ledger-row td{
+    display:grid;
+    grid-template-columns:minmax(88px,34%) minmax(0,1fr);
+    gap:8px 12px;
+    align-items:start;
+    padding:8px 0;
+    border-bottom:1px solid #F1F5F9;
+    text-align:left;
+    vertical-align:top;
+    white-space:normal;
+  }
+  #cash-ledger-page .pl-table tbody tr.cl-ledger-row td:last-child{
+    border-bottom:none;
+    padding-bottom:0;
+  }
+  #cash-ledger-page .pl-table tbody tr.cl-ledger-row td:first-child{padding-top:0}
+  #cash-ledger-page .pl-table tbody tr.cl-ledger-row td::before{
+    content:attr(data-label);
+    font-size:11px;
+    font-weight:750;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:#64748B;
+    line-height:1.35;
+    padding-top:2px;
+  }
+  body.su-module #cl-load-modal .staff-credit-actions,
+  body.su-module #cl-transfer-modal .staff-credit-actions{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  body.su-module #cl-load-modal .staff-credit-actions .btn,
+  body.su-module #cl-transfer-modal .staff-credit-actions .btn{
+    width:100%;
+    justify-content:center;
+  }
+}
+
+@media (max-width:520px){
+  #cash-ledger-page .pl-table tbody tr.cl-ledger-row{padding:10px 12px}
+  #cash-ledger-page .pl-table tbody tr.cl-ledger-row td{
+    grid-template-columns:minmax(72px,32%) minmax(0,1fr);
+    gap:6px 10px;
+    padding:6px 0;
+  }
+}

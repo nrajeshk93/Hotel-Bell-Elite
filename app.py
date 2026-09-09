@@ -961,6 +961,7 @@ def enforce_access():
                 "communication_hub_api_feedback_summary",
                 "communication_hub_api_feedback_responses",
                 "communication_hub_api_feedback_invite_create",
+                "communication_hub_api_feedback_send_whatsapp",
             }
             or request.path.startswith("/communication-hub/api/feedback/")
         ):
@@ -12549,39 +12550,51 @@ def _send_hotel_id_document(stored_name):
     return resp
 
 
-def _hotel_stay_has_positive_room_rate(stay):
-    """True when check-in includes a room rate above zero."""
+def _hotel_parse_room_rate(value):
+    """Return a non-negative rate, or None when missing/invalid. Zero is valid."""
+    if value is None or value == "":
+        return None
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        return None
+    if amount != amount or amount < 0:
+        return None
+    return amount
+
+
+def _hotel_row_room_rate(row):
+    if not isinstance(row, dict):
+        return None
+    if "roomRate" in row:
+        return _hotel_parse_room_rate(row.get("roomRate"))
+    if "room_rate" in row:
+        return _hotel_parse_room_rate(row.get("room_rate"))
+    return None
+
+
+def _hotel_stay_has_room_rate(stay):
+    """True when check-in includes a room rate. Zero is allowed (complimentary)."""
     if not isinstance(stay, dict):
         return False
-
-    def _positive(value):
-        try:
-            return float(value or 0) > 0
-        except (TypeError, ValueError):
-            return False
-
-    if _positive(stay.get("roomRate") or stay.get("room_rate")):
+    if _hotel_row_room_rate(stay) is not None:
         return True
     nightly = stay.get("nightlyRates") or stay.get("nightly_rates") or []
     if isinstance(nightly, list):
         for row in nightly:
-            if isinstance(row, dict) and _positive(
-                row.get("roomRate") or row.get("room_rate")
-            ):
+            if _hotel_row_room_rate(row) is not None:
                 return True
     merged = stay.get("mergeRoomRates") or stay.get("merge_room_rates") or []
     if isinstance(merged, list):
         for row in merged:
             if not isinstance(row, dict):
                 continue
-            if _positive(row.get("roomRate") or row.get("room_rate")):
+            if _hotel_row_room_rate(row) is not None:
                 return True
             nested = row.get("nightlyRates") or row.get("nightly_rates") or []
             if isinstance(nested, list):
                 for night in nested:
-                    if isinstance(night, dict) and _positive(
-                        night.get("roomRate") or night.get("room_rate")
-                    ):
+                    if _hotel_row_room_rate(night) is not None:
                         return True
     return False
 
@@ -12766,7 +12779,7 @@ def hotel_room_detail_api(room_id):
                     return jsonify({"ok": False, "error": "Mobile number is required."}), 400
                 if not (stay.get("checkInDate") or stay.get("check_in_date")):
                     return jsonify({"ok": False, "error": "Check-in date is required."}), 400
-                if not _hotel_stay_has_positive_room_rate(stay):
+                if not _hotel_stay_has_room_rate(stay):
                     return jsonify({"ok": False, "error": "Room rate is required."}), 400
                 if not _hotel_stay_has_rate_plan(stay):
                     return jsonify({"ok": False, "error": "Meal plan is required."}), 400
@@ -21474,8 +21487,6 @@ def save_access_role():
     master_modules = request.form.getlist("master_modules")
     reports_modules = request.form.getlist("reports_modules")
 
-    if sales_analytics_modules and not is_admin and "sales_analytics" not in dashboard_modules:
-        dashboard_modules = list(dashboard_modules) + ["sales_analytics"]
     if user_access_modules and not is_admin and "access_management" not in dashboard_modules:
         dashboard_modules = list(dashboard_modules) + ["access_management"]
     if payroll_modules and not is_admin and "employee_payroll" not in dashboard_modules:

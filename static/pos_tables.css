@@ -2777,3 +2777,140 @@ html.de-soft-navigating .de-main-wrapper .pos-table-tile--attention .pos-table-b
 @media print{
   .pos-inapp-print-toolbar{display:none !important}
 }
+
+
+/* ——— Phone / tablet compact (POS Tables floor) ——— */
+/* Shared restaurant/bar twin (#pos-tables-page). Safe-area + tighter floor grid. */
+@media (max-width:900px){
+  body.pos-module #pos-tables-page.pos-tables-page,
+  body.pos-module .de-main-inner.pos-tables-page{
+    padding:16px 14px calc(24px + env(safe-area-inset-bottom, 0px));
+    padding-left:max(14px, env(safe-area-inset-left, 0px));
+    padding-right:max(14px, env(safe-area-inset-right, 0px));
+  }
+  #pos-tables-page .pos-tables-header{
+    flex-direction:column;
+    align-items:stretch;
+    gap:12px;
+  }
+  #pos-tables-page .pos-tables-header-actions{
+    width:100%;
+    flex-wrap:wrap;
+    justify-content:stretch;
+    gap:8px;
+  }
+  #pos-tables-page .pos-tables-header-actions > *,
+  #pos-tables-page .pos-tables-btn-primary,
+  #pos-tables-page .pos-tables-btn-ghost,
+  #pos-tables-page .pos-tables-select,
+  #pos-tables-page .pos-tables-date{
+    flex:1 1 calc(50% - 4px);
+    min-width:0;
+  }
+  #pos-tables-page .pos-tables-btn-primary{
+    justify-content:center;
+    min-height:44px;
+  }
+  #pos-tables-page .pos-tables-toolbar{
+    padding:10px 12px;
+    gap:10px;
+  }
+  #pos-tables-page .pos-area-pills{
+    width:100%;
+    flex:1 1 100%;
+  }
+  #pos-tables-page .pos-area-pill{
+    min-height:40px;
+    padding:0 12px;
+  }
+  #pos-tables-page .pos-toolbar-right{
+    width:100%;
+    margin-left:0;
+    flex:1 1 100%;
+    justify-content:stretch;
+  }
+  #pos-tables-page .pos-floor-grid{
+    grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+    gap:12px;
+  }
+  #pos-tables-page .pos-table-tile{
+    min-height:0;
+  }
+  #pos-tables-page .pos-kot-modal,
+  #pos-kot-tokens-modal.pos-kot-modal{
+    padding:max(8px, env(safe-area-inset-top, 0px))
+            max(8px, env(safe-area-inset-right, 0px))
+            max(8px, env(safe-area-inset-bottom, 0px))
+            max(8px, env(safe-area-inset-left, 0px));
+  }
+  #pos-tables-page .pos-kot-modal-dialog,
+  #pos-kot-tokens-modal .pos-kot-modal-dialog{
+    width:min(720px, calc(100vw - 16px));
+    max-height:calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    border-radius:16px;
+  }
+}
+
+@media (max-width:640px){
+  body.pos-module #pos-tables-page.pos-tables-page,
+  body.pos-module .de-main-inner.pos-tables-page{
+    padding:14px 12px calc(20px + env(safe-area-inset-bottom, 0px));
+    padding-left:max(12px, env(safe-area-inset-left, 0px));
+    padding-right:max(12px, env(safe-area-inset-right, 0px));
+  }
+  #pos-tables-page .pos-tables-header-actions > *,
+  #pos-tables-page .pos-tables-btn-primary,
+  #pos-tables-page .pos-tables-select,
+  #pos-tables-page .pos-tables-date{
+    flex:1 1 100%;
+  }
+  body.pos-module .pl-summary-row.pos-tables-kpis,
+  body.pos-module .pl-summary-row.pos-tables-kpis.has-unsettled-kpi,
+  #pos-tables-page .pos-tables-kpis,
+  #pos-tables-page .pos-tables-kpis.has-unsettled-kpi{
+    grid-template-columns:minmax(0,1fr);
+    gap:10px;
+  }
+  #pos-tables-page .pos-floor-grid{
+    grid-template-columns:repeat(auto-fill,minmax(132px,1fr));
+    gap:10px;
+  }
+  #pos-tables-page .pos-floor[data-view="list"] .pos-table-tile{
+    grid-template-columns:36px minmax(0,1fr) auto;
+    grid-template-rows:auto auto;
+    gap:8px 10px;
+  }
+  #pos-tables-page .pos-table-tile-name{font-size:14px}
+  #pos-tables-page .pos-kot-modal-table{min-width:0}
+  #pos-tables-page .pos-kot-modal-table thead{display:none}
+  #pos-tables-page .pos-kot-modal-table,
+  #pos-tables-page .pos-kot-modal-table tbody,
+  #pos-tables-page .pos-kot-modal-table tr,
+  #pos-tables-page .pos-kot-modal-table td{
+    display:block;
+    width:100%;
+    box-sizing:border-box;
+  }
+  #pos-tables-page .pos-kot-modal-table tbody tr{
+    border:1px solid #E2E8F0;
+    border-radius:12px;
+    padding:10px 12px;
+    margin:0 0 8px;
+    background:#fff;
+  }
+  #pos-tables-page .pos-kot-modal-table tbody td{
+    display:grid;
+    grid-template-columns:minmax(72px,34%) minmax(0,1fr);
+    gap:4px 10px;
+    padding:6px 0;
+    border:0;
+  }
+  #pos-tables-page .pos-kot-modal-table tbody td::before{
+    content:attr(data-label);
+    font-size:11px;
+    font-weight:750;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:#64748B;
+  }
+}

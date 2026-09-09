@@ -283,13 +283,13 @@
               {% for emp in report.employees %}
               {% set badge_num = emp.att.display_badge_num|default(emp.att.badge_num) %}
               {% set pct = (badge_num / emp.att.badge_den * 100) if emp.att.tracked and emp.att.badge_den > 0 else 0 %}
-              <tr data-sort-row data-search="{{ [emp.name or '', emp.emp_code or '', emp.location or '']|join(' ')|lower }}">
-                <td class="pl-col-code" data-sort-value="{{ emp.emp_code }}">
+              <tr class="ep-card-row" data-sort-row data-search="{{ [emp.name or '', emp.emp_code or '', emp.location or '']|join(' ')|lower }}">
+                <td class="pl-col-code" data-label="ID" data-sort-value="{{ emp.emp_code }}">
                   {% if emp.emp_code %}<span class="pl-expense-code">{{ emp.emp_code }}</span>{% else %}—{% endif %}
                 </td>
-                <td data-sort-value="{{ emp.name }}"><div class="pl-name">{{ emp.name }}</div></td>
-                <td data-sort-value="{{ emp.location }}"><span class="emp-dept">{{ emp.location or '—' }}</span></td>
-                <td class="pl-col-attend" data-sort-value="{{ badge_num if emp.att.tracked else -1 }}">
+                <td data-label="Employee" data-sort-value="{{ emp.name }}"><div class="pl-name">{{ emp.name }}</div></td>
+                <td data-label="Department" data-sort-value="{{ emp.location }}"><span class="emp-dept">{{ emp.location or '—' }}</span></td>
+                <td class="pl-col-attend" data-label="Attendance" data-sort-value="{{ badge_num if emp.att.tracked else -1 }}">
                   {% if emp.att.tracked %}
                   <span class="badge {% if pct >= 90 %}bg-green{% elif pct >= 70 %}bg-orange{% else %}bg-red{% endif %}"
                         title="{{ badge_num }} present day{{ 's' if badge_num != 1 else '' }} out of {{ emp.att.badge_den }} in the month">
@@ -299,24 +299,24 @@
                   <span class="badge bg-gray">Not tracked</span>
                   {% endif %}
                 </td>
-                <td class="pl-col-amount pl-amount" data-sort-value="{{ emp.gross_salary }}">{{ emp.gross_salary | inr }}</td>
-                <td class="pl-col-amount pl-amount pl-amount--warn" data-sort-value="{{ emp.epf }}">{{ emp.epf | inr }}</td>
-                <td class="pl-col-amount pl-amount pl-amount--pur" data-sort-value="{{ emp.esic }}">{{ emp.esic | inr }}</td>
-                <td class="pl-col-amount pl-amount {% if emp.tip_incentive|default(0) > 0 %}{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ emp.tip_incentive|default(0) }}">
+                <td class="pl-col-amount pl-amount" data-label="Gross" data-sort-value="{{ emp.gross_salary }}">{{ emp.gross_salary | inr }}</td>
+                <td class="pl-col-amount pl-amount pl-amount--warn" data-label="EPF" data-sort-value="{{ emp.epf }}">{{ emp.epf | inr }}</td>
+                <td class="pl-col-amount pl-amount pl-amount--pur" data-label="ESIC" data-sort-value="{{ emp.esic }}">{{ emp.esic | inr }}</td>
+                <td class="pl-col-amount pl-amount {% if emp.tip_incentive|default(0) > 0 %}{% else %}pl-amount--muted{% endif %}" data-label="Incentive" data-sort-value="{{ emp.tip_incentive|default(0) }}">
                   {% if emp.tip_incentive|default(0) > 0 %}{{ emp.tip_incentive | inr }}{% else %}—{% endif %}
                 </td>
-                <td class="pl-col-amount pl-amount pl-amount--ok" data-sort-value="{{ emp.net }}">{{ emp.net | inr }}</td>
+                <td class="pl-col-amount pl-amount pl-amount--ok" data-label="Net salary" data-sort-value="{{ emp.net }}">{{ emp.net | inr }}</td>
               </tr>
               {% endfor %}
             </tbody>
             <tfoot>
-              <tr>
-                <td colspan="4" class="ec-ledger-label">Total</td>
-                <td class="pl-col-amount pl-amount">{{ report.total_gross | inr }}</td>
-                <td class="pl-col-amount pl-amount pl-amount--warn">{{ report.total_epf | inr }}</td>
-                <td class="pl-col-amount pl-amount pl-amount--pur">{{ report.total_esic | inr }}</td>
-                <td class="pl-col-amount pl-amount {% if report.total_incentive|default(0) > 0 %}{% else %}pl-amount--muted{% endif %}">{{ report.total_incentive|default(0) | inr }}</td>
-                <td class="pl-col-amount pl-amount pl-amount--ok">{{ report.total_net | inr }}</td>
+              <tr class="ep-card-row ep-card-row--foot">
+                <td colspan="4" class="ec-ledger-label" data-label="Summary">Total</td>
+                <td class="pl-col-amount pl-amount" data-label="Gross">{{ report.total_gross | inr }}</td>
+                <td class="pl-col-amount pl-amount pl-amount--warn" data-label="EPF">{{ report.total_epf | inr }}</td>
+                <td class="pl-col-amount pl-amount pl-amount--pur" data-label="ESIC">{{ report.total_esic | inr }}</td>
+                <td class="pl-col-amount pl-amount {% if report.total_incentive|default(0) > 0 %}{% else %}pl-amount--muted{% endif %}" data-label="Incentive">{{ report.total_incentive|default(0) | inr }}</td>
+                <td class="pl-col-amount pl-amount pl-amount--ok" data-label="Net salary">{{ report.total_net | inr }}</td>
               </tr>
             </tfoot>
           </table>

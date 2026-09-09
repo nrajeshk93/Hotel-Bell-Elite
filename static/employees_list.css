@@ -385,3 +385,225 @@ body.ep-module #employee-master-filter-form .ep-toolbar-listbox input.se-filter-
 :is(body.ep-module, #md-master-modal .md-master-embed--employee) #emp-credit-history-table .ec-edit-row td{
   background:#FAFBFD;
 }
+
+/* ——— Phone / tablet compact (Employee Payroll lists) ——— */
+@media (max-width:900px){
+  :is(#employees-page, #attendance-list-page, #credits-dashboard-page, #employee-credits-page, #employee-master-page) .content.se-content,
+  body.ep-module .content.se-content{
+    padding-bottom:calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+  body.ep-module .emp-summary-row.kpi-grid,
+  body.ep-module .kpi-grid,
+  body.ep-module .pl-summary-row,
+  #attendance-list-page .pl-summary-row{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  body.ep-module .su-header-tools{
+    width:100%;
+    flex:1 1 100%;
+    justify-content:flex-start;
+    gap:8px;
+  }
+  body.ep-module .su-header-tools .btn{
+    flex:1 1 calc(50% - 4px);
+    min-width:0;
+    justify-content:center;
+  }
+}
+
+@media (max-width:640px){
+  body.ep-module .emp-summary-row.kpi-grid,
+  body.ep-module .kpi-grid,
+  body.ep-module .pl-summary-row,
+  #attendance-list-page .pl-summary-row,
+  body.ep-module .emp-sal-kpi-grid{
+    grid-template-columns:minmax(0,1fr);
+  }
+  :is(#employees-page, #attendance-list-page, #credits-dashboard-page, #employee-credits-page, #employee-master-page) .content.se-content,
+  body.ep-module .content.se-content{
+    padding-left:12px;
+    padding-right:12px;
+    padding-bottom:calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  body.ep-module .su-header-tools .btn{
+    flex:1 1 100%;
+  }
+  body.ep-module .act-btn{
+    width:36px;
+    height:36px;
+  }
+  body.ep-module .act-btn svg{
+    width:16px;
+    height:16px;
+  }
+
+  /* Only tables that carry ep-card-row → stacked cards (avoids breaking master/other lists) */
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) .emp-table-wrap:has(table.emp-pl-table tbody tr.ep-card-row),
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) .pl-table-wrap:has(table.emp-pl-table tbody tr.ep-card-row),
+  body.ep-module .table-wrap:has(#dav-table tbody tr.ep-card-row){
+    max-height:none;
+    overflow:visible;
+    border:none;
+    border-radius:0;
+    background:transparent;
+  }
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table:has(tbody tr.ep-card-row),
+  body.ep-module #dav-table:has(tbody tr.ep-card-row){
+    min-width:0!important;
+    width:100%;
+  }
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table:has(tbody tr.ep-card-row),
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table:has(tbody tr.ep-card-row) thead,
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table:has(tbody tr.ep-card-row) tbody,
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table:has(tbody tr.ep-card-row) tfoot,
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table:has(tbody tr.ep-card-row) tr,
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table:has(tbody tr.ep-card-row) th,
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table:has(tbody tr.ep-card-row) td,
+  body.ep-module #dav-table:has(tbody tr.ep-card-row),
+  body.ep-module #dav-table:has(tbody tr.ep-card-row) thead,
+  body.ep-module #dav-table:has(tbody tr.ep-card-row) tbody,
+  body.ep-module #dav-table:has(tbody tr.ep-card-row) tr,
+  body.ep-module #dav-table:has(tbody tr.ep-card-row) th,
+  body.ep-module #dav-table:has(tbody tr.ep-card-row) td{
+    display:block;
+    width:100%;
+    box-sizing:border-box;
+  }
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table:has(tbody tr.ep-card-row) thead,
+  body.ep-module #dav-table:has(tbody tr.ep-card-row) thead{display:none}
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table:has(tbody tr.ep-card-row) tbody,
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table:has(tbody tr.ep-card-row) tfoot,
+  body.ep-module #dav-table:has(tbody tr.ep-card-row) tbody{
+    display:flex;
+    flex-direction:column;
+    gap:0;
+  }
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tbody tr.ep-card-row,
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tfoot tr.ep-card-row,
+  body.ep-module #dav-table tbody tr.ep-card-row{
+    border:1px solid var(--border,#E2E8F0);
+    border-radius:12px;
+    padding:12px 14px;
+    margin:0 0 10px;
+    background:#fff;
+    box-shadow:0 1px 2px rgba(15,23,42,.04);
+  }
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tbody tr.ep-card-row:last-child,
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tfoot tr.ep-card-row:last-child,
+  body.ep-module #dav-table tbody tr.ep-card-row:last-child{margin-bottom:0}
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tbody tr.ep-card-row[hidden],
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tbody tr.ep-card-row--edit[hidden]{
+    display:none!important;
+  }
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tbody tr.ep-card-row td,
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tfoot tr.ep-card-row td,
+  body.ep-module #dav-table tbody tr.ep-card-row td{
+    display:grid;
+    grid-template-columns:minmax(88px,34%) minmax(0,1fr);
+    gap:8px 12px;
+    align-items:start;
+    padding:8px 0;
+    border-bottom:1px solid #F1F5F9;
+    text-align:left;
+    vertical-align:top;
+    white-space:normal;
+  }
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tbody tr.ep-card-row td:last-child,
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tfoot tr.ep-card-row td:last-child,
+  body.ep-module #dav-table tbody tr.ep-card-row td:last-child{
+    border-bottom:none;
+    padding-bottom:0;
+  }
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tbody tr.ep-card-row td:first-child,
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tfoot tr.ep-card-row td:first-child,
+  body.ep-module #dav-table tbody tr.ep-card-row td:first-child{padding-top:0}
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tbody tr.ep-card-row td::before,
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tfoot tr.ep-card-row td::before,
+  body.ep-module #dav-table tbody tr.ep-card-row td::before{
+    content:attr(data-label);
+    font-size:11px;
+    font-weight:750;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:#64748B;
+    line-height:1.35;
+    padding-top:2px;
+  }
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tbody tr.ep-card-row td[data-label=""]::before,
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tfoot tr.ep-card-row td[data-label=""]::before{
+    content:none;
+  }
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tbody tr.ep-card-row td.pl-col-actions .act-grp,
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tbody tr.ep-card-row td.tbl-sticky .act-grp,
+  body.ep-module #dav-table tbody tr.ep-card-row td .act-grp{
+    justify-content:flex-start;
+  }
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tbody tr.ep-card-row td.pl-col-amount,
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tbody tr.ep-card-row td.pl-col-attend,
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table:has(tbody tr.ep-card-row) .tbl-sticky{
+    text-align:left;
+    position:static;
+    width:auto;
+    min-width:0;
+    box-shadow:none;
+    background:transparent!important;
+  }
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table:has(tbody tr.ep-card-row) .tbl-sticky::before{display:none}
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tbody tr.ep-card-row .inline-sal,
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tbody tr.ep-card-row .ec-edit-input{
+    width:100%;
+    max-width:100%;
+    box-sizing:border-box;
+  }
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tfoot tr.ep-card-row td[colspan]{
+    grid-template-columns:minmax(88px,34%) minmax(0,1fr);
+  }
+}
+
+@media (max-width:520px){
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tbody tr.ep-card-row,
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tfoot tr.ep-card-row,
+  body.ep-module #dav-table tbody tr.ep-card-row{padding:10px 12px}
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tbody tr.ep-card-row td,
+  :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table tfoot tr.ep-card-row td,
+  body.ep-module #dav-table tbody tr.ep-card-row td{
+    grid-template-columns:minmax(72px,32%) minmax(0,1fr);
+    gap:6px 10px;
+    padding:6px 0;
+  }
+}
+
+
+/* ——— Phone / tablet compact (Report outliers: payroll / bank / GST) ——— */
+@media (max-width:900px){
+  :is(#monthly-payroll-report-page, #bank-report-page, #gst-hotel-report-page, #gst-fnb-report-page) .su-header-top{
+    flex-wrap:wrap;
+    align-items:stretch;
+    gap:10px;
+  }
+  :is(#monthly-payroll-report-page, #bank-report-page, #gst-hotel-report-page, #gst-fnb-report-page) .su-header-tools{
+    width:100%;
+    flex:1 1 100%;
+    justify-content:stretch;
+    gap:8px;
+  }
+  :is(#monthly-payroll-report-page, #bank-report-page, #gst-hotel-report-page, #gst-fnb-report-page) .su-header-tools .btn,
+  :is(#monthly-payroll-report-page, #bank-report-page, #gst-hotel-report-page, #gst-fnb-report-page) .su-header-tools > a.btn{
+    flex:1 1 calc(50% - 4px);
+    min-width:0;
+    justify-content:center;
+    text-align:center;
+  }
+}
+
+@media (max-width:640px){
+  :is(#monthly-payroll-report-page, #bank-report-page, #gst-hotel-report-page, #gst-fnb-report-page) .su-header-tools .btn,
+  :is(#monthly-payroll-report-page, #bank-report-page, #gst-hotel-report-page, #gst-fnb-report-page) .su-header-tools > a.btn{
+    flex:1 1 100%;
+  }
+  :is(#monthly-payroll-report-page, #bank-report-page, #gst-hotel-report-page, #gst-fnb-report-page) .pl-table-wrap,
+  :is(#monthly-payroll-report-page, #bank-report-page, #gst-hotel-report-page, #gst-fnb-report-page) .emp-table-wrap{
+    overflow:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+}

@@ -2045,3 +2045,138 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
 .pos-invoice-page.is-invoice-generated #pos-inv-send-customer{
   display:none !important;
 }
+
+
+/* ——— Phone / tablet compact (POS Invoice) ——— */
+/* Shared restaurant/bar twin (#pos-invoice-page / body.pos-invoice-module). */
+@media (max-width:900px){
+  body.pos-invoice-module #pos-invoice-page.pos-invoice-page,
+  body.pos-invoice-module .de-main-inner.pos-invoice-page{
+    padding:16px 14px calc(128px + env(safe-area-inset-bottom, 0px));
+    padding-left:max(14px, env(safe-area-inset-left, 0px));
+    padding-right:max(14px, env(safe-area-inset-right, 0px));
+  }
+  #pos-invoice-page .pos-inv-layout{
+    grid-template-columns:1fr;
+    gap:14px;
+  }
+  #pos-invoice-page .pos-inv-aside{
+    position:static;
+    order:-1;
+  }
+  #pos-invoice-page .pos-inv-header{
+    grid-template-columns:1fr;
+    gap:12px;
+    padding:14px 16px;
+  }
+  #pos-invoice-page .pos-inv-header-actions{
+    grid-column:1;
+    justify-self:stretch;
+  }
+  #pos-invoice-page .pos-inv-header-toolbar{
+    grid-column:1;
+  }
+  #pos-invoice-page .pos-inv-header-pills,
+  #pos-invoice-page .pos-inv-header-buttons{
+    flex:1 1 100%;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  #pos-invoice-page .pos-inv-header-buttons .pos-inv-btn{
+    min-height:44px;
+  }
+  #pos-invoice-page .pos-inv-card{
+    padding:16px;
+  }
+  #pos-invoice-page .pos-inv-search{
+    min-height:48px;
+  }
+  #pos-invoice-page .pos-inv-toolbar{
+    position:sticky;
+    bottom:0;
+    z-index:40;
+    flex-wrap:wrap;
+    gap:8px;
+    padding:10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    background:rgba(255,255,255,.96);
+    backdrop-filter:blur(8px);
+    border-top:1px solid #E2E8F0;
+    box-shadow:0 -8px 24px rgba(15,23,42,.06);
+  }
+  #pos-invoice-page .pos-inv-toolbar-tools{
+    flex:1 1 100%;
+    justify-content:space-between;
+    gap:6px;
+  }
+  #pos-invoice-page .pos-inv-tool{
+    flex:1 1 0;
+    min-width:0;
+    min-height:44px;
+    justify-content:center;
+  }
+  #pos-invoice-page .pos-inv-toolbar-primary{
+    flex:1 1 100%;
+    width:100%;
+    min-height:48px;
+    justify-content:center;
+  }
+  #pos-invoice-page .pos-inv-modal,
+  body.pos-invoice-module .pos-inv-modal{
+    padding:max(8px, env(safe-area-inset-top, 0px))
+            max(8px, env(safe-area-inset-right, 0px))
+            max(8px, env(safe-area-inset-bottom, 0px))
+            max(8px, env(safe-area-inset-left, 0px));
+    align-items:flex-end;
+  }
+  #pos-invoice-page .pos-inv-modal-box,
+  body.pos-invoice-module .pos-inv-modal .pos-inv-modal-box{
+    width:min(560px, calc(100vw - 16px));
+    max-width:calc(100vw - 16px);
+    max-height:calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    margin:0 auto;
+    border-radius:16px 16px 14px 14px;
+  }
+}
+
+@media (max-width:640px){
+  body.pos-invoice-module #pos-invoice-page.pos-invoice-page,
+  body.pos-invoice-module .de-main-inner.pos-invoice-page{
+    padding:12px 10px calc(136px + env(safe-area-inset-bottom, 0px));
+    padding-left:max(10px, env(safe-area-inset-left, 0px));
+    padding-right:max(10px, env(safe-area-inset-right, 0px));
+  }
+  #pos-invoice-page .pos-inv-meta{
+    grid-template-columns:1fr;
+  }
+  #pos-invoice-page .pos-inv-col-rate,
+  #pos-invoice-page .pos-inv-table thead th.pos-inv-col-rate,
+  #pos-invoice-page .pos-inv-table tbody td.pos-inv-col-rate{
+    display:none;
+  }
+  #pos-invoice-page .pos-inv-tool span{display:none}
+  #pos-invoice-page .pos-inv-tool{
+    width:auto;
+    padding:0 8px;
+  }
+  #pos-invoice-page .pos-inv-lines-footer{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  #pos-invoice-page .pos-inv-header-buttons .pos-inv-btn span{display:none}
+  #pos-invoice-page .pos-inv-header-buttons .pos-inv-btn--kitchen span{display:inline}
+  #pos-invoice-page .pos-inv-header-buttons .pos-inv-btn--kitchen{flex:1}
+  #pos-invoice-page .pos-inv-summary-row{
+    font-size:13px;
+  }
+  #pos-invoice-page .pos-inv-modal-box,
+  body.pos-invoice-module .pos-inv-modal .pos-inv-modal-box,
+  #pos-inv-tip-modal .pos-inv-tip-box.staff-credit-box{
+    width:calc(100vw - 12px);
+    max-width:calc(100vw - 12px);
+    padding:16px 14px;
+    border-radius:14px;
+  }
+  #pos-invoice-page .pos-inv-adj-row{
+    grid-template-columns:1fr;
+  }
+}

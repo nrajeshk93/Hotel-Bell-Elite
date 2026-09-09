@@ -674,3 +674,172 @@ body.su-module .pl-action-btns .act-btn.whatsapp.is-disabled{
     grid-template-columns: 1fr;
   }
 }
+
+
+/* ——— Phone / tablet compact (POS Invoice Ledger) ——— */
+/* Scoped to #pos-invoice-ledger-page (restaurant/bar twin). */
+@media (max-width:900px){
+  body.su-module.pos-invoice-ledger-module #pos-invoice-ledger-page,
+  #pos-invoice-ledger-page{
+    padding-bottom:0;
+  }
+  #pos-invoice-ledger-page .su-header-top{
+    flex-wrap:wrap;
+    align-items:stretch;
+    gap:10px;
+  }
+  #pos-invoice-ledger-page .su-header-tools{
+    width:100%;
+    flex:1 1 100%;
+    justify-content:stretch;
+    gap:8px;
+  }
+  #pos-invoice-ledger-page .su-header-tools .btn{
+    flex:1 1 calc(50% - 4px);
+    min-width:0;
+    min-height:44px;
+    justify-content:center;
+  }
+  #pos-invoice-ledger-page .content.se-content{
+    padding-left:max(14px, env(safe-area-inset-left, 0px));
+    padding-right:max(14px, env(safe-area-inset-right, 0px));
+    padding-bottom:calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+  #pos-invoice-ledger-page .pl-summary-row{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  body.su-module #pos-il-filter-form .pl-date-range-host.pl-header-field,
+  #pos-invoice-ledger-page #pos-il-date-range-host{
+    flex:1 1 100%;
+    width:100%;
+    max-width:none;
+  }
+  body.su-module #pos-il-filter-form .pl-date-range-host .an-range-trigger{
+    width:100%;
+    max-width:none;
+  }
+  #pos-il-void-modal .pos-il-void-box,
+  #pos-invoice-ledger-page .pos-il-void-box{
+    width:min(520px, calc(100vw - 16px));
+    max-height:calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (max-width:640px){
+  #pos-invoice-ledger-page .su-header-tools .btn{
+    flex:1 1 100%;
+  }
+  #pos-invoice-ledger-page .pl-summary-row{
+    grid-template-columns:minmax(0,1fr);
+  }
+  #pos-invoice-ledger-page .content.se-content{
+    padding-left:max(12px, env(safe-area-inset-left, 0px));
+    padding-right:max(12px, env(safe-area-inset-right, 0px));
+    padding-bottom:calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  #pos-invoice-ledger-page #pos-il-table{
+    min-width:0;
+  }
+  #pos-invoice-ledger-page .pl-table-wrap{
+    max-height:none;
+    overflow:visible;
+    border:none;
+    border-radius:0;
+    background:transparent;
+  }
+  #pos-invoice-ledger-page .pl-table,
+  #pos-invoice-ledger-page .pl-table thead,
+  #pos-invoice-ledger-page .pl-table tbody,
+  #pos-invoice-ledger-page .pl-table tr,
+  #pos-invoice-ledger-page .pl-table th,
+  #pos-invoice-ledger-page .pl-table td{
+    display:block;
+    width:100%;
+    box-sizing:border-box;
+  }
+  #pos-invoice-ledger-page .pl-table thead{display:none}
+  #pos-invoice-ledger-page .pl-table tbody{
+    display:flex;
+    flex-direction:column;
+    gap:0;
+  }
+  #pos-invoice-ledger-page .pl-table tbody tr.pos-il-row{
+    border:1px solid var(--border,#E2E8F0);
+    border-radius:12px;
+    padding:12px 14px;
+    margin:0 0 10px;
+    background:#fff;
+    box-shadow:0 1px 2px rgba(15,23,42,.04);
+  }
+  #pos-invoice-ledger-page .pl-table tbody tr.pos-il-row:last-child{margin-bottom:0}
+  #pos-invoice-ledger-page .pl-table tbody tr.pos-il-row td{
+    display:grid;
+    grid-template-columns:minmax(88px,36%) minmax(0,1fr);
+    gap:4px 12px;
+    padding:8px 0;
+    border:0;
+    border-bottom:1px solid #F1F5F9;
+    text-align:left;
+    min-height:0;
+  }
+  #pos-invoice-ledger-page .pl-table tbody tr.pos-il-row td:last-child{
+    border-bottom:none;
+    padding-bottom:0;
+  }
+  #pos-invoice-ledger-page .pl-table tbody tr.pos-il-row td:first-child{padding-top:0}
+  #pos-invoice-ledger-page .pl-table tbody tr.pos-il-row td.cp-col-check{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    grid-template-columns:none;
+    border-bottom:1px solid #F1F5F9;
+  }
+  #pos-invoice-ledger-page .pl-table tbody tr.pos-il-row td.cp-col-check::before{
+    content:attr(data-label);
+    font-size:11px;
+    font-weight:750;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:#64748B;
+  }
+  #pos-invoice-ledger-page .pl-table tbody tr.pos-il-row td::before{
+    content:attr(data-label);
+    font-size:11px;
+    font-weight:750;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:#64748B;
+    line-height:1.35;
+    padding-top:2px;
+  }
+  #pos-invoice-ledger-page .pl-table tbody tr.pos-il-row td.pl-col-actions .act-grp,
+  #pos-invoice-ledger-page .pl-table tbody tr.pos-il-row td.pl-col-actions .pl-action-btns{
+    justify-content:flex-start;
+  }
+  #pos-invoice-ledger-page .pl-table tbody tr.pos-il-row td.pl-col-amount{
+    text-align:left;
+  }
+  /* Hide zero/empty tender cols on cards to reduce noise */
+  #pos-invoice-ledger-page .pl-table tbody tr.pos-il-row td.pos-il-tender-col:not(.pl-amount){
+    display:none;
+  }
+  #pos-invoice-ledger-page .cp-bulk-bar{
+    flex-wrap:wrap;
+    gap:8px;
+    padding:10px 12px;
+  }
+  #pos-invoice-ledger-page .pl-list-panel .act-btn,
+  #pos-invoice-ledger-page .pl-action-btns .act-btn{
+    width:40px;
+    height:40px;
+  }
+}
+
+@media (max-width:520px){
+  #pos-invoice-ledger-page .pl-table tbody tr.pos-il-row{padding:10px 12px}
+  #pos-invoice-ledger-page .pl-table tbody tr.pos-il-row td{
+    grid-template-columns:minmax(72px,32%) minmax(0,1fr);
+    gap:6px 10px;
+    padding:6px 0;
+  }
+}

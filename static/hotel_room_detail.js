@@ -2721,7 +2721,8 @@
       mobile_country: country,
       room_id: room && room.id ? String(room.id) : '',
       room_number: room && room.number ? String(room.number) : '',
-      outlet: room && room.number ? String(room.number) : ''
+      location: room && room.number ? String(room.number) : '',
+      outlet: 'hotel'
     };
   }
 
@@ -3797,7 +3798,7 @@
   function positiveRoomRate(value) {
     if (value == null || value === '') return null;
     var n = Number(value);
-    if (!isFinite(n) || n <= 0) return null;
+    if (!isFinite(n) || n < 0) return null;
     return Math.round(n * 100) / 100;
   }
 
@@ -4257,7 +4258,7 @@
             '<label class="hrd-field hrd-ci-nightly-rate-field">' +
             '<span>Room rate</span>' +
             '<span class="hrd-input-affix"><span>₹</span>' +
-            '<input type="number" min="0.01" step="0.01" required data-nightly-room-rate data-night-date="' +
+            '<input type="number" min="0" step="0.01" required data-nightly-room-rate data-night-date="' +
             escapeHtml(nightDate || '') +
             '" placeholder="0" value="' +
             escapeHtml(rate > 0 ? String(rate) : '') +
@@ -4341,13 +4342,13 @@
       if (el.closest && el.closest('.hrd-ci-nightly-row.is-locked')) continue;
       var raw = String(el.value || '').trim();
       var amount = Number(raw);
-      if (!raw || !isFinite(amount) || amount <= 0) return el;
+      if (!raw || !isFinite(amount) || amount < 0) return el;
     }
     var hidden = form.elements.roomRate || $('#hrd-ci-room-rate', form);
     if (!nodes.length && hidden && !hidden.disabled) {
       var hiddenRaw = String(hidden.value || '').trim();
       var hiddenAmount = Number(hiddenRaw);
-      if (!hiddenRaw || !isFinite(hiddenAmount) || hiddenAmount <= 0) return hidden;
+      if (!hiddenRaw || !isFinite(hiddenAmount) || hiddenAmount < 0) return hidden;
     }
     return null;
   }
@@ -4701,7 +4702,7 @@
             '<label class="hrd-field hrd-ci-nightly-rate-field">' +
             '<span>Room rate</span>' +
             '<span class="hrd-input-affix"><span>₹</span>' +
-            '<input type="number" min="0.01" step="0.01" required inputmode="decimal" data-merge-room-rate placeholder="0" value="' +
+            '<input type="number" min="0" step="0.01" required inputmode="decimal" data-merge-room-rate placeholder="0" value="' +
             escapeHtml(rateValue) +
             '"></span></label></div></div>';
         return (

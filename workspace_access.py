@@ -149,13 +149,6 @@ _WORKSPACE_MODULE_REGISTRY = (
         "permission_children": (),
     },
     {
-        "key": "sales_analytics",
-        "label": "Sales Analytics",
-        "permission_scope": "sales_analytics",
-        "permission_field": "sales_analytics_modules",
-        "permission_children": _SALES_ANALYTICS_SUBMODULES,
-    },
-    {
         "key": "access_management",
         "label": "User & Access",
         "permission_scope": "user_access",
@@ -312,10 +305,6 @@ _ACCESS_MODULE_UI_META = {
     "main_dashboard": {
         "icon": "layout-dashboard",
         "description": "Workspace dashboard overview for Hotel Bell Elite.",
-    },
-    "sales_analytics": {
-        "icon": "trending-up",
-        "description": "Daily sales updates, room transfers, hotel credit clearance, and analytics dashboards.",
     },
     "access_management": {
         "icon": "shield-check",
@@ -585,6 +574,7 @@ _COMMUNICATION_HUB_ENDPOINT_GROUPS = {
         "communication_hub_api_feedback_summary",
         "communication_hub_api_feedback_responses",
         "communication_hub_api_feedback_invite_create",
+        "communication_hub_api_feedback_send_whatsapp",
     },
 }
 _COMMUNICATION_HUB_ENDPOINTS = set().union(*_COMMUNICATION_HUB_ENDPOINT_GROUPS.values())
@@ -1164,8 +1154,12 @@ def _permission_sets_from_rows(rows):
         scope = (row["scope"] or "").strip()
         item_key = (row["item_key"] or "").strip()
         if scope == "dashboard" and item_key == "sales_update":
-            # Legacy key from earlier builds.
-            sets["dashboard"].add("sales_analytics")
+            # Legacy Sales Analytics key — module retired; ignore.
+            continue
+        if scope == "dashboard" and item_key == "sales_analytics":
+            continue
+        if scope == "sales_analytics":
+            continue
         elif scope in sets and item_key:
             sets[scope].add(item_key)
     return sets
@@ -1265,8 +1259,8 @@ def user_can_access_dashboard(user, module_key):
         return False
     if user.get("is_admin"):
         return True
-    if module_key == "sales_analytics" and user.get("sales_analytics_access", set()):
-        return True
+    if module_key == "sales_analytics":
+        return False
     if module_key == "access_management" and user.get("user_access", set()):
         return True
     if module_key == "employee_payroll" and user.get("payroll_access", set()):
@@ -1291,11 +1285,8 @@ def user_can_access_dashboard(user, module_key):
 
 
 def user_can_access_sales_analytics_submodule(user, submodule_key):
-    if not user:
-        return False
-    if user.get("is_admin"):
-        return True
-    return submodule_key in user.get("sales_analytics_access", set())
+    """Sales Analytics is retired — no submodule grants."""
+    return False
 
 
 def user_can_access_user_access_submodule(user, submodule_key):
@@ -1485,9 +1476,7 @@ def user_can_access_supplier_master(user):
         return False
     if user.get("is_admin"):
         return True
-    if user_can_access_accounts_submodule(user, "supplier_master"):
-        return True
-    return "suppliers" in user.get("sales_analytics_access", set())
+    return user_can_access_accounts_submodule(user, "supplier_master")
 
 
 def user_can_access_customer_master(user):
@@ -1553,8 +1542,6 @@ def dashboard_access_list(user):
     if user.get("is_admin"):
         return [item["key"] for item in _DASHBOARD_MODULES]
     dashboard_access = set(user.get("dashboard_access", set()))
-    if user.get("sales_analytics_access", set()):
-        dashboard_access.add("sales_analytics")
     if user.get("user_access", set()):
         dashboard_access.add("access_management")
     if user.get("payroll_access", set()):
@@ -1673,15 +1660,8 @@ def reports_access_list(user):
 
 
 def sales_analytics_access_list(user):
-    if not user:
-        return []
-    if user.get("is_admin"):
-        return [item["key"] for item in _SALES_ANALYTICS_SUBMODULES]
-    return [
-        item["key"]
-        for item in _SALES_ANALYTICS_SUBMODULES
-        if item["key"] in user.get("sales_analytics_access", set())
-    ]
+    """Sales Analytics is retired — never expose submodule grants in UI."""
+    return []
 
 
 def user_access_submodule_list(user):
@@ -1862,6 +1842,11 @@ def get_endpoint_sales_analytics_submodules(endpoint):
 
 
 def user_can_access_endpoint_sales_analytics(user, endpoint):
+    """Sales Analytics module is retired. Allow admins and shared POS write APIs only."""
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
     submodules = get_endpoint_sales_analytics_submodules(endpoint)
     if not submodules:
         return True
@@ -1870,12 +1855,7 @@ def user_can_access_endpoint_sales_analytics(user, endpoint):
         and user_can_access_dashboard(user, "point_of_sale")
     ):
         return True
-    if len(submodules) == 1:
-        return user_can_access_sales_analytics_submodule(user, submodules[0])
-    return any(
-        user_can_access_sales_analytics_submodule(user, submodule)
-        for submodule in submodules
-    )
+    return False
 
 
 def user_can_access_endpoint_accounts(user, endpoint):
@@ -2051,11 +2031,8 @@ def _normalize_permission_modules(
     dashboard_modules = sorted({
         module for module in (dashboard_modules or []) if module in _DASHBOARD_MODULE_LABELS
     })
-    sales_analytics_modules = sorted({
-        module
-        for module in (sales_analytics_modules or [])
-        if module in _SALES_ANALYTICS_SUBMODULE_LABELS
-    })
+    # Sales Analytics module is retired — never persist grants from Roles UI.
+    sales_analytics_modules = []
     user_access_modules = sorted({
         module
         for module in (user_access_modules or [])
@@ -2107,8 +2084,6 @@ def _normalize_permission_modules(
         if module in _REPORTS_SUBMODULE_LABELS
     })
 
-    if sales_analytics_modules and "sales_analytics" not in dashboard_modules:
-        dashboard_modules = sorted(set(dashboard_modules + ["sales_analytics"]))
     if user_access_modules and "access_management" not in dashboard_modules:
         dashboard_modules = sorted(set(dashboard_modules + ["access_management"]))
     if payroll_modules and "employee_payroll" not in dashboard_modules:
@@ -2775,10 +2750,6 @@ def validate_access_role_form(
 
     if not is_admin and not dashboard_modules:
         errors.append("Select at least one dashboard module for a non-admin role.")
-    if "sales_analytics" in dashboard_modules and not sales_analytics_modules and not is_admin:
-        errors.append(
-            "Choose at least one Sales Analytics submodule when Sales Analytics access is enabled."
-        )
     if "access_management" in dashboard_modules and not user_access_modules and not is_admin:
         errors.append(
             "Choose at least one User & Access submodule when User & Access is enabled."

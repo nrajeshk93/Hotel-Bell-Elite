@@ -253,31 +253,31 @@
             </thead>
             <tbody>
               {% for row in rows %}
-              <tr data-sort-row data-search="{{ [row.invoice_number or '', row.invoice_date_display or '', row.invoice_date or '']|join(' ')|lower }}">
-                <td class="pl-col-code" data-sort-value="{{ row.invoice_number }}">
+              <tr class="ep-card-row" data-sort-row data-search="{{ [row.invoice_number or '', row.invoice_date_display or '', row.invoice_date or '']|join(' ')|lower }}">
+                <td class="pl-col-code" data-label="Invoice number" data-sort-value="{{ row.invoice_number }}">
                   {% if row.invoice_number %}<span class="pl-expense-code">{{ row.invoice_number }}</span>{% else %}—{% endif %}
                 </td>
-                <td data-sort-value="{{ row.invoice_date }}">{{ row.invoice_date_display or row.invoice_date or '—' }}</td>
-                <td class="pl-col-amount pl-amount" data-sort-value="{{ row.liquor }}">{{ row.liquor | inr }}</td>
-                <td class="pl-col-amount pl-amount" data-sort-value="{{ row.vat }}">{{ row.vat | inr }}</td>
-                <td class="pl-col-amount pl-amount" data-sort-value="{{ row.restaurant }}">{{ row.restaurant | inr }}</td>
-                <td class="pl-col-amount pl-amount" data-sort-value="{{ row.gst }}">{{ row.gst | inr }}</td>
-                <td class="pl-col-amount pl-amount pl-amount--ok" data-sort-value="{{ row.total }}">{{ row.total | inr }}</td>
-                <td class="pl-col-amount pl-amount {% if row.swiggy %}{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ row.swiggy }}">{{ row.swiggy | inr }}</td>
-                <td class="pl-col-amount pl-amount {% if row.zomato %}{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ row.zomato }}">{{ row.zomato | inr }}</td>
+                <td data-label="Invoice date" data-sort-value="{{ row.invoice_date }}">{{ row.invoice_date_display or row.invoice_date or '—' }}</td>
+                <td class="pl-col-amount pl-amount" data-label="Liquor" data-sort-value="{{ row.liquor }}">{{ row.liquor | inr }}</td>
+                <td class="pl-col-amount pl-amount" data-label="VAT" data-sort-value="{{ row.vat }}">{{ row.vat | inr }}</td>
+                <td class="pl-col-amount pl-amount" data-label="Restaurant" data-sort-value="{{ row.restaurant }}">{{ row.restaurant | inr }}</td>
+                <td class="pl-col-amount pl-amount" data-label="GST" data-sort-value="{{ row.gst }}">{{ row.gst | inr }}</td>
+                <td class="pl-col-amount pl-amount pl-amount--ok" data-label="Total" data-sort-value="{{ row.total }}">{{ row.total | inr }}</td>
+                <td class="pl-col-amount pl-amount {% if row.swiggy %}{% else %}pl-amount--muted{% endif %}" data-label="Swiggy" data-sort-value="{{ row.swiggy }}">{{ row.swiggy | inr }}</td>
+                <td class="pl-col-amount pl-amount {% if row.zomato %}{% else %}pl-amount--muted{% endif %}" data-label="Zomato" data-sort-value="{{ row.zomato }}">{{ row.zomato | inr }}</td>
               </tr>
               {% endfor %}
             </tbody>
             <tfoot>
-              <tr>
-                <td colspan="2" class="ec-ledger-label">Total</td>
-                <td class="pl-col-amount pl-amount">{{ kpis.liquor | inr }}</td>
-                <td class="pl-col-amount pl-amount">{{ kpis.vat | inr }}</td>
-                <td class="pl-col-amount pl-amount">{{ kpis.restaurant | inr }}</td>
-                <td class="pl-col-amount pl-amount">{{ kpis.gst | inr }}</td>
-                <td class="pl-col-amount pl-amount pl-amount--ok">{{ kpis.total | inr }}</td>
-                <td class="pl-col-amount pl-amount">{{ kpis.swiggy | inr }}</td>
-                <td class="pl-col-amount pl-amount">{{ kpis.zomato | inr }}</td>
+              <tr class="ep-card-row ep-card-row--foot">
+                <td colspan="2" class="ec-ledger-label" data-label="Summary">Total</td>
+                <td class="pl-col-amount pl-amount" data-label="Liquor">{{ kpis.liquor | inr }}</td>
+                <td class="pl-col-amount pl-amount" data-label="VAT">{{ kpis.vat | inr }}</td>
+                <td class="pl-col-amount pl-amount" data-label="Restaurant">{{ kpis.restaurant | inr }}</td>
+                <td class="pl-col-amount pl-amount" data-label="GST">{{ kpis.gst | inr }}</td>
+                <td class="pl-col-amount pl-amount pl-amount--ok" data-label="Total">{{ kpis.total | inr }}</td>
+                <td class="pl-col-amount pl-amount" data-label="Swiggy">{{ kpis.swiggy | inr }}</td>
+                <td class="pl-col-amount pl-amount" data-label="Zomato">{{ kpis.zomato | inr }}</td>
               </tr>
             </tfoot>
           </table>

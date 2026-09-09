@@ -1347,6 +1347,18 @@
       mobile: mobile,
       mobile_country: '+91',
       outlet: outlet,
+      table:
+        (invoice && (invoice.table_label || invoice.table)) ||
+        (payload && (payload.table || payload.table_label || payload.tableLabel)) ||
+        state.tableForOrder ||
+        fieldValue('pos-inv-table', page) ||
+        '',
+      table_label:
+        (invoice && (invoice.table_label || invoice.table)) ||
+        (payload && (payload.table || payload.table_label || payload.tableLabel)) ||
+        state.tableForOrder ||
+        fieldValue('pos-inv-table', page) ||
+        '',
       order_no:
         (invoice && (invoice.order_no || invoice.orderNo)) || state.orderNo || '',
       invoice_id: invoice && invoice.id

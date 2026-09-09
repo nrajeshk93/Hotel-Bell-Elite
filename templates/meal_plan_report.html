@@ -214,15 +214,15 @@
               <tr class="sr-row pl-expense-row"
                   data-sort-row
                   data-search="{{ [row.room_number or '', row.guest_name or '', row.plan_label or '', row.plan or '']|join(' ')|lower }}">
-                <td class="pl-col-code" data-sort-value="{{ row.room_number or '' }}"><span class="pl-expense-code">{{ row.room_number or '—' }}</span></td>
-                <td data-sort-value="{{ row.guest_name or '' }}">{{ row.guest_name or '—' }}</td>
-                <td data-sort-value="{{ row.plan or '' }}">{{ row.plan_label or row.plan or '—' }}</td>
-                <td class="pl-col-amount" data-sort-value="{{ row.adults }}">{{ row.adults }}</td>
-                <td class="pl-col-amount" data-sort-value="{{ row.children }}">{{ row.children }}</td>
-                <td class="pl-col-amount" data-sort-value="{{ row.pax }}">{{ row.pax }}</td>
-                <td class="pl-col-amount" data-sort-value="{{ row.breakfast }}">{{ row.breakfast }}</td>
-                <td class="pl-col-amount" data-sort-value="{{ row.lunch }}">{{ row.lunch }}</td>
-                <td class="pl-col-amount" data-sort-value="{{ row.dinner }}">{{ row.dinner }}</td>
+                <td class="pl-col-code" data-label="Room" data-sort-value="{{ row.room_number or '' }}"><span class="pl-expense-code">{{ row.room_number or '—' }}</span></td>
+                <td data-label="Guest" data-sort-value="{{ row.guest_name or '' }}">{{ row.guest_name or '—' }}</td>
+                <td data-label="Meal plan" data-sort-value="{{ row.plan or '' }}">{{ row.plan_label or row.plan or '—' }}</td>
+                <td class="pl-col-amount" data-label="Adults" data-sort-value="{{ row.adults }}">{{ row.adults }}</td>
+                <td class="pl-col-amount" data-label="Children" data-sort-value="{{ row.children }}">{{ row.children }}</td>
+                <td class="pl-col-amount" data-label="Pax" data-sort-value="{{ row.pax }}">{{ row.pax }}</td>
+                <td class="pl-col-amount" data-label="Breakfast" data-sort-value="{{ row.breakfast }}">{{ row.breakfast }}</td>
+                <td class="pl-col-amount" data-label="Lunch" data-sort-value="{{ row.lunch }}">{{ row.lunch }}</td>
+                <td class="pl-col-amount" data-label="Dinner" data-sort-value="{{ row.dinner }}">{{ row.dinner }}</td>
               </tr>
               {% endfor %}
             </tbody>

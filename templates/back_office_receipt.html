@@ -233,30 +233,30 @@
               <tr class="bor-ledger-row"
                   data-entry-type="{{ row.entry_type }}"
                   data-search="{{ [row.entry_date, type_label, row.receipt_no, row.party_name, row.payment_mode, row.payment_mode_label, row.instrument, row.instrument_no, row.detail, row.towards, row.amount_words, row.signed_amount|string, row.running_balance|string]|join(' ')|lower }}">
-                <td class="pl-col-date">{{ row.entry_date|report_dt }}</td>
-                <td>
+                <td class="pl-col-date" data-label="Date">{{ row.entry_date|report_dt }}</td>
+                <td data-label="Type">
                   <span class="bor-type-pill bor-type-pill--{{ row.entry_type }}">{{ type_label }}</span>
                 </td>
-                <td class="pl-col-code">
+                <td class="pl-col-code" data-label="Receipt No.">
                   {% if row.receipt_no %}
                   <span class="pl-expense-code">{{ row.receipt_no }}</span>
                   {% else %}
                   —
                   {% endif %}
                 </td>
-                <td><div class="pl-name">{{ row.party_name or '—' }}</div></td>
-                <td>{% if row.entry_type == 'receipt' %}{{ row.payment_mode_label }}{% else %}—{% endif %}</td>
-                <td>
+                <td data-label="Party"><div class="pl-name">{{ row.party_name or '—' }}</div></td>
+                <td data-label="Mode">{% if row.entry_type == 'receipt' %}{{ row.payment_mode_label }}{% else %}—{% endif %}</td>
+                <td data-label="Instrument">
                   {% if row.entry_type == 'receipt' and row.instrument %}
                   {{ row.instrument }}
                   {% else %}
                   —
                   {% endif %}
                 </td>
-                <td>{{ row.detail or '—' }}</td>
-                <td class="pl-col-amount pl-amount {% if row.signed_amount >= 0 %}bor-amount-in{% else %}bor-amount-out{% endif %}" data-amount="{{ row.signed_amount }}"{% if row.amount_words %} title="{{ row.amount_words }}"{% endif %}>{{ row.signed_amount }}</td>
-                <td class="pl-col-amount pl-amount bor-balance" data-amount="{{ row.running_balance }}">{{ row.running_balance }}</td>
-                <td class="pl-col-actions">
+                <td data-label="Detail">{{ row.detail or '—' }}</td>
+                <td class="pl-col-amount pl-amount {% if row.signed_amount >= 0 %}bor-amount-in{% else %}bor-amount-out{% endif %}" data-label="Amount" data-amount="{{ row.signed_amount }}"{% if row.amount_words %} title="{{ row.amount_words }}"{% endif %}>{{ row.signed_amount }}</td>
+                <td class="pl-col-amount pl-amount bor-balance" data-label="Balance" data-amount="{{ row.running_balance }}">{{ row.running_balance }}</td>
+                <td class="pl-col-actions" data-label="Actions">
                   {% if row.can_edit or row.can_delete %}
                   <div class="act-grp pl-action-btns">
                     {% if row.can_edit %}

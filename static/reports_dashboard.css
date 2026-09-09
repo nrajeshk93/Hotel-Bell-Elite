@@ -63,3 +63,50 @@ body.report-module .rd-category-grid {
 body.report-module .md-empty {
   margin-top: 8px;
 }
+
+
+/* ——— Phone / tablet compact (Reports overview hub) ——— */
+@media (max-width:900px){
+  body.report-module .md-content,
+  body.report-module .content.se-content.md-content{
+    padding-bottom:calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+  body.report-module .md-kpi-row.pl-summary-row,
+  body.report-module .pl-summary-row.md-kpi-row{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  body.report-module .md-category-pills{
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+    gap:8px;
+    margin-bottom:18px;
+    padding-bottom:4px;
+  }
+  body.report-module .md-category-pills::-webkit-scrollbar{display:none}
+  body.report-module .md-category-pill{
+    flex:0 0 auto;
+    white-space:nowrap;
+  }
+}
+
+@media (max-width:640px){
+  body.report-module .md-kpi-row.pl-summary-row,
+  body.report-module .pl-summary-row.md-kpi-row{
+    grid-template-columns:minmax(0,1fr);
+  }
+  body.report-module .md-content,
+  body.report-module .content.se-content.md-content{
+    padding-left:12px;
+    padding-right:12px;
+    padding-bottom:calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  body.report-module .rd-category-section{
+    margin-bottom:14px;
+  }
+  body.report-module .rd-category-section-title{
+    flex-wrap:wrap;
+    gap:6px 10px;
+  }
+}

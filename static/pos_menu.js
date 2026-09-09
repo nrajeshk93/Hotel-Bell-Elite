@@ -981,7 +981,7 @@
         '" tabindex="0" role="button" aria-label="Open details for ' +
         escapeHtml(it.name || 'menu item') +
         '">' +
-        '<td data-sort-value="' +
+        '<td data-label="Menu Item" data-sort-value="' +
         escapeHtml(it.name || '') +
         '"><span class="pl-name pos-menu-item-name">' +
         escapeHtml(it.name || '—') +
@@ -990,37 +990,37 @@
           ? '<span class="pl-meta pos-menu-item-meta">' + escapeHtml(meta.join(' · ')) + '</span>'
           : '') +
         '</td>' +
-        '<td data-sort-value="' +
+        '<td data-label="Outlet" data-sort-value="' +
         escapeHtml(outletLabel) +
         '">' +
         escapeHtml(outletLabel) +
         '</td>' +
-        '<td data-sort-value="' +
+        '<td data-label="Category" data-sort-value="' +
         escapeHtml(catName === '—' ? '' : catName) +
         '">' +
         escapeHtml(catName) +
         '</td>' +
-        '<td class="pos-menu-num pl-col-amount" data-sort-value="' +
+        '<td class="pos-menu-num pl-col-amount" data-label="Selling Price" data-sort-value="' +
         escapeHtml(it.rate != null ? String(it.rate) : '') +
         '">' +
         escapeHtml(formatMoney(it.rate)) +
         '</td>' +
-        '<td class="pos-menu-num pl-col-amount" data-sort-value="' +
+        '<td class="pos-menu-num pl-col-amount" data-label="Food Cost" data-sort-value="' +
         escapeHtml(it.food_cost != null ? String(it.food_cost) : '') +
         '">' +
         escapeHtml(formatMoney(it.food_cost)) +
         '</td>' +
-        '<td class="pos-menu-num pl-col-amount" data-sort-value="' +
+        '<td class="pos-menu-num pl-col-amount" data-label="Margin" data-sort-value="' +
         escapeHtml(it.gross_margin != null ? String(it.gross_margin) : '') +
         '">' +
         escapeHtml(formatMoney(it.gross_margin)) +
         '</td>' +
-        '<td class="pos-menu-num pl-col-amount" data-sort-value="' +
+        '<td class="pos-menu-num pl-col-amount" data-label="Margin %" data-sort-value="' +
         escapeHtml(it.margin_pct != null ? String(it.margin_pct) : '') +
         '">' +
         badgeHtml(it) +
         '</td>' +
-        '<td class="pl-col-actions pos-menu-actions-col">' +
+        '<td class="pl-col-actions pos-menu-actions-col" data-label="Actions">' +
         '<div class="act-grp">' +
         '<button type="button" class="act-btn edit" data-tip="Edit" aria-label="Edit item" ' +
         'data-pos-menu-action="edit-item" data-item-id="' +

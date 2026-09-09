@@ -60,13 +60,13 @@ class _FakeRows:
 
 class WorkspaceAccessTests(unittest.TestCase):
     def test_registry_drives_access_tree(self):
+        access_module_tree_ui.cache_clear()
         tree = access_module_tree_ui()
         labels = [node["label"] for node in tree]
         self.assertEqual(
             labels,
             [
                 "Dashboard",
-                "Sales Analytics",
                 "User & Access",
                 "Accounts",
                 "Employee Payroll",
@@ -83,6 +83,7 @@ class WorkspaceAccessTests(unittest.TestCase):
                 "Edit",
             ],
         )
+        self.assertNotIn("Sales Analytics", labels)
         stores = next(node for node in tree if node["label"] == "Purchase & Inventory")
         stores_children = [child["label"] for child in stores["children"]]
         self.assertEqual(
@@ -105,19 +106,6 @@ class WorkspaceAccessTests(unittest.TestCase):
         main_dashboard = next(node for node in tree if node["label"] == "Dashboard")
         self.assertEqual(main_dashboard["id"], "main_dashboard")
         self.assertEqual(main_dashboard["children"], [])
-        sales = next(node for node in tree if node["label"] == "Sales Analytics")
-        sales_children = [child["label"] for child in sales["children"]]
-        self.assertEqual(
-            sales_children,
-            [
-                "Dashboard",
-                "Sales Update - Hotel",
-                "Sales Update - Bar",
-                "Sales Update - Restaurant",
-                "Room Transfer",
-                "Credit",
-            ],
-        )
         user_access = next(node for node in tree if node["label"] == "User & Access")
         self.assertEqual(
             [child["label"] for child in user_access["children"]],
@@ -563,9 +551,11 @@ class WorkspaceAccessTests(unittest.TestCase):
             "is_admin": False,
             "dashboard_access": set(),
             "sales_analytics_access": {"hotel"},
+            "payroll_access": {"employee"},
             "user_access": set(),
         }
-        self.assertTrue(user_can_access_dashboard(user, "sales_analytics"))
+        self.assertFalse(user_can_access_dashboard(user, "sales_analytics"))
+        self.assertTrue(user_can_access_dashboard(user, "employee_payroll"))
         self.assertFalse(user_can_access_dashboard(user, "access_management"))
 
     def test_shared_outlet_endpoint_allows_bar_or_restaurant(self):
@@ -574,11 +564,12 @@ class WorkspaceAccessTests(unittest.TestCase):
             "is_admin": False,
             "sales_analytics_access": {"bar"},
         }
-        self.assertTrue(user_can_access_endpoint_sales_analytics(user, "save_sales_update"))
+        # Sales Analytics grants are retired — shared write APIs need POS access.
+        self.assertFalse(user_can_access_endpoint_sales_analytics(user, "save_sales_update"))
         user["sales_analytics_access"] = {"restaurant"}
-        self.assertTrue(user_can_access_endpoint_sales_analytics(user, "save_sales_update"))
+        self.assertFalse(user_can_access_endpoint_sales_analytics(user, "save_sales_update"))
         user["sales_analytics_access"] = {"hotel"}
-        self.assertTrue(user_can_access_endpoint_sales_analytics(user, "save_sales_update"))
+        self.assertFalse(user_can_access_endpoint_sales_analytics(user, "save_sales_update"))
         user["sales_analytics_access"] = {"room_transfer"}
         self.assertFalse(user_can_access_endpoint_sales_analytics(user, "save_sales_update"))
         pos_user = {
@@ -597,13 +588,17 @@ class WorkspaceAccessTests(unittest.TestCase):
             user_id=5,
             dashboard_modules=[],
             sales_analytics_modules=["bar"],
+            accounts_modules=["cash_ledger"],
             user_access_modules=[],
         )
         scopes = [params for sql, params in conn.executed if "INSERT INTO user_permissions" in sql]
         dashboard_rows = [row for row in scopes if row[1] == "dashboard"]
         sales_rows = [row for row in scopes if row[1] == "sales_analytics"]
-        self.assertIn(("sales_analytics",), {(row[2],) for row in dashboard_rows})
-        self.assertIn(("bar",), {(row[2],) for row in sales_rows})
+        accounts_rows = [row for row in scopes if row[1] == "accounts"]
+        self.assertNotIn(("sales_analytics",), {(row[2],) for row in dashboard_rows})
+        self.assertEqual(sales_rows, [])
+        self.assertIn(("accounts",), {(row[2],) for row in dashboard_rows})
+        self.assertIn(("cash_ledger",), {(row[2],) for row in accounts_rows})
 
     def test_endpoint_dashboard_mapping(self):
         self.assertEqual(get_endpoint_dashboard_module("dashboard"), "sales_analytics")
@@ -1001,8 +996,9 @@ class RoleBasedAccessTests(unittest.TestCase):
             description="",
             is_admin=False,
             is_active=True,
-            dashboard_modules=["sales_analytics"],
+            dashboard_modules=["point_of_sale"],
             sales_analytics_modules=["hotel", "bar"],
+            point_of_sale_modules=["tables", "sales_update"],
             user_access_modules=[],
             sql_now="datetime('now','localtime')",
         )
@@ -1020,9 +1016,9 @@ class RoleBasedAccessTests(unittest.TestCase):
         user = build_user_context(self.conn, row)
         self.assertFalse(user["is_admin"])
         self.assertEqual(user["role_name"], "Cashier")
-        self.assertTrue(user_can_access_dashboard(user, "sales_analytics"))
-        self.assertTrue(user_can_access_sales_analytics_submodule(user, "hotel"))
-        self.assertFalse(user_can_access_sales_analytics_submodule(user, "credit"))
+        self.assertFalse(user_can_access_dashboard(user, "sales_analytics"))
+        self.assertFalse(user_can_access_sales_analytics_submodule(user, "hotel"))
+        self.assertTrue(user_can_access_dashboard(user, "point_of_sale"))
         self.assertFalse(user_can_access_dashboard(user, "settings"))
 
     def test_user_without_role_is_denied(self):

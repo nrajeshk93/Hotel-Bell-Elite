@@ -135,13 +135,16 @@
           <div class="ch-thread-empty-card">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             <h3>Select a conversation</h3>
-            <p>Choose a chat from the left, or start a new WhatsApp conversation by phone number.</p>
+            <p>Choose a chat from your conversations, or start a new WhatsApp chat by phone number.</p>
             <button type="button" class="btn btn-primary" id="ch-empty-new-btn">New chat</button>
           </div>
         </div>
 
         <div class="ch-thread-active" id="ch-thread-active" hidden>
           <header class="ch-thread-head">
+            <button type="button" class="ch-thread-back" id="ch-thread-back" aria-label="Back to conversations" title="Back to conversations">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
             <div class="ch-thread-peer">
               <span class="ch-avatar ch-avatar--lg" id="ch-peer-avatar" aria-hidden="true">?</span>
               <div>

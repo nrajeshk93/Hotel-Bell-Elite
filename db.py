@@ -11404,6 +11404,7 @@ def ensure_customer_feedback_schema(conn):
             phone_e164     TEXT    NOT NULL DEFAULT '',
             source         TEXT    NOT NULL DEFAULT 'manual',
             outlet         TEXT    NOT NULL DEFAULT '',
+            location       TEXT    NOT NULL DEFAULT '',
             note           TEXT    NOT NULL DEFAULT '',
             status         TEXT    NOT NULL DEFAULT 'open',
             created_by     INTEGER,
@@ -11420,6 +11421,14 @@ def ensure_customer_feedback_schema(conn):
     if "expires_at" not in invite_cols:
         conn.execute(
             "ALTER TABLE customer_feedback_invites ADD COLUMN expires_at TEXT"
+        )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+    if "location" not in invite_cols:
+        conn.execute(
+            "ALTER TABLE customer_feedback_invites ADD COLUMN location TEXT NOT NULL DEFAULT ''"
         )
         try:
             conn.commit()

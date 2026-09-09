@@ -653,6 +653,21 @@
         setText(plDisplay, plLabel || 'Date');
       }
 
+      var chFbDisplay = document.getElementById('ch-fb-date-range-display');
+      var chFbFrom = document.getElementById('ch-fb-date-from');
+      var chFbTo = document.getElementById('ch-fb-date-to');
+      if (chFbDisplay) {
+        var chFbFromIso = ((chFbFrom && chFbFrom.value) || '').trim();
+        var chFbToIso = ((chFbTo && chFbTo.value) || '').trim();
+        var chFbLabel = '';
+        if (chFbFromIso && chFbToIso && chFbFromIso !== chFbToIso) {
+          chFbLabel = fmt(chFbFromIso) + ' – ' + fmt(chFbToIso);
+        } else if (chFbFromIso) {
+          chFbLabel = fmt(chFbFromIso);
+        }
+        setText(chFbDisplay, chFbLabel || 'Select date…');
+      }
+
       var mdDisplay = document.getElementById('md-date-range-display');
       var mdFrom = document.getElementById('md-date-from');
       var mdTo = document.getElementById('md-date-to');

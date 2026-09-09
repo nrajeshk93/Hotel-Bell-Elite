@@ -789,3 +789,218 @@ body.kot-report-module #kot-report-page .kot-kpi:focus-visible{
   outline:2px solid #2563eb;
   outline-offset:2px;
 }
+
+
+/* ——— Phone / tablet compact (Sales / Insights report family) ——— */
+@media (max-width:900px){
+  body.sales-report-module .su-header-top{
+    flex-wrap:wrap;
+    align-items:stretch;
+    gap:10px;
+  }
+  body.sales-report-module .su-header-tools{
+    width:100%;
+    flex:1 1 100%;
+    justify-content:stretch;
+    gap:8px;
+  }
+  body.sales-report-module .su-header-tools .btn,
+  body.sales-report-module .su-header-tools > a.btn{
+    flex:1 1 calc(50% - 4px);
+    min-width:0;
+    justify-content:center;
+    text-align:center;
+  }
+  body.sales-report-module .content.se-content,
+  body.sales-report-module .main-wrapper > .content,
+  body.sales-report-module [id$="-report-page"] > .content,
+  body.sales-report-module .se-content{
+    padding-bottom:calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+  body.sales-report-module .pl-summary-row{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  body.sales-report-module #mi-filter-form #mi-date-range-host{
+    margin-left:0;
+    flex:1 1 100%;
+    width:100%;
+    max-width:none;
+  }
+  body.sales-report-module #mi-filter-form .md-period-field{
+    flex:1 1 100%;
+  }
+  body.sales-report-module #mi-filter-form .md-period-pills{
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+    padding-bottom:2px;
+  }
+  body.sales-report-module #mi-filter-form .md-period-pills::-webkit-scrollbar{display:none}
+}
+
+@media (max-width:640px){
+  body.sales-report-module .su-header-tools .btn,
+  body.sales-report-module .su-header-tools > a.btn{
+    flex:1 1 100%;
+  }
+  body.sales-report-module .pl-summary-row{
+    grid-template-columns:minmax(0,1fr);
+  }
+  body.sales-report-module .content.se-content,
+  body.sales-report-module .main-wrapper > .content,
+  body.sales-report-module .se-content{
+    padding-left:12px;
+    padding-right:12px;
+    padding-bottom:calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Result tables → stacked cards (skip Manager Insight matrix) */
+  body.sales-report-module .pl-table-wrap:has(table.pl-table tbody tr.pl-expense-row),
+  body.sales-report-module .pl-table-wrap:has(table.pl-table tbody tr.sr-row),
+  body.sales-report-module .pl-table-wrap:has(table.pl-table tbody tr.msr-row),
+  body.sales-report-module .pl-table-wrap:has(table.pl-table tbody tr.uir-row),
+  body.sales-report-module .pl-table-wrap:has(table.pl-table tbody tr.cir-row){
+    max-height:none;
+    overflow:visible;
+    border:none;
+    border-radius:0;
+    background:transparent;
+  }
+  body.sales-report-module table.pl-table:not(#mi-table):has(tbody tr.pl-expense-row),
+  body.sales-report-module table.pl-table:not(#mi-table):has(tbody tr.sr-row),
+  body.sales-report-module table.pl-table:not(#mi-table):has(tbody tr.msr-row),
+  body.sales-report-module table.pl-table:not(#mi-table):has(tbody tr.uir-row),
+  body.sales-report-module table.pl-table:not(#mi-table):has(tbody tr.cir-row){
+    min-width:0!important;
+    width:100%;
+  }
+  body.sales-report-module table.pl-table:not(#mi-table):has(tbody tr.pl-expense-row),
+  body.sales-report-module table.pl-table:not(#mi-table):has(tbody tr.pl-expense-row) thead,
+  body.sales-report-module table.pl-table:not(#mi-table):has(tbody tr.pl-expense-row) tbody,
+  body.sales-report-module table.pl-table:not(#mi-table):has(tbody tr.pl-expense-row) tr,
+  body.sales-report-module table.pl-table:not(#mi-table):has(tbody tr.pl-expense-row) th,
+  body.sales-report-module table.pl-table:not(#mi-table):has(tbody tr.pl-expense-row) td{
+    display:block;
+    width:100%;
+    box-sizing:border-box;
+  }
+  body.sales-report-module table.pl-table:not(#mi-table):has(tbody tr.pl-expense-row) thead{display:none}
+  body.sales-report-module table.pl-table:not(#mi-table):has(tbody tr.pl-expense-row) tbody{
+    display:flex;
+    flex-direction:column;
+    gap:0;
+  }
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.pl-expense-row,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.sr-row,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.msr-row,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.uir-row,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.cir-row{
+    border:1px solid var(--border,#E2E8F0);
+    border-radius:12px;
+    padding:12px 14px;
+    margin:0 0 10px;
+    background:#fff;
+    box-shadow:0 1px 2px rgba(15,23,42,.04);
+  }
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.pl-expense-row:last-child,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.sr-row:last-child,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.msr-row:last-child,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.uir-row:last-child,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.cir-row:last-child{margin-bottom:0}
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.pl-expense-row td,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.sr-row td,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.msr-row td,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.uir-row td,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.cir-row td{
+    display:grid;
+    grid-template-columns:minmax(88px,34%) minmax(0,1fr);
+    gap:8px 12px;
+    align-items:start;
+    padding:8px 0;
+    border-bottom:1px solid #F1F5F9;
+    text-align:left;
+    vertical-align:top;
+    white-space:normal;
+  }
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.pl-expense-row td:last-child,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.sr-row td:last-child,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.msr-row td:last-child,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.uir-row td:last-child,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.cir-row td:last-child{
+    border-bottom:none;
+    padding-bottom:0;
+  }
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.pl-expense-row td:first-child,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.sr-row td:first-child,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.msr-row td:first-child,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.uir-row td:first-child,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.cir-row td:first-child{padding-top:0}
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.pl-expense-row td::before,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.sr-row td::before,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.msr-row td::before,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.uir-row td::before,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.cir-row td::before{
+    content:attr(data-label);
+    font-size:11px;
+    font-weight:750;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:#64748B;
+    line-height:1.35;
+    padding-top:2px;
+  }
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.pl-expense-row td[data-label=""]::before,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.sr-row td[data-label=""]::before,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.msr-row td[data-label=""]::before,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.uir-row td[data-label=""]::before,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.cir-row td[data-label=""]::before{
+    content:none;
+  }
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.pl-expense-row td.pl-col-amount,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.sr-row td.pl-col-amount,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.msr-row td.pl-col-amount,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.uir-row td.pl-col-amount,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.cir-row td.pl-col-amount{
+    text-align:left;
+  }
+  /* Group headers stay full-bleed labels between cards */
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.sr-group-header,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.msr-group-header{
+    border:none;
+    box-shadow:none;
+    background:transparent;
+    padding:8px 2px 4px;
+    margin:4px 0 2px;
+  }
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.sr-group-header td,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.msr-group-header td{
+    display:block;
+    border:none;
+    padding:0;
+    font-weight:700;
+    color:#64748B;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    font-size:12px;
+  }
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.sr-group-header td::before,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.msr-group-header td::before{content:none}
+}
+
+@media (max-width:520px){
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.pl-expense-row,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.sr-row,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.msr-row,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.uir-row,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.cir-row{padding:10px 12px}
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.pl-expense-row td,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.sr-row td,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.msr-row td,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.uir-row td,
+  body.sales-report-module table.pl-table:not(#mi-table) tbody tr.cir-row td{
+    grid-template-columns:minmax(72px,32%) minmax(0,1fr);
+    gap:6px 10px;
+    padding:6px 0;
+  }
+}

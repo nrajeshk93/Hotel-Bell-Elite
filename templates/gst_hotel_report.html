@@ -14,6 +14,8 @@
 <link rel="stylesheet" href="{{ asset('sales_update_premium.css') }}">
 <link rel="stylesheet" href="{{ asset('de_workspace_shell.css') }}">
 <link rel="stylesheet" href="{{ asset('purchase_ledger.css') }}">
+<link rel="stylesheet" href="{{ asset('employees_premium.css') }}">
+<link rel="stylesheet" href="{{ asset('employees_list.css') }}">
 <link rel="stylesheet" href="{{ asset('ep_form_listbox.css') }}">
 <link rel="stylesheet" href="{{ asset('hbe_table_scroll.css') }}">
 <link rel="stylesheet" href="{{ asset('hbe_kpi.css') }}">
@@ -65,6 +67,8 @@
 <link rel="stylesheet" href="{{ asset('sales_update_header.css') }}">
 <link rel="stylesheet" href="{{ asset('sales_update_premium.css') }}">
 <link rel="stylesheet" href="{{ asset('purchase_ledger.css') }}">
+<link rel="stylesheet" href="{{ asset('employees_premium.css') }}">
+<link rel="stylesheet" href="{{ asset('employees_list.css') }}">
 <link rel="stylesheet" href="{{ asset('ep_form_listbox.css') }}">
 <link rel="stylesheet" href="{{ asset('hbe_table_scroll.css') }}">
 <link rel="stylesheet" href="{{ asset('hbe_kpi.css') }}">
@@ -253,34 +257,34 @@
             </thead>
             <tbody>
               {% for row in rows %}
-              <tr data-sort-row data-search="{{ [row.agent_name or '', row.guest_name or '', row.gstin or '', row.invoice_number or '', row.invoice_date or '']|join(' ')|lower }}">
-                <td data-sort-value="{{ row.agent_name or '' }}"><div class="pl-name">{{ row.agent_name or '—' }}</div></td>
-                <td class="pl-col-date" data-sort-value="{{ row.invoice_date_iso or row.invoice_date }}">{{ row.invoice_date or '—' }}</td>
-                <td data-sort-value="{{ row.guest_name or '' }}"><div class="pl-name">{{ row.guest_name or '—' }}</div></td>
-                <td class="pl-col-code" data-sort-value="{{ row.gstin or '' }}">{% if row.gstin %}<span class="pl-expense-code">{{ row.gstin }}</span>{% else %}—{% endif %}</td>
-                <td class="pl-col-code" data-sort-value="{{ row.invoice_number or '' }}"><span class="pl-expense-code">{{ row.invoice_number or '—' }}</span></td>
-                <td class="pl-col-amount pl-amount" data-sort-value="{{ row.room_rent }}">{{ row.room_rent | inr }}</td>
-                <td class="pl-col-amount pl-amount" data-sort-value="{{ row.taxable }}">{{ row.taxable | inr }}</td>
-                <td class="pl-col-amount pl-amount" data-sort-value="{{ row.cgst }}">{{ row.cgst | inr }}</td>
-                <td class="pl-col-amount pl-amount" data-sort-value="{{ row.ugst }}">{{ row.ugst | inr }}</td>
-                <td class="pl-col-amount pl-amount" data-sort-value="{{ row.total_gst }}">{{ row.total_gst | inr }}</td>
-                <td class="pl-col-amount pl-amount" data-sort-value="{{ row.total }}">{{ row.total | inr }}</td>
-                <td class="pl-col-amount pl-amount" data-sort-value="{{ row.round_off }}">{{ row.round_off | inr }}</td>
-                <td class="pl-col-amount pl-amount pl-amount--ok" data-sort-value="{{ row.final_amount }}">{{ row.final_amount | inr }}</td>
+              <tr class="ep-card-row" data-sort-row data-search="{{ [row.agent_name or '', row.guest_name or '', row.gstin or '', row.invoice_number or '', row.invoice_date or '']|join(' ')|lower }}">
+                <td data-label="Agent name" data-sort-value="{{ row.agent_name or '' }}"><div class="pl-name">{{ row.agent_name or '—' }}</div></td>
+                <td class="pl-col-date" data-label="Invoice date" data-sort-value="{{ row.invoice_date_iso or row.invoice_date }}">{{ row.invoice_date or '—' }}</td>
+                <td data-label="Guest name" data-sort-value="{{ row.guest_name or '' }}"><div class="pl-name">{{ row.guest_name or '—' }}</div></td>
+                <td class="pl-col-code" data-label="GSTIN" data-sort-value="{{ row.gstin or '' }}">{% if row.gstin %}<span class="pl-expense-code">{{ row.gstin }}</span>{% else %}—{% endif %}</td>
+                <td class="pl-col-code" data-label="Invoice number" data-sort-value="{{ row.invoice_number or '' }}"><span class="pl-expense-code">{{ row.invoice_number or '—' }}</span></td>
+                <td class="pl-col-amount pl-amount" data-label="Room rent" data-sort-value="{{ row.room_rent }}">{{ row.room_rent | inr }}</td>
+                <td class="pl-col-amount pl-amount" data-label="Taxable value" data-sort-value="{{ row.taxable }}">{{ row.taxable | inr }}</td>
+                <td class="pl-col-amount pl-amount" data-label="CGST" data-sort-value="{{ row.cgst }}">{{ row.cgst | inr }}</td>
+                <td class="pl-col-amount pl-amount" data-label="UGST" data-sort-value="{{ row.ugst }}">{{ row.ugst | inr }}</td>
+                <td class="pl-col-amount pl-amount" data-label="Total GST" data-sort-value="{{ row.total_gst }}">{{ row.total_gst | inr }}</td>
+                <td class="pl-col-amount pl-amount" data-label="Total" data-sort-value="{{ row.total }}">{{ row.total | inr }}</td>
+                <td class="pl-col-amount pl-amount" data-label="Round off" data-sort-value="{{ row.round_off }}">{{ row.round_off | inr }}</td>
+                <td class="pl-col-amount pl-amount pl-amount--ok" data-label="Final amount" data-sort-value="{{ row.final_amount }}">{{ row.final_amount | inr }}</td>
               </tr>
               {% endfor %}
             </tbody>
             <tfoot>
-              <tr>
-                <td colspan="5" class="ec-ledger-label">Total</td>
-                <td class="pl-col-amount pl-amount">{{ totals.room_rent | inr }}</td>
-                <td class="pl-col-amount pl-amount">{{ totals.taxable | inr }}</td>
-                <td class="pl-col-amount pl-amount">{{ totals.cgst | inr }}</td>
-                <td class="pl-col-amount pl-amount">{{ totals.ugst | inr }}</td>
-                <td class="pl-col-amount pl-amount">{{ totals.total_gst | inr }}</td>
-                <td class="pl-col-amount pl-amount">{{ totals.total | inr }}</td>
-                <td class="pl-col-amount pl-amount">{{ totals.round_off | inr }}</td>
-                <td class="pl-col-amount pl-amount pl-amount--ok">{{ totals.final_amount | inr }}</td>
+              <tr class="ep-card-row ep-card-row--foot">
+                <td colspan="5" class="ec-ledger-label" data-label="Summary">Total</td>
+                <td class="pl-col-amount pl-amount" data-label="Room rent">{{ totals.room_rent | inr }}</td>
+                <td class="pl-col-amount pl-amount" data-label="Taxable value">{{ totals.taxable | inr }}</td>
+                <td class="pl-col-amount pl-amount" data-label="CGST">{{ totals.cgst | inr }}</td>
+                <td class="pl-col-amount pl-amount" data-label="UGST">{{ totals.ugst | inr }}</td>
+                <td class="pl-col-amount pl-amount" data-label="Total GST">{{ totals.total_gst | inr }}</td>
+                <td class="pl-col-amount pl-amount" data-label="Total">{{ totals.total | inr }}</td>
+                <td class="pl-col-amount pl-amount" data-label="Round off">{{ totals.round_off | inr }}</td>
+                <td class="pl-col-amount pl-amount pl-amount--ok" data-label="Final amount">{{ totals.final_amount | inr }}</td>
               </tr>
             </tfoot>
           </table>

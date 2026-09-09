@@ -1277,7 +1277,6 @@ class HotelRoomsTests(unittest.TestCase):
                     "lastName": "Nair",
                     "mobile": "9000000001",
                     "checkInDate": "2026-07-29",
-                    "roomRate": 0,
                 },
             },
         )
@@ -1300,6 +1299,23 @@ class HotelRoomsTests(unittest.TestCase):
         )
         self.assertEqual(missing_plan.status_code, 400)
         self.assertEqual(missing_plan.get_json()["error"], "Meal plan is required.")
+
+        complimentary = self.client.put(
+            "/hotel/api/rooms/room-102",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Asha",
+                    "lastName": "Nair",
+                    "mobile": "9000000001",
+                    "checkInDate": "2026-07-29",
+                    "roomRate": 0,
+                    "ratePlan": "EP",
+                },
+            },
+        )
+        self.assertEqual(complimentary.status_code, 200, complimentary.get_data(as_text=True))
+        self.assertEqual(float(complimentary.get_json()["room"]["stay"]["roomRate"]), 0.0)
 
     def test_room_transfer_vacant_only(self):
         checkin = self.client.put(

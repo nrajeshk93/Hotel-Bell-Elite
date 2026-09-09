@@ -2737,3 +2737,85 @@ body.su-module .st-tl-preview-frame{
   border:0;
   background:#E8EDF3;
 }
+
+
+/* ——— Phone / tablet compact (Store + Stock Audit Report) ——— */
+@media (max-width:900px){
+  body.st-stock-shell .su-header-top,
+  body.st-audit-shell .su-header-top{
+    flex-wrap:wrap;
+    align-items:stretch;
+    gap:10px;
+  }
+  body.st-stock-shell .su-header-tools,
+  body.st-audit-shell .su-header-tools{
+    width:100%;
+    flex:1 1 100%;
+    justify-content:stretch;
+    gap:8px;
+  }
+  body.st-stock-shell .su-header-tools .btn,
+  body.st-stock-shell .su-header-tools > a.btn,
+  body.st-audit-shell .su-header-tools .btn,
+  body.st-audit-shell .su-header-tools > a.btn{
+    flex:1 1 calc(50% - 4px);
+    min-width:0;
+    justify-content:center;
+    text-align:center;
+  }
+  body.st-stock-shell .content.se-content,
+  body.st-audit-shell .content.se-content{
+    padding-bottom:calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+  body.st-stock-shell .pl-summary-row,
+  body.st-stock-shell .st-stock-kpi-row,
+  body.st-audit-shell .pl-summary-row{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  body.st-stock-shell .st-stock-filter-form .pl-search-chip,
+  body.st-stock-shell .st-stock-filter-form .st-stock-search-chip{
+    flex:1 1 100%;
+    max-width:none;
+  }
+  body.st-stock-shell .st-stock-filter-form .pl-header-field-listbox:not(.pl-search-chip),
+  body.st-stock-shell .st-stock-filter-form .st-stock-filter-chip{
+    flex:1 1 calc(50% - 6px);
+    max-width:none;
+  }
+  body.st-stock-shell .st-stock-place-host{
+    flex:1 1 100%;
+    max-width:none;
+  }
+}
+
+@media (max-width:640px){
+  body.st-stock-shell .su-header-tools .btn,
+  body.st-stock-shell .su-header-tools > a.btn,
+  body.st-audit-shell .su-header-tools .btn,
+  body.st-audit-shell .su-header-tools > a.btn{
+    flex:1 1 100%;
+  }
+  body.st-stock-shell .pl-summary-row,
+  body.st-stock-shell .st-stock-kpi-row,
+  body.st-audit-shell .pl-summary-row{
+    grid-template-columns:minmax(0,1fr);
+  }
+  body.st-stock-shell .content.se-content,
+  body.st-audit-shell .content.se-content{
+    padding-left:12px;
+    padding-right:12px;
+    padding-bottom:calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  body.st-stock-shell .st-stock-filter-form .pl-header-field-listbox,
+  body.st-stock-shell .st-stock-filter-form .st-stock-filter-chip{
+    flex:1 1 100%;
+    width:100%;
+    max-width:none;
+  }
+  /* Safe horizontal scroll for dense stock / audit tables */
+  body.st-stock-shell .pl-table-wrap,
+  body.st-audit-shell .pl-table-wrap{
+    overflow:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+}

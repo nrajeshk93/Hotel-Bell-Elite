@@ -273,7 +273,7 @@
           '<tr data-kot-invoice-id="' +
           escapeHtml(t.invoice_id) +
           '">' +
-          '<td>' +
+          '<td data-label="Table">' +
           '<div class="pos-kot-table-cell-name">' +
           escapeHtml(t.name || 'Table') +
           '</div>' +
@@ -284,18 +284,18 @@
           escapeHtml(STATUS_LABELS[status] || status) +
           '</span>' +
           '</td>' +
-          '<td><span class="pos-kot-table-kot">' +
+          '<td data-label="KOT No."><span class="pos-kot-table-kot">' +
           escapeHtml(kotNo) +
           '</span></td>' +
-          '<td><span class="pos-kot-table-items">' +
+          '<td data-label="Items"><span class="pos-kot-table-items">' +
           escapeHtml(items) +
           (items === 1 ? ' item' : ' items') +
           '</span></td>' +
-          '<td><div class="pos-kot-table-time">' +
+          '<td data-label="Time"><div class="pos-kot-table-time">' +
           escapeHtml(when.time) +
           (when.date ? '<small>' + escapeHtml(when.date) + '</small>' : '') +
           '</div></td>' +
-          '<td>' +
+          '<td data-label="Action">' +
           '<button type="button" class="pos-kot-row-send" data-kot-send-one="' +
           escapeHtml(t.invoice_id) +
           '">' +

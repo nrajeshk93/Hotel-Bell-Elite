@@ -1260,3 +1260,180 @@ body.su-module #employee-master-filter-form .btn-clear:hover{
   font-weight:700;
   margin-bottom:4px;
 }
+
+
+/* ——— Phone / tablet compact (Accounts: Purchases & Expenses) ——— */
+@media (max-width:900px){
+  #purchase-ledger-page .su-header-top{
+    flex-wrap:wrap;
+    align-items:stretch;
+    gap:10px;
+  }
+  #purchase-ledger-page .su-header-tools{
+    width:100%;
+    flex:1 1 100%;
+    justify-content:stretch;
+    gap:8px;
+  }
+  #purchase-ledger-page .su-header-tools .btn{
+    flex:1 1 calc(50% - 4px);
+    min-width:0;
+    justify-content:center;
+  }
+  #purchase-ledger-page .content.se-content{
+    padding-bottom:calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+  #purchase-ledger-page .pl-summary-row{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  body.su-module :is(#purchase-ledger-filter-form) .pl-kind-filter-host{
+    flex:1 1 100%;
+    max-width:none;
+  }
+  body.su-module :is(#purchase-ledger-filter-form) .pl-search-chip,
+  body.su-module :is(#purchase-ledger-filter-form) .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip),
+  body.su-module :is(#purchase-ledger-filter-form) #purchase-ledger-supplier-listbox.pl-header-field-listbox,
+  body.su-module :is(#purchase-ledger-filter-form) #purchase-ledger-payment-listbox.pl-header-field-listbox,
+  body.su-module :is(#purchase-ledger-filter-form) #purchase-ledger-category-listbox.pl-header-field-listbox{
+    flex:1 1 calc(50% - 6px);
+    min-width:140px;
+    max-width:none;
+    width:auto;
+  }
+  body.su-module .pl-date-range-host.pl-header-field,
+  body.su-module :is(#purchase-ledger-filter-form) .pl-date-range-host.pl-header-field{
+    flex:1 1 100%;
+    width:100%;
+    max-width:none;
+  }
+  body.su-module .pl-date-range-host.pl-header-field .an-range-trigger,
+  body.su-module #purchase-ledger-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger{
+    width:100%;
+    max-width:none;
+    min-width:0;
+  }
+  body.su-module #pl-add-purchase-modal .pl-add-purchase-box,
+  body.su-module #pl-add-supplier-modal .staff-credit-box,
+  body.su-module .sales-expense-modal-box{
+    width:min(720px, calc(100vw - 16px));
+    max-width:calc(100vw - 16px);
+    max-height:calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    margin:env(safe-area-inset-top, 0px) auto env(safe-area-inset-bottom, 0px);
+  }
+}
+
+@media (max-width:640px){
+  #purchase-ledger-page .su-header-tools .btn{
+    flex:1 1 100%;
+  }
+  #purchase-ledger-page .pl-summary-row{
+    grid-template-columns:minmax(0,1fr);
+  }
+  #purchase-ledger-page .content.se-content{
+    padding-left:12px;
+    padding-right:12px;
+    padding-bottom:calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  body.su-module :is(#purchase-ledger-filter-form) .pl-search-chip,
+  body.su-module :is(#purchase-ledger-filter-form) .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip),
+  body.su-module :is(#purchase-ledger-filter-form) #purchase-ledger-supplier-listbox.pl-header-field-listbox,
+  body.su-module :is(#purchase-ledger-filter-form) #purchase-ledger-payment-listbox.pl-header-field-listbox,
+  body.su-module :is(#purchase-ledger-filter-form) #purchase-ledger-category-listbox.pl-header-field-listbox{
+    flex:1 1 100%;
+    width:100%;
+    max-width:none;
+  }
+  body.su-module #purchase-ledger-page .pl-list-panel .act-btn,
+  body.su-module #purchase-ledger-page .pl-action-btns .act-btn{
+    width:36px;
+    height:36px;
+  }
+  body.su-module #purchase-ledger-page .pl-list-panel .act-btn svg,
+  body.su-module #purchase-ledger-page .pl-action-btns .act-btn svg{
+    width:16px;
+    height:16px;
+  }
+
+  /* Ledger table → stacked cards */
+  #purchase-ledger-page .pl-table-wrap{
+    max-height:none;
+    overflow:visible;
+    border:none;
+    border-radius:0;
+    background:transparent;
+  }
+  #purchase-ledger-page .pl-table,
+  #purchase-ledger-page .pl-table thead,
+  #purchase-ledger-page .pl-table tbody,
+  #purchase-ledger-page .pl-table tr,
+  #purchase-ledger-page .pl-table th,
+  #purchase-ledger-page .pl-table td{
+    display:block;
+    width:100%;
+    box-sizing:border-box;
+  }
+  #purchase-ledger-page .pl-table thead{display:none}
+  #purchase-ledger-page .pl-table tbody{
+    display:flex;
+    flex-direction:column;
+    gap:0;
+  }
+  #purchase-ledger-page .pl-table tbody tr.pl-expense-row{
+    border:1px solid var(--border,#E2E8F0);
+    border-radius:12px;
+    padding:12px 14px;
+    margin:0 0 10px;
+    background:#fff;
+    box-shadow:0 1px 2px rgba(15,23,42,.04);
+  }
+  #purchase-ledger-page .pl-table tbody tr.pl-expense-row:last-child{margin-bottom:0}
+  #purchase-ledger-page .pl-table tbody tr.pl-expense-row td{
+    display:grid;
+    grid-template-columns:minmax(88px,34%) minmax(0,1fr);
+    gap:8px 12px;
+    align-items:start;
+    padding:8px 0;
+    border-bottom:1px solid #F1F5F9;
+    text-align:left;
+    vertical-align:top;
+    white-space:normal;
+  }
+  #purchase-ledger-page .pl-table tbody tr.pl-expense-row td:last-child{
+    border-bottom:none;
+    padding-bottom:0;
+  }
+  #purchase-ledger-page .pl-table tbody tr.pl-expense-row td:first-child{padding-top:0}
+  #purchase-ledger-page .pl-table tbody tr.pl-expense-row td::before{
+    content:attr(data-label);
+    font-size:11px;
+    font-weight:750;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:#64748B;
+    line-height:1.35;
+    padding-top:2px;
+  }
+  #purchase-ledger-page .pl-table tbody tr.pl-expense-row td.pl-col-actions .act-grp,
+  #purchase-ledger-page .pl-table tbody tr.pl-expense-row td.pl-col-actions .pl-action-btns{
+    justify-content:flex-start;
+  }
+  #purchase-ledger-page .pl-table tbody tr.pl-expense-row td.pl-col-amount{
+    text-align:left;
+  }
+}
+
+@media (max-width:520px){
+  #purchase-ledger-page .pl-table tbody tr.pl-expense-row{padding:10px 12px}
+  #purchase-ledger-page .pl-table tbody tr.pl-expense-row td{
+    grid-template-columns:minmax(72px,32%) minmax(0,1fr);
+    gap:6px 10px;
+    padding:6px 0;
+  }
+  body.su-module #pl-add-purchase-modal .pl-add-purchase-box,
+  body.su-module #pl-add-supplier-modal .staff-credit-box{
+    width:calc(100vw - 12px);
+    max-width:calc(100vw - 12px);
+    border-radius:14px;
+    padding:16px 14px;
+  }
+}

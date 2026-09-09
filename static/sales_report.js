@@ -417,10 +417,42 @@
     );
   }
 
+
+  function stampPlTableDataLabels(root) {
+    var scope = root || document;
+    var tables = scope.querySelectorAll
+      ? scope.querySelectorAll('table.pl-table:not(#mi-table)')
+      : [];
+    Array.prototype.forEach.call(tables, function (table) {
+      var headRow = table.tHead && table.tHead.rows && table.tHead.rows[0];
+      if (!headRow) return;
+      var labels = Array.prototype.map.call(headRow.cells, function (th) {
+        return String(th.textContent || '').replace(/\s+/g, ' ').trim();
+      });
+      Array.prototype.forEach.call(table.tBodies, function (tbody) {
+        Array.prototype.forEach.call(tbody.rows, function (tr) {
+          if (
+            tr.classList.contains('sr-group-header') ||
+            tr.classList.contains('msr-group-header')
+          ) {
+            return;
+          }
+          Array.prototype.forEach.call(tr.cells, function (td, i) {
+            if (td.hasAttribute('data-label')) return;
+            var label = labels[i] || '';
+            if (td.colSpan && td.colSpan > 1) label = '';
+            td.setAttribute('data-label', label);
+          });
+        });
+      });
+    });
+  }
+
   function initSalesReportPage() {
     var page = findSalesReportPage();
     if (!page) return;
     formatAmounts(page);
+    stampPlTableDataLabels(page);
     bindKpiFilter(page);
     bindClientSearch(page);
     bindSort(page);
@@ -465,6 +497,7 @@
   global.srStatusChanged = srStatusChanged;
   global.srOutletChanged = srOutletChanged;
   global.srAgencyChanged = srAgencyChanged;
+  global.stampPlTableDataLabels = stampPlTableDataLabels;
   global.initSalesReportPage = initSalesReportPage;
 
   if (document.readyState === 'loading') {

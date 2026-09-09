@@ -315,11 +315,11 @@
                 <th class="pl-sortable" data-sort="kind" scope="col" tabindex="0" aria-sort="none">Type</th>
                 {% endif %}
                 <th class="pl-sortable" data-sort="date" scope="col" tabindex="0" aria-sort="none">Date</th>
-                <th class="pl-sortable" data-sort="expense" scope="col" tabindex="0" aria-sort="none">{{ settlement_labels.item_column|default('Expense') }}</th>
+                <th class="pl-sortable cp-col-item" data-sort="expense" scope="col" tabindex="0" aria-sort="none">{{ settlement_labels.item_column|default('Expense') }}</th>
                 {% if settlement_labels.show_category_column|default(true) %}
                 <th class="pl-sortable" data-sort="category" scope="col" tabindex="0" aria-sort="none">Category</th>
                 {% endif %}
-                <th class="pl-sortable" data-sort="supplier" scope="col" tabindex="0" aria-sort="none">{{ settlement_labels.party_column|default('Supplier') }}</th>
+                <th class="pl-sortable cp-col-party" data-sort="supplier" scope="col" tabindex="0" aria-sort="none">{{ settlement_labels.party_column|default('Supplier') }}</th>
                 <th class="pl-sortable pl-col-amount" data-sort="amount" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Amount</th>
                 <th class="pl-sortable pl-col-amount" data-sort="balance" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Balance</th>
                 {% if can_mutate_settlement %}
@@ -354,22 +354,22 @@
                   data-entry-kind="{{ entry.entry_kind or 'expense' }}"
                   data-search="{{ search_blob|e }}">
                 {% if can_mutate_settlement %}
-                <td class="cp-col-check">
+                <td class="cp-col-check" data-label="Select">
                   <input type="checkbox" class="cp-expense-check cp-row-check" aria-label="Select {{ entry.expense_code or entry.id }}">
                 </td>
                 {% endif %}
-                <td class="pl-col-code" data-sort-value="{{ entry.expense_code or '' }}"><span class="pl-expense-code">{{ entry.expense_code or '—' }}</span></td>
+                <td class="pl-col-code" data-label="{{ settlement_labels.code_column|default('Expense ID') }}" data-sort-value="{{ entry.expense_code or '' }}"><span class="pl-expense-code">{{ entry.expense_code or '—' }}</span></td>
                 {% if settlement_labels.show_kind_column|default(true) %}
-                <td data-sort-value="{{ kind_label }}">
+                <td data-label="Type" data-sort-value="{{ kind_label }}">
                   <span class="pl-kind-pill pl-kind-pill--{{ entry.entry_kind or 'expense' }}">{{ kind_label }}</span>
                 </td>
                 {% endif %}
-                <td class="pl-col-date" data-sort-value="{{ entry.sales_date or '' }}">{{ entry.sales_date|report_dt }}</td>
-                <td data-sort-value="{{ entry.description or '' }}"><div class="pl-name">{{ entry.description or '—' }}</div></td>
+                <td class="pl-col-date" data-label="Date" data-sort-value="{{ entry.sales_date or '' }}">{{ entry.sales_date|report_dt }}</td>
+                <td class="cp-col-item" data-label="{{ settlement_labels.item_column|default('Expense') }}" data-sort-value="{{ entry.description or '' }}"><div class="pl-name">{{ entry.description or '—' }}</div></td>
                 {% if settlement_labels.show_category_column|default(true) %}
-                <td data-sort-value="{{ expense_category_labels.get(entry.category, entry.category or '') }}">{{ expense_category_labels.get(entry.category, entry.category or '—') }}</td>
+                <td data-label="Category" data-sort-value="{{ expense_category_labels.get(entry.category, entry.category or '') }}">{{ expense_category_labels.get(entry.category, entry.category or '—') }}</td>
                 {% endif %}
-                <td data-sort-value="{{ entry.supplier_name or '' }}">
+                <td class="cp-col-party" data-label="{{ settlement_labels.party_column|default('Supplier') }}" data-sort-value="{{ entry.supplier_name or '' }}">
                   {% if entry.supplier_name %}
                   <div class="pl-name">{{ entry.supplier_name }}</div>
                   {% if entry.supplier_gst %}<div class="pl-meta">{{ entry.supplier_gst }}</div>{% endif %}
@@ -377,10 +377,10 @@
                   —
                   {% endif %}
                 </td>
-                <td class="pl-col-amount pl-amount" data-amount="{{ entry.amount }}" data-sort-value="{{ entry.amount }}">{{ entry.amount }}</td>
-                <td class="pl-col-amount pl-amount cp-balance" data-amount="{{ entry.balance }}" data-sort-value="{{ entry.balance }}">{{ entry.balance }}</td>
+                <td class="pl-col-amount pl-amount" data-label="Amount" data-amount="{{ entry.amount }}" data-sort-value="{{ entry.amount }}">{{ entry.amount }}</td>
+                <td class="pl-col-amount pl-amount cp-balance" data-label="Balance" data-amount="{{ entry.balance }}" data-sort-value="{{ entry.balance }}">{{ entry.balance }}</td>
                 {% if can_mutate_settlement %}
-                <td class="cp-col-actions">
+                <td class="cp-col-actions" data-label="Action">
                   <button
                     type="button"
                     class="cp-row-approve-btn"
@@ -473,7 +473,7 @@
               ]|select|join(' ')|lower %}
               <tr class="cp-history-row" data-payment-id="{{ entry.id }}" data-search="{{ search_blob|e }}">
                 {% if settlement_labels.show_history_expense_ids %}
-                <td class="pl-col-code cp-expense-codes" data-sort-value="{{ entry.expense_codes or '' }}">
+                <td class="pl-col-code cp-expense-codes" data-label="{{ settlement_labels.code_column|default('Expense ID') }}" data-sort-value="{{ entry.expense_codes or '' }}">
                   {% if entry.expense_codes %}
                   <div class="cp-expense-code-list">
                     {% for code in entry.expense_codes.split(', ') %}
@@ -487,7 +487,7 @@
                   {% endif %}
                 </td>
                 {% endif %}
-                <td class="cp-col-party" data-sort-value="{{ entry.supplier_name or '' }}">
+                <td class="cp-col-party" data-label="{{ settlement_labels.party_column|default('Supplier') }}" data-sort-value="{{ entry.supplier_name or '' }}">
                   {% if entry.supplier_name %}
                   <div class="pl-name">{{ entry.supplier_name }}</div>
                   {% if entry.supplier_gst %}<div class="pl-meta">{{ entry.supplier_gst }}</div>{% endif %}
@@ -495,17 +495,18 @@
                   —
                   {% endif %}
                 </td>
-                <td class="pl-col-date" data-sort-value="{{ entry.payment_date or '' }}">{{ entry.payment_date|report_dt }}</td>
+                <td class="pl-col-date" data-label="{{ settlement_labels.history_date_column }}" data-sort-value="{{ entry.payment_date or '' }}">{{ entry.payment_date|report_dt }}</td>
                 {% if settlement_labels.show_payment_mode %}
                 {% set method_key = (entry.payment_method or 'other')|lower|replace(' ', '_') %}
-                <td class="cp-col-method" data-sort-value="{{ method_label }}">
+                <td class="cp-col-method" data-label="Method" data-sort-value="{{ method_label }}">
                   <span class="cp-method-pill cp-method-pill--{{ method_key }}">{{ method_label or '—' }}</span>
                 </td>
                 {% for key, label in credit_payment_amount_columns|default(()) %}
                 {% set amt = amts.get(key, 0) or 0 %}
-                <td class="pl-col-amount cp-tender-col{% if amt > 0 %} pl-amount{% endif %}" data-amount="{{ amt if amt > 0 else '' }}" data-sort-value="{{ amt }}">{% if amt > 0 %}{{ amt }}{% else %}<span class="cp-empty-dash" aria-hidden="true">—</span>{% endif %}</td>
+                {% set tender_hdr = {'bank_transfer': 'Bank', 'bor': 'BOR'}.get(key, label) %}
+                <td class="pl-col-amount cp-tender-col{% if amt > 0 %} pl-amount{% endif %}" data-label="{{ tender_hdr }}" data-amount="{{ amt if amt > 0 else '' }}" data-sort-value="{{ amt }}">{% if amt > 0 %}{{ amt }}{% else %}<span class="cp-empty-dash" aria-hidden="true">—</span>{% endif %}</td>
                 {% endfor %}
-                <td class="cp-col-txn" data-sort-value="{{ entry.transaction_id or '' }}">
+                <td class="cp-col-txn" data-label="Transaction ID" data-sort-value="{{ entry.transaction_id or '' }}">
                   {% if entry.transaction_id %}
                   <span class="cp-txn-chip" title="{{ entry.transaction_id }}">{{ entry.transaction_id }}</span>
                   {% else %}
@@ -514,7 +515,7 @@
                 </td>
                 {% endif %}
                 {% if settlement_labels.show_verification_account %}
-                <td data-sort-value="{{ entry.verification_account or '' }}">
+                <td data-label="Account" data-sort-value="{{ entry.verification_account or '' }}">
                   {% if entry.verification_account %}
                   <span class="cp-txn-chip">{{ entry.verification_account }}</span>
                   {% else %}
@@ -522,9 +523,9 @@
                   {% endif %}
                 </td>
                 {% endif %}
-                <td class="pl-col-amount pl-amount" data-amount="{{ entry.total_amount }}" data-sort-value="{{ entry.total_amount }}">{{ entry.total_amount }}</td>
-                <td class="pl-col-count" data-sort-value="{{ entry.allocation_count }}">{{ entry.allocation_count }}</td>
-                <td class="cp-col-actions">
+                <td class="pl-col-amount pl-amount" data-label="Total" data-amount="{{ entry.total_amount }}" data-sort-value="{{ entry.total_amount }}">{{ entry.total_amount }}</td>
+                <td class="pl-col-count" data-label="{{ settlement_labels.history_count_column|default('Expenses') }}" data-sort-value="{{ entry.allocation_count }}">{{ entry.allocation_count }}</td>
+                <td class="cp-col-actions" data-label="Actions">
                   <div class="act-grp pl-action-btns">
                     <button
                       type="button"

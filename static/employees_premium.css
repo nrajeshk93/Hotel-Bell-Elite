@@ -943,3 +943,87 @@ body.is-emp-bulk #employee-form,
   display:none !important;
 }
 
+
+
+/* ——— Phone / tablet compact (Employee Payroll chrome) ——— */
+@media (max-width:900px){
+  body.ep-module header.ep-header.topbar.se-sales-header.su-header{
+    padding-left:16px;
+    padding-right:16px;
+  }
+  body.ep-module .su-header-top{
+    flex-wrap:wrap;
+    align-items:stretch;
+    gap:12px;
+  }
+  body.ep-module.cd-ledger-page #credits-dashboard-filter-form.sr-topbar-filters{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  body.ep-module.cd-ledger-page #credits-dashboard-filter-form .cd-search-chip{
+    grid-column:1/-1;
+  }
+  body.ep-module #emp-credits-filter-form.cd-ledger-filters,
+  body.ep-module .cd-ledger-filters{
+    flex-wrap:wrap;
+    width:100%;
+  }
+  body.ep-module #emp-credits-filter-form .ec-date-range-host,
+  body.ep-module .ec-date-range-host{
+    flex:1 1 100%;
+    max-width:none;
+  }
+  body.ep-module #add-credit-modal .modal-box,
+  body.ep-module #import-modal .modal-box{
+    width:min(520px, calc(100vw - 16px));
+    max-width:calc(100vw - 16px);
+    max-height:calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    margin:env(safe-area-inset-top, 0px) auto env(safe-area-inset-bottom, 0px);
+    overflow:auto;
+  }
+}
+
+@media (max-width:640px){
+  body.ep-module.cd-ledger-page #credits-dashboard-filter-form.sr-topbar-filters{
+    grid-template-columns:minmax(0,1fr);
+  }
+  body.ep-module .ep-topbar-filter-form .ep-toolbar-listbox,
+  body.ep-module .ep-header-filters .ep-toolbar-listbox{
+    flex:1 1 100%;
+    width:100%;
+    max-width:none;
+    min-width:0;
+  }
+  body.ep-module .ep-date-chip,
+  body.ep-module .ep-search-chip{
+    flex:1 1 100%;
+    width:100%;
+    max-width:none;
+  }
+  body.ep-module .cal-grid{
+    grid-template-columns:repeat(7,minmax(0,1fr));
+  }
+  body.ep-module .cal-day{
+    min-height:56px;
+    padding:8px 4px;
+  }
+  body.ep-module .emp-att-toolbar{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  body.ep-module .emp-att-toolbar-tools{
+    width:100%;
+    margin-left:0;
+  }
+  body.ep-module .emp-att-toolbar-tools .btn{
+    flex:1 1 auto;
+    justify-content:center;
+  }
+  body.ep-module .modal-actions{
+    flex-direction:column-reverse;
+    align-items:stretch;
+  }
+  body.ep-module .modal-actions .btn{
+    width:100%;
+    justify-content:center;
+  }
+}

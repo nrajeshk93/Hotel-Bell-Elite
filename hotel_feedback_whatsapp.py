@@ -211,15 +211,25 @@ def send_hotel_feedback_whatsapp(
 
     guest_name = format_hotel_feedback_guest_name(data)
     template_name, template_lang = hotel_feedback_template_config()
-    outlet = str(data.get("outlet") or data.get("room_number") or data.get("roomNumber") or "").strip()
+    from feedback import normalize_feedback_whatsapp_outlet
+
+    location = str(
+        data.get("location")
+        or data.get("room_number")
+        or data.get("roomNumber")
+        or ""
+    ).strip()
+    raw_outlet = str(data.get("outlet") or "").strip()
+    if not location and raw_outlet and not normalize_feedback_whatsapp_outlet(raw_outlet):
+        location = raw_outlet
     room_id = str(data.get("room_id") or data.get("roomId") or "").strip()
     note_clean = (note or str(data.get("note") or "")).strip()
     if not note_clean:
         bits = ["hotel checkout feedback"]
         if room_id:
             bits.append(f"room={room_id}")
-        if outlet:
-            bits.append(f"#{outlet}")
+        if location:
+            bits.append(f"#{location}")
         note_clean = " ".join(bits)
 
     image_path = feedback_header_image_path()
@@ -238,7 +248,8 @@ def send_hotel_feedback_whatsapp(
             customer_name=guest_name,
             phone=phone,
             source="hotel",
-            outlet=outlet[:80],
+            outlet="hotel",
+            location=location[:80],
             note=note_clean[:500],
             user_id=user_id,
         )

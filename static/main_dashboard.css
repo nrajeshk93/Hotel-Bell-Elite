@@ -937,3 +937,247 @@ body.main-dashboard-module #main-dashboard-page > .rdx-content{
   body.main-dashboard-module #main-dashboard-page .rdx-ti-sale{ grid-area: sale; align-self: end; }
   body.main-dashboard-module #main-dashboard-page .rdx-ti-qty{ grid-area: qty; text-align: right; }
 }
+
+
+/* ==========================================================================
+   Phone / tablet compact — main_dashboard.css
+   Scoped under body.main-dashboard-module #main-dashboard-page so desktop
+   layouts above stay intact. Append-only; later rules win over earlier
+   phone-compact blocks in this file.
+   Breakpoints: 900 / 640 / 560 / 520 / 430 (+ @container md-dash 900)
+   ========================================================================== */
+
+/* —— Page shell: never blow out horizontally; safe-area footer —— */
+body.main-dashboard-module #main-dashboard-page {
+  overflow-x: clip;
+}
+
+body.main-dashboard-module #main-dashboard-page > .rdx-content.content.se-content {
+  overflow-x: clip;
+  padding-bottom: max(56px, calc(env(safe-area-inset-bottom, 0px) + 40px));
+}
+
+/* —— Period pills: horizontal scroll (nowrap) instead of wrap/squash —— */
+@media (max-width: 900px) {
+  body.main-dashboard-module #main-dashboard-page #md-filter-form .md-period-field {
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  body.main-dashboard-module #main-dashboard-page #md-filter-form .md-period-pills {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x;
+    scrollbar-width: thin;
+    padding-bottom: 2px;
+  }
+
+  body.main-dashboard-module #main-dashboard-page #md-filter-form .md-period-pill {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 640px) {
+  body.main-dashboard-module #main-dashboard-page > header.se-sales-header.su-header {
+    padding-left: max(10px, env(safe-area-inset-left, 0px));
+    padding-right: max(10px, env(safe-area-inset-right, 0px));
+  }
+
+  body.main-dashboard-module #main-dashboard-page > .rdx-content.content.se-content {
+    padding-left: max(10px, env(safe-area-inset-left, 0px));
+    padding-right: max(10px, env(safe-area-inset-right, 0px));
+    padding-top: 10px;
+    padding-bottom: max(40px, calc(env(safe-area-inset-bottom, 0px) + 28px));
+  }
+
+  body.main-dashboard-module #main-dashboard-page #md-filter-form.sr-topbar-filters {
+    gap: 10px;
+  }
+
+  /* Override earlier flex-grow pill rules — keep scroll + nowrap */
+  body.main-dashboard-module #main-dashboard-page #md-filter-form .md-period-pills {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  body.main-dashboard-module #main-dashboard-page #md-filter-form .md-period-pill {
+    flex: 0 0 auto;
+    min-height: 40px;
+    padding: 9px 12px;
+    font-size: 12px;
+  }
+
+  /* Outlet + date full width; date trigger 100% */
+  body.main-dashboard-module #main-dashboard-page #md-filter-form .pl-header-field-listbox.se-filter-chip--listbox,
+  body.main-dashboard-module #main-dashboard-page #md-filter-form .md-date-range-host.pl-header-field {
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  body.main-dashboard-module #main-dashboard-page #md-filter-form .md-date-range-host .se-filter-chip--date-range,
+  body.main-dashboard-module #main-dashboard-page #md-filter-form .md-date-range-host .se-filter-chip-control,
+  body.main-dashboard-module #main-dashboard-page #md-filter-form .md-date-range-host .an-range-wrap,
+  body.main-dashboard-module #main-dashboard-page #md-filter-form .md-date-range-host .an-range-trigger,
+  body.main-dashboard-module #main-dashboard-page #md-filter-form .md-date-range-host .se-filter-chip-trigger {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  /* Typography — titles / card heads slightly smaller */
+  body.main-dashboard-module #main-dashboard-page .rdx-ff-title,
+  body.main-dashboard-module #main-dashboard-page .rdx-st-title,
+  body.main-dashboard-module #main-dashboard-page .rdx-co-title,
+  body.main-dashboard-module #main-dashboard-page .rdx-sc-title,
+  body.main-dashboard-module #main-dashboard-page .rdx-pm-title,
+  body.main-dashboard-module #main-dashboard-page .rdx-top-items .rdx-card-head h2,
+  body.main-dashboard-module #main-dashboard-page .rdx-card-head h2 {
+    font-size: 12px;
+    letter-spacing: 0.05em;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-ff-title {
+    font-size: 17px;
+    letter-spacing: -0.02em;
+    text-transform: none;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-co-leaderboard,
+  body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib,
+  body.main-dashboard-module #main-dashboard-page .rdx-payment-mode,
+  body.main-dashboard-module #main-dashboard-page .rdx-sales-trend,
+  body.main-dashboard-module #main-dashboard-page .rdx-financial-flow,
+  body.main-dashboard-module #main-dashboard-page .rdx-top-items,
+  body.main-dashboard-module #main-dashboard-page .rdx-sales-heatmap-card {
+    padding: 14px 12px;
+    border-radius: 14px;
+  }
+}
+
+/* —— KPI cards: readable values + sparkline containment —— */
+@media (max-width: 640px) {
+  body.main-dashboard-module #main-dashboard-page .rdx-kpi-value,
+  body.main-dashboard-module #main-dashboard-page .pl-summary-value {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.15;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-spark-ltr-mask {
+    margin: 0 10px 10px;
+    width: calc(100% - 20px);
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-spark {
+    width: 100% !important;
+    max-width: 100%;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-kpi,
+  body.main-dashboard-module #main-dashboard-page .hbe-kpi-card,
+  body.main-dashboard-module #main-dashboard-page .pl-summary-card {
+    overflow: hidden;
+  }
+}
+
+@media (max-width: 520px) {
+  body.main-dashboard-module #main-dashboard-page .rdx-kpi .rdx-kpi-body,
+  body.main-dashboard-module #main-dashboard-page .rdx-kpi .pl-summary-body,
+  body.main-dashboard-module #main-dashboard-page .pl-summary-body {
+    padding: 12px 12px;
+    gap: 10px;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-spark-ltr-mask {
+    margin: 0 8px 8px;
+    width: calc(100% - 16px);
+  }
+  /* Keep spark height at 44px — charts JS resizes canvases to 44 */
+}
+
+/* —— Two-column / paired grids: stack earlier when content is cramped —— */
+@media (max-width: 900px) {
+  body.main-dashboard-module #main-dashboard-page .rdx-grid-2,
+  body.main-dashboard-module #main-dashboard-page .rdx-grid-2.rdx-grid-top-items,
+  body.main-dashboard-module #main-dashboard-page .rdx-grid-heatmap-payment,
+  body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-heat {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 12px;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-grid-top-items {
+    grid-template-areas:
+      "rest"
+      "bar";
+    grid-template-rows: none;
+    align-items: start;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-grid-heatmap-payment {
+    grid-template-areas:
+      "heat"
+      "pay";
+    align-items: start;
+  }
+}
+
+/* Container-query fallback when sidebar leaves a narrow content column */
+@container md-dash (max-width: 900px) {
+  .rdx-grid-2,
+  .rdx-grid-top-items,
+  .rdx-grid-heatmap-payment,
+  .rdx-grid-dow-heat {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .rdx-grid-top-items {
+    grid-template-areas:
+      "rest"
+      "bar";
+  }
+
+  .rdx-grid-heatmap-payment {
+    grid-template-areas:
+      "heat"
+      "pay";
+  }
+}
+
+@media (max-width: 430px) {
+  body.main-dashboard-module #main-dashboard-page > header.se-sales-header.su-header {
+    padding-left: max(8px, env(safe-area-inset-left, 0px));
+    padding-right: max(8px, env(safe-area-inset-right, 0px));
+  }
+
+  body.main-dashboard-module #main-dashboard-page > .rdx-content.content.se-content {
+    padding-left: max(8px, env(safe-area-inset-left, 0px));
+    padding-right: max(8px, env(safe-area-inset-right, 0px));
+    padding-top: 8px;
+    padding-bottom: max(36px, calc(env(safe-area-inset-bottom, 0px) + 24px));
+  }
+
+  body.main-dashboard-module #main-dashboard-page #md-filter-form .md-period-pill {
+    padding: 8px 10px;
+    font-size: 11px;
+    min-height: 38px;
+  }
+}

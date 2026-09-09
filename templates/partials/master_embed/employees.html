@@ -157,22 +157,22 @@
             </thead>
             <tbody>
               {% for emp in employees %}
-              <tr id="emp-row-{{ emp.id }}" data-sort-row
+              <tr class="ep-card-row" id="emp-row-{{ emp.id }}" data-sort-row
                   data-sort-id="{{ emp.emp_code or '' }}"
                   data-sort-name="{{ emp.name or '' }}"
                   data-sort-department="{{ emp.location or '' }}"
                   data-sort-salary="{{ emp.gross_salary }}"
                   data-sort-address="{{ emp.address|default('') }}"
                   data-sort-phone="{{ emp.mobile|default('') }}">
-                <td class="pl-col-code" data-sort-value="{{ emp.emp_code }}"><span class="pl-expense-code">{{ emp.emp_code or '—' }}</span></td>
-                <td data-sort-value="{{ emp.name }}"><div class="pl-name">{{ emp.name }}</div></td>
-                <td data-sort-value="{{ emp.location }}"><span class="emp-dept">{{ emp.location or '—' }}</span></td>
-                <td class="pl-col-amount pl-amount" data-sort-value="{{ emp.gross_salary }}">{{ emp.gross_salary | inr }}</td>
-                <td class="emp-master-address-cell" data-sort-value="{{ emp.address|default('') }}">
+                <td class="pl-col-code" data-label="ID" data-sort-value="{{ emp.emp_code }}"><span class="pl-expense-code">{{ emp.emp_code or '—' }}</span></td>
+                <td data-label="Name" data-sort-value="{{ emp.name }}"><div class="pl-name">{{ emp.name }}</div></td>
+                <td data-label="Department" data-sort-value="{{ emp.location }}"><span class="emp-dept">{{ emp.location or '—' }}</span></td>
+                <td class="pl-col-amount pl-amount" data-label="Total Salary" data-sort-value="{{ emp.gross_salary }}">{{ emp.gross_salary | inr }}</td>
+                <td class="emp-master-address-cell" data-label="Address" data-sort-value="{{ emp.address|default('') }}">
                   <div class="emp-master-address">{{ emp.address or '—' }}</div>
                 </td>
-                <td class="pl-col-phone" data-sort-value="{{ emp.mobile|default('') }}">{{ emp.mobile or '—' }}</td>
-                <td class="tbl-sticky">
+                <td class="pl-col-phone" data-label="Phone Number" data-sort-value="{{ emp.mobile|default('') }}">{{ emp.mobile or '—' }}</td>
+                <td class="tbl-sticky pl-col-actions" data-label="Actions">
                   <div class="act-grp">
                     {% if has_payroll_access('employee') %}
                     {% if emp_list_endpoint == 'employee_master' and back_href is defined and back_href %}

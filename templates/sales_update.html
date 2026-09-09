@@ -23,7 +23,8 @@
 })();
 </script>
 </head>
-<body class="de-open su-module">
+{% set de_soft_body_class = 'de-open su-module' ~ (' su-pos-sales-update' if de_nav_section|default('') in ('pos', 'bar_pos') else '') %}
+<body class="{{ de_soft_body_class }}">
 {% macro se_field_icon(field_key) -%}
 {%- set cls = 'se-field-icon--slate' -%}
 {%- if field_key == 'total_sales' -%}{%- set cls = 'se-field-icon--blue' -%}

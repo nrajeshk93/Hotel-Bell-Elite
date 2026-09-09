@@ -16,6 +16,8 @@
     sending: false,
     listError: '',
     messagesFingerprint: '',
+    /* When true, poll/apply must not re-open the mobile thread pane after Back. */
+    suppressMobileThread: false,
   };
 
   function $(sel, root) {
@@ -309,11 +311,15 @@
     $('#ch-peer-phone').textContent = conversation.phone || '—';
     $('#ch-peer-avatar').textContent = initials(conversation.label || conversation.phone);
     setSendError('');
+    /* Poll/applyMessages call showThread — don't yank user back from list after Back. */
+    if (!state.suppressMobileThread) setMobileThreadOpen(true);
   }
 
   function hideThread() {
     state.activeId = null;
     state.messages = [];
+    state.suppressMobileThread = false;
+    setMobileThreadOpen(false);
     var empty = $('#ch-thread-empty');
     var active = $('#ch-thread-active');
     if (empty) {
@@ -327,6 +333,26 @@
       active.setAttribute('aria-hidden', 'true');
     }
     renderList(($('#ch-list-search') || {}).value || ($('#ch-global-search') || {}).value || '');
+  }
+
+  var MOBILE_THREAD_CLASS = 'ch-mobile-thread-open';
+
+  function setMobileThreadOpen(open) {
+    var root = page || document.getElementById('communication-hub-page');
+    var on = !!open;
+    if (root) {
+      if (on) root.classList.add(MOBILE_THREAD_CLASS);
+      else root.classList.remove(MOBILE_THREAD_CLASS);
+    }
+    if (document.body) {
+      if (on) document.body.classList.add(MOBILE_THREAD_CLASS);
+      else document.body.classList.remove(MOBILE_THREAD_CLASS);
+    }
+  }
+
+  function closeMobileThreadView() {
+    state.suppressMobileThread = true;
+    setMobileThreadOpen(false);
   }
 
   function deleteUrl(conversationId) {
@@ -460,6 +486,8 @@
     if (!id) return;
     state.activeId = id;
     state.messagesFingerprint = '';
+    state.suppressMobileThread = false;
+    setMobileThreadOpen(true);
     var conv = state.conversations.find(function (c) {
       return Number(c.id) === id;
     });
@@ -820,6 +848,13 @@
         if (e.target === modal) closeModal();
       });
     }
+    var backBtn = $('#ch-thread-back');
+    if (backBtn) {
+      backBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        closeMobileThreadView();
+      });
+    }
   }
 
   function initCommunicationHubPage() {
@@ -851,6 +886,8 @@
       if (p) {
         p.__chBound = false;
         initCommunicationHubPage();
+      } else if (document.body) {
+        document.body.classList.remove(MOBILE_THREAD_CLASS);
       }
       return result;
     };

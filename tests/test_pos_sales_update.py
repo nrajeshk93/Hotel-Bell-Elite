@@ -500,11 +500,8 @@ class PosSalesUpdateTests(unittest.TestCase):
     def test_analytics_restaurant_shows_collections_upload(self):
         self.user["sales_analytics_access"] = {"restaurant"}
         page = self.client.get("/sales_update/restaurant")
-        self.assertEqual(page.status_code, 200)
-        html = page.get_data(as_text=True)
-        self.assertIn("Upload Collections Report", html)
-        self.assertNotIn("From restaurant invoices", html)
-        self.assertIn('data-preserve-import="0"', html)
+        # Sales Analytics module is retired.
+        self.assertEqual(page.status_code, 302)
 
     def test_pos_user_cannot_open_analytics_restaurant_page(self):
         page = self.client.get("/sales_update/restaurant")

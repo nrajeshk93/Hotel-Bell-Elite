@@ -15,6 +15,8 @@
 <link rel="stylesheet" href="{{ asset('de_workspace_shell.css') }}">
 <link rel="stylesheet" href="{{ asset('communication_hub.css') }}">
 <link rel="stylesheet" href="{{ asset('communication_hub_feedback.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_date_range.css') }}">
+<link rel="stylesheet" href="{{ asset('hotel_date_picker.css') }}">
 <script>
 (function(){
   try{
@@ -34,6 +36,8 @@
 <link rel="stylesheet" href="{{ asset('sales_update_premium.css') }}">
 <link rel="stylesheet" href="{{ asset('communication_hub.css') }}">
 <link rel="stylesheet" href="{{ asset('communication_hub_feedback.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_date_range.css') }}">
+<link rel="stylesheet" href="{{ asset('hotel_date_picker.css') }}">
 {% endif %}
 
 <div class="main-wrapper" id="ch-feedback-page"
@@ -41,7 +45,9 @@
      data-summary-url="{{ url_for('communication_hub_api_feedback_summary') }}"
      data-responses-url="{{ url_for('communication_hub_api_feedback_responses') }}"
      data-invite-url="{{ url_for('communication_hub_api_feedback_invite_create') }}"
-     data-invite-fallback-url="{{ url_for('communication_hub_feedback', action='create_invite') }}">
+     data-invite-fallback-url="{{ url_for('communication_hub_feedback', action='create_invite') }}"
+     data-send-whatsapp-url="{{ url_for('communication_hub_api_feedback_send_whatsapp') }}"
+     data-send-whatsapp-fallback-url="{{ url_for('communication_hub_feedback', action='send_whatsapp') }}">
   <header class="se-sales-header su-header" id="se-sales-header">
     <div class="su-header-top">
       <div class="su-header-left">
@@ -55,14 +61,92 @@
           <div class="su-title-row">
             <h1>Feedback</h1>
           </div>
-          <p class="ch-fb-page-sub">See what your users think and keep improving.</p>
         </div>
       </div>
       <div class="su-header-tools ch-header-tools">
         <button type="button" class="btn btn-primary ch-fb-btn-new" id="ch-fb-create-link">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-          <span>New feedback link</span>
+          <span class="ch-fb-btn-new-full">New feedback link</span>
+          <span class="ch-fb-btn-new-short">New link</span>
         </button>
+      </div>
+    </div>
+    <div class="se-sales-header-card">
+      <div class="se-sales-header-filters ch-fb-header-filters">
+        <div class="ch-fb-type-filter ch-fb-header-field" id="ch-fb-type-filter">
+          <span class="se-filter-chip-label ch-fb-type-filter-label" id="ch-fb-type-filter-label">Type</span>
+          <div class="ch-fb-type-filter-tabs" role="tablist" aria-labelledby="ch-fb-type-filter-label" id="ch-fb-type-filter-tabs">
+            <button type="button" class="ch-fb-type-filter-tab is-active" role="tab" data-fb-filter="all" aria-selected="true">All</button>
+            <button type="button" class="ch-fb-type-filter-tab" role="tab" data-fb-filter="hotel" aria-selected="false">Hotel</button>
+            <button type="button" class="ch-fb-type-filter-tab" role="tab" data-fb-filter="restaurant" aria-selected="false">Restaurant</button>
+            <button type="button" class="ch-fb-type-filter-tab" role="tab" data-fb-filter="bar" aria-selected="false">Bar</button>
+          </div>
+        </div>
+        <div class="ch-fb-header-trailing">
+        <div class="se-filter-chip se-filter-chip--search ch-fb-search-chip ch-fb-header-field" id="ch-fb-search-chip">
+          <label class="se-filter-chip-label" for="ch-fb-search">Search</label>
+          <div class="se-filter-chip-control">
+            <input type="search" id="ch-fb-search" class="ch-fb-search-input" placeholder="Guest, mobile, location, comment…" autocomplete="off" aria-label="Search feedback">
+          </div>
+        </div>
+        <div class="se-filter-chip-date-host ch-fb-date-range-host ch-fb-header-field" id="ch-fb-date-range-host">
+          <span class="se-filter-chip-label" id="ch-fb-date-range-label">Date</span>
+          <input type="hidden" id="ch-fb-date-from" value="">
+          <input type="hidden" id="ch-fb-date-to" value="">
+          <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range ch-fb-date-chip">
+            <div class="se-filter-chip-control">
+              <div class="an-range-wrap an-range-wrap--sales" id="ch-fb-date-range-wrap" data-max-date="{{ today_iso|default('') }}">
+                <button type="button" class="an-range-trigger se-filter-chip-trigger" id="ch-fb-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="ch-fb-date-range-panel" aria-labelledby="ch-fb-date-range-label ch-fb-date-range-display">
+                  <span class="an-range-trigger-label">
+                    <span id="ch-fb-date-range-display">Select date…</span>
+                  </span>
+                </button>
+                <div class="an-range-backdrop" id="ch-fb-date-range-backdrop" aria-hidden="true"></div>
+                <div class="an-range-panel" id="ch-fb-date-range-panel" role="dialog" aria-labelledby="ch-fb-date-range-panel-title" hidden>
+                  <div class="an-range-panel-inner">
+                    <div class="an-range-panel-h" id="ch-fb-date-range-panel-title">Date range</div>
+                    <div class="an-cal-dual">
+                      <div class="an-cal-pane">
+                        <div class="an-cal-pane-hdr">
+                          <button type="button" class="an-cal-nav-btn" id="ch-fb-cal-prev" aria-label="Previous months">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                          </button>
+                          <h4 class="an-cal-month-title" id="ch-fb-cal-title0">—</h4>
+                          <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                        </div>
+                        <div class="an-cal-dow" aria-hidden="true">
+                          <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                        </div>
+                        <div class="an-cal-grid" id="ch-fb-cal-grid0"></div>
+                      </div>
+                      <div class="an-cal-pane">
+                        <div class="an-cal-pane-hdr">
+                          <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                          <h4 class="an-cal-month-title" id="ch-fb-cal-title1">—</h4>
+                          <button type="button" class="an-cal-nav-btn" id="ch-fb-cal-next" aria-label="Next months">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                          </button>
+                        </div>
+                        <div class="an-cal-dow" aria-hidden="true">
+                          <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                        </div>
+                        <div class="an-cal-grid" id="ch-fb-cal-grid1"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="an-range-actions">
+                    <button type="button" class="btn" id="ch-fb-date-range-clear">Clear</button>
+                    <button type="button" class="btn btn-primary" id="ch-fb-date-range-apply">Apply</button>
+                  </div>
+                </div>
+              </div>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+          </div>
+        </div>
+        </div>
       </div>
     </div>
   </header>
@@ -118,100 +202,35 @@
         <div class="ch-fb-panel-head">
           <div>
             <h2 class="ch-fb-panel-title">Rating mix</h2>
-            <p class="ch-fb-panel-sub">Distribution of ratings from your feedback.</p>
           </div>
           <div class="ch-fb-total-chip" id="ch-fb-total-chip" title="Total responses">Total responses: <strong data-kpi="responses-chip">0</strong></div>
         </div>
         <div class="ch-fb-dist" id="ch-fb-dist"></div>
       </div>
-
-      <div class="ch-fb-panel ch-fb-panel--link" id="ch-fb-create-panel">
-        <div class="ch-fb-panel-head ch-fb-panel-head--link">
-          <div class="ch-fb-panel-icon ch-fb-panel-icon--blue" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-          </div>
-          <div>
-            <h2 class="ch-fb-panel-title">Create feedback link</h2>
-            <p class="ch-fb-panel-sub">Generate a private link to send the guest (WhatsApp, SMS, or email).</p>
-          </div>
-        </div>
-        <div id="ch-fb-invite-error" class="ch-fb-invite-error" hidden></div>
-        <form id="ch-fb-invite-form" class="ch-fb-invite-form" autocomplete="off">
-          <label class="ch-fb-field">
-            <span>Guest name</span>
-            <div class="ch-fb-input-wrap">
-              <svg class="ch-fb-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-              <input type="text" name="customer_name" id="ch-fb-name" maxlength="200" placeholder="Optional">
-            </div>
-          </label>
-          <label class="ch-fb-field">
-            <span>Mobile</span>
-            <div class="ch-fb-input-wrap">
-              <svg class="ch-fb-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-              <input type="tel" name="phone" id="ch-fb-phone" maxlength="20" placeholder="Optional">
-            </div>
-          </label>
-          <label class="ch-fb-field">
-            <span>Source</span>
-            <div class="ch-fb-input-wrap">
-              <svg class="ch-fb-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-              <select name="source" id="ch-fb-source">
-                <option value="manual">Manual</option>
-                <option value="hotel">Hotel</option>
-                <option value="restaurant">Restaurant</option>
-                <option value="bar">Bar</option>
-                <option value="whatsapp">WhatsApp</option>
-              </select>
-            </div>
-          </label>
-          <button type="submit" class="btn btn-primary ch-fb-create-submit" id="ch-fb-invite-submit">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-            <span>Create link</span>
-          </button>
-        </form>
-        <div class="ch-fb-link-result" id="ch-fb-link-result" hidden>
-          <label class="ch-fb-field">
-            <span>Share this URL</span>
-            <div class="ch-fb-link-row">
-              <input type="text" id="ch-fb-link-url" readonly>
-              <button type="button" class="btn" id="ch-fb-copy-link">Copy</button>
-            </div>
-          </label>
-          <p class="ch-fb-muted" id="ch-fb-link-expiry" hidden></p>
-        </div>
-      </div>
     </div>
 
     <div class="ch-fb-panel ch-fb-panel--table">
       <div class="ch-fb-table-head">
-        <div class="ch-fb-panel-head ch-fb-panel-head--table">
-          <div class="ch-fb-panel-icon ch-fb-panel-icon--blue" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          </div>
-          <div>
-            <h2 class="ch-fb-panel-title">Recent feedback</h2>
-            <p class="ch-fb-panel-sub">Latest responses from your guests.</p>
-          </div>
+        <div class="ch-fb-panel-icon ch-fb-panel-icon--blue" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         </div>
-        <button type="button" class="btn ch-fb-refresh-btn" id="ch-fb-refresh">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-          <span>Refresh</span>
-        </button>
+        <h2 class="ch-fb-panel-title">Recent feedback</h2>
       </div>
       <div class="ch-fb-table-wrap">
         <table class="ch-fb-table">
           <thead>
             <tr>
-              <th class="ch-fb-th-when">When <span class="ch-fb-sort-hint" aria-hidden="true">▾</span></th>
-              <th>Guest</th>
-              <th>Rating</th>
-              <th>Source</th>
-              <th>Comment</th>
-              <th class="ch-fb-th-action">Action</th>
+              <th class="ch-fb-sortable is-sorted-desc" data-sort="when" data-sort-type="text" scope="col" tabindex="0" aria-sort="descending">When</th>
+              <th class="ch-fb-sortable" data-sort="guest" data-sort-type="text" scope="col" tabindex="0" aria-sort="none">Guest</th>
+              <th class="ch-fb-sortable" data-sort="mobile" data-sort-type="text" scope="col" tabindex="0" aria-sort="none">Mobile</th>
+              <th class="ch-fb-sortable" data-sort="rating" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Rating</th>
+              <th class="ch-fb-sortable" data-sort="source" data-sort-type="text" scope="col" tabindex="0" aria-sort="none">Source</th>
+              <th class="ch-fb-sortable" data-sort="location" data-sort-type="natural" scope="col" tabindex="0" aria-sort="none">Location</th>
+              <th class="ch-fb-sortable" data-sort="comment" data-sort-type="text" scope="col" tabindex="0" aria-sort="none">Comment</th>
             </tr>
           </thead>
           <tbody id="ch-fb-rows">
-            <tr class="ch-fb-empty"><td colspan="6">Loading…</td></tr>
+            <tr class="ch-fb-empty"><td colspan="7">Loading…</td></tr>
           </tbody>
         </table>
       </div>
@@ -219,6 +238,114 @@
   </section>
 </div>
 
+<div class="modal-backdrop" id="ch-fb-link-modal" aria-hidden="true">
+  <div class="ch-modal ch-fb-link-dialog" role="dialog" aria-modal="true" aria-labelledby="ch-fb-link-title">
+    <div class="ch-modal-head">
+      <div class="ch-fb-link-title-row">
+        <button type="button" class="ch-fb-link-title-back" id="ch-fb-link-title-back" data-fb-back aria-label="Back" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <img class="ch-fb-link-title-logo" id="ch-fb-link-title-logo" src="{{ asset('whatsapp_app_icon.png') }}" alt="" width="28" height="28" decoding="async" hidden>
+        <h2 id="ch-fb-link-title">New feedback link</h2>
+      </div>
+      <button type="button" class="ch-icon-btn" id="ch-fb-link-close" aria-label="Close">×</button>
+    </div>
+
+    <div id="ch-fb-step-choose" data-fb-step="choose">
+      <div class="ch-fb-choice-grid">
+        <button type="button" class="ch-fb-choice ch-fb-choice--link" id="ch-fb-choice-create" data-fb-choice="create">
+          <span class="ch-fb-choice-main">
+            <span class="ch-fb-choice-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            </span>
+            <span class="ch-fb-choice-label">Create a link</span>
+          </span>
+          <span class="ch-fb-choice-chev" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+          </span>
+        </button>
+        <button type="button" class="ch-fb-choice ch-fb-choice--whatsapp" id="ch-fb-choice-whatsapp" data-fb-choice="whatsapp">
+          <span class="ch-fb-choice-main">
+            <span class="ch-fb-choice-icon" aria-hidden="true">
+              <img src="{{ asset('whatsapp_app_icon.png') }}" alt="" width="56" height="56" decoding="async">
+            </span>
+            <span class="ch-fb-choice-label">Send on WhatsApp</span>
+          </span>
+          <span class="ch-fb-choice-chev" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <div id="ch-fb-step-create" data-fb-step="create" hidden>
+      <label class="ch-field">
+        <span>Guest name (optional)</span>
+        <input type="text" id="ch-fb-modal-create-name" maxlength="200" placeholder="Guest name" autocomplete="name">
+      </label>
+      <div class="ch-fb-outlet-field">
+        <span class="ch-fb-outlet-label" id="ch-fb-create-outlet-label">Feedback for</span>
+        <div class="ch-fb-outlet-tabs" role="tablist" aria-labelledby="ch-fb-create-outlet-label" id="ch-fb-create-outlet-tabs">
+          <button type="button" class="ch-fb-outlet-tab" role="tab" data-fb-outlet="hotel" aria-selected="false">Hotel</button>
+          <button type="button" class="ch-fb-outlet-tab" role="tab" data-fb-outlet="restaurant" aria-selected="false">Restaurant</button>
+          <button type="button" class="ch-fb-outlet-tab" role="tab" data-fb-outlet="bar" aria-selected="false">Bar</button>
+        </div>
+      </div>
+      <label class="ch-field" id="ch-fb-create-location-field" hidden>
+        <span id="ch-fb-create-location-label">Room number</span>
+        <input type="text" id="ch-fb-modal-create-location" maxlength="80" placeholder="Room number" autocomplete="off">
+      </label>
+      <div class="ch-fb-link-result" id="ch-fb-modal-link-result" hidden>
+        <label class="ch-field">
+          <span>Share this URL</span>
+          <div class="ch-fb-link-row">
+            <input type="text" id="ch-fb-modal-link-url" readonly>
+            <button type="button" class="btn" id="ch-fb-modal-copy-link">Copy</button>
+          </div>
+        </label>
+        <p class="ch-fb-muted" id="ch-fb-modal-link-expiry" hidden></p>
+      </div>
+      <div class="ch-modal-actions">
+        <button type="button" class="btn" data-fb-back>Back</button>
+        <button type="button" class="btn btn-primary" id="ch-fb-modal-create-submit" disabled>Create link</button>
+      </div>
+    </div>
+
+    <div id="ch-fb-step-wa-phone" data-fb-step="wa-phone" hidden>
+      <div class="ch-fb-wa-phone-row">
+        <label class="ch-field">
+          <span>Guest name (optional)</span>
+          <input type="text" id="ch-fb-modal-wa-name" maxlength="200" placeholder="Guest name" autocomplete="name">
+        </label>
+        <label class="ch-field">
+          <span>WhatsApp number</span>
+          <input type="tel" id="ch-fb-modal-wa-phone" maxlength="20" placeholder="9876543210" inputmode="tel" autocomplete="tel">
+        </label>
+      </div>
+      <div class="ch-fb-outlet-field">
+        <span class="ch-fb-outlet-label" id="ch-fb-outlet-label">Feedback for</span>
+        <div class="ch-fb-outlet-tabs" role="tablist" aria-labelledby="ch-fb-outlet-label" id="ch-fb-outlet-tabs">
+          <button type="button" class="ch-fb-outlet-tab" role="tab" data-fb-outlet="hotel" aria-selected="false">Hotel</button>
+          <button type="button" class="ch-fb-outlet-tab" role="tab" data-fb-outlet="restaurant" aria-selected="false">Restaurant</button>
+          <button type="button" class="ch-fb-outlet-tab" role="tab" data-fb-outlet="bar" aria-selected="false">Bar</button>
+        </div>
+      </div>
+      <label class="ch-field" id="ch-fb-wa-location-field" hidden>
+        <span id="ch-fb-wa-location-label">Room number</span>
+        <input type="text" id="ch-fb-modal-wa-location" maxlength="80" placeholder="Room number" autocomplete="off">
+      </label>
+      <div class="ch-modal-actions">
+        <button type="button" class="btn" data-fb-back>Back</button>
+        <button type="button" class="btn btn-primary" id="ch-fb-modal-wa-send" disabled>Send on WhatsApp</button>
+      </div>
+    </div>
+
+    <div class="ch-modal-error" id="ch-fb-link-error" hidden></div>
+  </div>
+</div>
+
+<script src="{{ asset('sales_date_range.js') }}" data-de-rerun="1"></script>
+<script src="{{ asset('hotel_date_picker.js') }}" data-de-rerun="1"></script>
 <script src="{{ asset('communication_hub_feedback.js') }}" data-de-rerun="1"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}

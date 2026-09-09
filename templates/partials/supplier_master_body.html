@@ -33,15 +33,15 @@
             </thead>
             <tbody>
               {% for supplier in suppliers %}
-              <tr data-sort-row data-search="{{ [supplier.name or '', supplier.gst or '', supplier.phone or '', supplier.address or '', supplier.bank_name or '', supplier.bank_account_number or '', supplier.ifsc_code or '']|join(' ')|lower }}">
-                <td class="pl-name" data-sort-value="{{ supplier.name or '' }}">{{ supplier.name }}</td>
-                <td data-sort-value="{{ supplier.address or '' }}">{{ supplier.address or '—' }}</td>
-                <td data-sort-value="{{ supplier.gst or '' }}">{{ supplier.gst or '—' }}</td>
-                <td data-sort-value="{{ supplier.phone or '' }}">{{ supplier.phone or '—' }}</td>
-                <td data-sort-value="{{ supplier.bank_name or '' }}">{{ supplier.bank_name or '—' }}</td>
-                <td data-sort-value="{{ supplier.bank_account_number or '' }}">{{ supplier.bank_account_number or '—' }}</td>
-                <td data-sort-value="{{ supplier.ifsc_code or '' }}">{{ supplier.ifsc_code or '—' }}</td>
-                <td class="pl-col-actions">
+              <tr class="sm-supplier-row" data-sort-row data-search="{{ [supplier.name or '', supplier.gst or '', supplier.phone or '', supplier.address or '', supplier.bank_name or '', supplier.bank_account_number or '', supplier.ifsc_code or '']|join(' ')|lower }}">
+                <td class="pl-name" data-label="Name" data-sort-value="{{ supplier.name or '' }}">{{ supplier.name }}</td>
+                <td data-label="Address" data-sort-value="{{ supplier.address or '' }}">{{ supplier.address or '—' }}</td>
+                <td data-label="GST" data-sort-value="{{ supplier.gst or '' }}">{{ supplier.gst or '—' }}</td>
+                <td data-label="Phone" data-sort-value="{{ supplier.phone or '' }}">{{ supplier.phone or '—' }}</td>
+                <td data-label="Bank Name" data-sort-value="{{ supplier.bank_name or '' }}">{{ supplier.bank_name or '—' }}</td>
+                <td data-label="Account Number" data-sort-value="{{ supplier.bank_account_number or '' }}">{{ supplier.bank_account_number or '—' }}</td>
+                <td data-label="IFSC Code" data-sort-value="{{ supplier.ifsc_code or '' }}">{{ supplier.ifsc_code or '—' }}</td>
+                <td class="pl-col-actions" data-label="Actions">
                   <div class="act-grp">
                     <a class="act-btn edit"
                        href="{{ url_for('supplier_master', supplier_id=supplier.id, embed=1) if embed_mode else url_for('supplier_master', supplier_id=supplier.id) }}"

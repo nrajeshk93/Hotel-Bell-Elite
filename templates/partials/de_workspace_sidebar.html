@@ -1,5 +1,4 @@
-{% set nav_section = de_nav_section|default('analytics') %}
-{% set sales_view = de_nav_sales_view|default('') %}
+{% set nav_section = de_nav_section|default('') %}
 {% set access_view = de_nav_access_view|default('') %}
 {% set accounts_view = de_nav_accounts_view|default('') %}
 {% set payroll_view = de_nav_payroll_view|default('') %}
@@ -11,7 +10,6 @@
 {% set settings_view = de_nav_settings_view|default('') %}
 {% set license_view = de_nav_license_view|default('') %}
 {% set communication_hub_view = de_nav_communication_hub_view|default('') %}
-{% set analytics_open = nav_section == 'analytics' %}
 {% set accounts_open = nav_section == 'accounts' %}
 {% set payroll_open = nav_section == 'payroll' %}
 {% set stores_open = nav_section == 'stores' %}
@@ -77,33 +75,6 @@
         {% endif %}
         {% if has_accounts_access('back_office_receipt') %}
         <a class="de-nav-subitem{% if accounts_view == 'back_office_receipt' %} is-active{% endif %}" id="de-nav-back-office-receipt" href="{{ url_for('back_office_receipt') }}"{% if accounts_view == 'back_office_receipt' %} aria-current="page"{% endif %}>Back Office Receipt</a>
-        {% endif %}
-      </div>
-    </div>
-    {% endif %}
-
-    {% if has_dashboard_access('sales_analytics') %}
-    <div class="de-nav-group{% if analytics_open %} is-open is-child-active{% endif %}" id="de-nav-sales-analytics-group">
-      <button type="button" class="de-nav-group-toggle" id="de-nav-sales-analytics-toggle" aria-expanded="{{ 'true' if analytics_open else 'false' }}" aria-controls="de-nav-sales-analytics-sub" onclick="toggleDeNavGroup(event, 'de-nav-sales-analytics-group')">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 3-3 3 2 5-7"/></svg>
-        <span>Sales Analytics</span>
-        <svg class="de-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
-      </button>
-      <div class="de-nav-sub" id="de-nav-sales-analytics-sub">
-        {% if has_sales_analytics_access('hotel') %}
-        <a class="de-nav-subitem{% if analytics_open and sales_view == 'hotel' %} is-active{% endif %}" href="{{ url_for('sales_update_hotel', date=nav_date, company=nav_company) if nav_date else url_for('sales_update_hotel') }}"{% if analytics_open and sales_view == 'hotel' %} aria-current="page"{% endif %}>Sales Update - Hotel</a>
-        {% endif %}
-        {% if has_sales_analytics_access('bar') %}
-        <a class="de-nav-subitem{% if analytics_open and sales_view == 'bar' %} is-active{% endif %}" href="{{ url_for('sales_update_bar', date=nav_date, company=nav_company) if nav_date else url_for('sales_update_bar') }}"{% if analytics_open and sales_view == 'bar' %} aria-current="page"{% endif %}>Sales Update - Bar</a>
-        {% endif %}
-        {% if has_sales_analytics_access('restaurant') %}
-        <a class="de-nav-subitem{% if analytics_open and sales_view == 'restaurant' %} is-active{% endif %}" href="{{ url_for('sales_update_restaurant', date=nav_date, company=nav_company) if nav_date else url_for('sales_update_restaurant') }}"{% if analytics_open and sales_view == 'restaurant' %} aria-current="page"{% endif %}>Sales Update - Restaurant</a>
-        {% endif %}
-        {% if has_sales_analytics_access('room_transfer') %}
-        <a class="de-nav-subitem{% if analytics_open and sales_view == 'room_transfer' %} is-active{% endif %}" href="{{ url_for('sales_update_room_transfer', company=nav_company) if nav_company else url_for('sales_update_room_transfer') }}"{% if analytics_open and sales_view == 'room_transfer' %} aria-current="page"{% endif %}>Room Transfer</a>
-        {% endif %}
-        {% if has_sales_analytics_access('credit') %}
-        <a class="de-nav-subitem{% if analytics_open and sales_view == 'credit' %} is-active{% endif %}" id="de-nav-sales-credit" href="{{ url_for('sales_update_credit', company=nav_company) if nav_company else url_for('sales_update_credit') }}"{% if analytics_open and sales_view == 'credit' %} aria-current="page"{% endif %}>Credit</a>
         {% endif %}
       </div>
     </div>

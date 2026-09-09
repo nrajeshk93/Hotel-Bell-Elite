@@ -245,28 +245,28 @@
             </thead>
             <tbody>
               {% for row in report.rows %}
-              <tr class="br-bank-row" data-sort-row
+              <tr class="br-bank-row ep-card-row" data-sort-row
                   data-name="{{ (row.name or '')|lower }}"
                   data-code="{{ (row.emp_code or '')|lower }}"
                   data-account="{{ (row.account or '')|lower }}"
                   data-ifsc="{{ (row.ifsc or '')|lower }}"
                   data-mode="{{ row.mode }}"
                   data-amount="{{ row.amount }}">
-                <td class="pl-col-code" data-sort-value="{{ row.emp_code }}"><span class="pl-expense-code">{{ row.emp_code or '—' }}</span></td>
-                <td data-sort-value="{{ row.name }}">
+                <td class="pl-col-code" data-label="ID" data-sort-value="{{ row.emp_code }}"><span class="pl-expense-code">{{ row.emp_code or '—' }}</span></td>
+                <td data-label="Beneficiary" data-sort-value="{{ row.name }}">
                   <div class="pl-name">{{ row.name or '—' }}</div>
                   {% if row.employee_name and row.employee_name != row.name %}
                   <div class="pl-meta">{{ row.employee_name }}</div>
                   {% endif %}
                 </td>
-                <td data-sort-value="{{ row.department }}"><span class="emp-dept">{{ row.department or '—' }}</span></td>
-                <td data-sort-value="{{ row.account }}">{{ row.account or '—' }}</td>
-                <td data-sort-value="{{ row.ifsc }}">{{ row.ifsc or '—' }}</td>
-                <td data-sort-value="{{ row.mode }}">
+                <td data-label="Department" data-sort-value="{{ row.department }}"><span class="emp-dept">{{ row.department or '—' }}</span></td>
+                <td data-label="Account" data-sort-value="{{ row.account }}">{{ row.account or '—' }}</td>
+                <td data-label="IFSC" data-sort-value="{{ row.ifsc }}">{{ row.ifsc or '—' }}</td>
+                <td data-label="Mode" data-sort-value="{{ row.mode }}">
                   <span class="br-mode br-mode--{{ 'ft' if row.mode == 'FT' else 'neft' }}">{{ row.mode }}</span>
                 </td>
-                <td class="pl-col-amount pl-amount" data-sort-value="{{ row.amount }}">{{ row.amount | inr }}</td>
-                <td data-sort-value="{{ row.mobile }}">{{ row.mobile or '—' }}</td>
+                <td class="pl-col-amount pl-amount" data-label="Amount" data-sort-value="{{ row.amount }}">{{ row.amount | inr }}</td>
+                <td data-label="Mobile" data-sort-value="{{ row.mobile }}">{{ row.mobile or '—' }}</td>
               </tr>
               {% endfor %}
             </tbody>

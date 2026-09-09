@@ -222,18 +222,18 @@
             </thead>
             <tbody>
               {% for row in tips_employees %}
-              <tr class="tips-employee-row"
+              <tr class="tips-employee-row ep-card-row"
                   data-sort-row
                   data-name="{{ (row.employee_name or '')|lower }}"
                   data-code="{{ (row.employee_code or '')|lower }}"
                   data-id="{{ row.employee_id }}">
-                <td data-sort-value="{{ row.employee_code or '' }}">{{ row.employee_code or '—' }}</td>
-                <td data-sort-value="{{ row.employee_name }}"><div class="pl-name">{{ row.employee_name }}</div></td>
-                <td class="pl-col-amount pl-amount" data-amount="{{ row.hotel }}" data-sort-value="{{ row.hotel }}">{{ row.hotel }}</td>
-                <td class="pl-col-amount pl-amount" data-amount="{{ row.bar }}" data-sort-value="{{ row.bar }}">{{ row.bar }}</td>
-                <td class="pl-col-amount pl-amount" data-amount="{{ row.restaurant }}" data-sort-value="{{ row.restaurant }}">{{ row.restaurant }}</td>
-                <td class="pl-col-amount pl-amount tips-total-cell" data-amount="{{ row.total }}" data-sort-value="{{ row.total }}">{{ row.total }}</td>
-                <td class="pl-col-actions">
+                <td data-label="Emp Code" data-sort-value="{{ row.employee_code or '' }}">{{ row.employee_code or '—' }}</td>
+                <td data-label="Employee" data-sort-value="{{ row.employee_name }}"><div class="pl-name">{{ row.employee_name }}</div></td>
+                <td class="pl-col-amount pl-amount" data-label="Hotel" data-amount="{{ row.hotel }}" data-sort-value="{{ row.hotel }}">{{ row.hotel }}</td>
+                <td class="pl-col-amount pl-amount" data-label="Bar" data-amount="{{ row.bar }}" data-sort-value="{{ row.bar }}">{{ row.bar }}</td>
+                <td class="pl-col-amount pl-amount" data-label="Restaurant" data-amount="{{ row.restaurant }}" data-sort-value="{{ row.restaurant }}">{{ row.restaurant }}</td>
+                <td class="pl-col-amount pl-amount tips-total-cell" data-label="Total" data-amount="{{ row.total }}" data-sort-value="{{ row.total }}">{{ row.total }}</td>
+                <td class="pl-col-actions" data-label="Actions">
                   <div class="act-grp">
                     <button type="button"
                             class="act-btn edit"

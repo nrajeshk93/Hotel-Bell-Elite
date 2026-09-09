@@ -1,6 +1,7 @@
 """Tests for Communication Hub Feedback analytics + public links."""
 
 import os
+import re
 import tempfile
 import unittest
 from datetime import datetime, timedelta
@@ -24,6 +25,12 @@ class FeedbackAccessTests(unittest.TestCase):
         self.assertEqual(
             get_endpoint_communication_hub_submodule(
                 "communication_hub_api_feedback_summary"
+            ),
+            "feedback",
+        )
+        self.assertEqual(
+            get_endpoint_communication_hub_submodule(
+                "communication_hub_api_feedback_send_whatsapp"
             ),
             "feedback",
         )
@@ -63,6 +70,101 @@ class FeedbackUnitTests(unittest.TestCase):
             os.unlink(self.db_path)
         except OSError:
             pass
+
+    def test_normalize_feedback_whatsapp_outlet(self):
+        self.assertEqual(fb_mod.normalize_feedback_whatsapp_outlet("Hotel"), "hotel")
+        self.assertEqual(fb_mod.normalize_feedback_whatsapp_outlet("restaurant"), "restaurant")
+        self.assertEqual(fb_mod.normalize_feedback_whatsapp_outlet("spices"), "restaurant")
+        self.assertEqual(fb_mod.normalize_feedback_whatsapp_outlet("bar"), "bar")
+        self.assertEqual(fb_mod.normalize_feedback_whatsapp_outlet(""), "")
+        self.assertEqual(fb_mod.normalize_feedback_whatsapp_outlet("manual"), "")
+
+    def test_normalize_feedback_filter_outlet(self):
+        self.assertEqual(fb_mod.normalize_feedback_filter_outlet(""), "all")
+        self.assertEqual(fb_mod.normalize_feedback_filter_outlet("ALL"), "all")
+        self.assertEqual(fb_mod.normalize_feedback_filter_outlet("hotel"), "hotel")
+        self.assertEqual(fb_mod.normalize_feedback_filter_outlet("Spices"), "restaurant")
+        self.assertEqual(fb_mod.normalize_feedback_filter_outlet("manual"), "all")
+
+    def test_feedback_date_filter_list_and_summary(self):
+        self.assertEqual(fb_mod.normalize_feedback_date("2026-09-01"), "2026-09-01")
+        self.assertEqual(fb_mod.normalize_feedback_date("bad"), "")
+        self.assertEqual(
+            fb_mod._feedback_date_bounds("2026-09-10", "2026-09-01"),
+            ("2026-09-01", "2026-09-10"),
+        )
+        conn = db_mod.get_db()
+        try:
+            invite = fb_mod.create_feedback_invite(
+                conn, customer_name="Date Guest", source="hotel", outlet="hotel"
+            )
+            result = fb_mod.submit_feedback(
+                conn, invite["token"], rating=5, comment="dated"
+            )
+            submitted = str(result.get("submitted_at") or "")[:10]
+            self.assertTrue(re.match(r"^\d{4}-\d{2}-\d{2}$", submitted), submitted)
+            in_range = fb_mod.list_feedback_responses(
+                conn, date_from=submitted, date_to=submitted
+            )
+            self.assertTrue(any(r["customer_name"] == "Date Guest" for r in in_range))
+            out_range = fb_mod.list_feedback_responses(
+                conn, date_from="2000-01-01", date_to="2000-01-02"
+            )
+            self.assertFalse(any(r["customer_name"] == "Date Guest" for r in out_range))
+            summary = fb_mod.feedback_summary(
+                conn, date_from=submitted, date_to=submitted
+            )
+            self.assertGreaterEqual(summary["responses"], 1)
+            self.assertEqual(summary["date_from"], submitted)
+            self.assertEqual(summary["date_to"], submitted)
+        finally:
+            conn.close()
+
+    def test_location_display_and_list_backfill(self):
+        self.assertEqual(
+            fb_mod.feedback_location_display(location="Table 4"),
+            "Table 4",
+        )
+        self.assertEqual(
+            fb_mod.feedback_location_display(outlet="302", location=""),
+            "302",
+        )
+        self.assertEqual(
+            fb_mod.feedback_location_display(
+                outlet="restaurant", note="checkout table=21"
+            ),
+            "21",
+        )
+        self.assertEqual(
+            fb_mod.feedback_location_display(
+                outlet="hotel", note="room stay #305"
+            ),
+            "305",
+        )
+        self.assertEqual(fb_mod.feedback_source_label("whatsapp", "restaurant"), "Restaurant")
+
+        conn = db_mod.get_db()
+        try:
+            invite = fb_mod.create_feedback_invite(
+                conn,
+                customer_name="Loc Guest",
+                source="whatsapp",
+                outlet="hotel",
+                location="",
+                note="stay #412",
+            )
+            fb_mod.submit_feedback(conn, invite["token"], rating=4, comment="ok")
+            rows = fb_mod.list_feedback_responses(conn)
+            match = next(r for r in rows if r["customer_name"] == "Loc Guest")
+            self.assertEqual(match["location"], "412")
+            self.assertEqual(match["source_label"], "Hotel")
+            stored = conn.execute(
+                "SELECT location FROM customer_feedback_invites WHERE id = ?",
+                (invite["id"],),
+            ).fetchone()
+            self.assertEqual(stored["location"], "412")
+        finally:
+            conn.close()
 
     def test_invite_submit_and_summary(self):
         conn = db_mod.get_db()
@@ -243,6 +345,20 @@ class FeedbackHttpTests(unittest.TestCase):
         self.assertIn("data-communication-hub-feedback", html)
         self.assertIn("de-nav-communication-hub-feedback", html)
         self.assertIn(">Feedback<", html)
+        self.assertIn('id="ch-fb-create-link"', html)
+        self.assertIn('id="ch-fb-link-modal"', html)
+        self.assertIn('id="ch-fb-type-filter-tabs"', html)
+        self.assertIn('data-fb-filter="all"', html)
+        self.assertIn('data-fb-filter="hotel"', html)
+        self.assertIn("Create a link", html)
+        self.assertIn("Send on WhatsApp", html)
+        self.assertIn('id="ch-fb-outlet-tabs"', html)
+        self.assertIn('id="ch-fb-create-outlet-tabs"', html)
+        self.assertIn('data-fb-outlet="hotel"', html)
+        self.assertIn('data-fb-outlet="restaurant"', html)
+        self.assertIn('data-fb-outlet="bar"', html)
+        self.assertNotIn('id="ch-fb-step-wa-outlet"', html)
+        self.assertNotIn('id="ch-fb-create-panel"', html)
 
     def test_summary_and_invite_apis(self):
         empty = self.client.get("/communication-hub/api/feedback/summary")
@@ -290,6 +406,15 @@ class FeedbackHttpTests(unittest.TestCase):
         self.assertEqual(rows.status_code, 200)
         self.assertEqual(len(rows.get_json()["responses"]), 1)
         self.assertEqual(rows.get_json()["responses"][0]["comment"], "Service was slow")
+
+        bar_sum = self.client.get("/communication-hub/api/feedback/summary?outlet=bar")
+        self.assertEqual(bar_sum.get_json()["summary"]["responses"], 1)
+        hotel_sum = self.client.get("/communication-hub/api/feedback/summary?outlet=hotel")
+        self.assertEqual(hotel_sum.get_json()["summary"]["responses"], 0)
+        bar_rows = self.client.get("/communication-hub/api/feedback/responses?outlet=bar")
+        self.assertEqual(len(bar_rows.get_json()["responses"]), 1)
+        hotel_rows = self.client.get("/communication-hub/api/feedback/responses?outlet=hotel")
+        self.assertEqual(len(hotel_rows.get_json()["responses"]), 0)
 
     def test_high_star_json_returns_google_url_and_stores(self):
         created = self.client.post(
@@ -533,4 +658,66 @@ class FeedbackExpiryHttpTests(unittest.TestCase):
             data = resp.get_json()
             self.assertTrue(data["ok"])
             self.assertTrue(data["invite"]["url"].startswith("https://belleliteaccounts.com/f/"))
+
+    def test_send_whatsapp_requires_outlet_and_mobile(self):
+        missing_outlet = self.client.post(
+            "/communication-hub/api/feedback/send-whatsapp",
+            json={"customer_name": "Anita", "mobile": "9876543210"},
+        )
+        self.assertEqual(missing_outlet.status_code, 400)
+        self.assertFalse(missing_outlet.get_json().get("ok"))
+        self.assertIn("hotel", (missing_outlet.get_json().get("error") or "").lower())
+
+        missing_mobile = self.client.post(
+            "/communication-hub/api/feedback/send-whatsapp",
+            json={"customer_name": "Anita", "outlet": "hotel", "mobile": ""},
+        )
+        self.assertEqual(missing_mobile.status_code, 400)
+        self.assertIn("mobile", (missing_mobile.get_json().get("error") or "").lower())
+
+    def test_send_whatsapp_routes_hotel_restaurant_bar(self):
+        with mock.patch.dict(os.environ, {"WHATSAPP_DRY_RUN": "1"}, clear=False):
+            hotel = self.client.post(
+                "/communication-hub/api/feedback/send-whatsapp",
+                json={
+                    "customer_name": "Mr Rajesh",
+                    "mobile": "9876543210",
+                    "outlet": "hotel",
+                },
+            )
+            self.assertEqual(hotel.status_code, 200, hotel.get_data(as_text=True))
+            hotel_body = hotel.get_json()
+            self.assertTrue(hotel_body.get("ok"))
+            self.assertTrue(hotel_body.get("dry_run"))
+            self.assertEqual(hotel_body.get("template_name"), "hotel_feedback_link")
+            self.assertEqual((hotel_body.get("invite") or {}).get("source"), "hotel")
+
+            restaurant = self.client.post(
+                "/communication-hub/api/feedback/send-whatsapp",
+                json={
+                    "customer_name": "Anita",
+                    "phone": "9123456780",
+                    "outlet": "restaurant",
+                },
+            )
+            self.assertEqual(restaurant.status_code, 200, restaurant.get_data(as_text=True))
+            rest_body = restaurant.get_json()
+            self.assertTrue(rest_body.get("ok"))
+            self.assertEqual(rest_body.get("template_name"), "spices_feedback_link")
+            self.assertEqual((rest_body.get("invite") or {}).get("source"), "restaurant")
+
+            bar = self.client.post(
+                "/communication-hub/feedback?action=send_whatsapp",
+                json={
+                    "customer_name": "Vikram",
+                    "mobile": "9000000001",
+                    "outlet": "bar",
+                    "action": "send_whatsapp",
+                },
+            )
+            self.assertEqual(bar.status_code, 200, bar.get_data(as_text=True))
+            bar_body = bar.get_json()
+            self.assertTrue(bar_body.get("ok"))
+            self.assertEqual(bar_body.get("template_name"), "bar_feedback_link")
+            self.assertEqual((bar_body.get("invite") or {}).get("source"), "bar")
 

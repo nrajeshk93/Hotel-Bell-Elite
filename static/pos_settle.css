@@ -555,3 +555,47 @@
   position:fixed;inset:0;z-index:5200;display:flex;align-items:center;justify-content:center;padding:20px;
 }
 .pos-inv-modal-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.4)}
+
+
+/* ——— Phone / tablet compact (POS Settle modal) ——— */
+/* Used from Restaurant/Bar POS + Invoice Ledger. */
+@media (max-width:900px){
+  #pos-inv-settle-modal.pos-inv-modal{
+    padding:max(8px, env(safe-area-inset-top, 0px))
+            max(8px, env(safe-area-inset-right, 0px))
+            max(8px, env(safe-area-inset-bottom, 0px))
+            max(8px, env(safe-area-inset-left, 0px));
+    align-items:flex-end;
+  }
+  #pos-inv-settle-modal .pos-inv-modal-box,
+  #pos-inv-settle-modal .staff-credit-box{
+    width:min(560px, calc(100vw - 16px));
+    max-width:calc(100vw - 16px);
+    max-height:calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    margin:0 auto;
+    overflow:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  #pos-inv-settle-modal .btn,
+  #pos-inv-settle-modal .btn-primary{
+    min-height:44px;
+    padding:10px 16px;
+  }
+}
+
+@media (max-width:640px){
+  #pos-inv-settle-modal .pos-inv-modal-box,
+  #pos-inv-settle-modal .staff-credit-box{
+    width:calc(100vw - 12px);
+    max-width:calc(100vw - 12px);
+    border-radius:14px;
+    padding:16px 14px;
+  }
+  #pos-inv-settle-modal .staff-credit-actions{
+    flex-wrap:wrap;
+  }
+  #pos-inv-settle-modal .staff-credit-actions .btn{
+    flex:1 1 calc(50% - 4px);
+    justify-content:center;
+  }
+}

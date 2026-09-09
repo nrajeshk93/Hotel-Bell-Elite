@@ -708,3 +708,91 @@ body.su-module .db-coming-soon-copy{
   body.su-module .db-coming-soon-body{padding:36px 24px}
   body.su-module .db-coming-soon-title{font-size:24px}
 }
+
+
+/* ——— Phone / tablet compact (POS Sales Update) ——— */
+/* body.su-pos-sales-update set for Restaurant + Bar POS Sales Update twins. */
+@media (max-width:900px){
+  body.su-module.su-pos-sales-update .su-header-top{
+    flex-wrap:wrap;
+    align-items:stretch;
+    gap:12px;
+  }
+  body.su-module.su-pos-sales-update .su-header-tools{
+    width:100%;
+    flex:1 1 100%;
+    justify-content:stretch;
+    gap:8px;
+    overflow-x:visible;
+    flex-wrap:wrap;
+  }
+  body.su-module.su-pos-sales-update .su-header-tools .su-header-date,
+  body.su-module.su-pos-sales-update .su-header-tools .su-header-location,
+  body.su-module.su-pos-sales-update .su-header-tools .su-header-cash-date,
+  body.su-module.su-pos-sales-update .su-header-tools .btn{
+    flex:1 1 calc(50% - 4px);
+    width:auto;
+    min-width:0;
+    max-width:none;
+  }
+  body.su-module.su-pos-sales-update .content.se-content{
+    padding-left:max(14px, env(safe-area-inset-left, 0px));
+    padding-right:max(14px, env(safe-area-inset-right, 0px));
+    padding-bottom:calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+  body.su-module.su-pos-sales-update .pl-summary-row,
+  body.su-module.su-pos-sales-update .se-kpi-row,
+  body.su-module.su-pos-sales-update .kpi-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  body.su-module.su-pos-sales-update .se-sales-outlets-grid,
+  body.su-module.su-pos-sales-update .se-petty-outlets-grid{
+    grid-template-columns:1fr;
+  }
+}
+
+@media (max-width:640px){
+  body.su-module.su-pos-sales-update .su-header-tools .su-header-date,
+  body.su-module.su-pos-sales-update .su-header-tools .su-header-location,
+  body.su-module.su-pos-sales-update .su-header-tools .su-header-cash-date,
+  body.su-module.su-pos-sales-update .su-header-tools .btn{
+    flex:1 1 100%;
+  }
+  body.su-module.su-pos-sales-update .su-title h1{font-size:22px}
+  body.su-module.su-pos-sales-update .content.se-content{
+    padding-left:max(12px, env(safe-area-inset-left, 0px));
+    padding-right:max(12px, env(safe-area-inset-right, 0px));
+    padding-bottom:calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+  body.su-module.su-pos-sales-update .pl-summary-row,
+  body.su-module.su-pos-sales-update .se-kpi-row,
+  body.su-module.su-pos-sales-update .kpi-grid{
+    grid-template-columns:minmax(0,1fr);
+  }
+  body.su-module.su-pos-sales-update .se-sales-outlet-panel .entry-table,
+  body.su-module.su-pos-sales-update .se-petty-outlet-panel .petty-table{
+    min-width:0;
+  }
+  body.su-module.su-pos-sales-update .se-sales-outlet-panel .card-body,
+  body.su-module.su-pos-sales-update .se-petty-outlet-panel .card-body{
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  body.su-module.su-pos-sales-update .se-sales-outlet-panel .entry-table thead th,
+  body.su-module.su-pos-sales-update .se-petty-outlet-panel .petty-table thead th{
+    font-size:10px;
+    padding:0 10px;
+  }
+  body.su-module.su-pos-sales-update .se-sales-outlet-panel .entry-table tbody td,
+  body.su-module.su-pos-sales-update .se-petty-outlet-panel .petty-table tbody td{
+    padding:10px;
+  }
+  body.su-module.su-pos-sales-update .se-panel-upload-label,
+  body.su-module.su-pos-sales-update .btn{
+    min-height:44px;
+  }
+  body.su-module.su-pos-sales-update .se-row-action{
+    width:40px;
+    height:40px;
+  }
+}

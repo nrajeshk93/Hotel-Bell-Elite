@@ -731,3 +731,30 @@ body.se-cash-mode .sr-kpi-section{
 .room-transfer-col-amount,.room-transfer-amount{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
 .room-transfer-col-status,.room-transfer-status{text-align:center}
 .room-transfer-empty{padding:28px 20px;text-align:center;color:var(--txt3);font-size:14px;line-height:1.55;background:#F8FAFD;border:1px dashed var(--border);border-radius:var(--r)}
+
+
+/* ——— Phone / tablet compact (POS Sales Update entry) ——— */
+@media (max-width:900px){
+  body.su-module.su-pos-sales-update .se-sales-outlet-panel .entry-table input[type="number"],
+  body.su-module.su-pos-sales-update .se-petty-outlet-panel .petty-count input{
+    min-height:44px;
+    font-size:16px; /* avoid iOS zoom */
+  }
+}
+
+@media (max-width:640px){
+  body.su-module.su-pos-sales-update .se-sales-outlet-panel .panel-head,
+  body.su-module.su-pos-sales-update .se-petty-outlet-panel .panel-head,
+  body.su-module.su-pos-sales-update .se-sales-outlet-panel .card-hdr,
+  body.su-module.su-pos-sales-update .se-petty-outlet-panel .card-hdr{
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  body.su-module.su-pos-sales-update .se-panel-actions,
+  body.su-module.su-pos-sales-update .se-sales-outlet-panel .card-hdr > div{
+    width:100%;
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+}

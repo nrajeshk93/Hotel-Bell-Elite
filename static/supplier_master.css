@@ -395,3 +395,150 @@ body.master-module .sm-check-label input{
   border-top:1px solid #eef2f7;
   background:#fff;
 }
+
+
+/* ——— Phone / tablet compact (Accounts: Supplier Master) ——— */
+@media (max-width:900px){
+  #supplier-master-page .su-header-top,
+  body.su-module .sm-list-panel ~ * .su-header-top{
+    flex-wrap:wrap;
+  }
+  #supplier-master-page .su-header-top{
+    align-items:stretch;
+    gap:10px;
+  }
+  #supplier-master-page .su-header-tools{
+    width:100%;
+    flex:1 1 100%;
+    justify-content:stretch;
+    gap:8px;
+  }
+  #supplier-master-page .su-header-tools .btn,
+  #supplier-master-page .su-header-tools a.btn{
+    flex:1 1 100%;
+    justify-content:center;
+  }
+  #supplier-master-page .content.se-content,
+  body.su-module .sm-layout{
+    padding-bottom:calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+  body.su-module .sm-supplier-modal-box,
+  body.master-module .sm-supplier-modal-box{
+    width:min(640px, calc(100vw - 16px));
+    max-width:calc(100vw - 16px);
+    max-height:calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (max-width:640px){
+  #supplier-master-page .content.se-content{
+    padding-left:12px;
+    padding-right:12px;
+    padding-bottom:calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  body.su-module .sm-list-panel .act-btn,
+  body.master-module .sm-list-panel .act-btn,
+  #md-master-modal .sm-list-panel .act-btn{
+    width:36px;
+    height:36px;
+  }
+
+  /* Supplier list → cards (standalone + master embed) */
+  #sm-supplier-list-panel .sm-table-wrap,
+  #sm-supplier-list-panel .pl-table-wrap,
+  #md-master-modal #sm-supplier-list-panel .sm-table-wrap{
+    max-height:none;
+    overflow:visible;
+    border:none;
+    border-radius:0;
+    background:transparent;
+  }
+  #sm-supplier-table,
+  #sm-supplier-table thead,
+  #sm-supplier-table tbody,
+  #sm-supplier-table tr,
+  #sm-supplier-table th,
+  #sm-supplier-table td{
+    display:block;
+    width:100%;
+    box-sizing:border-box;
+  }
+  #sm-supplier-table thead{display:none}
+  #sm-supplier-table tbody{
+    display:flex;
+    flex-direction:column;
+    gap:0;
+  }
+  #sm-supplier-table tbody tr.sm-supplier-row,
+  #sm-supplier-table tbody tr[data-sort-row]{
+    border:1px solid var(--border,#E2E8F0);
+    border-radius:12px;
+    padding:12px 14px;
+    margin:0 0 10px;
+    background:#fff;
+    box-shadow:0 1px 2px rgba(15,23,42,.04);
+  }
+  #sm-supplier-table tbody tr.sm-supplier-row:last-child,
+  #sm-supplier-table tbody tr[data-sort-row]:last-child{margin-bottom:0}
+  #sm-supplier-table tbody tr.sm-supplier-row td,
+  #sm-supplier-table tbody tr[data-sort-row] td{
+    display:grid;
+    grid-template-columns:minmax(88px,34%) minmax(0,1fr);
+    gap:8px 12px;
+    align-items:start;
+    padding:8px 0;
+    border-bottom:1px solid #F1F5F9;
+    text-align:left;
+    vertical-align:top;
+    white-space:normal;
+  }
+  #sm-supplier-table tbody tr.sm-supplier-row td:last-child,
+  #sm-supplier-table tbody tr[data-sort-row] td:last-child{
+    border-bottom:none;
+    padding-bottom:0;
+  }
+  #sm-supplier-table tbody tr.sm-supplier-row td:first-child,
+  #sm-supplier-table tbody tr[data-sort-row] td:first-child{padding-top:0}
+  #sm-supplier-table tbody tr.sm-supplier-row td::before,
+  #sm-supplier-table tbody tr[data-sort-row] td::before{
+    content:attr(data-label);
+    font-size:11px;
+    font-weight:750;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:#64748B;
+    line-height:1.35;
+    padding-top:2px;
+  }
+  body.su-module .sm-supplier-modal-actions,
+  body.master-module .sm-supplier-modal-actions{
+    flex-wrap:wrap;
+  }
+  body.su-module .sm-supplier-modal-actions .btn,
+  body.master-module .sm-supplier-modal-actions .btn{
+    flex:1 1 calc(50% - 4px);
+    justify-content:center;
+  }
+}
+
+@media (max-width:520px){
+  #sm-supplier-table tbody tr.sm-supplier-row,
+  #sm-supplier-table tbody tr[data-sort-row]{padding:10px 12px}
+  #sm-supplier-table tbody tr.sm-supplier-row td,
+  #sm-supplier-table tbody tr[data-sort-row] td{
+    grid-template-columns:minmax(72px,32%) minmax(0,1fr);
+    gap:6px 10px;
+    padding:6px 0;
+  }
+  body.su-module .sm-supplier-modal-box,
+  body.master-module .sm-supplier-modal-box{
+    width:calc(100vw - 12px);
+    max-width:calc(100vw - 12px);
+    border-radius:14px;
+    padding:16px 14px;
+  }
+  body.su-module .sm-supplier-modal-actions .btn,
+  body.master-module .sm-supplier-modal-actions .btn{
+    flex:1 1 100%;
+  }
+}

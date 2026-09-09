@@ -303,9 +303,222 @@ body.ch-promotion-module .ch-promo-status-skipped{ color:#a16207; font-weight:70
 @media (max-width:760px){
   body.ch-promotion-module .ch-promo-fields{
     grid-template-columns:1fr;
+    gap:12px;
   }
 
   body.ch-promotion-module #ch-promotion-page .su-header-tools.ch-header-tools{
     justify-content:flex-start;
+  }
+
+  body.ch-promotion-module .ch-promo-form-card{
+    padding:14px 14px 12px;
+  }
+
+  body.ch-promotion-module .ch-promo-form-intro{
+    margin-bottom:12px;
+  }
+
+  body.ch-promotion-module .ch-promo-form-actions{
+    margin-top:12px;
+    padding-top:10px;
+  }
+
+  body.ch-promotion-module .ch-promo-content{
+    padding-bottom:calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+
+  body.ch-promotion-module .ch-promo-panel{
+    padding:14px 14px 16px;
+  }
+}
+
+/* ——— Phone / tablet compact (appended; mirror Feedback spirit) ——— */
+@media (max-width:640px){
+  body.ch-promotion-module #ch-promotion-page .su-header-top{
+    flex-wrap:wrap;
+    align-items:stretch;
+    gap:10px;
+  }
+
+  body.ch-promotion-module #ch-promotion-page .su-header-tools.ch-header-tools{
+    width:100%;
+    flex:1 1 100%;
+    justify-content:stretch;
+    gap:8px;
+  }
+
+  body.ch-promotion-module #ch-promotion-page .su-header-tools .ch-wa-badge{
+    flex:1 1 100%;
+    white-space:normal;
+    text-align:center;
+  }
+
+  body.ch-promotion-module #ch-promotion-page .su-header-tools .btn,
+  body.ch-promotion-module #ch-promotion-page .su-header-tools .btn-primary{
+    flex:1 1 calc(50% - 4px);
+    min-width:0;
+    justify-content:center;
+  }
+
+  body.ch-promotion-module #ch-promotion-page .su-header-tools #ch-promo-send{
+    flex:1 1 100%;
+    width:100%;
+  }
+
+  body.ch-promotion-module .ch-promo-form-card{
+    padding:12px 12px 10px;
+    gap:0;
+  }
+
+  body.ch-promotion-module .ch-promo-fields{
+    gap:10px;
+  }
+
+  body.ch-promotion-module .ch-promo-file-control{
+    height:auto;
+    min-height:var(--ch-promo-control-h);
+    max-height:none;
+    flex-wrap:wrap;
+    padding:8px 10px;
+    gap:8px;
+  }
+
+  body.ch-promotion-module .ch-promo-file-name{
+    flex:1 1 100%;
+    white-space:normal;
+    overflow:visible;
+    text-overflow:unset;
+    word-break:break-word;
+  }
+
+  body.ch-promotion-module .ch-promo-form-actions{
+    flex-direction:column;
+    align-items:stretch;
+    margin-top:10px;
+    padding-top:10px;
+  }
+
+  body.ch-promotion-module .ch-promo-form-actions .btn{
+    width:100%;
+    justify-content:center;
+  }
+
+  body.ch-promotion-module .ch-promo-panel-head{
+    flex-wrap:wrap;
+    align-items:flex-start;
+    gap:8px 12px;
+  }
+
+  body.ch-promotion-module .ch-promo-preview-stats{
+    white-space:normal;
+    word-break:break-word;
+    line-height:1.35;
+  }
+
+  body.ch-promotion-module .ch-promo-preview-table-wrap{
+    max-height:none;
+    overflow:visible;
+    border:none;
+    border-radius:0;
+    background:transparent;
+  }
+
+  /* Preview / Results tables → stacked cards */
+  body.ch-promotion-module .ch-promo-table,
+  body.ch-promotion-module .ch-promo-table thead,
+  body.ch-promotion-module .ch-promo-table tbody,
+  body.ch-promotion-module .ch-promo-table tr,
+  body.ch-promotion-module .ch-promo-table th,
+  body.ch-promotion-module .ch-promo-table td{
+    display:block;
+    width:100%;
+    box-sizing:border-box;
+  }
+
+  body.ch-promotion-module .ch-promo-table thead{
+    display:none;
+  }
+
+  body.ch-promotion-module .ch-promo-table tbody{
+    display:flex;
+    flex-direction:column;
+    gap:0;
+  }
+
+  body.ch-promotion-module .ch-promo-table tbody tr.ch-promo-row{
+    border:1px solid var(--border, #e2e8f0);
+    border-radius:12px;
+    padding:12px 14px;
+    margin:0 0 10px;
+    background:#fff;
+    box-shadow:0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+
+  body.ch-promotion-module .ch-promo-table tbody tr.ch-promo-row:last-child{
+    margin-bottom:0;
+  }
+
+  body.ch-promotion-module .ch-promo-table tbody tr.ch-promo-row td{
+    display:grid;
+    grid-template-columns:minmax(88px, 34%) minmax(0, 1fr);
+    gap:8px 12px;
+    align-items:start;
+    padding:8px 0;
+    border-bottom:1px solid #f1f5f9;
+    text-align:left;
+    vertical-align:top;
+  }
+
+  body.ch-promotion-module .ch-promo-table tbody tr.ch-promo-row td:last-child{
+    border-bottom:none;
+    padding-bottom:0;
+  }
+
+  body.ch-promotion-module .ch-promo-table tbody tr.ch-promo-row td:first-child{
+    padding-top:0;
+  }
+
+  body.ch-promotion-module .ch-promo-table tbody tr.ch-promo-row td::before{
+    content:attr(data-label);
+    font-size:11px;
+    font-weight:750;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:#64748b;
+    line-height:1.35;
+    padding-top:2px;
+  }
+}
+
+@media (max-width:520px){
+  body.ch-promotion-module .ch-promo-form-card{
+    padding:10px 10px 8px;
+  }
+
+  body.ch-promotion-module .ch-promo-content{
+    padding-left:0;
+    padding-right:0;
+    padding-bottom:calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  body.ch-promotion-module .ch-promo-panel{
+    padding:12px 10px 14px;
+    border-radius:12px;
+  }
+
+  body.ch-promotion-module .ch-promo-table tbody tr.ch-promo-row{
+    padding:10px 12px;
+  }
+
+  body.ch-promotion-module .ch-promo-table tbody tr.ch-promo-row td{
+    grid-template-columns:minmax(72px, 32%) minmax(0, 1fr);
+    gap:6px 10px;
+    padding:6px 0;
+  }
+}
+
+@supports (padding: env(safe-area-inset-bottom)){
+  body.ch-promotion-module .ch-promo-content{
+    padding-bottom:calc(28px + env(safe-area-inset-bottom, 0px));
   }
 }

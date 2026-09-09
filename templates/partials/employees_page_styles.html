@@ -650,8 +650,43 @@ body.ep-module .se-sales-header-filters .ep-search-chip .se-filter-chip-icon{
 }
 @media(max-width:760px){
   #attendance-list-page{--att-module-gap:12px}
-  #attendance-list-page > main.content.se-content{padding-bottom:32px}
+  #attendance-list-page > main.content.se-content{padding-bottom:calc(32px + env(safe-area-inset-bottom, 0px))}
   #attendance-list-page #emp-attendance-overview-table{min-width:820px;table-layout:fixed}
   #attendance-list-page .pl-summary-row{grid-template-columns:1fr}
+}
+@media(max-width:640px){
+  #attendance-list-page #emp-attendance-overview-table{
+    min-width:0!important;
+    width:100%;
+    table-layout:auto;
+  }
+  #attendance-list-page .emp-table-wrap,
+  #attendance-list-page .pl-table-wrap{
+    overflow:visible;
+  }
+  body.ep-module .modal-overlay{
+    align-items:flex-end;
+    padding:env(safe-area-inset-top, 0px) 8px env(safe-area-inset-bottom, 0px);
+    box-sizing:border-box;
+  }
+  body.ep-module .modal-box{
+    width:calc(100vw - 16px);
+    max-width:calc(100vw - 16px);
+    max-height:calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    overflow:auto;
+    margin:0 auto;
+    border-radius:14px;
+  }
+  body.ep-module .modal-actions{
+    flex-wrap:wrap;
+  }
+  body.ep-module .modal-actions .btn{
+    flex:1 1 calc(50% - 4px);
+    justify-content:center;
+  }
+  body.ep-module #add-credit-modal .modal-box > form > div[style*="grid-template-columns:1fr 1fr"],
+  body.ep-module #add-credit-modal #acm-payment-fields{
+    grid-template-columns:1fr!important;
+  }
 }
 </style>

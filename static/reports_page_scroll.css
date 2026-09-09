@@ -364,3 +364,14 @@
     max-height:min(65vh, calc(44px + 12 * 52px));
   }
 }
+
+
+/* Phone card-mode: let stacked report rows expand (no nested max-height trap) */
+@media (max-width:640px){
+  body.sales-report-module .pl-table-wrap:has(table.pl-table tbody tr.pl-expense-row),
+  body.sales-report-module .hbe-scroll-panel .pl-table-wrap:has(table.pl-table tbody tr.pl-expense-row),
+  body.sales-report-module .pl-list-panel--scroll .pl-table-wrap:has(table.pl-table tbody tr.pl-expense-row){
+    max-height:none;
+    overflow:visible;
+  }
+}

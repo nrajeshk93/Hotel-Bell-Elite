@@ -206,12 +206,13 @@
       body.textContent = '';
       previewRows.slice(0, 25).forEach(function (row) {
         var tr = document.createElement('tr');
+        tr.className = 'ch-promo-row';
         tr.innerHTML =
-          '<td>' +
+          '<td data-label="Row">' +
           (row.row_number || '') +
-          '</td><td>' +
+          '</td><td data-label="Name">' +
           escapeHtml(row.name || '') +
-          '</td><td>' +
+          '</td><td data-label="Mobile">' +
           escapeHtml(row.phone_display || row.phone || '') +
           '</td>';
         body.appendChild(tr);
@@ -277,19 +278,20 @@
     body.textContent = '';
     (data.outcomes || []).forEach(function (row) {
       var tr = document.createElement('tr');
+      tr.className = 'ch-promo-row';
       var status = String(row.status || '');
       tr.innerHTML =
-        '<td>' +
+        '<td data-label="Row">' +
         (row.row_number || '') +
-        '</td><td>' +
+        '</td><td data-label="Name">' +
         escapeHtml(row.name || '') +
-        '</td><td>' +
+        '</td><td data-label="Mobile">' +
         escapeHtml(row.phone || '') +
         '</td><td class="ch-promo-status-' +
         escapeHtml(status) +
-        '">' +
+        '" data-label="Status">' +
         escapeHtml(status) +
-        '</td><td>' +
+        '</td><td data-label="Detail">' +
         escapeHtml(row.error || row.wa_message_id || '') +
         '</td>';
       body.appendChild(tr);

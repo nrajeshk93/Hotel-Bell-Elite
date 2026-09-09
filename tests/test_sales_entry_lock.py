@@ -109,9 +109,13 @@ class SalesEntryLockPageTests(unittest.TestCase):
             "username": "clerk",
             "is_admin": False,
             "is_active": True,
-            "dashboard_access": {"sales_analytics"},
-            "sales_analytics_access": {"bar"},
+            "dashboard_access": {"point_of_sale_bar"},
+            "point_of_sale_bar_access": {"sales_update"},
+            "sales_analytics_access": set(),
             "must_change_password": False,
+            "role_id": 1,
+            "role_name": "Clerk",
+            "role_is_active": True,
         }
         self.super_admin = {
             "id": 1,
@@ -150,7 +154,9 @@ class SalesEntryLockPageTests(unittest.TestCase):
         with mock.patch.object(
             app_module, "get_current_user", return_value=self.non_admin
         ):
-            resp = self.client.get(f"/sales_update/bar?date={self.sales_date}")
+            resp = self.client.get(
+                f"/bar-point-of-sale/sales-update?date={self.sales_date}"
+            )
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"se-lock-banner", resp.data)
         self.assertIn(b"Only a Super Administrator can change it", resp.data)
@@ -159,6 +165,8 @@ class SalesEntryLockPageTests(unittest.TestCase):
         with mock.patch.object(
             app_module, "get_current_user", return_value=self.super_admin
         ):
-            resp = self.client.get(f"/sales_update/bar?date={self.sales_date}")
+            resp = self.client.get(
+                f"/bar-point-of-sale/sales-update?date={self.sales_date}"
+            )
         self.assertEqual(resp.status_code, 200)
         self.assertNotIn(b"se-lock-banner", resp.data)

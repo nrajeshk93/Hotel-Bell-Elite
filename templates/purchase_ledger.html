@@ -310,17 +310,17 @@
               {% set status_label = credit_settlement_status_labels.get(entry.settlement_status, entry.settlement_status or '') %}
               {% set kind_label = ledger_entry_kind_labels.get(entry.entry_kind, entry.entry_kind or 'Expense') %}
               <tr class="pl-expense-row" data-search="{{ [entry.sales_date or '', entry.expense_code or '', kind_label, entry.description or '', cat_label, entry.invoice_number or '', entry.supplier_name or '', entry.supplier_gst or '', pay_label, status_label, entry.amount|string]|join(' ')|lower }}">
-                <td class="pl-col-date" data-sort-value="{{ entry.sales_date or '' }}">{{ entry.sales_date|report_dt }}</td>
-                <td class="pl-col-code" data-sort-value="{{ entry.expense_code or '' }}"><span class="pl-expense-code">{{ entry.expense_code or '—' }}</span></td>
-                <td data-sort-value="{{ kind_label }}">
+                <td class="pl-col-date" data-label="Date" data-sort-value="{{ entry.sales_date or '' }}">{{ entry.sales_date|report_dt }}</td>
+                <td class="pl-col-code" data-label="ID" data-sort-value="{{ entry.expense_code or '' }}"><span class="pl-expense-code">{{ entry.expense_code or '—' }}</span></td>
+                <td data-label="Type" data-sort-value="{{ kind_label }}">
                   <span class="pl-kind-pill pl-kind-pill--{{ entry.entry_kind or 'expense' }}">{{ kind_label }}</span>
                 </td>
-                <td data-sort-value="{{ entry.description or '' }}">
+                <td data-label="Description" data-sort-value="{{ entry.description or '' }}">
                   <div class="pl-name">{{ entry.description or '—' }}</div>
                 </td>
-                <td data-sort-value="{{ cat_label }}">{{ cat_label or '—' }}</td>
-                <td data-sort-value="{{ entry.invoice_number or '' }}">{{ entry.invoice_number or '—' }}</td>
-                <td data-sort-value="{{ entry.supplier_name or '' }}">
+                <td data-label="Category" data-sort-value="{{ cat_label }}">{{ cat_label or '—' }}</td>
+                <td data-label="Invoice" data-sort-value="{{ entry.invoice_number or '' }}">{{ entry.invoice_number or '—' }}</td>
+                <td data-label="Supplier" data-sort-value="{{ entry.supplier_name or '' }}">
                   {% if entry.supplier_name %}
                   <div class="pl-name">{{ entry.supplier_name }}</div>
                   {% if entry.supplier_gst %}<div class="pl-meta">{{ entry.supplier_gst }}</div>{% endif %}
@@ -328,16 +328,16 @@
                   —
                   {% endif %}
                 </td>
-                <td data-sort-value="{{ purchase_ledger_payment_labels.get(entry.display_payment_type, entry.display_payment_type) }}">{{ purchase_ledger_payment_labels.get(entry.display_payment_type, entry.display_payment_type) }}</td>
-                <td data-sort-value="{{ credit_settlement_status_labels.get(entry.settlement_status, entry.settlement_status or '') }}">
+                <td data-label="Payment" data-sort-value="{{ purchase_ledger_payment_labels.get(entry.display_payment_type, entry.display_payment_type) }}">{{ purchase_ledger_payment_labels.get(entry.display_payment_type, entry.display_payment_type) }}</td>
+                <td data-label="Status" data-sort-value="{{ credit_settlement_status_labels.get(entry.settlement_status, entry.settlement_status or '') }}">
                   {% if entry.settlement_status %}
                   <span class="cp-status-pill cp-status-pill--{{ entry.settlement_status }}">{{ credit_settlement_status_labels.get(entry.settlement_status, entry.settlement_status) }}</span>
                   {% else %}
                   —
                   {% endif %}
                 </td>
-                <td class="pl-col-amount pl-amount" data-amount="{{ entry.amount }}" data-sort-value="{{ entry.amount }}">{{ entry.amount }}</td>
-                <td class="pl-col-actions">
+                <td class="pl-col-amount pl-amount" data-label="Amount" data-amount="{{ entry.amount }}" data-sort-value="{{ entry.amount }}">{{ entry.amount }}</td>
+                <td class="pl-col-actions" data-label="Actions">
                   {% if entry.can_edit or entry.can_cancel %}
                   <div class="act-grp pl-action-btns">
                     {% if entry.can_edit %}

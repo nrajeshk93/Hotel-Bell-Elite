@@ -30,6 +30,61 @@
   }
 }
 
+/* Full-width + full-height list panel (match Purchases & Expenses) */
+body.su-module #credit-payment-page.main-wrapper{
+  display:flex;
+  flex-direction:column;
+  width:100%;
+  max-width:none;
+  min-width:0;
+  box-sizing:border-box;
+}
+body.su-module #credit-payment-page .content.se-content{
+  display:flex;
+  flex-direction:column;
+  flex:1 1 auto;
+  width:100%;
+  max-width:none;
+  min-width:0;
+  min-height:0;
+  box-sizing:border-box;
+}
+#credit-payment-page .content.se-content > .pl-summary-row,
+#credit-payment-page .content.se-content > .cp-outstanding-kpi-row{
+  flex:0 0 auto;
+  width:100%;
+  max-width:none;
+  min-width:0;
+  box-sizing:border-box;
+}
+#credit-payment-page .content.se-content > .pl-list-panel{
+  flex:1 1 auto;
+  display:flex;
+  flex-direction:column;
+  width:100%;
+  max-width:none;
+  min-width:0;
+  min-height:min(70vh, calc(44px + 14 * 52px));
+  box-sizing:border-box;
+}
+#credit-payment-page .pl-list-panel > .card-hdr,
+#credit-payment-page .pl-list-panel > .cp-bulk-bar{
+  flex:0 0 auto;
+}
+#credit-payment-page .pl-list-panel > .card-body{
+  flex:1 1 auto;
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+}
+#credit-payment-page .pl-list-panel .pl-table-wrap{
+  flex:1 1 auto;
+  width:100%;
+  max-width:none;
+  min-width:0;
+  min-height:min(62vh, calc(44px + 12 * 52px));
+}
+
 body.su-module .cp-view-tabs{
   display:inline-flex;
   align-items:center;
@@ -464,7 +519,7 @@ body.su-module .cp-col-actions{
   padding-right:16px !important;
 }
 body.su-module #cp-outstanding-table .cp-col-actions{
-  width:auto;
+  width:1%;
   min-width:168px;
 }
 body.su-module .cp-row-approve-btn{
@@ -521,15 +576,21 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
   display:none;
 }
 
-/* History: content-sized columns — never ellipsis invoice / party / method text.
-   Horizontal scroll on .pl-table-wrap keeps one line per cell. */
-#credit-payment-page #cp-history-table{
+/* Pending + Approved tables — fill panel width (no overflow min-width trap). */
+#credit-payment-page #cp-outstanding-table{
   table-layout:auto;
-  width:max-content;
-  min-width:100%;
+  width:100%;
   border-collapse:separate;
   border-spacing:0;
 }
+#credit-payment-page #cp-history-table{
+  table-layout:fixed;
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0;
+}
+#credit-payment-page #cp-outstanding-table th,
+#credit-payment-page #cp-outstanding-table td,
 #credit-payment-page #cp-history-table th,
 #credit-payment-page #cp-history-table td{
   vertical-align:middle;
@@ -539,10 +600,12 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
   overflow:visible;
   text-overflow:clip;
 }
+#credit-payment-page #cp-outstanding-table th.pl-sortable,
 #credit-payment-page #cp-history-table th.pl-sortable{
   position:relative;
   padding-right:20px;
 }
+#credit-payment-page #cp-outstanding-table th.pl-sortable::after,
 #credit-payment-page #cp-history-table th.pl-sortable::after{
   position:absolute;
   right:6px;
@@ -550,10 +613,31 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
   margin-left:0;
   transform:translateY(-50%);
 }
+#credit-payment-page #cp-outstanding-table th,
+#credit-payment-page #cp-outstanding-table td{
+  min-width:0;
+}
+#credit-payment-page #cp-outstanding-table .cp-col-item{
+  width:auto;
+  white-space:normal;
+}
+#credit-payment-page #cp-outstanding-table .cp-col-item .pl-name{
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+#credit-payment-page #cp-outstanding-table .cp-col-party{
+  width:auto;
+  white-space:normal;
+}
+#credit-payment-page #cp-outstanding-table .cp-col-party .pl-name{
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
 #credit-payment-page #cp-history-table .cp-expense-codes{
   width:auto;
-  min-width:16ch;
-  white-space:nowrap;
+  min-width:12ch;
+  max-width:min(280px, 32vw);
+  white-space:normal;
   overflow:visible;
   text-overflow:clip;
   vertical-align:middle;
@@ -562,19 +646,19 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
   white-space:nowrap;
 }
 #credit-payment-page #cp-history-table .cp-expense-code-list{
-  display:inline-flex;
-  flex-wrap:nowrap;
+  display:flex;
+  flex-wrap:wrap;
   gap:4px;
   align-items:center;
-  max-width:none;
+  max-width:100%;
   overflow:visible;
 }
 #credit-payment-page #cp-history-table .cp-expense-code-list .pl-expense-code{
   margin:0;
-  max-width:none;
+  max-width:100%;
   white-space:nowrap;
-  overflow:visible;
-  text-overflow:clip;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 #credit-payment-page #cp-history-table .cp-col-party{
   width:auto;
@@ -1298,4 +1382,228 @@ body.su-module .cp-status-pill--cleared{
     align-items:stretch;
   }
   body.su-module .cp-detail-meta{grid-template-columns:1fr}
+}
+
+
+/* ——— Phone / tablet compact (Accounts: Approvals / Credit Payment) ——— */
+@media (max-width:900px){
+  #credit-payment-page .su-header-top{
+    flex-wrap:wrap;
+    align-items:stretch;
+    gap:10px;
+  }
+  #credit-payment-page .su-header-tools{
+    width:100%;
+    flex:1 1 100%;
+    justify-content:stretch;
+    gap:8px;
+  }
+  #credit-payment-page .su-header-tools .btn,
+  #credit-payment-page .su-header-tools .btn-primary,
+  #credit-payment-page .su-header-tools a.btn{
+    flex:1 1 calc(50% - 4px);
+    min-width:0;
+    justify-content:center;
+  }
+  #credit-payment-page .content.se-content{
+    padding-bottom:calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+  body.su-module #credit-payment-filter-form .cp-date-range-host,
+  body.su-module #credit-payment-page .cp-date-range-host,
+  body.su-module #credit-payment-page .cp-date-range-host .se-filter-chip--date-range,
+  body.su-module #credit-payment-page .cp-date-range-host .an-range-wrap,
+  body.su-module #credit-payment-page .cp-date-range-host .an-range-trigger{
+    flex:1 1 100% !important;
+    width:100% !important;
+    max-width:none !important;
+  }
+  body.su-module .cp-modal-box,
+  body.su-module .cp-select-modal-box,
+  body.su-module #cp-clearance-modal .cp-modal-box{
+    width:min(860px, calc(100vw - 16px));
+    max-width:calc(100vw - 16px);
+    max-height:calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (max-width:640px){
+  #credit-payment-page .su-header-tools .btn,
+  #credit-payment-page .su-header-tools .btn-primary,
+  #credit-payment-page .su-header-tools a.btn{
+    flex:1 1 100%;
+  }
+  #credit-payment-page .content.se-content{
+    padding-left:12px;
+    padding-right:12px;
+    padding-bottom:calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  body.su-module #credit-payment-page .pl-list-panel .act-btn,
+  body.su-module #credit-payment-page .pl-action-btns .act-btn{
+    width:36px;
+    height:36px;
+  }
+  body.su-module #credit-payment-page .cp-row-approve-btn{
+    min-height:40px;
+    width:100%;
+    justify-content:center;
+  }
+
+  /* Outstanding + history tables → cards */
+  #credit-payment-page .pl-table-wrap{
+    max-height:none;
+    overflow:visible;
+    border:none;
+    border-radius:0;
+    background:transparent;
+  }
+  #credit-payment-page .pl-table,
+  #credit-payment-page .pl-table thead,
+  #credit-payment-page .pl-table tbody,
+  #credit-payment-page .pl-table tr,
+  #credit-payment-page .pl-table th,
+  #credit-payment-page .pl-table td{
+    display:block;
+    width:100%;
+    box-sizing:border-box;
+  }
+  #credit-payment-page .pl-table thead{display:none}
+  #credit-payment-page .pl-table tbody{
+    display:flex;
+    flex-direction:column;
+    gap:0;
+  }
+  #credit-payment-page .pl-table tbody tr.cp-expense-row,
+  #credit-payment-page .pl-table tbody tr.cp-history-row{
+    border:1px solid var(--border,#E2E8F0);
+    border-radius:12px;
+    padding:12px 14px;
+    margin:0 0 10px;
+    background:#fff;
+    box-shadow:0 1px 2px rgba(15,23,42,.04);
+  }
+  #credit-payment-page .pl-table tbody tr.cp-expense-row:last-child,
+  #credit-payment-page .pl-table tbody tr.cp-history-row:last-child{margin-bottom:0}
+  #credit-payment-page .pl-table tbody tr.cp-expense-row td,
+  #credit-payment-page .pl-table tbody tr.cp-history-row td{
+    display:grid;
+    grid-template-columns:minmax(88px,34%) minmax(0,1fr);
+    gap:8px 12px;
+    align-items:start;
+    padding:8px 0;
+    border-bottom:1px solid #F1F5F9;
+    text-align:left;
+    vertical-align:top;
+    white-space:normal;
+  }
+  #credit-payment-page .pl-table tbody tr.cp-expense-row td:last-child,
+  #credit-payment-page .pl-table tbody tr.cp-history-row td:last-child{
+    border-bottom:none;
+    padding-bottom:0;
+  }
+  #credit-payment-page .pl-table tbody tr.cp-expense-row td:first-child,
+  #credit-payment-page .pl-table tbody tr.cp-history-row td:first-child{padding-top:0}
+  #credit-payment-page .pl-table tbody tr.cp-expense-row td::before,
+  #credit-payment-page .pl-table tbody tr.cp-history-row td::before{
+    content:attr(data-label);
+    font-size:11px;
+    font-weight:750;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:#64748B;
+    line-height:1.35;
+    padding-top:2px;
+  }
+  #credit-payment-page .pl-table tbody tr.cp-expense-row td.cp-col-check{
+    grid-template-columns:auto minmax(0,1fr);
+    align-items:center;
+  }
+  #credit-payment-page .pl-table tbody tr.cp-expense-row td.cp-col-check::before{
+    content:none;
+    display:none;
+  }
+  #credit-payment-page #cp-history-table,
+  #credit-payment-page #cp-outstanding-table{
+    min-width:0;
+    table-layout:auto;
+  }
+  #credit-payment-page #cp-history-table .cp-expense-code-list,
+  #credit-payment-page #cp-history-table .cp-txn-chip{
+    white-space:normal;
+    word-break:break-word;
+  }
+  #credit-payment-page #cp-history-table .cp-tender-col,
+  #credit-payment-page #cp-history-table .pl-col-amount,
+  #credit-payment-page #cp-outstanding-table .pl-col-amount{
+    text-align:left;
+  }
+
+  /* Select / clearance modal tables: keep scrollable, tighten chrome */
+  body.su-module .cp-select-list-wrap,
+  body.su-module #cp-clearance-modal .cp-alloc-wrap{
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  body.su-module .cp-modal-box .staff-credit-actions{
+    flex-wrap:wrap;
+  }
+  body.su-module .cp-modal-box .staff-credit-actions .btn{
+    flex:1 1 calc(50% - 4px);
+    justify-content:center;
+  }
+}
+
+@media (max-width:520px){
+  #credit-payment-page .pl-table tbody tr.cp-expense-row,
+  #credit-payment-page .pl-table tbody tr.cp-history-row{padding:10px 12px}
+  #credit-payment-page .pl-table tbody tr.cp-expense-row td,
+  #credit-payment-page .pl-table tbody tr.cp-history-row td{
+    grid-template-columns:minmax(72px,32%) minmax(0,1fr);
+    gap:6px 10px;
+    padding:6px 0;
+  }
+  body.su-module .cp-modal-box,
+  body.su-module .cp-select-modal-box{
+    width:calc(100vw - 12px);
+    max-width:calc(100vw - 12px);
+    border-radius:14px;
+    padding:16px 14px;
+  }
+  body.su-module .cp-modal-box .staff-credit-actions .btn{
+    flex:1 1 100%;
+  }
+}
+
+/* Beat reports_page_scroll.css (loads after this file) — fill viewport like Purchase Ledger */
+body.su-module #credit-payment-page .pl-list-panel.hbe-scroll-panel{
+  display:flex;
+  flex-direction:column;
+}
+body.su-module #credit-payment-page .pl-list-panel > .card-body.pl-card-body--flush{
+  display:flex;
+  flex-direction:column;
+  flex:1 1 auto;
+  min-height:0;
+}
+body.su-module #credit-payment-page .hbe-scroll-panel .pl-table-wrap,
+body.su-module #credit-payment-page .pl-list-panel--scroll .pl-table-wrap{
+  flex:1 1 auto;
+  min-height:min(70vh, calc(44px + 14 * 52px));
+  max-height:min(70vh, calc(44px + 14 * 52px));
+}
+@media (max-width:760px){
+  body.su-module #credit-payment-page .hbe-scroll-panel .pl-table-wrap,
+  body.su-module #credit-payment-page .pl-list-panel--scroll .pl-table-wrap{
+    min-height:0;
+    max-height:min(65vh, calc(44px + 12 * 52px));
+  }
+  body.su-module #credit-payment-page .content.se-content > .pl-list-panel{
+    min-height:0;
+  }
+}
+@media (max-width:640px){
+  body.su-module #credit-payment-page .hbe-scroll-panel .pl-table-wrap,
+  body.su-module #credit-payment-page .pl-list-panel--scroll .pl-table-wrap{
+    min-height:0;
+    max-height:none;
+  }
 }

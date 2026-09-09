@@ -52,6 +52,11 @@
 @media(max-width:760px){
   #employee-master-page #emp-main-table{min-width:860px;table-layout:auto}
 }
+@media(max-width:640px){
+  #employee-master-page #emp-main-table{min-width:0!important;width:100%;table-layout:auto}
+  #employee-master-page .emp-table-wrap,
+  #employee-master-page .pl-table-wrap{overflow:visible}
+}
 </style>
 <script>
 (function(){
@@ -105,6 +110,11 @@
 }
 @media(max-width:760px){
   #employee-master-page #emp-main-table{min-width:860px;table-layout:auto}
+}
+@media(max-width:640px){
+  #employee-master-page #emp-main-table{min-width:0!important;width:100%;table-layout:auto}
+  #employee-master-page .emp-table-wrap,
+  #employee-master-page .pl-table-wrap{overflow:visible}
 }
 </style>
 {% endif %}

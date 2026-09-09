@@ -90,7 +90,7 @@
 <link rel="stylesheet" href="{{ asset('app_dates.css') }}">
 <script src="{{ asset('format_inr.js') }}"></script>
 {% endif %}
-<div class="main-wrapper"{% if mode is defined and mode == 'attendance_list' %} id="attendance-list-page"{% elif mode is not defined %} id="employees-page"{% endif %}>
+<div class="main-wrapper"{% if mode is defined and mode == 'attendance_list' %} id="attendance-list-page"{% elif mode is defined and mode == 'credits_dashboard' %} id="credits-dashboard-page"{% elif mode is defined and mode == 'credits' %} id="employee-credits-page"{% elif mode is not defined %} id="employees-page"{% endif %}>
 
 
 <!-- ── Top bar ── -->
@@ -922,22 +922,22 @@
             {% set att = emp.att %}
             {% set badge_num = att.display_badge_num|default(att.badge_num) %}
             {% set pct = (badge_num / att.badge_den * 100) if att.tracked and att.badge_den > 0 else 0 %}
-            <tr data-sort-row>
-              <td data-sort-value="{{ emp.name }}">
+            <tr class="ep-card-row" data-sort-row>
+              <td data-label="Employee" data-sort-value="{{ emp.name }}">
                 <div class="pl-name">{{ emp.name }}</div>
                 <div class="pl-meta">{{ emp.emp_code }}</div>
               </td>
-              <td data-sort-value="{{ emp.location }}"><span class="emp-dept">{{ emp.location }}</span></td>
-              <td class="pl-col-attend pl-amount {% if att.tracked %}pl-amount--ok{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ att.present_effective if att.tracked else -1 }}">
+              <td data-label="Department" data-sort-value="{{ emp.location }}"><span class="emp-dept">{{ emp.location }}</span></td>
+              <td class="pl-col-attend pl-amount {% if att.tracked %}pl-amount--ok{% else %}pl-amount--muted{% endif %}" data-label="Present" data-sort-value="{{ att.present_effective if att.tracked else -1 }}">
                 {{ att.present_effective if att.tracked else '—' }}
               </td>
-              <td class="pl-col-attend pl-amount {% if att.tracked %}pl-amount--warn{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ att.half_day if att.tracked else -1 }}">
+              <td class="pl-col-attend pl-amount {% if att.tracked %}pl-amount--warn{% else %}pl-amount--muted{% endif %}" data-label="Half Day" data-sort-value="{{ att.half_day if att.tracked else -1 }}">
                 {{ att.half_day if att.tracked else '—' }}
               </td>
-              <td class="pl-col-attend pl-amount {% if att.tracked %}pl-amount--debt{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ att.absent if att.tracked else -1 }}">
+              <td class="pl-col-attend pl-amount {% if att.tracked %}pl-amount--debt{% else %}pl-amount--muted{% endif %}" data-label="Absent" data-sort-value="{{ att.absent if att.tracked else -1 }}">
                 {{ att.absent if att.tracked else '—' }}
               </td>
-              <td class="pl-col-attend" data-sort-value="{{ badge_num if att.tracked else -1 }}">
+              <td class="pl-col-attend" data-label="Paid Days" data-sort-value="{{ badge_num if att.tracked else -1 }}">
                 {% if att.tracked %}
                 <span class="badge {% if pct >= 90 %}bg-green{% elif pct >= 70 %}bg-orange{% else %}bg-red{% endif %}"
                       title="{{ badge_num }} present day{{ 's' if badge_num != 1 else '' }} out of {{ att.badge_den }} in the month{% if att.weekday_leave_days|default(0) > 0 %} · {{ '%g'|format(att.weekday_leave_days) }} leave{% if att.total_off|default(0) %} ({{ att.total_off }} allowed){% endif %}{% endif %}{% if att.lop_days|default(0) > 0 %} · {{ '%g'|format(att.lop_days) }} LOP{% endif %}">
@@ -947,14 +947,14 @@
                 <span class="badge bg-gray">Not tracked</span>
                 {% endif %}
               </td>
-              <td data-sort-value="{{ 'tracked' if att.tracked else 'pending' }}" class="pl-col-attend">
+              <td data-label="Status" data-sort-value="{{ 'tracked' if att.tracked else 'pending' }}" class="pl-col-attend">
                 {% if att.tracked %}
                 <span class="badge bg-green">Tracked</span>
                 {% else %}
                 <span class="badge bg-gray">Pending</span>
                 {% endif %}
               </td>
-              <td class="pl-col-actions">
+              <td class="pl-col-actions" data-label="Actions">
                 <div class="act-grp">
                   <a href="{{ url_for('attendance', emp_id=emp.id, year=sel_year, month=sel_month) }}"
                      class="act-btn print att" data-tip="Mark attendance" aria-label="Mark attendance for {{ emp.name }}">
@@ -1101,14 +1101,14 @@
         </thead>
         <tbody>
           {% for emp in employees %}
-          <tr id="dav-row-{{ emp.id }}">
-            <td style="text-align:center;color:var(--txt3);font-size:11px;">{{ loop.index }}</td>
-            <td>
+          <tr class="ep-card-row" id="dav-row-{{ emp.id }}">
+            <td data-label="#" style="text-align:center;color:var(--txt3);font-size:11px;">{{ loop.index }}</td>
+            <td data-label="Employee">
               <div class="emp-name">{{ emp.name }}</div>
               <div style="font-size:10px;color:var(--txt3);">{{ emp.emp_code }}</div>
             </td>
-            <td style="font-size:11px;color:var(--txt3);">{{ emp.location }}</td>
-            <td>
+            <td data-label="Department" style="font-size:11px;color:var(--txt3);">{{ emp.location }}</td>
+            <td data-label="Status">
               {% if is_future %}
                 <!-- Read-only for future dates -->
                 <span class="badge bg-gray" style="font-size:11px;">Future date</span>
@@ -1127,7 +1127,7 @@
                 {{ ep_listbox('dav_status', 'Status', dav_ns.options, emp.date_status, placeholder='— Not Marked —', field_id='dav-sel-' ~ emp.id, change_handler='davSaveFromListbox', inline=true, extra_class='ep-table-listbox dav-status-listbox', data_emp=emp.id, data_date=sel_date, data_year=sel_year, data_month=sel_month) }}
               {% endif %}
             </td>
-            <td style="text-align:center;">
+            <td data-label="Save" style="text-align:center;">
               <span id="dav-ind-{{ emp.id }}" style="font-size:11px;font-weight:600;transition:opacity .3s;">
                 {% if emp.date_status %}
                 <span style="color:var(--ok);">✓</span>
@@ -1590,11 +1590,11 @@
           </thead>
           <tbody>
             {% for cr in credit_items %}
-            <tr id="cr-row-{{ cr.id }}" data-sort-row>
-              <td class="pl-col-date" data-sort-value="{{ cr.date }}"><span class="pl-meta" style="margin:0;">{{ cr.date|report_date }}</span></td>
-              <td data-sort-value="{{ cr.description or '' }}"><div class="pl-name" style="font-weight:600;max-width:320px;">{{ cr.description or '—' }}</div></td>
-              <td class="pl-col-amount pl-amount {% if cr.amount < 0 %}pl-amount--debt{% elif cr.amount > 0 %}pl-amount--ok{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ cr.amount }}">{{ cr.amount | inr(2) }}</td>
-              <td class="pl-col-actions">
+            <tr class="ep-card-row" id="cr-row-{{ cr.id }}" data-sort-row>
+              <td class="pl-col-date" data-label="Date" data-sort-value="{{ cr.date }}"><span class="pl-meta" style="margin:0;">{{ cr.date|report_date }}</span></td>
+              <td data-label="Description" data-sort-value="{{ cr.description or '' }}"><div class="pl-name" style="font-weight:600;max-width:320px;">{{ cr.description or '—' }}</div></td>
+              <td class="pl-col-amount pl-amount {% if cr.amount < 0 %}pl-amount--debt{% elif cr.amount > 0 %}pl-amount--ok{% else %}pl-amount--muted{% endif %}" data-label="Amount" data-sort-value="{{ cr.amount }}">{{ cr.amount | inr(2) }}</td>
+              <td class="pl-col-actions" data-label="Actions">
                 <div class="act-grp">
                   {% if cr.can_edit %}
                   <button type="button" class="act-btn edit" data-tip="Edit" aria-label="Edit entry" onclick="showEditCredit({{ cr.id }})">
@@ -1616,11 +1616,11 @@
                 </div>
               </td>
             </tr>
-            <tr id="cr-edit-{{ cr.id }}" class="ec-edit-row" hidden>
-              <td><input type="date" id="cr-date-{{ cr.id }}" value="{{ cr.date }}" class="app-date-inline ec-edit-input"></td>
-              <td><input type="text" id="cr-desc-{{ cr.id }}" value="{{ cr.description }}" placeholder="Description" class="ec-edit-input ec-edit-input--wide"></td>
-              <td class="pl-col-amount"><input type="number" id="cr-amt-{{ cr.id }}" value="{{ cr.amount }}" step="0.01" class="ec-edit-input ec-edit-input--amt"></td>
-              <td class="pl-col-actions">
+            <tr id="cr-edit-{{ cr.id }}" class="ec-edit-row ep-card-row ep-card-row--edit" hidden>
+              <td data-label="Date"><input type="date" id="cr-date-{{ cr.id }}" value="{{ cr.date }}" class="app-date-inline ec-edit-input"></td>
+              <td data-label="Description"><input type="text" id="cr-desc-{{ cr.id }}" value="{{ cr.description }}" placeholder="Description" class="ec-edit-input ec-edit-input--wide"></td>
+              <td class="pl-col-amount" data-label="Amount"><input type="number" id="cr-amt-{{ cr.id }}" value="{{ cr.amount }}" step="0.01" class="ec-edit-input ec-edit-input--amt"></td>
+              <td class="pl-col-actions" data-label="Actions">
                 <div class="act-grp">
                   <button type="button" class="act-btn edit" data-tip="Save" aria-label="Save" onclick="submitEditCredit({{ cr.id }})">
                     <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -1634,10 +1634,10 @@
             {% endfor %}
           </tbody>
           <tfoot>
-            <tr>
-              <td colspan="2" class="ec-ledger-label">Ledger Balance</td>
-              <td class="pl-col-amount pl-amount {% if credit_total < 0 %}pl-amount--debt{% elif credit_total > 0 %}pl-amount--ok{% else %}pl-amount--muted{% endif %}">{{ credit_total | inr(2) }}</td>
-              <td></td>
+            <tr class="ep-card-row ep-card-row--foot">
+              <td colspan="2" class="ec-ledger-label" data-label="Summary">Ledger Balance</td>
+              <td class="pl-col-amount pl-amount {% if credit_total < 0 %}pl-amount--debt{% elif credit_total > 0 %}pl-amount--ok{% else %}pl-amount--muted{% endif %}" data-label="Balance">{{ credit_total | inr(2) }}</td>
+              <td data-label=""></td>
             </tr>
           </tfoot>
         </table>
@@ -1935,13 +1935,13 @@
             {% for emp in report.employees %}
             {% set badge_num = emp.att.display_badge_num|default(emp.att.badge_num) %}
             {% set pct = (badge_num / emp.att.badge_den * 100) if emp.att.tracked and emp.att.badge_den > 0 else 0 %}
-            <tr data-sort-row>
-              <td data-sort-value="{{ emp.name }}">
+            <tr class="ep-card-row" data-sort-row>
+              <td data-label="Employee" data-sort-value="{{ emp.name }}">
                 <div class="pl-name">{{ emp.name }}</div>
                 <div class="pl-meta">{{ emp.emp_code }}</div>
               </td>
-              <td data-sort-value="{{ emp.location }}"><span class="emp-dept">{{ emp.location }}</span></td>
-              <td class="pl-col-attend" data-sort-value="{{ badge_num if emp.att.tracked else -1 }}">
+              <td data-label="Department" data-sort-value="{{ emp.location }}"><span class="emp-dept">{{ emp.location }}</span></td>
+              <td class="pl-col-attend" data-label="Attendance" data-sort-value="{{ badge_num if emp.att.tracked else -1 }}">
                 {% if emp.att.tracked %}
                 <span class="badge {% if pct >= 90 %}bg-green{% elif pct >= 70 %}bg-orange{% else %}bg-red{% endif %}"
                       title="{{ badge_num }} present day{{ 's' if badge_num != 1 else '' }} out of {{ emp.att.badge_den }} in the month{% if emp.weekday_leave_days|default(0) > 0 %} · {{ '%g'|format(emp.weekday_leave_days) }} leave{% if emp.total_off|default(0) %} ({{ emp.total_off }} allowed){% endif %}{% endif %}{% if emp.lop_days|default(0) > 0 %} · {{ '%g'|format(emp.lop_days) }} LOP{% endif %}">
@@ -1951,24 +1951,24 @@
                 <span class="badge bg-gray">Not tracked</span>
                 {% endif %}
               </td>
-              <td class="pl-col-amount pl-amount" data-sort-value="{{ emp.gross_salary }}">{{ emp.gross_salary | inr }}</td>
-              <td class="pl-col-amount pl-amount pl-amount--warn" data-sort-value="{{ emp.epf }}">{{ emp.epf | inr }}</td>
-              <td class="pl-col-amount pl-amount pl-amount--pur" data-sort-value="{{ emp.esic }}">{{ emp.esic | inr }}</td>
-              <td class="pl-col-amount pl-amount {% if emp.tip_incentive|default(0) > 0 %}{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ emp.tip_incentive|default(0) }}">
+              <td class="pl-col-amount pl-amount" data-label="Gross" data-sort-value="{{ emp.gross_salary }}">{{ emp.gross_salary | inr }}</td>
+              <td class="pl-col-amount pl-amount pl-amount--warn" data-label="EPF" data-sort-value="{{ emp.epf }}">{{ emp.epf | inr }}</td>
+              <td class="pl-col-amount pl-amount pl-amount--pur" data-label="ESIC" data-sort-value="{{ emp.esic }}">{{ emp.esic | inr }}</td>
+              <td class="pl-col-amount pl-amount {% if emp.tip_incentive|default(0) > 0 %}{% else %}pl-amount--muted{% endif %}" data-label="Incentive" data-sort-value="{{ emp.tip_incentive|default(0) }}">
                 {% if emp.tip_incentive|default(0) > 0 %}{{ emp.tip_incentive | inr }}{% else %}—{% endif %}
               </td>
-              <td class="pl-col-amount pl-amount pl-amount--ok" data-sort-value="{{ emp.net }}">{{ emp.net | inr }}</td>
+              <td class="pl-col-amount pl-amount pl-amount--ok" data-label="Net Salary" data-sort-value="{{ emp.net }}">{{ emp.net | inr }}</td>
             </tr>
             {% endfor %}
           </tbody>
           <tfoot>
-            <tr>
-              <td colspan="3" class="ec-ledger-label">Total</td>
-              <td class="pl-col-amount pl-amount">{{ report.total_gross | inr }}</td>
-              <td class="pl-col-amount pl-amount pl-amount--warn">{{ report.total_epf | inr }}</td>
-              <td class="pl-col-amount pl-amount pl-amount--pur">{{ report.total_esic | inr }}</td>
-              <td class="pl-col-amount pl-amount {% if report.total_incentive|default(0) > 0 %}{% else %}pl-amount--muted{% endif %}">{{ report.total_incentive|default(0) | inr }}</td>
-              <td class="pl-col-amount pl-amount pl-amount--ok">{{ report.total_net | inr }}</td>
+            <tr class="ep-card-row ep-card-row--foot">
+              <td colspan="3" class="ec-ledger-label" data-label="Summary">Total</td>
+              <td class="pl-col-amount pl-amount" data-label="Gross">{{ report.total_gross | inr }}</td>
+              <td class="pl-col-amount pl-amount pl-amount--warn" data-label="EPF">{{ report.total_epf | inr }}</td>
+              <td class="pl-col-amount pl-amount pl-amount--pur" data-label="ESIC">{{ report.total_esic | inr }}</td>
+              <td class="pl-col-amount pl-amount {% if report.total_incentive|default(0) > 0 %}{% else %}pl-amount--muted{% endif %}" data-label="Incentive">{{ report.total_incentive|default(0) | inr }}</td>
+              <td class="pl-col-amount pl-amount pl-amount--ok" data-label="Net Salary">{{ report.total_net | inr }}</td>
             </tr>
           </tfoot>
         </table>
@@ -2097,15 +2097,15 @@
           </thead>
           <tbody>
             {% for e in credit_emps %}
-            <tr data-name="{{ e.name|lower }} {{ e.emp_code|lower }}" data-location="{{ e.location|lower }}">
-              <td class="pl-col-code" data-sort-value="{{ e.emp_code }}"><span class="pl-expense-code">{{ e.emp_code }}</span></td>
-              <td data-sort-value="{{ e.name }}"><div class="pl-name">{{ e.name }}</div></td>
-              <td data-sort-value="{{ e.location }}"><span class="emp-dept">{{ e.location }}</span></td>
-              <td class="pl-col-attend" data-sort-value="{{ e.credit_entries }}">
+            <tr class="ep-card-row" data-name="{{ e.name|lower }} {{ e.emp_code|lower }}" data-location="{{ e.location|lower }}">
+              <td class="pl-col-code" data-label="ID" data-sort-value="{{ e.emp_code }}"><span class="pl-expense-code">{{ e.emp_code }}</span></td>
+              <td data-label="Name" data-sort-value="{{ e.name }}"><div class="pl-name">{{ e.name }}</div></td>
+              <td data-label="Department" data-sort-value="{{ e.location }}"><span class="emp-dept">{{ e.location }}</span></td>
+              <td class="pl-col-attend" data-label="Entries" data-sort-value="{{ e.credit_entries }}">
                 <span class="badge bg-gray">{{ e.credit_entries }}</span>
               </td>
-              <td class="pl-col-amount pl-amount {% if e.credit_balance > 0 %}pl-amount--warn{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ e.credit_balance }}">{{ e.credit_balance | inr(2) }}</td>
-              <td class="pl-col-amount" data-sort-value="{{ e.credit_repayment|default(0) }}">
+              <td class="pl-col-amount pl-amount {% if e.credit_balance > 0 %}pl-amount--warn{% else %}pl-amount--muted{% endif %}" data-label="Credit Balance" data-sort-value="{{ e.credit_balance }}">{{ e.credit_balance | inr(2) }}</td>
+              <td class="pl-col-amount" data-label="Repay" data-sort-value="{{ e.credit_repayment|default(0) }}">
                 <input type="number" class="inline-sal" id="cr-{{ e.id }}"
                        value="{{ e.credit_repayment or '' }}"
                        placeholder="0" min="0" step="0.01" max="{{ e.repayment_max }}"
@@ -2113,7 +2113,7 @@
                        onchange="saveSalary({{ e.id }})"
                        title="Repayment for {{ payroll_state.label }} — change and press Tab or Enter">
               </td>
-              <td class="pl-col-actions">
+              <td class="pl-col-actions" data-label="Actions">
                 <div class="act-grp">
                   <a href="{{ url_for('employee_credits', emp_id=e.id, year=sel_year, month=sel_month) }}"
                      class="act-btn view cred" data-tip="Manage">
@@ -2224,12 +2224,12 @@
           </thead>
           <tbody>
             {% for cr in recent_credits %}
-            <tr>
-              <td class="pl-col-date" data-sort-value="{{ cr.date }}"><span class="pl-meta" style="margin:0;">{{ cr.date|report_date }}</span></td>
-              <td data-sort-value="{{ cr.emp_name }}"><div class="pl-name">{{ cr.emp_name }}</div></td>
-              <td data-sort-value="{{ cr.description or '' }}"><div class="pl-name" style="font-weight:600;max-width:280px;">{{ cr.description or '—' }}</div></td>
-              <td class="pl-col-amount pl-amount {% if cr.amount < 0 %}pl-amount--debt{% elif cr.amount > 0 %}pl-amount--warn{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ cr.amount }}">{{ cr.amount | inr(2) }}</td>
-              <td class="pl-col-actions">
+            <tr class="ep-card-row">
+              <td class="pl-col-date" data-label="Date" data-sort-value="{{ cr.date }}"><span class="pl-meta" style="margin:0;">{{ cr.date|report_date }}</span></td>
+              <td data-label="Employee" data-sort-value="{{ cr.emp_name }}"><div class="pl-name">{{ cr.emp_name }}</div></td>
+              <td data-label="Description" data-sort-value="{{ cr.description or '' }}"><div class="pl-name" style="font-weight:600;max-width:280px;">{{ cr.description or '—' }}</div></td>
+              <td class="pl-col-amount pl-amount {% if cr.amount < 0 %}pl-amount--debt{% elif cr.amount > 0 %}pl-amount--warn{% else %}pl-amount--muted{% endif %}" data-label="Amount" data-sort-value="{{ cr.amount }}">{{ cr.amount | inr(2) }}</td>
+              <td class="pl-col-actions" data-label="Actions">
                 <div class="act-grp">
                   <a href="{{ url_for('employee_credits', emp_id=cr.emp_id, year=sel_year, month=sel_month) }}"
                      class="act-btn view cred" data-tip="View">
@@ -2425,12 +2425,12 @@
             {% set badge_num = emp.att.display_badge_num|default(emp.att.badge_num) %}
             {% set pct = (badge_num / emp.att.badge_den * 100) if emp.att.badge_den > 0 else 0 %}
             {% set deductions = emp.epf + emp.esic + (emp.lop_deduction|default(0)) %}
-            <tr id="emp-row-{{ emp.id }}">
-              <td class="pl-col-code" data-sort-value="{{ emp.emp_code }}"><span class="pl-expense-code">{{ emp.emp_code }}</span></td>
-              <td data-sort-value="{{ emp.name }}"><div class="pl-name">{{ emp.name }}</div></td>
-              <td data-sort-value="{{ emp.location }}"><span class="emp-dept">{{ emp.location }}</span></td>
-              <td class="pl-col-amount pl-amount" data-sort-value="{{ emp.gross_salary }}">{{ emp.gross_salary | inr }}</td>
-              <td class="pl-col-attend" data-sort-value="{{ badge_num if emp.att.tracked else -1 }}">
+            <tr class="ep-card-row" id="emp-row-{{ emp.id }}">
+              <td class="pl-col-code" data-label="ID" data-sort-value="{{ emp.emp_code }}"><span class="pl-expense-code">{{ emp.emp_code }}</span></td>
+              <td data-label="Name" data-sort-value="{{ emp.name }}"><div class="pl-name">{{ emp.name }}</div></td>
+              <td data-label="Department" data-sort-value="{{ emp.location }}"><span class="emp-dept">{{ emp.location }}</span></td>
+              <td class="pl-col-amount pl-amount" data-label="Gross" data-sort-value="{{ emp.gross_salary }}">{{ emp.gross_salary | inr }}</td>
+              <td class="pl-col-attend" data-label="Attend." data-sort-value="{{ badge_num if emp.att.tracked else -1 }}">
                 {% if emp.att.tracked %}
                 <span class="badge {% if pct >= 90 %}bg-green{% elif pct >= 70 %}bg-orange{% else %}bg-red{% endif %}"
                       title="{{ badge_num }} present day{{ 's' if badge_num != 1 else '' }} out of {{ emp.att.badge_den }} in the month{% if emp.weekday_leave_days|default(0) > 0 %} · {{ '%g'|format(emp.weekday_leave_days) }} leave{% if emp.total_off|default(0) %} ({{ emp.total_off }} allowed){% endif %}{% endif %}{% if emp.lop_days|default(0) > 0 %} · {{ '%g'|format(emp.lop_days) }} LOP{% endif %}">
@@ -2440,20 +2440,20 @@
                 <span class="badge bg-gray">—</span>
                 {% endif %}
               </td>
-              <td class="pl-col-amount pl-amount pl-amount--warn" data-sort-value="{{ deductions }}" title="EPF: {{ emp.epf | inr }} + ESIC: {{ emp.esic | inr }}{% if emp.lop_deduction|default(0) > 0 %} + LOP: {{ emp.lop_deduction | inr }}{% endif %}">
+              <td class="pl-col-amount pl-amount pl-amount--warn" data-label="Deductions" data-sort-value="{{ deductions }}" title="EPF: {{ emp.epf | inr }} + ESIC: {{ emp.esic | inr }}{% if emp.lop_deduction|default(0) > 0 %} + LOP: {{ emp.lop_deduction | inr }}{% endif %}">
                 {{ deductions | inr }}
               </td>
-              <td class="pl-col-amount pl-amount" id="tip-inc-{{ emp.id }}" data-sort-value="{{ emp.tip_incentive|default(0) }}" title="Tip incentive for {{ month_name }} {{ sel_year }}">
+              <td class="pl-col-amount pl-amount" id="tip-inc-{{ emp.id }}" data-label="Incentive" data-sort-value="{{ emp.tip_incentive|default(0) }}" title="Tip incentive for {{ month_name }} {{ sel_year }}">
                 {% if emp.tip_incentive|default(0) > 0 %}
                 {{ emp.tip_incentive | inr }}
                 {% else %}
                 <span class="pl-amount pl-amount--muted">—</span>
                 {% endif %}
               </td>
-              <td class="pl-col-amount pl-amount pl-amount--ok" id="net-{{ emp.id }}" data-sort-value="{{ emp.net }}">
+              <td class="pl-col-amount pl-amount pl-amount--ok" id="net-{{ emp.id }}" data-label="Net Salary" data-sort-value="{{ emp.net }}">
                 {{ emp.net | inr }}
               </td>
-              <td class="pl-col-amount" data-sort-value="{{ emp.credit_repayment|default(0) if emp.repayment_input_visible else -1 }}">
+              <td class="pl-col-amount" data-label="Repay" data-sort-value="{{ emp.credit_repayment|default(0) if emp.repayment_input_visible else -1 }}">
                 {% if emp.repayment_input_visible %}
                 <input type="number" class="inline-sal" id="cr-{{ emp.id }}"
                        value="{{ emp.credit_repayment or '' }}"
@@ -2467,10 +2467,10 @@
                 <span class="pl-amount pl-amount--muted">—</span>
                 {% endif %}
               </td>
-              <td id="cb-{{ emp.id }}" class="pl-col-amount pl-amount {% if emp.credit_total > 0 %}pl-amount--warn{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ emp.credit_total }}">
+              <td id="cb-{{ emp.id }}" class="pl-col-amount pl-amount {% if emp.credit_total > 0 %}pl-amount--warn{% else %}pl-amount--muted{% endif %}" data-label="Cr. Balance" data-sort-value="{{ emp.credit_total }}">
                 {{ emp.credit_total | inr(2) }}
               </td>
-              <td class="tbl-sticky">
+              <td class="tbl-sticky pl-col-actions" data-label="Actions">
                 <div class="act-grp">
                   {% if has_payroll_access('attendance') %}
                   <a href="{{ url_for('attendance', emp_id=emp.id, year=sel_year, month=sel_month) }}"

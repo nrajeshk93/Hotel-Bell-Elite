@@ -302,32 +302,32 @@
                   data-can-resettle="{{ '1' if can_resettle else '0' }}"
                   {% if not is_settled and not is_cancelled %}tabindex="0" role="button" aria-label="Settle invoice {{ inv.order_no }}"{% elif can_resettle %}tabindex="0" role="button" aria-label="Edit settlement for invoice {{ inv.order_no }}"{% endif %}
                   data-search="{{ [inv.order_no or '', inv.order_date or '', inv.saved_at or '', inv.customer_name or '', inv.customer_mobile or '', inv.order_type_label or '', inv.payment_mode_label or '', inv.table_label or '', inv.captain or '', inv.created_by or '', inv.grand_total|string]|join(' ')|lower }}">
-                <td class="cp-col-check">
+                <td class="cp-col-check" data-label="Select">
                   {% if not is_settled and not is_cancelled %}
                   <input type="checkbox" class="cp-expense-check pos-il-row-check" aria-label="Select invoice {{ inv.order_no }}">
                   {% endif %}
                 </td>
-                <td class="pl-col-code" data-sort-value="{{ inv.order_no or '' }}"><span class="pl-expense-code">{{ inv.order_no or '—' }}</span></td>
-                <td class="pl-col-date" data-sort-value="{{ inv.saved_at or inv.order_date or '' }}">
+                <td class="pl-col-code" data-label="Order No" data-sort-value="{{ inv.order_no or '' }}"><span class="pl-expense-code">{{ inv.order_no or '—' }}</span></td>
+                <td class="pl-col-date" data-label="Date / Time" data-sort-value="{{ inv.saved_at or inv.order_date or '' }}">
                   <div class="pl-name">{{ (inv.order_date or inv.saved_at)|report_date }}</div>
                   {% set saved_time = inv.saved_at|report_time %}
                   {% if saved_time %}<div class="pl-meta">{{ saved_time }}</div>{% endif %}
                 </td>
-                <td data-sort-value="{{ inv.customer_name or '' }}">
+                <td data-label="Customer" data-sort-value="{{ inv.customer_name or '' }}">
                   <div class="pl-name">{{ inv.customer_name or '—' }}</div>
                   {% if inv.customer_mobile %}<div class="pl-meta">{{ inv.customer_mobile }}</div>{% endif %}
                 </td>
-                <td data-sort-value="{{ inv.order_type_label or '' }}">{{ inv.order_type_label or '—' }}</td>
-                <td class="pos-il-payment-mode" data-sort-value="{{ inv.payment_mode_label or 'Unsettled' }}">{{ inv.payment_mode_label or 'Unsettled' }}</td>
+                <td data-label="Order type" data-sort-value="{{ inv.order_type_label or '' }}">{{ inv.order_type_label or '—' }}</td>
+                <td class="pos-il-payment-mode" data-label="Payment Mode" data-sort-value="{{ inv.payment_mode_label or 'Unsettled' }}">{{ inv.payment_mode_label or 'Unsettled' }}</td>
                 {% set amts = inv.payment_amounts or {} %}
                 {% for key, label in pos_payment_amount_columns %}
                 {% set amt = amts.get(key, 0) or 0 %}
-                <td class="pl-col-amount pos-il-tender-col{% if amt > 0 %} pl-amount{% endif %}" data-amount="{{ amt if amt > 0 else '' }}" data-sort-value="{{ amt }}">{% if amt > 0 %}{{ amt }}{% else %}—{% endif %}</td>
+                <td class="pl-col-amount pos-il-tender-col{% if amt > 0 %} pl-amount{% endif %}" data-label="{{ label }}" data-amount="{{ amt if amt > 0 else '' }}" data-sort-value="{{ amt }}">{% if amt > 0 %}{{ amt }}{% else %}—{% endif %}</td>
                 {% endfor %}
-                <td class="pl-col-amount" data-sort-value="{{ inv.item_count }}">{{ inv.item_count }}</td>
-                <td class="pl-col-amount pl-amount" data-amount="{{ inv.grand_total }}" data-sort-value="{{ inv.grand_total }}">{{ inv.grand_total }}</td>
-                <td data-sort-value="{{ inv.created_by or '' }}">{{ inv.created_by or '—' }}</td>
-                <td class="pl-col-actions">
+                <td class="pl-col-amount" data-label="Items" data-sort-value="{{ inv.item_count }}">{{ inv.item_count }}</td>
+                <td class="pl-col-amount pl-amount" data-label="Total" data-amount="{{ inv.grand_total }}" data-sort-value="{{ inv.grand_total }}">{{ inv.grand_total }}</td>
+                <td data-label="Created by" data-sort-value="{{ inv.created_by or '' }}">{{ inv.created_by or '—' }}</td>
+                <td class="pl-col-actions" data-label="Actions">
                   <div class="act-grp pl-action-btns">
                     <button type="button" class="act-btn edit pos-il-view-btn" data-tip="View" aria-label="View invoice {{ inv.order_no }}" data-invoice-id="{{ inv.id }}" onclick="return window.posIlViewClick && window.posIlViewClick(this)">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>

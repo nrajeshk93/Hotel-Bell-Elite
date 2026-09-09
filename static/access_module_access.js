@@ -64,7 +64,6 @@
     var actorIsSuperAdmin = root.getAttribute('data-ma-actor-super-admin') === '1';
     var initial = {
       dashboard_modules: parseJson(byId('ma-initial-dashboard'), []),
-      sales_analytics_modules: parseJson(byId('ma-initial-sales-analytics'), []),
       user_access_modules: parseJson(byId('ma-initial-user-access'), []),
       payroll_modules: parseJson(byId('ma-initial-payroll'), []),
       accounts_modules: parseJson(byId('ma-initial-accounts'), []),

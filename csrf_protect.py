@@ -41,6 +41,7 @@ EXEMPT_ENDPOINTS = frozenset(
         "customer_feedback_public",
         "customer_feedback_review",
         "communication_hub_api_feedback_invite_create",
+        "communication_hub_api_feedback_send_whatsapp",
     }
 )
 
@@ -110,7 +111,7 @@ def _path_is_exempt() -> bool:
             payload = request.get_json(silent=True) or {}
             if isinstance(payload, dict):
                 action = str(payload.get("action") or "").strip().lower()
-        if action in {"create_invite", "create-link", "create"}:
+        if action in {"create_invite", "create-link", "create", "send_whatsapp", "send-whatsapp", "whatsapp"}:
             return True
     return False
 

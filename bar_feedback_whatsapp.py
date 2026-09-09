@@ -73,12 +73,22 @@ def send_bar_feedback_whatsapp(
 
     guest_name = format_hotel_feedback_guest_name(data)
     template_name, template_lang = bar_feedback_template_config()
-    outlet = str(data.get("outlet") or "bar").strip() or "bar"
+    location = str(
+        data.get("location")
+        or data.get("table")
+        or data.get("table_label")
+        or data.get("tableLabel")
+        or data.get("table_number")
+        or data.get("tableNumber")
+        or ""
+    ).strip()
     order_no = str(data.get("order_no") or data.get("orderNo") or "").strip()
     invoice_id = str(data.get("invoice_id") or data.get("invoiceId") or "").strip()
     note_clean = (note or str(data.get("note") or "")).strip()
     if not note_clean:
         bits = ["bar generate-invoice feedback"]
+        if location:
+            bits.append(f"table={location}")
         if order_no:
             bits.append(f"order={order_no}")
         if invoice_id:
@@ -101,7 +111,8 @@ def send_bar_feedback_whatsapp(
             customer_name=guest_name,
             phone=phone,
             source="bar",
-            outlet=outlet[:80],
+            outlet="bar",
+            location=location[:80],
             note=note_clean[:500],
             user_id=user_id,
         )

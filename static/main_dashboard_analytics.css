@@ -2350,3 +2350,300 @@
 .rdx-ff-flow-graphic {
   display: none !important;
 }
+
+
+/* ==========================================================================
+   Phone / tablet compact — main_dashboard_analytics.css
+   Scoped under body.main-dashboard-module #main-dashboard-page so other
+   modules using .rdx-* class names are untouched. Desktop rules above stay
+   intact; this block only tightens phone/tablet.
+   Breakpoints: 900 / 640 / 560 / 430 (+ @container md-dash where useful)
+   ========================================================================== */
+
+/* —— Shared containment —— */
+body.main-dashboard-module #main-dashboard-page .rdx-card,
+body.main-dashboard-module #main-dashboard-page .rdx-sales-trend,
+body.main-dashboard-module #main-dashboard-page .rdx-financial-flow,
+body.main-dashboard-module #main-dashboard-page .rdx-payment-mode,
+body.main-dashboard-module #main-dashboard-page .rdx-sales-heatmap-card,
+body.main-dashboard-module #main-dashboard-page .rdx-co-leaderboard,
+body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib,
+body.main-dashboard-module #main-dashboard-page .rdx-chart,
+body.main-dashboard-module #main-dashboard-page .rdx-chart-sales,
+body.main-dashboard-module #main-dashboard-page .rdx-chart-ltr-mask,
+body.main-dashboard-module #main-dashboard-page .rdx-pm-chart,
+body.main-dashboard-module #main-dashboard-page .rdx-heatmap-scroll {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* —— Financial Flow: stages / equation wrap; chart scrolls inside card —— */
+@media (max-width: 900px) {
+  body.main-dashboard-module #main-dashboard-page .rdx-ff-stages {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-ff-stage {
+    padding: 8px 10px;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-ff-equation-label,
+  body.main-dashboard-module #main-dashboard-page .rdx-ff-equation-values,
+  body.main-dashboard-module #main-dashboard-page .rdx-ff-pct-note {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-ff-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  /* Override later overflow:visible !important so the page never blows out */
+  body.main-dashboard-module #main-dashboard-page .rdx-ff-chart {
+    min-height: 0;
+    max-width: 100%;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-ff-layout,
+  body.main-dashboard-module #main-dashboard-page .rdx-ff-stage-canvas {
+    overflow: visible !important;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-ff-stage-canvas {
+    min-width: min(900px, max(100%, 720px));
+  }
+}
+
+@media (max-width: 640px) {
+  body.main-dashboard-module #main-dashboard-page .rdx-financial-flow {
+    padding: 14px 12px 12px;
+    border-radius: 14px;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-ff-title {
+    font-size: 17px;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-ff-chart {
+    min-height: 0;
+    padding: 6px 4px 8px;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-ff-stage-canvas {
+    min-width: 760px;
+    min-height: 420px;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-ff-equation-values {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 430px) {
+  body.main-dashboard-module #main-dashboard-page .rdx-ff-stage-canvas {
+    min-width: 680px;
+    min-height: 380px;
+  }
+}
+
+/* —— Sales trend: stats stack + chart min-width 0 + lower min-heights —— */
+@media (max-width: 560px) {
+  body.main-dashboard-module #main-dashboard-page .rdx-st-stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  body.main-dashboard-module #main-dashboard-page .rdx-sales-trend {
+    padding: 14px 12px 12px;
+    border-radius: 14px;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-st-stats {
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-st-stat {
+    padding: 10px 10px;
+    min-width: 0;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-st-stat-value {
+    font-size: 17px;
+    overflow-wrap: anywhere;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-chart-ltr-mask,
+  body.main-dashboard-module #main-dashboard-page .rdx-chart,
+  body.main-dashboard-module #main-dashboard-page .rdx-chart-sales {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-chart-sales {
+    min-height: 200px;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-chart {
+    min-height: 180px;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-chart-sm {
+    min-height: 160px;
+  }
+}
+
+@media (max-width: 430px) {
+  body.main-dashboard-module #main-dashboard-page .rdx-chart-sales {
+    min-height: 180px;
+  }
+}
+
+/* —— Heatmap: scroll inside card; smaller cells; no page width blowout —— */
+body.main-dashboard-module #main-dashboard-page .rdx-sales-heatmap-card {
+  overflow: hidden;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-heatmap-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  max-width: 100%;
+  min-width: 0;
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  body.main-dashboard-module #main-dashboard-page .rdx-sales-heatmap-card {
+    padding: 12px;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-heatmap {
+    grid-template-columns: minmax(56px, max-content) repeat(7, minmax(28px, 1fr));
+    gap: 3px;
+    width: max(100%, 300px);
+    min-width: 300px;
+    max-width: none;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-heatmap-cell {
+    min-height: 18px;
+    border-radius: 4px;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-heatmap-col-head,
+  body.main-dashboard-module #main-dashboard-page .rdx-heatmap-row-label {
+    font-size: 9px;
+  }
+}
+
+@media (max-width: 430px) {
+  body.main-dashboard-module #main-dashboard-page .rdx-heatmap {
+    grid-template-columns: minmax(48px, max-content) repeat(7, minmax(24px, 1fr));
+    gap: 2px;
+    min-width: 280px;
+    width: max(100%, 280px);
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-heatmap-cell {
+    min-height: 16px;
+  }
+}
+
+/* —— Payment mode / other widgets: stack KPIs; charts don’t overflow —— */
+@media (max-width: 900px) {
+  body.main-dashboard-module #main-dashboard-page .rdx-pm-body {
+    grid-template-columns: 1fr;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-pm-kpis {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-pm-kpi {
+    flex: 1 1 120px;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  body.main-dashboard-module #main-dashboard-page .rdx-pm-kpis {
+    flex-direction: column;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-pm-kpi {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  body.main-dashboard-module #main-dashboard-page .rdx-payment-mode {
+    padding: 14px 12px;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-pm-chart,
+  body.main-dashboard-module #main-dashboard-page .rdx-chart-ltr-mask > .rdx-pm-chart {
+    min-height: 180px;
+    max-width: 100%;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-pm-kpi {
+    padding: 12px 10px;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-pm-kpi-value {
+    font-size: 22px;
+    overflow-wrap: anywhere;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-sc-chart-wrap {
+    max-width: min(180px, 65vw);
+    min-width: 0;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-sc-body {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-co-sales,
+  body.main-dashboard-module #main-dashboard-page .rdx-sc-amount,
+  body.main-dashboard-module #main-dashboard-page .rdx-sc-pct {
+    overflow-wrap: anywhere;
+  }
+}
+
+/* —— Two-column grids (analytics-side reinforcement) —— */
+@media (max-width: 900px) {
+  body.main-dashboard-module #main-dashboard-page .rdx-grid-2,
+  body.main-dashboard-module #main-dashboard-page .rdx-grid-3,
+  body.main-dashboard-module #main-dashboard-page .rdx-grid-2:not(.rdx-grid-top-items):not(.rdx-grid-heatmap-payment):not(.rdx-grid-dow-heat) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+@container md-dash (max-width: 900px) {
+  .rdx-grid-2,
+  .rdx-grid-3,
+  .rdx-grid-top-items,
+  .rdx-grid-heatmap-payment,
+  .rdx-grid-dow-heat {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}

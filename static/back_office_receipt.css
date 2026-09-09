@@ -430,3 +430,156 @@ body.su-module #bor-add-modal .bor-instrument-date-field .hotel-date-trigger {
     width: 100%;
   }
 }
+
+
+/* ——— Phone / tablet compact (Accounts: Back Office Receipt) ——— */
+@media (max-width:900px){
+  #back-office-receipt-page .su-header-top{
+    flex-wrap:wrap;
+    align-items:stretch;
+    gap:10px;
+  }
+  #back-office-receipt-page .su-header-tools.bor-header-actions{
+    width:100%;
+    flex:1 1 100%;
+    justify-content:stretch;
+    gap:8px;
+  }
+  #back-office-receipt-page .su-header-tools.bor-header-actions .btn{
+    flex:1 1 calc(50% - 4px);
+    min-width:0;
+    justify-content:center;
+  }
+  #back-office-receipt-page .content.se-content{
+    padding-bottom:calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+  #back-office-receipt-page .pl-summary-row.bor-summary-row,
+  #back-office-receipt-page .bor-summary-row{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  body.su-module #bor-filter-form .bor-date-range-host{
+    flex:1 1 100%;
+    width:100%;
+  }
+  body.su-module #bor-filter-form .bor-date-range-host .an-range-trigger{
+    width:100%;
+    max-width:none;
+  }
+  body.su-module #bor-filter-form #bor-agency-filter-listbox.pl-header-field-listbox{
+    flex:1 1 100%;
+    max-width:none;
+  }
+  body.su-module #bor-add-modal .bor-add-box{
+    width:min(720px, calc(100vw - 16px));
+    max-width:calc(100vw - 16px);
+    max-height:calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (max-width:640px){
+  #back-office-receipt-page .su-header-tools.bor-header-actions .btn{
+    flex:1 1 100%;
+  }
+  #back-office-receipt-page .pl-summary-row.bor-summary-row,
+  #back-office-receipt-page .bor-summary-row{
+    grid-template-columns:minmax(0,1fr);
+  }
+  #back-office-receipt-page .content.se-content{
+    padding-left:12px;
+    padding-right:12px;
+    padding-bottom:calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  body.su-module #back-office-receipt-page .pl-list-panel .act-btn,
+  body.su-module #back-office-receipt-page .pl-action-btns .act-btn{
+    width:36px;
+    height:36px;
+  }
+
+  #back-office-receipt-page .pl-table-wrap{
+    max-height:none;
+    overflow:visible;
+    border:none;
+    border-radius:0;
+    background:transparent;
+  }
+  #bor-ledger-table{
+    min-width:0 !important;
+  }
+  #back-office-receipt-page .pl-table,
+  #back-office-receipt-page .pl-table thead,
+  #back-office-receipt-page .pl-table tbody,
+  #back-office-receipt-page .pl-table tr,
+  #back-office-receipt-page .pl-table th,
+  #back-office-receipt-page .pl-table td,
+  #bor-ledger-table,
+  #bor-ledger-table thead,
+  #bor-ledger-table tbody,
+  #bor-ledger-table tr,
+  #bor-ledger-table th,
+  #bor-ledger-table td{
+    display:block;
+    width:100%;
+    box-sizing:border-box;
+  }
+  #bor-ledger-table thead{display:none}
+  #bor-ledger-table tbody{
+    display:flex;
+    flex-direction:column;
+    gap:0;
+  }
+  #bor-ledger-table tbody tr.bor-ledger-row{
+    border:1px solid var(--border,#E2E8F0);
+    border-radius:12px;
+    padding:12px 14px;
+    margin:0 0 10px;
+    background:#fff;
+    box-shadow:0 1px 2px rgba(15,23,42,.04);
+  }
+  #bor-ledger-table tbody tr.bor-ledger-row:last-child{margin-bottom:0}
+  #bor-ledger-table tbody tr.bor-ledger-row td{
+    display:grid;
+    grid-template-columns:minmax(88px,34%) minmax(0,1fr);
+    gap:8px 12px;
+    align-items:start;
+    padding:8px 0;
+    border-bottom:1px solid #F1F5F9;
+    text-align:left;
+    vertical-align:top;
+    white-space:normal !important;
+  }
+  #bor-ledger-table tbody tr.bor-ledger-row td:last-child{
+    border-bottom:none;
+    padding-bottom:0;
+  }
+  #bor-ledger-table tbody tr.bor-ledger-row td:first-child{padding-top:0}
+  #bor-ledger-table tbody tr.bor-ledger-row td::before{
+    content:attr(data-label);
+    font-size:11px;
+    font-weight:750;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:#64748B;
+    line-height:1.35;
+    padding-top:2px;
+  }
+  #bor-ledger-table td .pl-name,
+  #bor-ledger-table td.pl-col-code,
+  #bor-ledger-table td.pl-col-date{
+    white-space:normal;
+  }
+}
+
+@media (max-width:520px){
+  #bor-ledger-table tbody tr.bor-ledger-row{padding:10px 12px}
+  #bor-ledger-table tbody tr.bor-ledger-row td{
+    grid-template-columns:minmax(72px,32%) minmax(0,1fr);
+    gap:6px 10px;
+    padding:6px 0;
+  }
+  body.su-module #bor-add-modal .bor-add-box{
+    width:calc(100vw - 12px);
+    max-width:calc(100vw - 12px);
+    border-radius:14px;
+    padding:16px 14px;
+  }
+}

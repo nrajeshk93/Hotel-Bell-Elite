@@ -153,7 +153,6 @@ input[type="text"]:focus,input[type="password"]:focus,input[type="email"]:focus,
 
                 <script type="application/json" id="ma-tree-data">{{ access_module_tree_ui | tojson }}</script>
                 <script type="application/json" id="ma-initial-dashboard">{{ form.dashboard_modules | tojson }}</script>
-                <script type="application/json" id="ma-initial-sales-analytics">{{ form.sales_analytics_modules | tojson }}</script>
                 <script type="application/json" id="ma-initial-user-access">{{ form.user_access_modules | tojson }}</script>
                 <script type="application/json" id="ma-initial-payroll">{{ form.payroll_modules | tojson }}</script>
                 <script type="application/json" id="ma-initial-accounts">{{ form.accounts_modules | default([]) | tojson }}</script>
@@ -250,7 +249,7 @@ input[type="text"]:focus,input[type="password"]:focus,input[type="email"]:focus,
                             <span>Full access</span>
                           </span>
                         {% else %}
-                          {% set raw_chips = role.dashboard_labels + role.sales_analytics_labels + role.user_access_labels + role.accounts_labels|default([]) + role.payroll_labels|default([]) + role.stores_labels|default([]) %}
+                          {% set raw_chips = role.dashboard_labels + role.user_access_labels + role.accounts_labels|default([]) + role.payroll_labels|default([]) + role.stores_labels|default([]) %}
                           {% if raw_chips %}
                             {% for chip in raw_chips[:4] %}
                             <span class="am-access-chip"><span>{{ chip }}</span></span>

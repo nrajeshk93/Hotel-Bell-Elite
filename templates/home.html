@@ -153,19 +153,6 @@
       </a>
       {% endif %}
 
-      {% if has_dashboard_access('sales_analytics') %}
-      <a class="db-home-card db-home-card--indigo" role="listitem" href="{{ url_for('dashboard') }}" data-search="sales analytics dashboard hotel bar restaurant room transfer sales update" aria-label="Open Sales Analytics">
-        <div class="db-home-card-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 3-3 3 2 5-7"/></svg>
-        </div>
-        <h2>Sales Analytics</h2>
-        <div class="db-home-card-foot">
-          <span class="db-home-card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg></span>
-        </div>
-        <p class="db-home-card-desc">Sales updates, room transfers, and analytics for Hotel Bell Elite.</p>
-      </a>
-      {% endif %}
-
       {% if has_dashboard_access('employee_payroll') %}
       <a class="db-home-card db-home-card--orange" role="listitem" href="{{ url_for('employees') }}" data-search="employee payroll salaries epf esic records" aria-label="Open Employee Payroll">
         <div class="db-home-card-icon" aria-hidden="true">
@@ -296,7 +283,7 @@
       </a>
       {% endif %}
 
-      {% if not has_dashboard_access('sales_analytics') and not has_dashboard_access('access_management') and not has_dashboard_access('accounts') and not has_dashboard_access('employee_payroll') and not has_dashboard_access('point_of_sale') and not has_dashboard_access('point_of_sale_bar') and not has_dashboard_access('hotel_rooms') and not has_dashboard_access('communication_hub') and not has_dashboard_access('stores') and not has_dashboard_access('master') and not has_dashboard_access('reports') and not has_dashboard_access('settings') %}
+      {% if not has_dashboard_access('access_management') and not has_dashboard_access('accounts') and not has_dashboard_access('employee_payroll') and not has_dashboard_access('point_of_sale') and not has_dashboard_access('point_of_sale_bar') and not has_dashboard_access('hotel_rooms') and not has_dashboard_access('communication_hub') and not has_dashboard_access('stores') and not has_dashboard_access('master') and not has_dashboard_access('reports') and not has_dashboard_access('settings') %}
       <div class="db-home-empty" role="status">
         <h2>No modules assigned yet</h2>
         <p>This account is active, but no dashboard modules have been assigned. Ask an administrator to grant access so your modules appear here.</p>
