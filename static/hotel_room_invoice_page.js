@@ -300,7 +300,8 @@
   function paintBillingBlock(root, stay) {
     var block = root && root.querySelector('[data-hri-billing-block]');
     if (!block) return;
-    var canEdit = canEditAccess(root) && !invoiceLocked(stay, root);
+    /* Billing party follows folio lock (same as check-in flags), not Edit Access. */
+    var canEdit = !!stay && !invoiceLocked(stay, root);
     setBillingModeUi(root, billingModeFromStay(stay));
     var nameEl = $('#hri-agency-name', root);
     var gstEl = $('#hri-agency-gst', root);
@@ -338,11 +339,16 @@
 
   function saveBilling(root, opts) {
     opts = opts || {};
-    if (!isLedgerEdit(root)) {
+    if (!root || !root.querySelector('[data-hri-billing-block]')) {
       return Promise.resolve(null);
     }
-    if (!requireEditAccess(root, 'Edit Access is required to change billing.')) {
-      return Promise.reject(new Error('edit access required'));
+    if (!lastRoom || !lastRoom.stay) {
+      showToast('No active stay for billing.', true);
+      return Promise.reject(new Error('no stay'));
+    }
+    if (invoiceLocked(lastRoom.stay, root)) {
+      showToast('Billing cannot be changed after the invoice is generated.', true);
+      return Promise.reject(new Error('invoice locked'));
     }
     var payload = collectBillingPayload(root);
     if (payload.billingMode === 'agency' && !payload.agencyName) {
@@ -495,7 +501,7 @@
   }
 
   function bindAgencySuggest(root) {
-    if (!root || !isLedgerEdit(root)) return;
+    if (!root) return;
     var nameInput = $('#hri-agency-name', root);
     var box = $('#hri-agency-suggest', root);
     if (!nameInput || !box) return;
@@ -2748,7 +2754,7 @@
       if (!el || el.__hriBillingBound) return;
       el.__hriBillingBound = true;
       el.addEventListener('change', function () {
-        if (!isLedgerEdit(root)) return;
+        if (!root.querySelector('[data-hri-billing-block]')) return;
         /* Suggest pick already saves; avoid a second toast on the same change. */
         if (id === 'hri-agency-name' && el.getAttribute('data-agency-pick-saving') === '1') {
           return;

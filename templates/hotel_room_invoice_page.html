@@ -53,8 +53,6 @@
   data-invoice-api="{{ url_for('hotel_invoice_ledger_api', invoice_number=invoice_number) }}"
   data-invoice-edit-api="{{ url_for('hotel_invoice_ledger_edit_api', invoice_number=invoice_number) }}"
   data-ledger-back-url="{{ url_for('hotel_invoice_ledger') }}"
-  data-agencies-api="{{ agencies_api_url|default(url_for('list_agencies_api')) }}"
-  data-agencies="{{ agencies|default([])|tojson|e }}"
   {% else %}
   data-room-api="{{ url_for('hotel_room_detail_api', room_id=room.id) }}"
   data-room-detail-url="{{ url_for('hotel_room_detail', room_id=room.id) }}"
@@ -62,6 +60,8 @@
   data-open-settle="{{ '1' if open_settle else '0' }}"
   data-invoice-kind="{{ invoice_kind|default('hotel') }}"
   data-can-edit="{{ '1' if can_edit_invoices else '0' }}"
+  data-agencies-api="{{ agencies_api_url|default(url_for('list_agencies_api')) }}"
+  data-agencies="{{ agencies|default([])|tojson|e }}"
   data-room-bootstrap="{{ room|tojson|e }}"
 >
   <header class="pos-inv-header">
@@ -133,7 +133,6 @@
               <span class="pos-inv-meta-stat-value" data-hri-room-type>{{ room.roomTypeLabel|default(room.roomType)|default('—') }}</span>
             </div>
           </div>
-          {% if ledger_edit %}
           <div class="pos-inv-meta-item pos-inv-meta-item--billing" data-hri-billing-block>
             <span class="pos-inv-meta-stat-label" id="hri-billing-mode-label">Billing</span>
             <div class="hri-billing-mode" role="group" aria-labelledby="hri-billing-mode-label">
@@ -156,7 +155,6 @@
               </label>
             </div>
           </div>
-          {% endif %}
         </div>
       </section>
 

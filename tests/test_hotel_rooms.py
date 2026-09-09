@@ -3728,6 +3728,32 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertIn("hri-agency-suggest", html)
         self.assertIn("data-agencies-api=", html)
 
+    def test_room_invoice_page_shows_billing_toggle_for_staff(self):
+        self._checkin_with_charges(advance=0)
+        page = self.client.get("/hotel/rooms/room-101/invoice")
+        self.assertEqual(page.status_code, 200, page.get_data(as_text=True))
+        html = page.get_data(as_text=True)
+        self.assertIn("data-hri-billing-block", html)
+        self.assertIn("data-hri-billing-mode=\"agency\"", html)
+        self.assertNotIn("data-ledger-edit=\"1\"", html)
+
+        switched = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "update_billing",
+                "billingMode": "agency",
+                "agencyName": "Desk Agency Co",
+                "agencyGst": "",
+                "agencyAddress": "Lobby",
+            },
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(switched.status_code, 200, switched.get_data(as_text=True))
+        stay = ((switched.get_json() or {}).get("room") or {}).get("stay") or {}
+        self.assertTrue(stay.get("agencyRoomBilling"))
+        self.assertTrue(stay.get("agencyFbBilling"))
+        self.assertEqual(stay.get("agencyName"), "Desk Agency Co")
+
     def test_invoice_ledger_edit_update_billing_customer_agency(self):
         self._checkin_with_charges(advance=0)
         room = self._generate_stay_invoice()

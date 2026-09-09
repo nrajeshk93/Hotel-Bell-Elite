@@ -19339,6 +19339,35 @@ def update_hotel_room_charge(
     return {"room": refreshed or target}
 
 
+def update_hotel_room_billing(conn, room_id, data=None):
+    """Switch Customer/Agency billing on a live occupied stay (invoice page)."""
+    room_id = str(room_id or "").strip()
+    if not room_id:
+        raise ValueError("Hotel room is required.")
+    layout = get_hotel_rooms_layout(conn)
+    rooms = list(layout.get("rooms") or [])
+    target = None
+    for room in rooms:
+        if str(room.get("id") or "") == room_id or str(room.get("number") or "") == room_id:
+            target = room
+            break
+    if not target:
+        raise ValueError("Hotel room not found.")
+    if not _hotel_room_stay_editable(target):
+        raise ValueError("Select an occupied room with an active stay.")
+    stay = _hotel_apply_invoice_billing_edit(target.get("stay"), data)
+    target = dict(target)
+    target["stay"] = stay
+    for idx, candidate in enumerate(rooms):
+        if str(candidate.get("id") or "") == str(target.get("id") or ""):
+            rooms[idx] = target
+            break
+    save_hotel_rooms_layout(conn, layout.get("floors") or [], rooms)
+    refreshed = get_hotel_room(conn, target.get("id") or room_id)
+    _hotel_sync_live_invoice_row(conn, refreshed or target)
+    return {"room": refreshed or target}
+
+
 def delete_hotel_room_charge(conn, room_id, *, charge_key):
     """Remove a stay charge line (extras or folio). Room tariff cannot be deleted."""
     room_id = str(room_id or "").strip()

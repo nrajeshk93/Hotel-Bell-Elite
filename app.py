@@ -133,6 +133,7 @@ from db import (
     append_hotel_room_folio_charge,
     update_hotel_room_charge,
     delete_hotel_room_charge,
+    update_hotel_room_billing,
     find_hotel_guest_by_mobile,
     clear_hotel_room_stay,
     checkout_hotel_merge_group,
@@ -12338,6 +12339,8 @@ def hotel_room_invoice_page(room_id):
     try:
         ensure_hotel_rooms_schema(conn)
         room = get_hotel_room(conn, room_id)
+        ensure_agencies_schema(conn)
+        agencies = list_agencies(conn)
         conn.commit()
     finally:
         conn.close()
@@ -12381,6 +12384,8 @@ def hotel_room_invoice_page(room_id):
         ),
         today_iso=date.today().isoformat(),
         can_edit_invoices=user_can_edit_unsettled_invoices(get_current_user()),
+        agencies=agencies,
+        agencies_api_url=url_for("list_agencies_api"),
     )
 
 
@@ -12947,6 +12952,11 @@ def hotel_room_detail_api(room_id):
                     or data.get("key")
                     or "",
                 )
+                conn.commit()
+                return jsonify({"ok": True, "room": result.get("room")})
+
+            if action == "update_billing":
+                result = update_hotel_room_billing(conn, room_id, data)
                 conn.commit()
                 return jsonify({"ok": True, "room": result.get("room")})
 
