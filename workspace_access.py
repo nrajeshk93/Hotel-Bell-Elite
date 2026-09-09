@@ -65,7 +65,14 @@ _POS_SUBMODULES = (
 _HOTEL_SUBMODULES = (
     {"key": "reservations", "label": "Reservations"},
     {"key": "rooms", "label": "Rooms"},
-    {"key": "invoice_ledger", "label": "Invoice Ledger"},
+    {
+        "key": "invoice_ledger",
+        "label": "Invoice Ledger",
+        "children": (
+            {"key": "invoice_ledger_edit", "label": "Edit"},
+            {"key": "invoice_ledger_delete", "label": "Delete"},
+        ),
+    },
     {"key": "credit", "label": "Credit"},
     {"key": "sales_update", "label": "Sales Update"},
     {"key": "settings", "label": "Settings"},
@@ -117,6 +124,17 @@ def _flatten_submodules(items):
 
 _STORES_SUBMODULES_FLAT = _flatten_submodules(_STORES_SUBMODULES)
 _REPORTS_SUBMODULES_FLAT = _flatten_submodules(_REPORTS_SUBMODULES)
+_HOTEL_SUBMODULES_FLAT = _flatten_submodules(_HOTEL_SUBMODULES)
+# Edit/Delete under Invoice Ledger are opt-in action grants — never implied by a
+# legacy Hotel parent-only role (dashboard hotel_rooms with empty hotel_rooms_access).
+_HOTEL_INVOICE_ACTION_KEYS = frozenset(
+    {"invoice_ledger_edit", "invoice_ledger_delete"}
+)
+_HOTEL_PAGE_KEYS = frozenset(
+    item["key"]
+    for item in _HOTEL_SUBMODULES_FLAT
+    if item["key"] not in _HOTEL_INVOICE_ACTION_KEYS
+)
 _GST_REPORT_KEYS = frozenset({"gst", "gst_hotel", "gst_fnb"})
 
 # Single registry aligned with the workspace sidebar and access-management UI.
@@ -278,7 +296,7 @@ _POS_SUBMODULE_LABELS = {
     item["key"]: item["label"] for item in _POS_SUBMODULES
 }
 _HOTEL_SUBMODULE_LABELS = {
-    item["key"]: item["label"] for item in _HOTEL_SUBMODULES
+    item["key"]: item["label"] for item in _HOTEL_SUBMODULES_FLAT
 }
 _COMMUNICATION_HUB_SUBMODULE_LABELS = {
     item["key"]: item["label"] for item in _COMMUNICATION_HUB_SUBMODULES
@@ -1394,12 +1412,21 @@ def user_can_access_hotel_rooms_submodule(user, submodule_key):
         return False
     if user.get("is_admin"):
         return True
-    return submodule_key in _scoped_access_keys(
-        user,
-        attr="hotel_rooms_access",
-        dashboard_key="hotel_rooms",
-        all_keys={item["key"] for item in _HOTEL_SUBMODULES},
-    )
+    return submodule_key in _hotel_rooms_access_keys(user)
+
+
+def _hotel_rooms_access_keys(user):
+    """Resolved Hotel page keys. Invoice Ledger Edit/Delete stay opt-in only."""
+    if not user:
+        return set()
+    if user.get("is_admin"):
+        return set(item["key"] for item in _HOTEL_SUBMODULES_FLAT)
+    access = set(user.get("hotel_rooms_access", set()) or set())
+    if access:
+        return access
+    if "hotel_rooms" in user.get("dashboard_access", set()):
+        return set(_HOTEL_PAGE_KEYS)
+    return set()
 
 
 def user_can_access_communication_hub_submodule(user, submodule_key):
@@ -1610,13 +1637,8 @@ def point_of_sale_bar_access_list(user):
 def hotel_rooms_access_list(user):
     if not user:
         return []
-    unlocked = _scoped_access_keys(
-        user,
-        attr="hotel_rooms_access",
-        dashboard_key="hotel_rooms",
-        all_keys={item["key"] for item in _HOTEL_SUBMODULES},
-    )
-    return [item["key"] for item in _HOTEL_SUBMODULES if item["key"] in unlocked]
+    unlocked = _hotel_rooms_access_keys(user)
+    return [item["key"] for item in _HOTEL_SUBMODULES_FLAT if item["key"] in unlocked]
 
 
 def communication_hub_access_list(user):
@@ -1885,6 +1907,8 @@ def user_can_cancel_invoices(user):
     """True when the user may cancel unsettled POS or Hotel invoices.
 
     Granted via the Cancellation module (administrators include all modules).
+    Hotel Invoice Ledger → Delete is checked separately via
+    ``user_can_delete_hotel_invoices``.
     """
     return user_can_access_dashboard(user, "cancellation_access")
 
@@ -1913,8 +1937,30 @@ def user_can_edit_unsettled_invoices(user):
     """True when the user may edit hotel/POS invoice folio charges and reopen invoices.
 
     Granted via the Edit module (administrators include all modules).
+    Hotel Invoice Ledger → Edit is checked separately via
+    ``user_can_edit_hotel_invoices``.
     """
     return user_can_access_dashboard(user, "edit_access")
+
+
+def user_can_edit_hotel_invoices(user):
+    """True when the user may edit unsettled Hotel invoices from Invoice Ledger.
+
+    Granted via Hotel → Invoice Ledger → Edit, or the global Edit module.
+    """
+    if user_can_edit_unsettled_invoices(user):
+        return True
+    return user_can_access_hotel_rooms_submodule(user, "invoice_ledger_edit")
+
+
+def user_can_delete_hotel_invoices(user):
+    """True when the user may cancel/delete unsettled Hotel invoices.
+
+    Granted via Hotel → Invoice Ledger → Delete, or the global Cancellation module.
+    """
+    if user_can_cancel_invoices(user):
+        return True
+    return user_can_access_hotel_rooms_submodule(user, "invoice_ledger_delete")
 
 
 def user_can_approve_transactions(user):

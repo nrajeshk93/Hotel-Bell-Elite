@@ -3379,10 +3379,10 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertNotIn("hil-edit-btn", locked_html)
         self.assertNotIn("hil-cancel-btn", locked_html)
         self.assertEqual(denied_edit.status_code, 403)
-        self.assertIn("Edit Access", (denied_edit.get_json() or {}).get("error", ""))
+        self.assertIn("Edit access", (denied_edit.get_json() or {}).get("error", ""))
         self.assertEqual(denied_cancel.status_code, 403)
         self.assertIn(
-            "Cancellation", (denied_cancel.get_json() or {}).get("error", "")
+            "Delete access", (denied_cancel.get_json() or {}).get("error", "")
         )
 
         cancel_only = dict(hotel_only)
@@ -3412,6 +3412,44 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertIn("hil-edit-btn", edit_html)
         self.assertNotIn("hil-cancel-btn", edit_html)
         self.assertEqual(edit_denied_cancel.status_code, 403)
+
+        segment_edit = dict(hotel_only)
+        segment_edit["hotel_rooms_access"] = {
+            "invoice_ledger",
+            "invoice_ledger_edit",
+        }
+        with mock.patch.object(
+            self.app_mod, "get_current_user", return_value=segment_edit
+        ):
+            seg_edit_page = self.client.get("/hotel/invoice-ledger?status=open")
+            seg_denied_cancel = self.client.post(
+                f"/hotel/invoice-ledger/api/{inv_no}/cancel",
+                json={"reason": "Guest left"},
+                headers={"X-Requested-With": "XMLHttpRequest"},
+            )
+        seg_edit_html = seg_edit_page.get_data(as_text=True)
+        self.assertIn("hil-edit-btn", seg_edit_html)
+        self.assertNotIn("hil-cancel-btn", seg_edit_html)
+        self.assertEqual(seg_denied_cancel.status_code, 403)
+
+        segment_delete = dict(hotel_only)
+        segment_delete["hotel_rooms_access"] = {
+            "invoice_ledger",
+            "invoice_ledger_delete",
+        }
+        with mock.patch.object(
+            self.app_mod, "get_current_user", return_value=segment_delete
+        ):
+            seg_del_page = self.client.get("/hotel/invoice-ledger?status=open")
+            seg_denied_edit = self.client.post(
+                f"/hotel/invoice-ledger/api/{inv_no}/reopen-edit",
+                json={},
+                headers={"X-Requested-With": "XMLHttpRequest"},
+            )
+        seg_del_html = seg_del_page.get_data(as_text=True)
+        self.assertNotIn("hil-edit-btn", seg_del_html)
+        self.assertIn("hil-cancel-btn", seg_del_html)
+        self.assertEqual(seg_denied_edit.status_code, 403)
 
         missing_reason = self.client.post(
             f"/hotel/invoice-ledger/api/{inv_no}/cancel",

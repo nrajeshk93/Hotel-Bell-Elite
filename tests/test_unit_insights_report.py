@@ -263,6 +263,87 @@ class UnitInsightsReportDbTests(unittest.TestCase):
         self.assertEqual(breezer["units_sold"], 2.0)
         self.assertEqual(breezer["units_sold_display"], "2 bottle")
 
+    def test_name_matched_bar_spirit_gets_default_peg_recipe(self):
+        """Unlinked bar spirit matching Product Master by name (e.g. Morpheus XO)."""
+        cat_id = self.conn.execute(
+            "SELECT category_id FROM store_products WHERE id = ?",
+            (self.product_id,),
+        ).fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO store_products
+                (category_id, name, default_unit, outlet, approximate_price, is_active, sort_order)
+            VALUES (?, 'Morpheus Xo', 'mL', 'bar', 4500, 1, 5)
+            """,
+            (cat_id,),
+        )
+        product_id = self.conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO pos_menu_items
+                (category_id, product_id, name, code, variant, rate, sort_order, is_active, outlet)
+            VALUES (?, NULL, 'MORPHEUS XO', 'MX1', '', 132, 4, 1, 'bar')
+            """,
+            (self.menu_cat_id,),
+        )
+        menu_id = self.conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO pos_invoices
+                (order_no, saved_at, order_date, outlet, status, is_active,
+                 customer_name, customer_mobile, subtotal, grand_total,
+                 created_at, updated_at)
+            VALUES ('UIR-MX', '2026-08-01 18:00:00', '2026-08-01', 'bar', 'open', 1,
+                    'Guest', '9000000088', 396, 396,
+                    datetime('now','localtime'), datetime('now','localtime'))
+            """
+        )
+        invoice_id = self.conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO pos_invoice_lines
+                (invoice_id, menu_item_id, name, variant, rate, qty, line_total, sort_order)
+            VALUES (?, ?, 'MORPHEUS XO', '', 132, 3, 396, 1)
+            """,
+            (invoice_id, menu_id),
+        )
+        self.conn.execute(
+            """
+            INSERT INTO pos_invoice_payments
+                (invoice_id, payment_method, amount, payment_date, created_at)
+            VALUES (?, 'cash', 396, '2026-08-01', datetime('now','localtime'))
+            """,
+            (invoice_id,),
+        )
+        self.conn.commit()
+
+        rows = db_mod.list_pos_unit_insights(
+            self.conn,
+            date_from="2026-08-01",
+            date_to="2026-08-01",
+            outlet="bar",
+            settlement="settled",
+        )
+        morpheus = next(
+            (r for r in rows if "morpheus" in str(r["product_name"]).casefold()),
+            None,
+        )
+        self.assertIsNotNone(morpheus)
+        # 3 pegs × 30 ml (same default as Absolute / Antiquity).
+        self.assertEqual(morpheus["units_sold"], 90.0)
+        self.assertEqual(morpheus["units_sold_display"], "90 mL")
+        recipe = self.conn.execute(
+            """
+            SELECT product_id, qty, unit FROM pos_menu_recipe_lines
+            WHERE menu_item_id = ?
+            """,
+            (menu_id,),
+        ).fetchone()
+        self.assertIsNotNone(recipe)
+        self.assertEqual(int(recipe["product_id"]), int(product_id))
+        self.assertEqual(float(recipe["qty"]), 30.0)
+        self.assertEqual(str(recipe["unit"]).lower(), "ml")
+
     def test_recipe_takes_precedence_over_menu_product_link(self):
         """Do not double-count when recipe lines exist alongside product_id."""
         self._insert_invoice(order_no="UIR-3b", qty=2, settled=True)

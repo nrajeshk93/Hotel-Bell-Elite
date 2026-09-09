@@ -216,10 +216,31 @@ class WorkspaceAccessTests(unittest.TestCase):
                 "Settings",
             ],
         )
+        ledger = next(
+            child for child in hotel["children"] if child["label"] == "Invoice Ledger"
+        )
+        self.assertEqual(ledger["id"], "hotel_rooms.invoice_ledger")
+        self.assertEqual(ledger["fieldValue"], "invoice_ledger")
+        self.assertEqual(
+            [child["label"] for child in ledger["children"]],
+            ["Edit", "Delete"],
+        )
+        self.assertEqual(
+            ledger["children"][0]["id"], "hotel_rooms.invoice_ledger_edit"
+        )
+        self.assertEqual(
+            ledger["children"][0]["fieldValue"], "invoice_ledger_edit"
+        )
+        self.assertEqual(
+            ledger["children"][1]["id"], "hotel_rooms.invoice_ledger_delete"
+        )
+        self.assertEqual(
+            ledger["children"][1]["fieldValue"], "invoice_ledger_delete"
+        )
         comm = next(node for node in tree if node["label"] == "Communication Hub")
         self.assertEqual(
             [child["label"] for child in comm["children"]],
-            ["Inbox", "Promotion"],
+            ["Inbox", "Promotion", "Feedback"],
         )
         stores = next(node for node in tree if node["label"] == "Purchase & Inventory")
         self.assertEqual(stores["dashboardKey"], "stores")
@@ -313,6 +334,64 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertFalse(user_can_edit_unsettled_invoices(locked))
         self.assertTrue(user_can_edit_unsettled_invoices(unlocked))
         self.assertTrue(user_can_edit_unsettled_invoices(admin))
+
+    def test_hotel_invoice_ledger_edit_delete_segments(self):
+        from workspace_access import (
+            user_can_access_hotel_rooms_submodule,
+            user_can_delete_hotel_invoices,
+            user_can_edit_hotel_invoices,
+            hotel_rooms_access_list,
+        )
+
+        hotel_view = {
+            "id": 71,
+            "is_admin": False,
+            "dashboard_access": {"hotel_rooms"},
+            "hotel_rooms_access": set(),
+        }
+        self.assertTrue(
+            user_can_access_hotel_rooms_submodule(hotel_view, "invoice_ledger")
+        )
+        self.assertFalse(
+            user_can_access_hotel_rooms_submodule(hotel_view, "invoice_ledger_edit")
+        )
+        self.assertFalse(
+            user_can_access_hotel_rooms_submodule(hotel_view, "invoice_ledger_delete")
+        )
+        self.assertFalse(user_can_edit_hotel_invoices(hotel_view))
+        self.assertFalse(user_can_delete_hotel_invoices(hotel_view))
+        self.assertEqual(len(hotel_rooms_access_list(hotel_view)), 6)
+
+        edit_seg = {
+            "id": 72,
+            "is_admin": False,
+            "dashboard_access": {"hotel_rooms"},
+            "hotel_rooms_access": {"invoice_ledger", "invoice_ledger_edit"},
+        }
+        self.assertTrue(user_can_edit_hotel_invoices(edit_seg))
+        self.assertFalse(user_can_delete_hotel_invoices(edit_seg))
+
+        delete_seg = {
+            "id": 73,
+            "is_admin": False,
+            "dashboard_access": {"hotel_rooms"},
+            "hotel_rooms_access": {"invoice_ledger", "invoice_ledger_delete"},
+        }
+        self.assertFalse(user_can_edit_hotel_invoices(delete_seg))
+        self.assertTrue(user_can_delete_hotel_invoices(delete_seg))
+
+        via_global = {
+            "id": 74,
+            "is_admin": False,
+            "dashboard_access": {
+                "hotel_rooms",
+                "edit_access",
+                "cancellation_access",
+            },
+            "hotel_rooms_access": {"invoice_ledger"},
+        }
+        self.assertTrue(user_can_edit_hotel_invoices(via_global))
+        self.assertTrue(user_can_delete_hotel_invoices(via_global))
 
     def test_approval_access_unlocks_purchase_verification_actions(self):
         locked = {
@@ -437,11 +516,11 @@ class WorkspaceAccessTests(unittest.TestCase):
             "reports_access": set(),
         }
         self.assertTrue(user_can_access_point_of_sale_submodule(restaurant, "invoice"))
-        self.assertEqual(len(point_of_sale_access_list(restaurant)), 6)
+        self.assertEqual(len(point_of_sale_access_list(restaurant)), 7)
         self.assertTrue(user_can_access_hotel_rooms_submodule(hotel, "rooms"))
         self.assertEqual(len(hotel_rooms_access_list(hotel)), 6)
         self.assertTrue(user_can_access_reports_submodule(reports, "hotel_sales"))
-        self.assertEqual(len(reports_access_list(reports)), 11)
+        self.assertEqual(len(reports_access_list(reports)), 12)
 
     def test_endpoint_submodule_mapping_for_new_scopes(self):
         from workspace_access import (

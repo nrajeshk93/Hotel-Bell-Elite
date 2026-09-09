@@ -293,6 +293,8 @@ from workspace_access import (
     user_can_access_user_access_submodule,
     user_can_edit_kot_sent_lines,
     user_can_cancel_invoices,
+    user_can_delete_hotel_invoices,
+    user_can_edit_hotel_invoices,
     user_can_edit_unsettled_invoices,
     user_can_approve_transactions,
     user_has_assigned_access_role,
@@ -1253,6 +1255,8 @@ def inject_auth_context():
         "has_user_access_submodule": lambda key: user_can_access_user_access_submodule(user, key),
         "user_can_edit_kot_sent_lines": user_can_edit_kot_sent_lines,
         "user_can_cancel_invoices": user_can_cancel_invoices,
+        "user_can_delete_hotel_invoices": user_can_delete_hotel_invoices,
+        "user_can_edit_hotel_invoices": user_can_edit_hotel_invoices,
         "user_can_edit_unsettled_invoices": user_can_edit_unsettled_invoices,
         "user_can_approve_transactions": user_can_approve_transactions,
         "license_expired": license_expired,
@@ -9713,6 +9717,7 @@ def _unit_insights_load(filters):
             settlement=settlement,
         )
         kpis = pos_unit_insights_kpis(rows)
+        conn.commit()
         return rows, kpis
     finally:
         conn.close()
@@ -11283,8 +11288,8 @@ def hotel_invoice_ledger():
         room_transfer_ledger=False,
         is_popup=False,
         hotel_payment_amount_columns=HOTEL_PAYMENT_AMOUNT_COLUMNS,
-        can_cancel_invoices=user_can_cancel_invoices(get_current_user()),
-        can_edit_invoices=user_can_edit_unsettled_invoices(get_current_user()),
+        can_cancel_invoices=user_can_delete_hotel_invoices(get_current_user()),
+        can_edit_invoices=user_can_edit_hotel_invoices(get_current_user()),
     )
 
 
@@ -11507,8 +11512,8 @@ def hotel_room_transfer_invoices():
         page_dom_id="hotel-room-transfer-ledger-page",
         room_transfer_ledger=True,
         is_popup=False,
-        can_cancel_invoices=user_can_cancel_invoices(get_current_user()),
-        can_edit_invoices=user_can_edit_unsettled_invoices(get_current_user()),
+        can_cancel_invoices=user_can_delete_hotel_invoices(get_current_user()),
+        can_edit_invoices=user_can_edit_hotel_invoices(get_current_user()),
     )
 
 
@@ -11757,11 +11762,14 @@ def hotel_invoice_ledger_settle_api(invoice_number):
     endpoint="hotel_invoice_ledger_cancel_api",
 )
 def hotel_invoice_ledger_cancel_api(invoice_number):
-    """Cancel an unsettled hotel invoice (Cancellation)."""
+    """Cancel an unsettled hotel invoice (Invoice Ledger → Delete or Cancellation)."""
     user = get_current_user()
-    if not user_can_cancel_invoices(user):
+    if not user_can_delete_hotel_invoices(user):
         return jsonify(
-            {"ok": False, "error": "Cancellation is required to cancel invoices."}
+            {
+                "ok": False,
+                "error": "Delete access is required to cancel hotel invoices.",
+            }
         ), 403
     data = request.get_json(silent=True) or {}
     reason = ""
@@ -11795,11 +11803,14 @@ def hotel_invoice_ledger_cancel_api(invoice_number):
     endpoint="hotel_invoice_ledger_reopen_edit_api",
 )
 def hotel_invoice_ledger_reopen_edit_api(invoice_number):
-    """Unlock an unsettled hotel invoice for editing (Edit Access)."""
+    """Unlock an unsettled hotel invoice for editing (Invoice Ledger → Edit)."""
     user = get_current_user()
-    if not user_can_edit_unsettled_invoices(user):
+    if not user_can_edit_hotel_invoices(user):
         return jsonify(
-            {"ok": False, "error": "Edit Access is required to edit unsettled invoices."}
+            {
+                "ok": False,
+                "error": "Edit access is required to edit unsettled hotel invoices.",
+            }
         ), 403
     conn = get_db()
     try:
@@ -11831,7 +11842,7 @@ def hotel_invoice_ledger_reopen_edit_api(invoice_number):
 )
 def hotel_invoice_ledger_edit_page(invoice_number):
     """Invoice-scoped edit workspace from Hotel Invoice Ledger."""
-    if not user_can_edit_unsettled_invoices(get_current_user()):
+    if not user_can_edit_hotel_invoices(get_current_user()):
         abort(403)
     conn = get_db()
     try:
@@ -11876,9 +11887,12 @@ def hotel_invoice_ledger_edit_page(invoice_number):
 def hotel_invoice_ledger_edit_api(invoice_number):
     """Apply charge/discount/regenerate actions during a ledger invoice edit."""
     user = get_current_user()
-    if not user_can_edit_unsettled_invoices(user):
+    if not user_can_edit_hotel_invoices(user):
         return jsonify(
-            {"ok": False, "error": "Edit Access is required to edit unsettled invoices."}
+            {
+                "ok": False,
+                "error": "Edit access is required to edit unsettled hotel invoices.",
+            }
         ), 403
     data = request.get_json(silent=True) or {}
     action = (data.get("action") or "").strip().lower()
@@ -12383,7 +12397,7 @@ def hotel_room_invoice_page(room_id):
             )
         ),
         today_iso=date.today().isoformat(),
-        can_edit_invoices=user_can_edit_unsettled_invoices(get_current_user()),
+        can_edit_invoices=user_can_edit_hotel_invoices(get_current_user()),
         agencies=agencies,
         agencies_api_url=url_for("list_agencies_api"),
     )
@@ -12639,15 +12653,15 @@ def hotel_room_detail_api(room_id):
             "add_custom_charge",
             "update_charge",
             "delete_charge",
-        ) and not user_can_edit_unsettled_invoices(get_current_user()):
+        ) and not user_can_edit_hotel_invoices(get_current_user()):
             return jsonify(
                 {
                     "ok": False,
-                    "error": "Edit Access is required to change invoice folio charges.",
+                    "error": "Edit access is required to change invoice folio charges.",
                 }
             ), 403
         # generate_invoice: anyone who can open the room invoice page may mint.
-        # Folio edit / discount / delete still require the Edit module.
+        # Folio edit / discount / delete still require Edit (Hotel Ledger or global).
         try:
             if action == "reserve":
                 stay = data.get("stay") if isinstance(data.get("stay"), dict) else {}

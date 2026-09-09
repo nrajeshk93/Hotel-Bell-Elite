@@ -8894,6 +8894,92 @@ def pos_menu_sales_kpis(rows, conn=None, *, date_from=None, date_to=None, outlet
     }
 
 
+def ensure_pos_unit_insight_default_recipes(conn):
+    """Seed default recipes for menu items that match Product Master by name.
+
+    Absolute / Antiquity-style pegs already have 30 ml recipes. Items like
+    Morpheus XO can be sold (and show in Menu Insights) with no recipe and a
+    null ``product_id``, so Unit Insight dropped them. When a unique
+    case-insensitive Product Master name match exists and the menu item has no
+    recipe lines, attach:
+
+    - bottle / can / pcs → 1 × that unit
+    - ml / liter (bar) → 30 ml peg (same as Absolute Plain / Antiquity Blue)
+    """
+    ensure_pos_schema(conn)
+    ensure_stores_schema(conn)
+    rows = conn.execute(
+        """
+        SELECT
+            m.id AS menu_item_id,
+            m.outlet AS menu_outlet,
+            p.id AS product_id,
+            p.default_unit AS default_unit,
+            p.outlet AS product_outlet
+        FROM pos_menu_items m
+        JOIN store_products p ON p.is_active = 1
+          AND LOWER(TRIM(p.name)) = LOWER(TRIM(m.name))
+        WHERE m.is_active = 1
+          AND NOT EXISTS (
+              SELECT 1
+              FROM pos_menu_recipe_lines r
+              WHERE r.menu_item_id = m.id
+          )
+        ORDER BY
+            m.id ASC,
+            CASE
+                WHEN LOWER(IFNULL(p.outlet, '')) = LOWER(IFNULL(m.outlet, '')) THEN 0
+                ELSE 1
+            END ASC,
+            p.id ASC
+        """
+    ).fetchall()
+    chosen = {}
+    for row in rows:
+        mid = int(row["menu_item_id"] or 0)
+        if mid <= 0 or mid in chosen:
+            continue
+        chosen[mid] = row
+
+    inserted = 0
+    for mid, row in chosen.items():
+        product_id = int(row["product_id"] or 0)
+        if product_id <= 0:
+            continue
+        unit_key = _normalize_pos_menu_unit(row["default_unit"])
+        menu_outlet = str(row["menu_outlet"] or "").strip().lower()
+        recipe_qty = None
+        recipe_unit = None
+        if unit_key in ("bottle", "can", "pcs"):
+            recipe_qty = 1.0
+            recipe_unit = unit_key
+        elif unit_key in ("ml", "liter") and menu_outlet in ("bar", "bars"):
+            recipe_qty = 30.0
+            recipe_unit = "ml"
+        else:
+            continue
+        conn.execute(
+            """
+            INSERT INTO pos_menu_recipe_lines
+                (menu_item_id, product_id, qty, unit, sort_order)
+            VALUES (?, ?, ?, ?, 1)
+            """,
+            (mid, product_id, recipe_qty, recipe_unit),
+        )
+        # Keep Product Master link in sync when missing (menu_product fallback).
+        conn.execute(
+            """
+            UPDATE pos_menu_items
+            SET product_id = ?
+            WHERE id = ?
+              AND (product_id IS NULL OR product_id = 0)
+            """,
+            (product_id, mid),
+        )
+        inserted += 1
+    return inserted
+
+
 def list_pos_unit_insights_raw(
     conn,
     *,
@@ -8905,12 +8991,13 @@ def list_pos_unit_insights_raw(
     """Fetch invoice line × recipe rows for Unit Insight aggregation.
 
     Prefer ``pos_menu_recipe_lines``. When a sold menu item has no recipe but is
-    linked to Product Master (``pos_menu_items.product_id``), fall back to
-    1 × product default unit per menu qty — so bar bottles (breezers, etc.)
-    still appear the same way Menu Insights shows them as sold.
+    linked to Product Master (``pos_menu_items.product_id``) — or matches an
+    active Product Master row by name — fall back to 1 × product default unit
+    per menu qty so bar bottles still appear like Menu Insights.
     """
     ensure_pos_schema(conn)
     ensure_stores_schema(conn)
+    ensure_pos_unit_insight_default_recipes(conn)
     clauses, params = _pos_menu_sales_invoice_clauses(
         date_from=date_from,
         date_to=date_to,
@@ -8951,9 +9038,35 @@ def list_pos_unit_insights_raw(
         FROM pos_invoice_lines l
         JOIN pos_invoices i ON i.id = l.invoice_id
         JOIN pos_menu_items m ON m.id = l.menu_item_id
-        JOIN store_products p ON p.id = m.product_id AND p.is_active = 1
+        JOIN store_products p ON p.is_active = 1
+          AND p.id = COALESCE(
+              NULLIF(m.product_id, 0),
+              (
+                  SELECT p2.id
+                  FROM store_products p2
+                  WHERE p2.is_active = 1
+                    AND LOWER(TRIM(p2.name)) = LOWER(TRIM(m.name))
+                  ORDER BY
+                      CASE
+                          WHEN LOWER(IFNULL(p2.outlet, '')) = LOWER(IFNULL(m.outlet, ''))
+                          THEN 0
+                          ELSE 1
+                      END ASC,
+                      p2.id ASC
+                  LIMIT 1
+              )
+          )
         WHERE {where}
-          AND m.product_id IS NOT NULL
+          AND COALESCE(
+              NULLIF(m.product_id, 0),
+              (
+                  SELECT p3.id
+                  FROM store_products p3
+                  WHERE p3.is_active = 1
+                    AND LOWER(TRIM(p3.name)) = LOWER(TRIM(m.name))
+                  LIMIT 1
+              )
+          ) IS NOT NULL
           AND NOT EXISTS (
               SELECT 1
               FROM pos_menu_recipe_lines r2
