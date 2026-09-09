@@ -715,6 +715,55 @@
     return mergeMemberMatchesPrimary(stay, item, billableNights, primary);
   }
 
+  /**
+   * Collapse merge folio stay lines that share the same nightly rate into one
+   * print row (Nights × Rooms × Rate). Keeps distinct rates as separate groups.
+   */
+  function groupMergeStayFolioByRate(entries, billableNights) {
+    var nights = Math.max(1, Math.floor(Number(billableNights) || 1));
+    var groups = {};
+    var order = [];
+    (entries || []).forEach(function (entry) {
+      if (!entry) return;
+      var rate = roundInvoiceMoney(entry.rate);
+      var key = String(rate);
+      if (!groups[key]) {
+        groups[key] = {
+          rate: rate,
+          nights: nights,
+          rooms: 0,
+          amount: 0,
+          labels: []
+        };
+        order.push(key);
+      }
+      var g = groups[key];
+      g.rooms += 1;
+      g.amount = roundInvoiceMoney(g.amount + Number(entry.amount || 0));
+      if (entry.label) g.labels.push(String(entry.label));
+    });
+    return order.map(function (key) {
+      var g = groups[key];
+      var description;
+      if (g.rooms <= 1 && g.labels[0]) {
+        description = g.labels[0];
+      } else {
+        description = 'Room stay charges';
+      }
+      /* Prefer rate × nights × rooms so the printed math matches the columns. */
+      var expected = roundInvoiceMoney(g.rate * g.nights * g.rooms);
+      return {
+        description: description,
+        nights: g.nights,
+        rooms: g.rooms,
+        rate: g.rate,
+        amount: expected,
+        lineKind: 'other',
+        mergeGrouped: true
+      };
+    });
+  }
+
   function buildInvoiceLines(room) {
     var stay = (room && room.stay) || {};
     var lines = [];
@@ -776,13 +825,14 @@
       return String(stay.ratePlan || primaryKey.plan || '').trim();
     }
 
-    if ((roomRate > 0 || nightlyRates.length) && checkIn) {
+    /* Include ₹0 nights (complimentary). Previously `nightRate > 0` dropped them. */
+    if (checkIn && (nightlyRates.length || roomRate > 0 || roomRate === 0)) {
       var nightRows = [];
       for (var i = 0; i < billableNights; i++) {
         var nightDate = addDaysISO(checkIn, i);
         var isOverstay = i >= nights;
         var nightRate = nightRateFor(i, nightDate);
-        if (!(nightRate > 0)) continue;
+        if (!isFinite(nightRate) || nightRate < 0) continue;
         var plan = nightPlanFor(i, nightDate);
         var desc = isOverstay ? roomLabel + ' (Overstay)' : roomLabel;
         if (plan) desc += ' · ' + plan;
@@ -851,35 +901,48 @@
     });
 
     var folio = Array.isArray(stay.folioCharges) ? stay.folioCharges : [];
+    var mergeStayEntries = [];
     folio.forEach(function (item) {
       if (!item) return;
       var kind = String(item.kind || '').toLowerCase();
       if (kind === 'restaurant_room_transfer' || kind === 'bar_room_transfer') return;
       var amount = Number(item.amount || 0);
-      if (!(amount > 0)) return;
+      var src = String(item.source || '').toLowerCase();
+      var isMergeRate = src === 'merged_room_rate';
+      var isMergeAbsorb = src === 'room_merge';
+      /* Complimentary merge stay charges (₹0) must still print / list. */
+      if (!(amount > 0) && !isMergeRate && !isMergeAbsorb) return;
+      if (!(isFinite(amount) && amount >= 0)) return;
       if (shouldFoldMergeFolioLine(stay, item, billableNights, primaryKey)) {
         return;
       }
       var at = toDateISO(item.at) || checkIn;
-      var src = String(item.source || '').toLowerCase();
-      var isMergeRate = src === 'merged_room_rate';
-      var isMergeAbsorb = src === 'room_merge';
-      var lineNights = isMergeRate || isMergeAbsorb ? billableNights : 1;
+      if (isMergeRate || isMergeAbsorb) {
+        mergeStayEntries.push({
+          amount: amount,
+          rate: roundInvoiceMoney(amount / Math.max(1, billableNights)),
+          label: folioChargeDisplayLabel(item),
+          date: at
+        });
+        return;
+      }
+      var lineNights = 1;
       var lineRooms = 1;
-      var lineRate =
-        isMergeRate || isMergeAbsorb
-          ? roundInvoiceMoney(amount / Math.max(1, billableNights))
-          : roundInvoiceMoney(amount / Math.max(1, lineNights * lineRooms));
       lines.push({
         description: folioChargeDisplayLabel(item),
         date: at,
         qty: 1,
         nights: lineNights,
         rooms: lineRooms,
-        rate: lineRate,
+        rate: roundInvoiceMoney(amount / Math.max(1, lineNights * lineRooms)),
         amount: amount,
         lineKind: 'other'
       });
+    });
+    groupMergeStayFolioByRate(mergeStayEntries, billableNights).forEach(function (row) {
+      row.date = checkIn;
+      row.qty = 1;
+      lines.push(row);
     });
 
     return lines;
@@ -1925,6 +1988,7 @@
   global.buildFbCombinedTransferInvoiceHtml = buildFbCombinedTransferInvoiceHtml;
   global.buildHotelRoomInvoiceLines = buildInvoiceLines;
   global.groupConsecutiveHotelInvoiceTariffNights = groupConsecutiveTariffNights;
+  global.groupMergeStayHotelInvoiceFolioByRate = groupMergeStayFolioByRate;
   global.openHotelRoomInvoice = openHotelRoomInvoice;
   global.openFbCombinedTransferInvoice = openFbCombinedTransferInvoice;
   global.openHtmlInPreviewWindow = openHtmlInPreviewWindow;

@@ -13914,9 +13914,9 @@ def _hotel_set_nightly_rate_at(stay, night_index, rate_val):
     try:
         rate = round(float(rate_val), 2)
     except (TypeError, ValueError) as exc:
-        raise ValueError("Enter a room rate greater than zero.") from exc
-    if rate <= 0:
-        raise ValueError("Enter a room rate greater than zero.")
+        raise ValueError("Enter a valid room rate.") from exc
+    if rate < 0:
+        raise ValueError("Room rate cannot be negative.")
     try:
         booked = max(1, int(stay.get("nights") or 1))
     except (TypeError, ValueError):
@@ -13927,7 +13927,9 @@ def _hotel_set_nightly_rate_at(stay, night_index, rate_val):
         billable = booked
     if idx >= billable:
         raise ValueError("Night is outside this stay.")
-    default_rate = round(float(stay.get("roomRate") or 0), 2) or rate
+    default_rate = round(float(stay.get("roomRate") or 0), 2)
+    if default_rate < 0:
+        default_rate = rate
     nightly = [
         dict(item) if isinstance(item, dict) else {}
         for item in (stay.get("nightlyRates") or [])
@@ -13958,7 +13960,7 @@ def _hotel_apply_booked_nightly_rate(stay, rate_val):
         rate = round(float(rate_val), 2)
     except (TypeError, ValueError):
         return stay
-    if rate <= 0:
+    if rate < 0:
         return stay
     try:
         nights = max(1, int(stay.get("nights") or 1))
@@ -14055,12 +14057,12 @@ def _hotel_mutate_stay_charge(stay, room_id, charge_key, label="", amount=None, 
         nights = max(1, int(stay.get("nights") or 1))
         if rate_val is None and amt is not None:
             rate_val = round(amt / nights, 2) if nights else amt
-        if rate_val is None or rate_val <= 0:
-            raise ValueError("Enter a room rate greater than zero.")
+        if rate_val is None or rate_val < 0:
+            raise ValueError("Enter a valid room rate.")
         stay["roomRate"] = rate_val
         stay["totalRate"] = round(rate_val * nights, 2)
         # Folio totals prefer nightlyRates; keep booked nights in sync so the
-        # rate edit is not discarded on normalize.
+        # rate edit is not discarded on normalize. Zero is complimentary.
         stay = _hotel_apply_booked_nightly_rate(stay, rate_val)
     elif key.startswith("night:"):
         try:
@@ -14069,8 +14071,8 @@ def _hotel_mutate_stay_charge(stay, room_id, charge_key, label="", amount=None, 
             raise ValueError("Invalid night charge.") from exc
         if rate_val is None and amt is not None:
             rate_val = amt
-        if rate_val is None or rate_val <= 0:
-            raise ValueError("Enter a room rate greater than zero.")
+        if rate_val is None or rate_val < 0:
+            raise ValueError("Enter a valid room rate.")
         stay = _hotel_set_nightly_rate_at(stay, night_idx, rate_val)
     elif key == "extra_bed":
         if amt is None:
@@ -18864,6 +18866,7 @@ def _normalize_hotel_room_stay(stay, tax_rates=None):
                     "ratePlan": plan,
                     "roomRate": max(0.0, row_rate),
                     "isPrimary": bool(item.get("isPrimary") or item.get("is_primary")),
+                    "autoRate": bool(item.get("autoRate") or item.get("auto_rate")),
                     "nightlyRates": item.get("nightlyRates")
                     if isinstance(item.get("nightlyRates"), list)
                     else (
@@ -18980,7 +18983,12 @@ def _normalize_hotel_room_stay(stay, tax_rates=None):
             if not isinstance(item, dict):
                 continue
             amount = round(_num(item.get("amount"), 0), 2)
-            if amount <= 0:
+            source = _hotel_str(item.get("source"), 40)
+            # Complimentary merge rooms are stored at ₹0 — keep those folio lines.
+            is_merge_stay = source in ("merged_room_rate", "room_merge")
+            if amount < 0:
+                continue
+            if amount <= 0 and not is_merge_stay:
                 continue
             kind = _hotel_str(item.get("kind"), 40).lower().replace(" ", "_")
             if kind not in allowed_kinds:
@@ -18998,7 +19006,7 @@ def _normalize_hotel_room_stay(stay, tax_rates=None):
                 "kind": kind,
                 "label": label,
                 "amount": amount,
-                "source": _hotel_str(item.get("source"), 40),
+                "source": source,
                 "invoiceId": _hotel_str(
                     item.get("invoiceId") or item.get("invoice_id"), 40
                 ),
@@ -22241,6 +22249,9 @@ def _hotel_sync_merged_room_rate_folio(primary, rooms, tariff_rates=None):
     rate_rows = [
         row for row in (primary_stay.get("mergeRoomRates") or []) if isinstance(row, dict)
     ]
+    # Preserve client/typed rates before we rebuild mergeRoomRates — auto-filled
+    # zero rows must not wipe occupied absorb lines or invent complimentary folio lines.
+    typed_rate_rows = list(rate_rows)
     try:
         nights = max(1, int(float(primary_stay.get("nights") or 1)))
     except (TypeError, ValueError):
@@ -22264,15 +22275,23 @@ def _hotel_sync_merged_room_rate_folio(primary, rooms, tariff_rates=None):
         or primary_stay.get("mobile")
     )
 
-    def _lookup_saved_row(room_id, number):
+    def _lookup_row_in(rows, room_id, number):
         rid = str(room_id or "").strip()
         num = str(number or "").strip()
-        for row in rate_rows:
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
             if rid and str(row.get("roomId") or "").strip() == rid:
                 return row
             if num and str(row.get("number") or "").strip() == num:
                 return row
         return None
+
+    def _lookup_saved_row(room_id, number):
+        return _lookup_row_in(rate_rows, room_id, number)
+
+    def _lookup_typed_row(room_id, number):
+        return _lookup_row_in(typed_rate_rows, room_id, number)
 
     def _lookup_saved_rate(room_id, number):
         row = _lookup_saved_row(room_id, number)
@@ -22282,6 +22301,19 @@ def _hotel_sync_merged_room_rate_folio(primary, rooms, tariff_rates=None):
             return max(0.0, float(row.get("roomRate") or 0)), True
         except (TypeError, ValueError):
             return 0.0, True
+
+    def _typed_charges_explicit_zero(room_id, number):
+        """True when the stay payload typed this merge room at complimentary ₹0."""
+        row = _lookup_typed_row(room_id, number)
+        if row is None or row.get("autoRate"):
+            return False
+        summed = _hotel_sum_nightly_rates(row.get("nightlyRates"))
+        if summed is not None:
+            return summed <= 0.009
+        try:
+            return max(0.0, float(row.get("roomRate") or 0)) <= 0.009
+        except (TypeError, ValueError):
+            return True
 
     def _row_charges(row, fallback_nightly):
         """Total stay charges for a merge room rate row."""
@@ -22378,6 +22410,10 @@ def _hotel_sync_merged_room_rate_folio(primary, rooms, tariff_rates=None):
         mnum = str(member.get("number") or "").strip()
         mtype = str(member.get("roomType") or "").strip()
         member_nightly = _nightly_rate_for(member)
+        typed_member = _lookup_typed_row(mid, mnum)
+        # autoRate rows are synthesised for UI completeness; they must not look like
+        # a staff-entered complimentary ₹0 on the next sync.
+        from_typed = typed_member is not None and not typed_member.get("autoRate")
         saved_plan = primary_plan
         for row in rate_rows:
             if mid and str(row.get("roomId") or "").strip() == mid:
@@ -22407,6 +22443,7 @@ def _hotel_sync_merged_room_rate_folio(primary, rooms, tariff_rates=None):
                 ),
                 "isPrimary": False,
                 "nightlyRates": member_nightly_rows,
+                "autoRate": not from_typed,
             }
         )
     primary_stay["mergeRoomRates"] = next_rate_rows
@@ -22440,8 +22477,8 @@ def _hotel_sync_merged_room_rate_folio(primary, rooms, tariff_rates=None):
         if not mid:
             continue
         if _has_absorb(mid):
-            # Occupied absorb already billed this room — refresh amount only when
-            # mergeRoomRates carry a real tariff; otherwise keep the absorb line.
+            # Occupied absorb already billed this room — refresh from mergeRoomRates
+            # when the typed amount is positive, or when complimentary ₹0 is explicit.
             number = str(member.get("number") or "").strip() or mid
             member_row = _lookup_saved_row(mid, number)
             amount = _row_charges(member_row, _nightly_rate_for(member))
@@ -22455,12 +22492,18 @@ def _hotel_sync_merged_room_rate_folio(primary, rooms, tariff_rates=None):
                     continue
                 absorb_idx = idx
                 break
-            if absorb_idx >= 0 and amount > 0.009:
-                line = dict(folio[absorb_idx])
-                line["label"] = f"Room {number} — stay charges"
-                line["amount"] = amount
-                line["sourceRoomNumber"] = number
-                folio[absorb_idx] = line
+            if absorb_idx >= 0:
+                apply_amount = None
+                if amount > 0.009:
+                    apply_amount = amount
+                elif _typed_charges_explicit_zero(mid, number):
+                    apply_amount = 0.0
+                if apply_amount is not None:
+                    line = dict(folio[absorb_idx])
+                    line["label"] = f"Room {number} — stay charges"
+                    line["amount"] = apply_amount
+                    line["sourceRoomNumber"] = number
+                    folio[absorb_idx] = line
             idx = _find_rate_line_index(mid)
             if idx >= 0:
                 folio.pop(idx)
@@ -22472,7 +22515,31 @@ def _hotel_sync_merged_room_rate_folio(primary, rooms, tariff_rates=None):
         amount = _row_charges(member_row, _nightly_rate_for(member))
         if amount <= 0:
             if idx >= 0:
-                folio.pop(idx)
+                # Complimentary ₹0: keep the line so Generate Invoice shows the update
+                # instead of dropping Room NNN from the folio list.
+                line = dict(folio[idx])
+                line["label"] = label
+                line["amount"] = 0.0
+                line["sourceRoomNumber"] = number
+                folio[idx] = line
+            elif _typed_charges_explicit_zero(mid, number):
+                # Staff typed complimentary ₹0 (not an autoRate placeholder) — recreate
+                # the folio line if an older normalize had stripped amount 0.
+                folio.append(
+                    {
+                        "id": f"mrr-{mid}-{stamp.replace(' ', '')}",
+                        "kind": "other",
+                        "label": label,
+                        "amount": 0.0,
+                        "source": "merged_room_rate",
+                        "invoiceId": "",
+                        "outlet": "",
+                        "at": stamp,
+                        "note": f"Merged room rate for Room {number}",
+                        "sourceRoomId": mid,
+                        "sourceRoomNumber": number,
+                    }
+                )
             continue
         if idx >= 0:
             line = dict(folio[idx])

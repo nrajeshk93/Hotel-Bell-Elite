@@ -949,13 +949,14 @@
       return String(stay.ratePlan || '').trim();
     }
 
-    /* One folio row per stay night (matches printed invoice night lines). */
-    if ((roomRate > 0 || nightlyRates.length) && billableNights > 0) {
+    /* One folio row per stay night (matches printed invoice night lines).
+       Complimentary ₹0 nights are kept — skipping them hid zeroed rooms. */
+    if ((roomRate > 0 || roomRate === 0 || nightlyRates.length) && billableNights > 0) {
       for (var i = 0; i < billableNights; i++) {
         var nightDate = checkIn ? addDaysISO(checkIn, i) : '';
         var isOverstay = i >= bookedNights;
         var nightRate = nightRateAt(i, nightDate);
-        if (!(nightRate > 0)) continue;
+        if (!isFinite(nightRate) || nightRate < 0) continue;
         var plan = nightPlanAt(i, nightDate);
         var label = roomLabel;
         if (isOverstay) label += ' (Overstay)';
@@ -1007,7 +1008,11 @@
       var kind = String(item.kind || '').toLowerCase();
       if (kind === 'restaurant_room_transfer' || kind === 'bar_room_transfer') return;
       var amount = Number(item.amount || 0);
-      if (!(amount > 0)) return;
+      var src = String(item.source || '').toLowerCase();
+      var isMergeStay = src === 'merged_room_rate' || src === 'room_merge';
+      /* Complimentary merge rooms are stored as amount 0 — still list them. */
+      if (!(amount > 0) && !isMergeStay) return;
+      if (!(isFinite(amount) && amount >= 0)) return;
       var folioId = String(item.id || '').trim();
       if (!folioId && unlocked) {
         folioId = 'legacy-' + String(index + 1);
@@ -2172,9 +2177,9 @@
     var rateEl = document.getElementById('hri-custom-rate');
     var chargeKey = keyEl ? String(keyEl.value || '').trim() : '';
     var label = nameEl ? String(nameEl.value || '').trim() : '';
-    var rateExcl = rateEl ? Number(rateEl.value) : 0;
-    if (!(rateExcl > 0)) {
-      showToast('Enter a rate greater than zero.', true);
+    var rateExcl = rateEl ? Number(rateEl.value) : NaN;
+    if (!isFinite(rateExcl) || rateExcl < 0) {
+      showToast('Enter a valid rate (0 or more).', true);
       return Promise.reject(new Error('rate required'));
     }
     /* Modal shows excl-GST; APIs store tax-inclusive room/folio rates. */

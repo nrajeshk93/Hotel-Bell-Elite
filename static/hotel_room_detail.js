@@ -1257,12 +1257,16 @@
          * Absorbed members often keep roomRate 0 on mergeRoomRates while the
          * folio still holds the stay charge — overriding with 0 hid those
          * lines and made Estimated Total look inflated vs the charge list.
+         * Complimentary ₹0 is written onto the folio line by sync; do not
+         * force-override absorb totals from a missing member rate row.
          */
         if (override != null && override > 0.009) {
           amount = override;
         }
       }
-      if (!(amount > 0)) return;
+      /* Keep complimentary ₹0 merge stay-charge lines after sync writes amount 0. */
+      if (!(amount > 0) && src !== 'merged_room_rate' && src !== 'room_merge') return;
+      if (!(isFinite(amount) && amount >= 0)) return;
       var labelFn = global.hotelFolioChargeDisplayLabel;
       lines.push({
         label:
@@ -4261,7 +4265,7 @@
             '<input type="number" min="0" step="0.01" required data-nightly-room-rate data-night-date="' +
             escapeHtml(nightDate || '') +
             '" placeholder="0" value="' +
-            escapeHtml(rate > 0 ? String(rate) : '') +
+            escapeHtml(String(rate)) +
             '"' +
             (locked ? ' readonly disabled' : '') +
             '></span>' +
@@ -4686,7 +4690,7 @@
           seed = '';
         }
         var showNightlyEditor = !!(row.isPrimary || rooms.length === 1);
-        var rateValue = rate > 0 ? String(rate) : '';
+        var rateValue = String(rate);
         var nightlyBlock = showNightlyEditor
           ? '<div class="hrd-ci-nightly-block">' +
             '<p class="hrd-ci-nightly-heading">Nightly rates &amp; Meal plan</p>' +

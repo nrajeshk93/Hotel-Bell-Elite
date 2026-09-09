@@ -2208,6 +2208,39 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(stay3["nightlyRates"][1]["roomRate"], 4200.0)
         self.assertEqual(stay3["totalRate"], 8200.0)
 
+        # Complimentary: ₹0 must stick on room + nightly rates (Generate Invoice reads these).
+        free = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "update_charge",
+                "chargeKey": "night:0",
+                "rate": 0,
+            },
+        )
+        self.assertEqual(free.status_code, 200, free.get_data(as_text=True))
+        stay4 = free.get_json()["room"]["stay"]
+        self.assertEqual(stay4["nightlyRates"][0]["roomRate"], 0.0)
+        self.assertEqual(stay4["roomRate"], 0.0)
+        self.assertEqual(stay4["nightlyRates"][1]["roomRate"], 4200.0)
+        self.assertEqual(stay4["totalRate"], 4200.0)
+
+        free_all = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "update_charge",
+                "chargeKey": "room",
+                "rate": 0,
+            },
+        )
+        self.assertEqual(free_all.status_code, 200, free_all.get_data(as_text=True))
+        stay5 = free_all.get_json()["room"]["stay"]
+        self.assertEqual(stay5["roomRate"], 0.0)
+        self.assertEqual(
+            [row["roomRate"] for row in (stay5.get("nightlyRates") or [])],
+            [0.0, 0.0],
+        )
+        self.assertEqual(stay5["totalRate"], 0.0)
+
     def test_record_payment_rejects_before_generate_and_overpay(self):
         self._checkin_with_charges()
         early = self.client.put(
@@ -3966,7 +3999,7 @@ class HotelRoomsTests(unittest.TestCase):
         ]
         self.assertEqual(rate_dupes, [])
         self.assertGreaterEqual(float(primary["stay"]["advancePaid"]), 700)
-        self.assertGreater(float(primary["stay"]["estimatedTotal"]), 5750)
+        self.assertGreaterEqual(float(primary["stay"]["estimatedTotal"]), 5750)
 
         blocked = self.client.put(
             "/hotel/api/rooms/room-102",
@@ -4451,6 +4484,53 @@ class HotelRoomsTests(unittest.TestCase):
         # ₹7500 + ₹4500 = ₹12,000 (tax-inclusive)
         self.assertAlmostEqual(
             float(primary["stay"].get("estimatedTotal") or 0), 12000.0, places=2
+        )
+
+        # Complimentary member: ₹0 must stay on the folio (Generate Invoice lists it).
+        zeroed = self.client.put(
+            "/hotel/api/rooms/room-307",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Asha",
+                    "lastName": "Nair",
+                    "mobile": "9000000306",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 1,
+                    "roomRate": 7500,
+                    "ratePlan": "EP",
+                    "mergeRoomRates": [
+                        {
+                            "roomId": "room-307",
+                            "number": "307",
+                            "roomType": "premium_suite_tub",
+                            "ratePlan": "EP",
+                            "roomRate": 7500,
+                            "isPrimary": True,
+                        },
+                        {
+                            "roomId": "room-306",
+                            "number": "306",
+                            "roomType": "premium_deluxe_balcony",
+                            "ratePlan": "EP",
+                            "roomRate": 0,
+                            "isPrimary": False,
+                        },
+                    ],
+                    "advancePaid": 0,
+                },
+            },
+        )
+        self.assertEqual(zeroed.status_code, 200, zeroed.get_data(as_text=True))
+        primary2 = self.client.get("/hotel/api/rooms/room-307").get_json()["room"]
+        folio2 = primary2["stay"].get("folioCharges") or []
+        rate_lines2 = [f for f in folio2 if f.get("source") == "merged_room_rate"]
+        self.assertEqual(len(rate_lines2), 1, folio2)
+        self.assertIn("306", rate_lines2[0].get("label") or "")
+        self.assertEqual(float(rate_lines2[0].get("amount")), 0.0)
+        self.assertAlmostEqual(
+            float(primary2["stay"].get("estimatedTotal") or 0), 7500.0, places=2
         )
 
     def test_merged_checkin_keeps_manual_member_rate(self):
