@@ -538,6 +538,11 @@ body.su-module .pl-supplier-empty{
 }
 body.su-module .pl-supplier-option-name{display:block;font-weight:600}
 body.su-module .pl-supplier-option-gst{display:block;font-size:11px;color:var(--txt3);margin-top:2px}
+/* Add Entry supplier picker: name only (GST stays in data-name for search). */
+body.su-module #pl-add-supplier-listbox .staff-supplier-option-gst,
+body.su-module #pl-add-supplier-list .staff-supplier-option-gst{
+  display:none!important;
+}
 /* Summary KPI row/type: shared via hbe_kpi.css */
 body.su-module .pl-count{font-size:12px;font-weight:600;color:var(--txt3)}
 body.su-module .pl-card-body--flush{padding:0}

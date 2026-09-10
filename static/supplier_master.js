@@ -1,6 +1,28 @@
 (function (global) {
   'use strict';
 
+  /** Pages that embed Supplier Master options — drop soft-nav HTML after CRUD. */
+  var SUPPLIER_DROPDOWN_SOFT_NAV_PATHS = [
+    '/accounts/purchase-ledger',
+    '/accounts/credit-payment',
+    '/accounts/purchase-verification',
+    '/stores/inward',
+    '/stores/indent',
+    '/stores/orders',
+    '/sales_update/hotel',
+    '/hotel/sales-update',
+    '/suppliers'
+  ];
+
+  function invalidateSupplierDropdownCaches() {
+    if (typeof global.deInvalidateSoftNavCacheByPath !== 'function') return;
+    SUPPLIER_DROPDOWN_SOFT_NAV_PATHS.forEach(function (path) {
+      try {
+        global.deInvalidateSoftNavCacheByPath(path);
+      } catch (err) { /* ignore */ }
+    });
+  }
+
   function initSupplierTableSort() {
     var table = document.getElementById('sm-supplier-table');
     if (!table || table.getAttribute('data-sm-sort-bound') === '1') return;
@@ -75,5 +97,11 @@
         if (focusEl) focusEl.focus();
       }, 0);
     }
+    try {
+      var saved = new URLSearchParams(global.location.search || '').get('saved') || '';
+      if (saved === 'created' || saved === 'updated' || saved === 'deleted') {
+        invalidateSupplierDropdownCaches();
+      }
+    } catch (err) { /* ignore */ }
   };
 })(typeof window !== 'undefined' ? window : this);

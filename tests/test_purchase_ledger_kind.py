@@ -300,5 +300,101 @@ class PurchaseLedgerFilterSupplierTests(unittest.TestCase):
         self.assertEqual(keys, {"liquor"})
 
 
+class PurchaseLedgerAddSupplierMasterTests(unittest.TestCase):
+    """Add Entry must list unused Supplier Master rows (filter list stays usage-based)."""
+
+    def setUp(self):
+        import os
+        import tempfile
+        from unittest import mock
+
+        import db as db_mod
+
+        self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.tmp.close()
+        self.db_path = self.tmp.name
+        self._orig_path = db_mod.DATABASE_PATH
+        db_mod.DATABASE_PATH = self.db_path
+        db_mod.init_db()
+        self.db_mod = db_mod
+
+        self.app = app_module.app
+        self.app.config["TESTING"] = True
+        self.client = self.app.test_client()
+
+        conn = db_mod.get_db()
+        try:
+            used_id = conn.execute(
+                "INSERT INTO suppliers (name, gst) VALUES ('Used Co', '29AAAAA0000A1Z5')"
+            ).lastrowid
+            unused_id = conn.execute(
+                "INSERT INTO suppliers (name, gst) VALUES ('PREMIUM STATIONERIES', '')"
+            ).lastrowid
+            conn.execute(
+                """INSERT INTO sales_update_expenses
+                   (company, location, sales_date, description, amount, payment_type,
+                    supplier_id, category, expense_code, entry_kind)
+                   VALUES ('HBE', 'Hotel', '2026-09-01', 'Paper', 10, 'cash',
+                           ?, 'stationery', 'HBE-EX-1', 'expense')""",
+                (used_id,),
+            )
+            conn.commit()
+            self.used_id = used_id
+            self.unused_id = unused_id
+            admin = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()
+            self.admin_id = admin["id"]
+        finally:
+            conn.close()
+
+        self.user = {
+            "id": self.admin_id,
+            "username": "admin",
+            "full_name": "Administrator",
+            "is_admin": True,
+            "is_active": True,
+            "dashboard_access": set(),
+            "stores_access": set(),
+        }
+        self._get_user_patch = mock.patch.object(
+            app_module, "get_current_user", return_value=self.user
+        )
+        self._get_user_patch.start()
+        self._os = os
+
+    def tearDown(self):
+        self._get_user_patch.stop()
+        self.db_mod.DATABASE_PATH = self._orig_path
+        try:
+            self._os.unlink(self.db_path)
+        except OSError:
+            pass
+
+    def test_add_modal_includes_unused_master_supplier(self):
+        resp = self.client.get("/accounts/purchase-ledger")
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        add_block = html.split('id="pl-add-supplier-options"', 1)[1].split(
+            'id="pl-add-category-options"', 1
+        )[0]
+        filter_block = html.split('id="purchase-ledger-supplier-options"', 1)[1].split(
+            "</div>", 1
+        )[0]
+        self.assertIn("PREMIUM STATIONERIES", add_block)
+        self.assertIn(f'data-value="{self.unused_id}"', add_block)
+        self.assertIn("Used Co", add_block)
+        self.assertIn("Used Co", filter_block)
+        self.assertNotIn("PREMIUM STATIONERIES", filter_block)
+        self.assertIn("/suppliers/options", html)
+
+    def test_list_supplier_options_returns_all_master_rows(self):
+        resp = self.client.get("/suppliers/options")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data.get("ok"))
+        names = {row["name"] for row in data.get("suppliers") or []}
+        self.assertIn("PREMIUM STATIONERIES", names)
+        self.assertIn("Used Co", names)
+
+
 if __name__ == "__main__":
     unittest.main()

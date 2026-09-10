@@ -69,10 +69,9 @@
         </div>
         <div class="se-filter-listbox" id="pl-add-supplier-list" role="listbox" aria-labelledby="pl-add-supplier-label" hidden>
           <div class="ep-listbox-options" id="pl-add-supplier-options">
-            {% for supplier in suppliers %}
+            {% for supplier in add_suppliers|default(suppliers) %}
             <button type="button" class="se-filter-listbox-option staff-supplier-option" role="option" data-value="{{ supplier.id }}" data-name="{{ supplier.name|lower }} {{ supplier.gst|lower }}" data-label="{{ supplier.name }}" aria-selected="false">
               <span class="staff-supplier-option-name">{{ supplier.name }}</span>
-              <span class="staff-supplier-option-gst">{{ supplier.gst }}</span>
             </button>
             {% endfor %}
           </div>

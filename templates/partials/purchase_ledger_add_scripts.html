@@ -7,6 +7,7 @@
   var editUrl = {{ purchase_edit_url|tojson }};
   var deleteUrl = {{ purchase_delete_url|tojson }};
   var supplierCreateUrl = {{ supplier_create_url|tojson }};
+  var supplierOptionsUrl = {{ supplier_options_url|default('')|tojson }};
   var defaultCompany = {{ default_company|tojson }};
   var defaultLocation = {{ default_location|tojson }};
   var todayIso = {{ today_iso|tojson }};
@@ -310,6 +311,7 @@
     openModal(modal);
     initPlAddListboxes();
     initPlAddDatePicker();
+    refreshSupplierOptionsFromMaster();
     if (descriptionEl) descriptionEl.focus();
   }
 
@@ -342,6 +344,7 @@
     openModal(modal);
     initPlAddListboxes();
     initPlAddDatePicker();
+    refreshSupplierOptionsFromMaster();
     syncSaveEnabled();
     if (descriptionEl) descriptionEl.focus();
   }
@@ -539,6 +542,19 @@
 
   function appendSupplierOption(supplier){
     if (!supplierOptions || !supplier) return;
+    var existingBtn = supplierOptions.querySelector(
+      '.staff-supplier-option[data-value="' + String(supplier.id) + '"]'
+    );
+    if (existingBtn) {
+      supplierOptions.querySelectorAll('.se-filter-listbox-option').forEach(function(opt){
+        opt.classList.remove('is-selected');
+        opt.setAttribute('aria-selected', 'false');
+      });
+      existingBtn.classList.add('is-selected');
+      existingBtn.setAttribute('aria-selected', 'true');
+      setListboxValue('pl-add-supplier', String(supplier.id), supplier.name || '', 'Select supplier');
+      return;
+    }
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'se-filter-listbox-option staff-supplier-option is-selected';
@@ -547,9 +563,10 @@
     btn.setAttribute('data-name', String(supplier.name || '').toLowerCase() + ' ' + String(supplier.gst || '').toLowerCase());
     btn.setAttribute('data-label', String(supplier.name || ''));
     btn.setAttribute('aria-selected', 'true');
-    btn.innerHTML =
-      '<span class="staff-supplier-option-name">' + (supplier.name || '') + '</span>' +
-      '<span class="staff-supplier-option-gst">' + (supplier.gst || '') + '</span>';
+    var nameEl = document.createElement('span');
+    nameEl.className = 'staff-supplier-option-name';
+    nameEl.textContent = supplier.name || '';
+    btn.appendChild(nameEl);
     supplierOptions.querySelectorAll('.se-filter-listbox-option').forEach(function(opt){
       opt.classList.remove('is-selected');
       opt.setAttribute('aria-selected', 'false');
@@ -562,6 +579,63 @@
     if (insertBefore) supplierOptions.insertBefore(btn, insertBefore);
     else supplierOptions.appendChild(btn);
     setListboxValue('pl-add-supplier', String(supplier.id), supplier.name || '', 'Select supplier');
+  }
+
+  function renderSupplierOptions(suppliers, selectedId){
+    if (!supplierOptions) return;
+    var keepId = selectedId != null ? String(selectedId) : (
+      document.getElementById('pl-add-supplier')
+        ? String(document.getElementById('pl-add-supplier').value || '')
+        : ''
+    );
+    var frag = document.createDocumentFragment();
+    (suppliers || []).forEach(function(supplier){
+      if (!supplier || supplier.id == null) return;
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'se-filter-listbox-option staff-supplier-option';
+      btn.setAttribute('role', 'option');
+      btn.setAttribute('data-value', String(supplier.id));
+      btn.setAttribute(
+        'data-name',
+        String(supplier.name || '').toLowerCase() + ' ' + String(supplier.gst || '').toLowerCase()
+      );
+      btn.setAttribute('data-label', String(supplier.name || ''));
+      var selected = keepId && String(supplier.id) === keepId;
+      btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+      if (selected) btn.classList.add('is-selected');
+      var nameEl = document.createElement('span');
+      nameEl.className = 'staff-supplier-option-name';
+      nameEl.textContent = supplier.name || '';
+      btn.appendChild(nameEl);
+      frag.appendChild(btn);
+    });
+    supplierOptions.innerHTML = '';
+    supplierOptions.appendChild(frag);
+  }
+
+  var supplierOptionsFetchToken = 0;
+  async function refreshSupplierOptionsFromMaster(){
+    if (!supplierOptionsUrl || !supplierOptions) return;
+    var token = ++supplierOptionsFetchToken;
+    var selectedId = document.getElementById('pl-add-supplier')
+      ? document.getElementById('pl-add-supplier').value
+      : '';
+    try {
+      var res = await fetch(supplierOptionsUrl, {
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        cache: 'no-store'
+      });
+      var data = await res.json().catch(function(){ return {}; });
+      if (token !== supplierOptionsFetchToken) return;
+      if (res.ok && data.ok && Array.isArray(data.suppliers)) {
+        renderSupplierOptions(data.suppliers, selectedId);
+        if (typeof window.initEpListboxes === 'function') window.initEpListboxes();
+      }
+    } catch (err) {
+      /* keep SSR options */
+    }
   }
 
   async function saveSupplier(){
@@ -585,7 +659,20 @@
       });
       var data = await res.json();
       if (!data.ok) throw new Error(data.error || 'Could not save supplier.');
-      appendSupplierOption(data.supplier);
+      if (Array.isArray(data.suppliers)) {
+        renderSupplierOptions(data.suppliers, data.supplier && data.supplier.id);
+        if (data.supplier) {
+          setListboxValue(
+            'pl-add-supplier',
+            String(data.supplier.id),
+            data.supplier.name || '',
+            'Select supplier'
+          );
+        }
+        if (typeof window.initEpListboxes === 'function') window.initEpListboxes();
+      } else {
+        appendSupplierOption(data.supplier);
+      }
       closeModal(supplierModal);
     } catch (err) {
       setSupplierError(err.message || 'Could not save supplier.');

@@ -15862,6 +15862,9 @@ def purchase_ledger():
             payment_type=payment_type,
             entry_kind=entry_kind,
         )
+        # Add Entry / Edit must list every Supplier Master row — not only names
+        # that already appear in the filtered ledger window.
+        add_suppliers = _all_suppliers(conn)
         supplier_lookup = {str(s["id"]): s for s in suppliers}
         if selected_supplier != PURCHASE_LEDGER_FILTER_ALL and selected_supplier not in supplier_lookup:
             selected_supplier = PURCHASE_LEDGER_FILTER_ALL
@@ -15980,6 +15983,7 @@ def purchase_ledger():
         selected_kind=selected_kind,
         selected_kind_label=selected_kind_label,
         suppliers=suppliers,
+        add_suppliers=add_suppliers,
         purchase_entries=entries,
         purchase_total=total_amount,
         purchase_kind_total=purchase_kind_total,
@@ -16014,6 +16018,7 @@ def purchase_ledger():
         ),
         purchase_ledger_clear_url=url_for("purchase_ledger", **clear_kwargs),
         supplier_create_url=url_for("create_supplier"),
+        supplier_options_url=url_for("list_supplier_options"),
         available_cash=available_cash,
         available_cash_url=url_for("cash_ledger_available"),
         default_company=DEFAULT_COMPANY,
@@ -20453,6 +20458,27 @@ def delete_supplier():
 
     redirect_kwargs["saved"] = "deleted"
     return redirect(url_for("supplier_master", **redirect_kwargs))
+
+
+@app.route("/suppliers/options", methods=["GET"], endpoint="list_supplier_options")
+def list_supplier_options():
+    """JSON Supplier Master list for entry dropdowns (Purchases, Sales Update, etc.)."""
+    user = get_current_user()
+    can_list = (
+        user_can_access_supplier_master(user)
+        or user_can_access_sales_analytics_submodule(user, "hotel")
+        or user_can_access_dashboard(user, "accounts")
+        or user_can_access_accounts_submodule(user, "purchase_ledger")
+    )
+    if not can_list:
+        return jsonify({"ok": False, "error": "You do not have access to suppliers."}), 403
+
+    conn = get_db()
+    try:
+        suppliers = _all_suppliers(conn)
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "suppliers": suppliers})
 
 
 @app.route("/suppliers/create", methods=["POST"])

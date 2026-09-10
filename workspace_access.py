@@ -893,6 +893,7 @@ _ACCOUNTS_ENDPOINT_GROUPS = {
         "purchase_ledger_edit",
         "purchase_ledger_delete",
         "export_purchase_ledger_report",
+        "list_supplier_options",
     },
     "cash_ledger": {
         "cash_ledger",
@@ -929,6 +930,7 @@ _ACCOUNTS_ENDPOINT_GROUPS = {
         "save_supplier",
         "delete_supplier",
         "export_supplier_report",
+        "list_supplier_options",
     },
 }
 _ACCOUNTS_PARENT_ENDPOINTS = set().union(*_ACCOUNTS_ENDPOINT_GROUPS.values()) | {"accounts"}
@@ -1915,12 +1917,12 @@ def user_can_access_endpoint_sales_analytics(user, endpoint):
 
 
 def user_can_access_endpoint_accounts(user, endpoint):
-    submodule = get_endpoint_accounts_submodule(endpoint)
-    if not submodule:
+    matches = _endpoint_submodules_from_groups(endpoint, _ACCOUNTS_ENDPOINT_GROUPS)
+    if not matches:
         return True
-    if submodule == "supplier_master" and user_can_access_supplier_master(user):
+    if "supplier_master" in matches and user_can_access_supplier_master(user):
         return True
-    return user_can_access_accounts_submodule(user, submodule)
+    return any(user_can_access_accounts_submodule(user, key) for key in matches)
 
 
 def get_endpoint_user_access_submodule(endpoint):
