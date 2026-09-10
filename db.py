@@ -8996,6 +8996,30 @@ def ensure_pos_unit_insight_default_recipes(conn):
     return inserted
 
 
+def _pos_unit_insight_resolve_product(menu_row, products_by_id, products_by_name):
+    """Pick Product Master for a sold menu item (explicit link, else name match)."""
+    try:
+        linked_id = int(menu_row.get("product_id") or 0)
+    except (TypeError, ValueError):
+        linked_id = 0
+    if linked_id > 0:
+        product = products_by_id.get(linked_id)
+        if product:
+            return product
+    name_key = str(menu_row.get("menu_name") or "").strip().lower()
+    if not name_key:
+        return None
+    candidates = products_by_name.get(name_key) or []
+    if not candidates:
+        return None
+    menu_outlet = str(menu_row.get("menu_outlet") or "").strip().lower()
+    if menu_outlet:
+        for row in candidates:
+            if str(row["outlet"] or "").strip().lower() == menu_outlet:
+                return row
+    return candidates[0]
+
+
 def list_pos_unit_insights_raw(
     conn,
     *,
@@ -9010,6 +9034,10 @@ def list_pos_unit_insights_raw(
     linked to Product Master (``pos_menu_items.product_id``) — or matches an
     active Product Master row by name — fall back to 1 × product default unit
     per menu qty so bar bottles still appear like Menu Insights.
+
+    Invoice lines are summed per menu item first, then recipes / product
+    fallback are applied in Python. A per-line correlated name match used to
+    hang this report on production-sized POS history.
     """
     ensure_pos_schema(conn)
     ensure_stores_schema(conn)
@@ -9023,75 +9051,122 @@ def list_pos_unit_insights_raw(
     )
     clauses.append("l.menu_item_id IS NOT NULL")
     where = " AND ".join(clauses)
-    recipe_clauses = list(clauses) + ["r.product_id IS NOT NULL"]
-    recipe_where = " AND ".join(recipe_clauses)
-    rows = conn.execute(
+
+    sold_rows = conn.execute(
         f"""
         SELECT
-            p.id AS product_id,
-            p.name AS product_name,
-            p.default_unit AS default_unit,
-            l.qty AS line_qty,
-            r.qty AS recipe_qty,
-            r.unit AS recipe_unit,
-            'recipe' AS source
-        FROM pos_invoice_lines l
-        JOIN pos_invoices i ON i.id = l.invoice_id
-        JOIN pos_menu_recipe_lines r ON r.menu_item_id = l.menu_item_id
-        JOIN store_products p ON p.id = r.product_id AND p.is_active = 1
-        WHERE {recipe_where}
-
-        UNION ALL
-
-        SELECT
-            p.id AS product_id,
-            p.name AS product_name,
-            p.default_unit AS default_unit,
-            l.qty AS line_qty,
-            1 AS recipe_qty,
-            p.default_unit AS recipe_unit,
-            'menu_product' AS source
+            l.menu_item_id AS menu_item_id,
+            COALESCE(SUM(l.qty), 0) AS line_qty,
+            m.product_id AS product_id,
+            m.name AS menu_name,
+            m.outlet AS menu_outlet
         FROM pos_invoice_lines l
         JOIN pos_invoices i ON i.id = l.invoice_id
         JOIN pos_menu_items m ON m.id = l.menu_item_id
-        JOIN store_products p ON p.is_active = 1
-          AND p.id = COALESCE(
-              NULLIF(m.product_id, 0),
-              (
-                  SELECT p2.id
-                  FROM store_products p2
-                  WHERE p2.is_active = 1
-                    AND LOWER(TRIM(p2.name)) = LOWER(TRIM(m.name))
-                  ORDER BY
-                      CASE
-                          WHEN LOWER(IFNULL(p2.outlet, '')) = LOWER(IFNULL(m.outlet, ''))
-                          THEN 0
-                          ELSE 1
-                      END ASC,
-                      p2.id ASC
-                  LIMIT 1
-              )
-          )
         WHERE {where}
-          AND COALESCE(
-              NULLIF(m.product_id, 0),
-              (
-                  SELECT p3.id
-                  FROM store_products p3
-                  WHERE p3.is_active = 1
-                    AND LOWER(TRIM(p3.name)) = LOWER(TRIM(m.name))
-                  LIMIT 1
-              )
-          ) IS NOT NULL
-          AND NOT EXISTS (
-              SELECT 1
-              FROM pos_menu_recipe_lines r2
-              WHERE r2.menu_item_id = l.menu_item_id
-          )
+        GROUP BY l.menu_item_id, m.product_id, m.name, m.outlet
         """,
-        params + params,
+        params,
     ).fetchall()
-    return [dict(row) for row in rows]
+    if not sold_rows:
+        return []
+
+    menu_ids = []
+    for row in sold_rows:
+        try:
+            mid = int(row["menu_item_id"] or 0)
+        except (TypeError, ValueError):
+            mid = 0
+        if mid > 0:
+            menu_ids.append(mid)
+    menu_ids = sorted(set(menu_ids))
+    recipes_by_menu = {}
+    if menu_ids:
+        placeholders = ",".join("?" for _ in menu_ids)
+        recipe_rows = conn.execute(
+            f"""
+            SELECT
+                r.menu_item_id AS menu_item_id,
+                r.product_id AS product_id,
+                r.qty AS recipe_qty,
+                r.unit AS recipe_unit,
+                p.name AS product_name,
+                p.default_unit AS default_unit
+            FROM pos_menu_recipe_lines r
+            JOIN store_products p ON p.id = r.product_id AND p.is_active = 1
+            WHERE r.menu_item_id IN ({placeholders})
+              AND r.product_id IS NOT NULL
+            ORDER BY r.menu_item_id ASC, r.sort_order ASC, r.id ASC
+            """,
+            menu_ids,
+        ).fetchall()
+        for row in recipe_rows:
+            mid = int(row["menu_item_id"] or 0)
+            recipes_by_menu.setdefault(mid, []).append(row)
+
+    products_by_id = {}
+    products_by_name = {}
+    product_rows = conn.execute(
+        """
+        SELECT id, name, default_unit, outlet
+        FROM store_products
+        WHERE is_active = 1
+        ORDER BY id ASC
+        """
+    ).fetchall()
+    for row in product_rows:
+        products_by_id[int(row["id"])] = row
+        name_key = str(row["name"] or "").strip().lower()
+        if name_key:
+            products_by_name.setdefault(name_key, []).append(row)
+
+    out = []
+    for sold in sold_rows:
+        try:
+            mid = int(sold["menu_item_id"] or 0)
+            line_qty = float(sold["line_qty"] or 0)
+        except (TypeError, ValueError):
+            continue
+        if mid <= 0 or line_qty <= 0:
+            continue
+        recipes = recipes_by_menu.get(mid) or []
+        if recipes:
+            for recipe in recipes:
+                out.append(
+                    {
+                        "product_id": int(recipe["product_id"] or 0),
+                        "product_name": recipe["product_name"],
+                        "default_unit": recipe["default_unit"],
+                        "line_qty": line_qty,
+                        "recipe_qty": recipe["recipe_qty"],
+                        "recipe_unit": recipe["recipe_unit"],
+                        "source": "recipe",
+                    }
+                )
+            continue
+        product = _pos_unit_insight_resolve_product(
+            {
+                "product_id": sold["product_id"],
+                "menu_name": sold["menu_name"],
+                "menu_outlet": sold["menu_outlet"],
+            },
+            products_by_id,
+            products_by_name,
+        )
+        if not product:
+            continue
+        out.append(
+            {
+                "product_id": int(product["id"]),
+                "product_name": product["name"],
+                "default_unit": product["default_unit"],
+                "line_qty": line_qty,
+                "recipe_qty": 1,
+                "recipe_unit": product["default_unit"],
+                "source": "menu_product",
+            }
+        )
+    return out
 
 
 def aggregate_pos_unit_insights(raw_rows):
