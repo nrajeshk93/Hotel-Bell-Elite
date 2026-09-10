@@ -191,7 +191,7 @@ input[type="text"]:focus,input[type="password"]:focus,input[type="email"]:focus,
               </div>
 
               <div class="form-actions">
-                <button type="submit" class="btn btn-primary">{% if form.id %}Save Changes{% else %}Create Role{% endif %}</button>
+                <button type="submit" class="btn btn-primary">{% if form.id %}Save{% else %}Create Role{% endif %}</button>
                 <a class="btn" href="{{ url_for('access_roles', focus='form') }}">Reset</a>
               </div>
             </form>

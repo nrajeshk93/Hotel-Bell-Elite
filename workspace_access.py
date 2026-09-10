@@ -85,10 +85,14 @@ _COMMUNICATION_HUB_SUBMODULES = (
 )
 
 _MASTER_SUBMODULES = (
+    {"key": "supplier", "label": "Supplier Master"},
     {"key": "customer", "label": "Customer Master"},
     {"key": "agency", "label": "Agency Master"},
+    {"key": "product", "label": "Product Master"},
+    {"key": "menu", "label": "Menu Master"},
     {"key": "category", "label": "Category Master"},
     {"key": "unit", "label": "Unit Master"},
+    {"key": "employee", "label": "Employee Master"},
 )
 
 _REPORTS_SUBMODULES = (
@@ -1472,9 +1476,12 @@ def user_can_access_reports_submodule(user, submodule_key):
 
 
 def user_can_access_supplier_master(user):
+    """Supplier Master via Accounts or Master hub grant."""
     if not user:
         return False
     if user.get("is_admin"):
+        return True
+    if user_can_access_master_submodule(user, "supplier"):
         return True
     return user_can_access_accounts_submodule(user, "supplier_master")
 
@@ -1507,6 +1514,32 @@ def user_can_access_agency_master(user):
     return False
 
 
+def user_can_access_product_master(user):
+    """Product Master via Master hub or Stores Products grant."""
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
+    if user_can_access_master_submodule(user, "product"):
+        return True
+    return user_can_access_stores_submodule(user, "product_master")
+
+
+def user_can_access_menu_master(user):
+    """Menu Master via Master hub or Restaurant/Bar Menu."""
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
+    if user_can_access_master_submodule(user, "menu"):
+        return True
+    if user_can_access_point_of_sale_submodule(user, "menu"):
+        return True
+    if user_can_access_point_of_sale_bar_submodule(user, "menu"):
+        return True
+    return False
+
+
 def user_can_access_category_master(user):
     """Category Master via Master hub or Restaurant/Bar Menu."""
     if not user:
@@ -1533,6 +1566,17 @@ def user_can_access_unit_master(user):
     if user_can_access_stores_submodule(user, "product_master"):
         return True
     return False
+
+
+def user_can_access_employee_master(user):
+    """Employee Master via Master hub or Payroll Employee grant."""
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
+    if user_can_access_master_submodule(user, "employee"):
+        return True
+    return user_can_access_payroll_submodule(user, "employee")
 
 
 
@@ -1734,6 +1778,8 @@ def user_can_access_endpoint_stores(user, endpoint):
     submodule = get_endpoint_stores_submodule(endpoint)
     if not submodule:
         return True
+    if submodule == "product_master" and user_can_access_product_master(user):
+        return True
     return user_can_access_stores_submodule(user, submodule)
 
 
@@ -1781,17 +1827,27 @@ def _user_can_access_any_submodule(user, submodules, checker):
 
 
 def user_can_access_endpoint_point_of_sale(user, endpoint):
+    keys = get_endpoint_point_of_sale_submodules(endpoint)
+    if not keys:
+        return True
+    if "menu" in keys and user_can_access_menu_master(user):
+        return True
     return _user_can_access_any_submodule(
         user,
-        get_endpoint_point_of_sale_submodules(endpoint),
+        keys,
         user_can_access_point_of_sale_submodule,
     )
 
 
 def user_can_access_endpoint_point_of_sale_bar(user, endpoint):
+    keys = get_endpoint_point_of_sale_bar_submodules(endpoint)
+    if not keys:
+        return True
+    if "menu" in keys and user_can_access_menu_master(user):
+        return True
     return _user_can_access_any_submodule(
         user,
-        get_endpoint_point_of_sale_bar_submodules(endpoint),
+        keys,
         user_can_access_point_of_sale_bar_submodule,
     )
 
@@ -1861,6 +1917,8 @@ def user_can_access_endpoint_sales_analytics(user, endpoint):
 def user_can_access_endpoint_accounts(user, endpoint):
     submodule = get_endpoint_accounts_submodule(endpoint)
     if not submodule:
+        return True
+    if submodule == "supplier_master" and user_can_access_supplier_master(user):
         return True
     return user_can_access_accounts_submodule(user, submodule)
 

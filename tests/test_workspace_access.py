@@ -237,7 +237,16 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(master["dashboardKey"], "master")
         self.assertEqual(
             [child["label"] for child in master["children"]],
-            ["Customer Master", "Agency Master", "Category Master", "Unit Master"],
+            [
+                "Supplier Master",
+                "Customer Master",
+                "Agency Master",
+                "Product Master",
+                "Menu Master",
+                "Category Master",
+                "Unit Master",
+                "Employee Master",
+            ],
         )
         report = next(node for node in tree if node["label"] == "Report")
         self.assertEqual(report["dashboardKey"], "reports")
@@ -436,6 +445,44 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(get_endpoint_dashboard_module("export_cash_ledger_report"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("export_purchase_ledger_report"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("export_supplier_report"), "accounts")
+
+    def test_master_hub_grants_unlock_all_master_cards(self):
+        """Master-tree checkboxes cover every Masters hub card (dual-grant with owners)."""
+        from workspace_access import (
+            user_can_access_employee_master,
+            user_can_access_endpoint_point_of_sale,
+            user_can_access_endpoint_stores,
+            user_can_access_menu_master,
+            user_can_access_product_master,
+        )
+
+        master_only = {
+            "id": 40,
+            "is_admin": False,
+            "dashboard_access": {"master"},
+            "master_access": {
+                "supplier",
+                "customer",
+                "agency",
+                "product",
+                "menu",
+                "category",
+                "unit",
+                "employee",
+            },
+            "accounts_access": set(),
+            "stores_access": set(),
+            "payroll_access": set(),
+            "point_of_sale_access": set(),
+            "point_of_sale_bar_access": set(),
+        }
+        self.assertTrue(user_can_access_supplier_master(master_only))
+        self.assertTrue(user_can_access_product_master(master_only))
+        self.assertTrue(user_can_access_menu_master(master_only))
+        self.assertTrue(user_can_access_employee_master(master_only))
+        self.assertTrue(user_can_access_endpoint_accounts(master_only, "supplier_master"))
+        self.assertTrue(user_can_access_endpoint_stores(master_only, "stores_product_master"))
+        self.assertTrue(user_can_access_endpoint_point_of_sale(master_only, "point_of_sale_menu"))
 
     def test_accounts_submodule_grants_only_selected_pages(self):
         user = {

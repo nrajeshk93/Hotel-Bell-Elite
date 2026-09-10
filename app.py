@@ -272,6 +272,7 @@ from workspace_access import (
     user_can_access_communication_hub_submodule,
     user_can_access_customer_master,
     user_can_access_dashboard,
+    user_can_access_employee_master,
     user_can_access_endpoint_accounts,
     user_can_access_endpoint_communication_hub,
     user_can_access_endpoint_hotel_rooms,
@@ -283,9 +284,11 @@ from workspace_access import (
     user_can_access_endpoint_stores,
     user_can_access_hotel_rooms_submodule,
     user_can_access_master_submodule,
+    user_can_access_menu_master,
     user_can_access_payroll_submodule,
     user_can_access_point_of_sale_bar_submodule,
     user_can_access_point_of_sale_submodule,
+    user_can_access_product_master,
     user_can_access_reports_submodule,
     user_can_access_sales_analytics_submodule,
     user_can_access_stores_submodule,
@@ -1095,7 +1098,11 @@ def enforce_access():
         return _permission_denied_response(f"You do not have access to {label}.")
 
     required_payroll = get_endpoint_payroll_submodule(endpoint)
-    if required_payroll and not user_can_access_payroll_submodule(user, required_payroll):
+    if required_payroll == "employee":
+        if not user_can_access_employee_master(user):
+            label = _PAYROLL_SUBMODULE_LABELS.get(required_payroll, "requested payroll section")
+            return _permission_denied_response(f"You do not have access to the {label} payroll section.")
+    elif required_payroll and not user_can_access_payroll_submodule(user, required_payroll):
         label = _PAYROLL_SUBMODULE_LABELS.get(required_payroll, "requested payroll section")
         return _permission_denied_response(f"You do not have access to the {label} payroll section.")
 
@@ -6691,18 +6698,15 @@ def master():
             visible.append(item)
         elif mid == "agency" and user_can_access_agency_master(user):
             visible.append(item)
-        elif mid == "product" and user_can_access_stores_submodule(user, "product_master"):
+        elif mid == "product" and user_can_access_product_master(user):
             visible.append(item)
-        elif mid == "menu" and (
-            user_can_access_point_of_sale_submodule(user, "menu")
-            or user_can_access_point_of_sale_bar_submodule(user, "menu")
-        ):
+        elif mid == "menu" and user_can_access_menu_master(user):
             visible.append(item)
         elif mid == "category" and user_can_access_category_master(user):
             visible.append(item)
         elif mid == "unit" and user_can_access_unit_master(user):
             visible.append(item)
-        elif mid == "employee" and user_can_access_payroll_submodule(user, "employee"):
+        elif mid == "employee" and user_can_access_employee_master(user):
             visible.append(item)
     payload["masters"] = visible
     payload["masters_kpis"] = {
@@ -7169,14 +7173,13 @@ def reports():
         "cash_ledger": lambda: user_can_access_accounts_submodule(user, "cash_ledger"),
         "credit_payment": lambda: user_can_access_accounts_submodule(user, "credit_payment"),
         "tips": lambda: user_can_access_payroll_submodule(user, "tips"),
-        "employee_master": lambda: user_can_access_payroll_submodule(user, "employee"),
+        "employee_master": lambda: user_can_access_employee_master(user),
         "monthly_payroll": lambda: user_can_access_payroll_submodule(user, "report"),
         "attendance": lambda: user_can_access_payroll_submodule(user, "attendance"),
         "credits": lambda: user_can_access_payroll_submodule(user, "credit"),
         "bank": lambda: user_can_access_payroll_submodule(user, "report"),
         "menu_margin": lambda: (
-            user_can_access_point_of_sale_submodule(user, "menu")
-            or user_can_access_point_of_sale_bar_submodule(user, "menu")
+            user_can_access_menu_master(user)
         ),
         "stock": lambda: user_can_access_stores_submodule(user, "stock"),
         "stock_audit": lambda: user_can_access_stores_submodule(user, "stock_audit"),

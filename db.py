@@ -8908,6 +8908,22 @@ def ensure_pos_unit_insight_default_recipes(conn):
     """
     ensure_pos_schema(conn)
     ensure_stores_schema(conn)
+    # Skip the expensive name-match scan when every active menu item already has recipes.
+    pending = conn.execute(
+        """
+        SELECT 1
+        FROM pos_menu_items m
+        WHERE m.is_active = 1
+          AND NOT EXISTS (
+              SELECT 1
+              FROM pos_menu_recipe_lines r
+              WHERE r.menu_item_id = m.id
+          )
+        LIMIT 1
+        """
+    ).fetchone()
+    if not pending:
+        return 0
     rows = conn.execute(
         """
         SELECT

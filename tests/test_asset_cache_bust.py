@@ -227,6 +227,19 @@ class AssetHelperTests(unittest.TestCase):
         self.assertIn("'/point-of-sale'", block)
         self.assertIn("'/hotel/rooms'", block)
 
+    def test_soft_nav_recognizes_unit_insights_report(self):
+        """Reports hub → Unit Insight must match soft-nav page markers or open looks broken."""
+        js_path = os.path.join(PROJECT_ROOT, "static", "de_workspace_transitions.js")
+        with io.open(js_path, encoding="utf-8") as fh:
+            src = fh.read()
+        start = src.find("if(path.indexOf('/reports/sales/') === 0)")
+        self.assertNotEqual(start, -1)
+        end = src.find("\n      if(path === '/settings')", start)
+        if end < 0:
+            end = start + 800
+        block = src[start:end]
+        self.assertIn("unit-insights-report-page", block)
+        self.assertIn("data-unit-insights-report", block)
 
     def setUp(self):
         import app as app_mod

@@ -410,7 +410,6 @@
       html += '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>';
       html += '</button>';
       html += '<input type="checkbox" class="ma-tree-checkbox" data-check-id="' + escapeAttr(node.id) + '" data-check-state="' + checkState + '"' + (checkState === 'checked' ? ' checked' : '') + (isNodeLocked(node) ? ' disabled' : '') + ' aria-label="Enable ' + escapeAttr(node.label) + '"' + (isNodeLocked(node) ? ' title="Only a Super Administrator can change ' + escapeAttr(node.label) + ' access"' : '') + '>';
-      html += '<span class="ma-tree-node-icon"><i data-lucide="' + escapeAttr(nodeIcon(node)) + '"></i></span>';
       html += '<span class="ma-tree-label">' + escapeHtml(node.label) + '</span>';
       html += '</div>';
 

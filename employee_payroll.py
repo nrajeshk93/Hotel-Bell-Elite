@@ -19,7 +19,10 @@ from reports import (
     report_export_filename,
     report_export_month_filename,
 )
-from workspace_access import user_can_access_payroll_submodule
+from workspace_access import (
+    user_can_access_employee_master,
+    user_can_access_payroll_submodule,
+)
 
 payroll_bp = Blueprint("payroll", __name__)
 
@@ -318,7 +321,7 @@ def _attendance_date_lock_message(today=None, payroll_locked=False, year=None, m
 def _payroll_landing_redirect(user, year, month):
     if not user:
         return None
-    if user_can_access_payroll_submodule(user, 'employee'):
+    if user_can_access_employee_master(user):
         return None
     if user_can_access_payroll_submodule(user, 'attendance'):
         return redirect(url_for('attendance_overview', year=year, month=month))
@@ -3214,13 +3217,17 @@ def export_employees():
             total_absent = float(att['weekday_leave_days'])
             if total_absent.is_integer():
                 total_absent = int(total_absent)
+            # Match Monthly Payroll UI attendance badge (P + ½H), not raw full-day count.
+            present_days = att.get('display_badge_num', att.get('present_effective', att.get('present', 0)))
+            if isinstance(present_days, float) and present_days.is_integer():
+                present_days = int(present_days)
             paid_days = view.get('paid_calendar_days', 0)
             if isinstance(paid_days, float) and paid_days.is_integer():
                 paid_days = int(paid_days)
             row_data = [
                 view.get('emp_code', ''), view['name'], view['location'],
                 _round_rupee(view['gross_salary']), att.get('num_days', 0), att.get('holiday', 0),
-                att['present'], total_absent, att.get('sunday_effective', 0),
+                present_days, total_absent, att.get('sunday_effective', 0),
                 view.get('total_off', 0), view.get('lop_days', 0), paid_days, view['gross_actual'],
             ]
             if include_epf_esic:

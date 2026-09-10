@@ -33,7 +33,11 @@ from whatsapp_indent import (
     notify_indent_pending_whatsapp,
     supersede_indent_whatsapp_sends,
 )
-from workspace_access import user_can_access_stores_submodule, user_can_approve_transactions
+from workspace_access import (
+    user_can_access_product_master,
+    user_can_access_stores_submodule,
+    user_can_approve_transactions,
+)
 
 logger = logging.getLogger(__name__)
 STORES_OUTLETS = (
@@ -2999,6 +3003,10 @@ def _first_stores_endpoint(user) -> str | None:
         "stock_audit": "stores_stock_audit",
     }
     for key in preferred:
+        if key == "product_master":
+            if user_can_access_product_master(user):
+                return endpoint_map[key]
+            continue
         if user_can_access_stores_submodule(user, key):
             return endpoint_map[key]
     return None

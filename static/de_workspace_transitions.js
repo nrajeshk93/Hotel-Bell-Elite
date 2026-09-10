@@ -1203,7 +1203,8 @@
           + '#menu-sales-report-page, [data-menu-sales-report], '
           + '#customer-insights-report-page, [data-customer-insights-report], '
           + '#manager-insight-report-page, [data-manager-insight-report], '
-          + '#kot-report-page, [data-kot-report]'
+          + '#kot-report-page, [data-kot-report], '
+          + '#unit-insights-report-page, [data-unit-insights-report]'
         );
       }
       if(path === '/settings') return !!main.querySelector('#settings-page, [data-settings], #sd-settings-sections');
