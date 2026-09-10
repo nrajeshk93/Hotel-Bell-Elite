@@ -270,7 +270,7 @@ def _font(size: int, weight: str = 'medium') -> ImageFont.FreeTypeFont | ImageFo
 
 def _amount_font(size: int, weight: str = 'bold') -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     """Prefer Devanagari / Unicode fonts so ₹ renders (Arial Bold lacks it)."""
-    bold = weight in ('bold', '700', 'extrabold', '800')
+    bold = weight in ('bold', '700', 'extrabold', '800', 'black', '900')
     devanagari = '/System/Library/Fonts/Supplemental/Devanagari Sangam MN.ttc'
     if os.path.isfile(devanagari):
         font = _load_font([devanagari], size, index=1 if bold else 0)
@@ -549,18 +549,28 @@ def _draw_rupee_amount(
     underline=False,
     underline_color: str | None = None,
     underline_span: int | None = None,
+    align: str = 'left',
 ):
+    """Draw INR amount. align='center' centers the full string in [x, max_x] at y (vertical mid)."""
     neg, digits = _inr_parts(amount)
     minus = '-' if neg else ''
     probe = f'{minus}₹ {digits}'
     font, sz = _fit_amount_font(draw, probe, max(30, max_x - x), max_sz, min_sz, weight)
-    cur = x
-    if neg:
-        minus_font = _font(sz, weight)
-        draw.text((cur, y), minus, font=minus_font, fill=fill, anchor='lm')
-        cur += int(_text_len(draw, minus, minus_font)) + max(2, sz // 14)
-    draw.text((cur, y), '₹', font=font, fill=fill, anchor='lm')
+    minus_font = _font(sz, weight) if neg else None
     rupee_w = int(_text_len(draw, '₹', font))
+    gap = max(5, sz // 9)
+    minus_gap = max(2, sz // 14) if neg else 0
+    minus_w = (int(_text_len(draw, minus, minus_font)) + minus_gap) if neg else 0
+    digits_w = int(_text_len(draw, digits, font))
+    total_w = minus_w + rupee_w + gap + digits_w
+    if (align or 'left').lower() == 'center':
+        cur = int((x + max_x - total_w) / 2)
+    else:
+        cur = x
+    if neg:
+        draw.text((cur, y), minus, font=minus_font, fill=fill, anchor='lm')
+        cur += minus_w
+    draw.text((cur, y), '₹', font=font, fill=fill, anchor='lm')
     if underline:
         ul = underline_color or HERO_ACCENT
         # Short gold bar under ₹ + first digit (~48–55px @ design)
@@ -570,7 +580,7 @@ def _draw_rupee_amount(
             fill=ul,
             width=max(2, _s(3)),
         )
-    cur += rupee_w + max(5, sz // 9)
+    cur += rupee_w + gap
     draw.text((cur, y), digits, font=font, fill=fill, anchor='lm')
 
 
@@ -742,9 +752,7 @@ def _draw_hero(img, draw, box, amount, trend, vs_label):
         _sf(40),
         TEXT,
         'extrabold',
-        underline=True,
-        underline_color=GOLD,
-        underline_span=_s(52),
+        underline=False,
     )
 
     if trend is not None:
@@ -885,8 +893,10 @@ def collect_daily_sales(
 
 
 def _mockup_template_path() -> Path | None:
+    """Prefer blank chrome (no baked digits). Final mockup is fallback only."""
     root = Path(__file__).resolve().parent
     candidates = [
+        root / 'static' / 'reference' / 'HBE_Daily_Sales_blank.png',
         root / 'static' / 'reference' / 'HBE_Daily_Sales_mockup_final.png',
         root / 'static' / 'reference' / 'HBE_Daily_Sales_mockup.png',
     ]
@@ -911,8 +921,8 @@ def _paint_rect(base: Image.Image, box: tuple[int, int, int, int], rgb: tuple[in
 
 def _card_fill(base: Image.Image, xy: tuple[int, int]) -> tuple[int, int, int]:
     rgb = base.convert('RGB').getpixel(xy)
-    # Keep near-white card face (preserve outside shadows); avoid muddy samples
-    if min(rgb) >= 245:
+    # Keep pale card/hero faces (cream/lavender OK). Reject ink, accents, chips.
+    if min(rgb) >= 220 and (max(rgb) - min(rgb)) <= 55:
         return rgb
     return (255, 255, 255)
 
@@ -934,7 +944,7 @@ def _trend_chip_size(draw, pct, *, compact=False) -> tuple[int, int]:
 
 
 def _render_sales_report_template(payload: dict[str, Any], out_path: Path) -> str | None:
-    """Paint dynamic fields onto the FINAL mockup; tight clears only — keep shading."""
+    """Paint dynamic fields onto the FINAL mockup; fixed generous field wipes — keep chrome."""
     global W, H, _SX, _SY
     tpl = _mockup_template_path()
     if not tpl:
@@ -943,6 +953,9 @@ def _render_sales_report_template(payload: dict[str, Any], out_path: Path) -> st
     base = Image.open(tpl).convert('RGBA')
     if base.size != (ew, eh):
         base = base.resize((ew, eh), Image.Resampling.LANCZOS)
+    # Blank chrome has empty fields — skip rectangular wipes (they leave faint slabs).
+    # Final mockup still needs generous wipes to cover baked digits.
+    use_field_wipes = 'blank' not in tpl.name.lower()
 
     # Always refresh header logo from static mark
     try:
@@ -1008,74 +1021,110 @@ def _render_sales_report_template(payload: dict[str, Any], out_path: Path) -> st
 
         draw = ImageDraw.Draw(base)
 
-        # --- Date (tight) ---
+        # Amount layout slots (blank template has NO value boxes anymore — borders
+        # stripped from HBE_Daily_Sales_blank.png). Center numbers in these slots.
+        # On final mockup (use_field_wipes), paint soft fills only to erase baked digits.
+        HERO_AMT_BOX = (110, 325, 860, 450)
+        HERO_TREND_BOX = (1385, 305, 1635, 425)
+        OUTLET_SLOTS = [
+            # hotel / restaurant / bar / difference — center across card content
+            {'box': (120, 585, 350, 655), 'chip_y': 668, 'sample': (220, 620), 'fallback': (246, 250, 254), 'show_chip': True},
+            {'box': (525, 585, 760, 655), 'chip_y': 668, 'sample': (640, 555), 'fallback': (254, 251, 247), 'show_chip': True},
+            {'box': (940, 585, 1160, 655), 'chip_y': 668, 'sample': (1050, 620), 'fallback': (249, 248, 255), 'show_chip': True},
+            {'box': (1340, 590, 1525, 655), 'chip_y': None, 'sample': (1420, 555), 'fallback': (246, 250, 249), 'show_chip': False},
+        ]
+        WIPE_DATE = (1410, 98, 1638, 180)
+
+        def _hex_rgb(h: str) -> tuple[int, int, int]:
+            h = h.lstrip('#')
+            return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+        def _safe_fill(sample_xy: tuple[int, int], fallback: tuple[int, int, int]) -> tuple[int, int, int]:
+            try:
+                rgb = _card_fill(base, sample_xy)
+            except Exception:
+                return fallback
+            if min(rgb) < 220 or (max(rgb) - min(rgb)) > 55:
+                return fallback
+            return rgb
+
+        def _expand_wipe(box: tuple[int, int, int, int], need_w: int, *, left: int) -> tuple[int, int, int, int]:
+            x0, y0, x1, y1 = box
+            return (x0, y0, max(x1, left + need_w), y1)
+
+        # --- Date: keep outer pill + calendar icon; erase inner text box; paint date ---
         date_font = _font(26, 'bold')
         day_font = _font(16, 'medium')
-        dw = max(int(_text_len(draw, date_label, date_font)), int(_text_len(draw, weekday, day_font)))
-        pill_rgb = _card_fill(base, (1480, 90))
-        _paint_rect(base, (1422, 105, 1422 + dw + 12, 168), pill_rgb)
+        # Text slot inside pill (right of icon/divider) — cover baked box outline always
+        DATE_TEXT_BOX = (1408, 94, 1658, 182)
+        pill_rgb = _safe_fill((1500, 140), _hex_rgb(DATE_PILL_BG))
+        _paint_rect(base, DATE_TEXT_BOX, pill_rgb)
         draw = ImageDraw.Draw(base)
-        draw.text((1425, 112), date_label, font=date_font, fill=TEXT, anchor='lt')
-        draw.text((1425, 142), weekday, font=day_font, fill=MUTED, anchor='lt')
+        # Center date+weekday in the text slot
+        dx0, dy0, dx1, dy1 = DATE_TEXT_BOX
+        cx = (dx0 + dx1) // 2
+        draw.text((cx, 118), date_label, font=date_font, fill=TEXT, anchor='mt')
+        draw.text((cx, 148), weekday, font=day_font, fill=MUTED, anchor='mt')
 
-        # --- Hero amount (tight to digits; leave TOTAL SALES + wash) ---
-        hero_rgb = _card_fill(base, (200, 290))
-        # Estimate amount width
-        tmp = ImageDraw.Draw(Image.new('RGB', (10, 10)))
-        neg, digits = _inr_parts(total)
-        amt_font = _amount_font(70, 'extrabold')
-        rupee_font = _rupee_font(42)
-        approx_w = int(_text_len(tmp, '₹', rupee_font) + 12 + _text_len(tmp, digits, amt_font))
-        _paint_rect(base, (118, 332, 118 + approx_w + 24, 440), hero_rgb)
+        # --- Section labels: slightly darker; TOTAL SALES larger to suit amount panel ---
+        SECTION_LABEL = '#3F5268'  # darker than baked ~#6C7B92
+        TOTAL_LABEL = '#334659'   # slightly darker + larger for hero
+        # TOTAL SALES — larger header only (amount size unchanged)
+        total_font = _font(34, 'semibold')
+        _paint_rect(base, (105, 248, 430, 325), _safe_fill((150, 300), (252, 248, 245)))
         draw = ImageDraw.Draw(base)
+        draw.text((118, 290), 'TOTAL SALES', font=total_font, fill=TOTAL_LABEL, anchor='lm')
+
+        # Outlet headers — larger labels only (amounts unchanged)
+        outlet_label_font = _font(22, 'semibold')
+        outlet_labels = [
+            # wipe wide enough for larger glyphs; keep above amount row
+            ((112, 538, 250, 575), (118, 556), 'HOTEL', (200, 535), (246, 250, 254)),
+            ((518, 538, 760, 575), (526, 556), 'RESTAURANT', (600, 535), (254, 251, 247)),
+            ((930, 538, 1040, 575), (940, 556), 'BAR', (1020, 535), (248, 247, 253)),
+            ((1340, 540, 1550, 580), (1347, 560), 'DIFFERENCE', (1400, 535), (245, 250, 248)),
+        ]
+        for wipe, xy, text, sample, fallback in outlet_labels:
+            _paint_rect(base, wipe, _safe_fill(sample, fallback))
+            draw = ImageDraw.Draw(base)
+            draw.text(xy, text, font=outlet_label_font, fill=SECTION_LABEL, anchor='lm')
+
+        # --- Hero amount: center in slot (wipe only on final mockup) ---
+        hx0, hy0, hx1, hy1 = HERO_AMT_BOX
+        if use_field_wipes:
+            _paint_rect(base, HERO_AMT_BOX, _safe_fill((300, 380), (247, 242, 236)))
+            draw = ImageDraw.Draw(base)
         _draw_rupee_amount(
-            draw, 123, 355, 118 + approx_w + 20, total, 70, 42, TEXT, 'extrabold',
-            underline=True, underline_color=GOLD, underline_span=50,
+            draw, hx0, (hy0 + hy1) // 2, hx1, total, 70, 42, TEXT, 'extrabold',
+            underline=False, align='center',
         )
 
-        # --- Hero trend: clear only chip+vs footprint ---
-        trend_rgb = _card_fill(base, (1520, 420))
-        # Force soft peach if sample is too white from wipe
-        if trend_rgb[0] < 250 or trend_rgb[1] < 245:
-            pass
-        else:
-            trend_rgb = (253, 243, 240)
-        # Measure chip
-        cw, ch = _trend_chip_size(draw, trend_total, compact=False)
-        # hero trend uses larger chip — approximate
-        vs_font = _font(15, 'medium')
-        vs_w = int(_text_len(draw, vs_label, vs_font))
-        block_w = max(cw + 40, vs_w + 16, 150)
-        block_h = 46 + 8 + 16 + 8
-        right_x = 1615
-        x0 = right_x - block_w
-        top = 350 - block_h // 2
-        _paint_rect(base, (x0 - 4, top - 4, right_x + 4, top + block_h + 4), trend_rgb)
+        # --- Hero trend: one flat pink panel (cover left lip so no double layer) ---
+        TREND_FLAT = (253, 236, 234)
+        # Pink panel left edge ~1346; wipe from before that so outer lip never peeks
+        trend_wipe = (1340, 280, 1668, 450)
+        _paint_rect(base, trend_wipe, TREND_FLAT)
         draw = ImageDraw.Draw(base)
-        _draw_hero_trend(draw, right_x, 350, trend_total, vs_label)
+        _draw_hero_trend(draw, 1615, (trend_wipe[1] + trend_wipe[3]) // 2, trend_total, vs_label)
 
-        # --- Outlet cards: tight amount + exact chip clears; gutters untouched ---
-        outlets = [
-            (hotel, trend_hotel, (118, 596), (250, 555), True),
-            (restaurant, trend_restaurant, (526, 596), (660, 555), True),
-            (bar, trend_bar, (940, 596), (1060, 555), True),
-            (difference, None, (1347, 600), (1500, 555), False),
+        # --- Outlet cards: center amounts; chips centered under them ---
+        outlet_vals = [
+            (hotel, trend_hotel),
+            (restaurant, trend_restaurant),
+            (bar, trend_bar),
+            (difference, None),
         ]
-        for amt, tr, (ax, ay), sample_xy, show_chip in outlets:
-            fill = _card_fill(base, sample_xy)
-            neg, digits = _inr_parts(amt)
-            af = _amount_font(40, 'bold')
-            rf = _rupee_font(26)
-            aw = int(_text_len(draw, '₹', rf) + 10 + _text_len(draw, digits, af))
-            _paint_rect(base, (ax - 2, ay - 8, ax + aw + 10, ay + 48), fill)
-            draw = ImageDraw.Draw(base)
-            _draw_rupee_amount(draw, ax, ay, ax + aw + 8, amt, 40, 26, TEXT, 'bold')
-            if show_chip and tr is not None:
-                chip_w, chip_h = _trend_chip_size(draw, tr, compact=True)
-                cy = 672
-                _paint_rect(base, (ax - 2, cy - 2, ax + chip_w + 2, cy + chip_h + 2), fill)
+        for (amt, tr), spec in zip(outlet_vals, OUTLET_SLOTS):
+            x0, y0, x1, y1 = spec['box']
+            if use_field_wipes:
+                _paint_rect(base, spec['box'], _safe_fill(spec['sample'], spec['fallback']))
                 draw = ImageDraw.Draw(base)
-                _draw_trend_chip(draw, ax, cy, tr, compact=True)
+            ay = (y0 + y1) // 2
+            _draw_rupee_amount(draw, x0, ay, x1, amt, 40, 26, TEXT, 'bold', align='center')
+            if spec['show_chip'] and tr is not None and spec['chip_y'] is not None:
+                chip_w, chip_h = _trend_chip_size(draw, tr, compact=True)
+                cx = (x0 + x1 - chip_w) // 2
+                _draw_trend_chip(draw, cx, spec['chip_y'], tr, compact=True)
 
         out_path = Path(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
