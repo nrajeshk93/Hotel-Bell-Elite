@@ -634,7 +634,7 @@ class WorkspaceAccessTests(unittest.TestCase):
             "is_admin": False,
             "sales_analytics_access": {"bar"},
         }
-        # Sales Analytics grants are retired — shared write APIs need POS access.
+        # Sales Analytics grants are retired — shared write APIs need POS or Hotel Sales Update.
         self.assertFalse(user_can_access_endpoint_sales_analytics(user, "save_sales_update"))
         user["sales_analytics_access"] = {"restaurant"}
         self.assertFalse(user_can_access_endpoint_sales_analytics(user, "save_sales_update"))
@@ -650,6 +650,16 @@ class WorkspaceAccessTests(unittest.TestCase):
         }
         self.assertTrue(user_can_access_endpoint_sales_analytics(pos_user, "save_sales_update"))
         self.assertTrue(user_can_access_endpoint_sales_analytics(pos_user, "sales_update_add_tip"))
+        hotel_user = {
+            "id": 5,
+            "is_admin": False,
+            "dashboard_access": set(),
+            "hotel_rooms_access": {"sales_update"},
+            "sales_analytics_access": set(),
+        }
+        self.assertTrue(user_can_access_endpoint_sales_analytics(hotel_user, "save_sales_update"))
+        self.assertTrue(user_can_access_endpoint_sales_analytics(hotel_user, "sales_update_add_expense"))
+        self.assertFalse(user_can_access_endpoint_sales_analytics(hotel_user, "save_hotel_ledger"))
 
     def test_set_user_permissions_auto_adds_parent_module(self):
         conn = _FakeConn()

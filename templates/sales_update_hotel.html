@@ -35,7 +35,13 @@
     {% include 'partials/sales_update_scope_header.html' %}
   {% endwith %}
 
-  <section class="content se-content sr-kpi-canvas">
+  <section class="content se-content sr-kpi-canvas{% if sales_entry_locked %} se-content--locked{% endif %}">
+    {% if sales_entry_locked %}
+    <div class="se-lock-banner" role="status">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      <span>This entry was saved more than 7 days ago. Only a Super Administrator can change it.</span>
+    </div>
+    {% endif %}
     <section class="sr-kpi-section" aria-label="Hotel sales KPI summary">
       {% with cash_card_action=false %}
         {% include 'partials/sales_update_kpi_default_row.html' %}

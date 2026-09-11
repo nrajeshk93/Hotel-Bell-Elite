@@ -293,6 +293,55 @@ class InvoiceSalesKpisTests(unittest.TestCase):
         self.assertEqual(entry["cash"], 50.0)
         self.assertEqual(entry["room_credit"], 0.0)
 
+    def test_hotel_sales_entry_includes_fbe_cash_from_fb_transfer_payments(self):
+        self._insert_hotel(
+            invoice_number="HBE/RM/ENTRY/STAY",
+            generated_at="2026-04-12 10:00:00",
+            total=5000.0,
+            status="settled",
+            payments=[{"method": "credit", "amount": 5000.0}],
+        )
+        payload = {
+            "source": "fb_combined_transfer",
+            "stay": {
+                "fbTransferInvoiceNumber": "FBE/26-27/00007",
+                "invoiceNumber": "FBE/26-27/00007",
+                "advancePaid": 5600.0,
+                "paymentMethod": "",
+                "fbTransferPayments": [
+                    {
+                        "method": "cash",
+                        "amount": 68.0,
+                        "invoiceNumber": "FBE/26-27/00007",
+                    }
+                ],
+            },
+        }
+        self.conn.execute(
+            """
+            INSERT INTO hotel_room_invoices (
+                invoice_number, room_id, room_number, room_type_label,
+                guest_name, booking_number, check_in_date, check_out_date,
+                invoice_generated_at, estimated_total, advance_paid,
+                balance_amount, status, source, payload_json
+            ) VALUES (?, 'r101', '101', 'F&B Transfers', 'Guest', '',
+                      '2026-04-01', '2026-04-02', ?, ?, 68, 0, 'settled',
+                      'fb_combined_transfer', ?)
+            """,
+            (
+                "FBE/26-27/00007",
+                "2026-04-12 10:44:10",
+                68.0,
+                json.dumps(payload),
+            ),
+        )
+        self.conn.commit()
+        entry = db_mod.hotel_sales_entry_from_invoices(self.conn, "2026-04-12")
+        self.assertEqual(entry["total_sales"], 5068.0)
+        self.assertEqual(entry["cash"], 68.0)
+        self.assertEqual(entry["room_credit"], 5000.0)
+        self.assertEqual(entry["upi"], 0.0)
+
     def test_pos_sales_entry_from_invoices_by_outlet(self):
         self._insert_pos(
             order_no="SPC/ENTRY/1",

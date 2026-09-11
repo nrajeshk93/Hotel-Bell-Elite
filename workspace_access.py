@@ -784,6 +784,21 @@ _POS_RESTAURANT_SALES_WRITE_ENDPOINTS = {
     "sales_update_delete_cash_transfer",
 }
 
+# Hotel Sales Update (/hotel/sales-update) writes still live under retired Sales
+# Analytics endpoint names — allow Hotel Rooms → Sales Update roles through.
+_HOTEL_SALES_UPDATE_WRITE_ENDPOINTS = {
+    "save_sales_update",
+    "sales_update_add_expense",
+    "sales_update_edit_expense",
+    "sales_update_delete_expense",
+    "sales_update_add_tip",
+    "sales_update_edit_tip",
+    "sales_update_delete_tip",
+    "sales_update_add_staff_credit",
+    "sales_update_edit_staff_credit",
+    "sales_update_delete_staff_credit",
+}
+
 _SALES_ANALYTICS_ENDPOINT_GROUPS = {
     "dashboard": {"dashboard"},
     "hotel": {
@@ -1906,7 +1921,7 @@ def get_endpoint_sales_analytics_submodules(endpoint):
 
 
 def user_can_access_endpoint_sales_analytics(user, endpoint):
-    """Sales Analytics module is retired. Allow admins and shared POS write APIs only."""
+    """Sales Analytics module is retired. Allow admins and shared write APIs only."""
     if not user:
         return False
     if user.get("is_admin"):
@@ -1917,6 +1932,11 @@ def user_can_access_endpoint_sales_analytics(user, endpoint):
     if (
         endpoint in _POS_RESTAURANT_SALES_WRITE_ENDPOINTS
         and user_can_access_dashboard(user, "point_of_sale")
+    ):
+        return True
+    if (
+        endpoint in _HOTEL_SALES_UPDATE_WRITE_ENDPOINTS
+        and user_can_access_hotel_rooms_submodule(user, "sales_update")
     ):
         return True
     # Inline supplier create is shared by Purchases / Supplier Master (not SA UI).

@@ -222,6 +222,7 @@ from workspace_access import (
     _MASTER_SUBMODULE_LABELS,
     _PUBLIC_ENDPOINTS,
     _PAYROLL_SUBMODULE_LABELS,
+    _HOTEL_SALES_UPDATE_WRITE_ENDPOINTS,
     _POS_RESTAURANT_SALES_WRITE_ENDPOINTS,
     _POS_SUBMODULE_LABELS,
     _REPORTS_SUBMODULE_LABELS,
@@ -1071,6 +1072,11 @@ def enforce_access():
             and endpoint in _POS_RESTAURANT_SALES_WRITE_ENDPOINTS
             and user_can_access_dashboard(user, "point_of_sale")
         )
+        hotel_sales_update_ok = (
+            required_dashboard == "sales_analytics"
+            and endpoint in _HOTEL_SALES_UPDATE_WRITE_ENDPOINTS
+            and user_can_access_hotel_rooms_submodule(user, "sales_update")
+        )
         hotel_agency_ok = (
             required_dashboard == "master"
             and endpoint in {"create_agency", "list_agencies_api"}
@@ -1095,6 +1101,7 @@ def enforce_access():
             not agency_ok
             and not customer_ok
             and not pos_restaurant_sales_ok
+            and not hotel_sales_update_ok
             and not hotel_agency_ok
             and not supplier_ok
         ):
@@ -4972,15 +4979,13 @@ def _normalize_dashboard_location_filter(location):
 def _sales_entry_difference_for_location(vals, location, difference_mode=None):
     """Sales Update Difference for one outlet row.
 
-    Restaurant/Bar: cash − actual_cash (same as Sales Update KPI).
-    Hotel (default): total_sales − tender total (get_difference).
+    All outlets: settlement cash − Actual Cash (drawer count), matching the
+    Sales Update Difference KPI. ``difference_mode`` may force ``cash_actual``
+    or ``allocation`` (total_sales − tender total) for callers that need it.
     """
-    if difference_mode == "cash_actual":
-        return get_cash_actual_difference(vals)
-    loc = str(location or "").strip()
-    if loc and loc not in HOTEL_LOCATIONS:
-        return get_cash_actual_difference(vals)
-    return get_difference(vals)
+    if difference_mode == "allocation":
+        return get_difference(vals)
+    return get_cash_actual_difference(vals)
 
 
 def _aggregate_sales_kpis(conn, date_from, date_to, company=None, location=None, difference_mode=None):
@@ -5380,7 +5385,7 @@ def _outlet_sales_update_kpi_bundle(
         today_iso,
         overlay_invoices=overlay_invoices,
     )
-    difference_mode = "cash_actual" if location not in HOTEL_LOCATIONS else None
+    difference_mode = "cash_actual"
     return _kpi_bundle_from_sales_entries(
         current_entries,
         prev_row["sales_entry_values"],

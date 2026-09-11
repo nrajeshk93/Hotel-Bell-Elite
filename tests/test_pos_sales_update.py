@@ -241,6 +241,61 @@ class PosSalesUpdateTests(unittest.TestCase):
         self.assertEqual(kpi["current"]["cash"], 315.0)
         self.assertEqual(kpi["current"]["difference"], 315.0)
 
+    def test_hotel_difference_kpi_is_cash_minus_actual_cash(self):
+        conn = db_mod.get_db()
+        try:
+            db_mod.ensure_hotel_room_invoices_schema(conn)
+            payload = {
+                "source": "hotel",
+                "stay": {"payments": [{"method": "cash", "amount": 68.0}]},
+            }
+            conn.execute(
+                """
+                INSERT INTO hotel_room_invoices (
+                    invoice_number, room_id, room_number, room_type_label,
+                    guest_name, booking_number, check_in_date, check_out_date,
+                    invoice_generated_at, estimated_total, advance_paid,
+                    balance_amount, status, source, payload_json
+                ) VALUES (
+                    'HBE/DIFF/1', 'r1', '101', 'Deluxe', 'Guest', '',
+                    '2026-08-14', '2026-08-15', '2026-08-14 10:00:00',
+                    68.0, 68.0, 0, 'settled', 'hotel', ?
+                )
+                """,
+                (json.dumps(payload),),
+            )
+            conn.execute(
+                """
+                INSERT INTO sales_updates (
+                    company, location, sales_date, sales_entry_values, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
+                """,
+                (
+                    self.app_mod.DEFAULT_COMPANY,
+                    "Hotel",
+                    "2026-08-14",
+                    json.dumps({
+                        "total_sales": 68.0,
+                        "cash": 0.0,
+                        "actual_cash": 0.0,
+                    }),
+                ),
+            )
+            conn.commit()
+            kpi = self.app_mod._outlet_sales_update_kpi_bundle(
+                conn,
+                self.app_mod.DEFAULT_COMPANY,
+                "Hotel",
+                date(2026, 8, 14),
+                date(2026, 8, 14),
+                user=self.user,
+                overlay_invoices=True,
+            )
+        finally:
+            conn.close()
+        self.assertEqual(kpi["current"]["cash"], 68.0)
+        self.assertEqual(kpi["current"]["difference"], 68.0)
+
     def test_bar_keeps_saved_collections_import(self):
         conn = db_mod.get_db()
         try:

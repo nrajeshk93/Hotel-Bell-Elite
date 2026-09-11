@@ -100,7 +100,7 @@
                 <button type="button" class="se-row-action" id="open-staff-credit" title="Manage employee credit" aria-label="Open employee credit entry"{% if sales_entry_locked %} disabled{% endif %}>{{ se_row_more_icon() }}</button>
               </div>
               {% else %}
-              <input type="number" min="0" step="0.01" value="{{ hotel_record.sales_entry_values.get(field_key, 0) }}" inputmode="decimal" data-sales-entry="{{ field_key }}" data-sales-location="Hotel" data-entry-label="{{ field_label }}" aria-label="Hotel {{ field_label }} amount"{% if field_key in hotel_manual_sales_entry_keys %} class="se-entry-input--manual"{% else %} class="se-entry-input--upload" readonly tabindex="-1"{% endif %}>
+              <input type="number" min="0" step="0.01" value="{{ hotel_record.sales_entry_values.get(field_key, 0) }}" inputmode="decimal" data-sales-entry="{{ field_key }}" data-sales-location="Hotel" data-entry-label="{{ field_label }}" aria-label="Hotel {{ field_label }} amount"{% if field_key in hotel_manual_sales_entry_keys and not sales_entry_locked %} class="se-entry-input--manual"{% else %} class="se-entry-input--upload" readonly tabindex="-1"{% endif %}>
               {% endif %}
             </td>
           </tr>

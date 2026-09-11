@@ -15692,6 +15692,11 @@ def backfill_hotel_room_invoices_from_layout(conn):
 
 def _hotel_invoice_payment_rows_from_payload(payload, *, source=""):
     """Payment rows used for ledger labels/amounts (HBE vs FBE sources)."""
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload = {}
     if not isinstance(payload, dict):
         return []
     stay = payload.get("stay") if isinstance(payload.get("stay"), dict) else {}
@@ -15728,6 +15733,12 @@ def _hotel_invoice_payment_rows_from_payload(payload, *, source=""):
                 if pay_inv and inv_no and pay_inv != inv_no:
                     continue
                 rows.append(pay)
+        return rows
+    if source_key == HOTEL_INVOICE_SOURCE_POS_TRANSFER:
+        # Per-order RT invoices store collects on stay.payments scoped to this bill.
+        payments = stay.get("payments") or payload.get("payments") or []
+        if isinstance(payments, list):
+            rows.extend([p for p in payments if isinstance(p, dict)])
         return rows
     payments = stay.get("payments") or payload.get("payments") or []
     if isinstance(payments, list):
@@ -16381,18 +16392,13 @@ def _hotel_payload_sales_entry_tenders(payload_json):
 
 
 def hotel_invoice_cash_totals_by_day(conn, date_from, date_to):
-    """Sum front-desk cash tenders on hotel ledger invoices by generated day.
-
-    Includes stay invoices and room-transfer / F&B combined-transfer bills —
-    cash collected at the hotel desk for any of these belongs in Cash Ledger
-    under Hotel. Cancelled invoices are excluded.
-    """
+    """Sum Hotel Sales cash tenders by invoice day (same rules as Sales Update)."""
     ensure_hotel_room_invoices_schema(conn)
     day_from = str(date_from)[:10]
     day_to = str(date_to)[:10]
     rows = conn.execute(
         """
-        SELECT substr(invoice_generated_at, 1, 10) AS sales_day, payload_json
+        SELECT substr(invoice_generated_at, 1, 10) AS sales_day, payload_json, source
         FROM hotel_room_invoices
         WHERE lower(COALESCE(status, '')) IN ('open', 'settled')
           AND substr(invoice_generated_at, 1, 10) >= ?
@@ -16405,10 +16411,11 @@ def hotel_invoice_cash_totals_by_day(conn, date_from, date_to):
         day = str(row["sales_day"] or "")[:10]
         if not day:
             continue
-        h_cash, _card, _upi, _room, _bor, _other = _hotel_payload_sales_entry_tenders(
-            row["payload_json"]
+        source = row["source"] if "source" in row.keys() else ""
+        amounts = _hotel_invoice_payment_amounts_from_payload(
+            row["payload_json"], source=source
         )
-        cash = round(float(h_cash or 0), 2)
+        cash = round(float((amounts or {}).get("cash") or 0), 2)
         if abs(cash) < 0.005:
             continue
         by_day[day] = round(by_day.get(day, 0.0) + cash, 2)
@@ -16418,18 +16425,18 @@ def hotel_invoice_cash_totals_by_day(conn, date_from, date_to):
 def hotel_sales_entry_from_invoices(conn, sales_date):
     """Build Hotel Sales Entry totals from room invoices for one day.
 
-    Stay invoices generated that day only (excludes POS room-transfer and FBE
-    F&B combined-transfer). Unpaid / unsettled balance is mapped to
-    ``room_credit`` (Guest Credit). Back Office Receipt tenders map to ``bor``.
+    Includes stay invoices plus F&B combined-transfer (FBE) and POS room-transfer
+    bills generated that day. Tender splits use the same payment rows as Invoice
+    Ledger (stay ``payments`` / FBE ``fbTransferPayments``). Unpaid remainder maps
+    to ``room_credit`` (Guest Credit). Bank transfer folds into ``card``.
     """
     ensure_hotel_room_invoices_schema(conn)
     day = str(sales_date)[:10]
     rows = conn.execute(
-        f"""
-        SELECT estimated_total, payload_json
+        """
+        SELECT estimated_total, payload_json, source
         FROM hotel_room_invoices
         WHERE lower(COALESCE(status, '')) IN ('open', 'settled')
-          AND {_HOTEL_INVOICE_STAY_SOURCE_SQL}
           AND substr(invoice_generated_at, 1, 10) = ?
         """,
         (day,),
@@ -16439,16 +16446,18 @@ def hotel_sales_entry_from_invoices(conn, sales_date):
     for row in rows:
         amount = float(row["estimated_total"] or 0)
         total_sales += amount
-        h_cash, h_card, h_upi, h_room, h_bor, h_other = _hotel_payload_sales_entry_tenders(
-            row["payload_json"]
+        source = row["source"] if "source" in row.keys() else ""
+        amounts = _hotel_invoice_payment_amounts_from_payload(
+            row["payload_json"], source=source
         )
-        cash += h_cash
-        card += h_card
-        upi += h_upi
-        room_credit += h_room
-        bor += h_bor
-        # Unmapped tenders land in Guest Credit (not BOR).
-        room_credit += h_other
+        if not isinstance(amounts, dict):
+            amounts = {}
+        cash += float(amounts.get("cash") or 0)
+        upi += float(amounts.get("upi") or 0)
+        card += float(amounts.get("card") or 0)
+        card += float(amounts.get("bank_transfer") or 0)
+        room_credit += float(amounts.get("credit") or 0)
+        bor += float(amounts.get("bor") or 0)
 
     allocated = cash + card + upi + room_credit + bor
     remainder = round(total_sales - allocated, 2)

@@ -836,6 +836,7 @@
     /* POS: only mutation-sensitive subpages — not Tables/Invoice/Menu shells. */
     if(path === '/point-of-sale/invoice-ledger' || path === '/bar-point-of-sale/invoice-ledger') return true;
     if(path === '/point-of-sale/sales-update' || path === '/bar-point-of-sale/sales-update') return true;
+    if(path === '/hotel/sales-update') return true;
     if(path === '/point-of-sale/settings' || path === '/bar-point-of-sale/settings') return true;
     if(path === '/hotel/invoice-ledger' || path === '/hotel/room-transfer-invoices' || path === '/hotel/credit') return true;
     if(path === '/hotel/settings') return true;

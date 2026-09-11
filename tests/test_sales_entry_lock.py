@@ -170,3 +170,40 @@ class SalesEntryLockPageTests(unittest.TestCase):
             )
         self.assertEqual(resp.status_code, 200)
         self.assertNotIn(b"se-lock-banner", resp.data)
+
+    def test_hotel_banner_and_actual_cash_readonly_when_locked(self):
+        hotel_user = {
+            "id": 98,
+            "username": "hotel_clerk",
+            "is_admin": False,
+            "is_active": True,
+            "dashboard_access": {"hotel_rooms"},
+            "hotel_rooms_access": {"sales_update"},
+            "sales_analytics_access": set(),
+            "must_change_password": False,
+            "role_id": 2,
+            "role_name": "Hotel",
+            "role_is_active": True,
+        }
+        created = (datetime.now() - timedelta(days=9)).strftime("%Y-%m-%d %H:%M:%S")
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                """INSERT INTO sales_updates
+                   (company, location, sales_date, sales_entry_values, sales_entry_total,
+                    petty_cash_counts, petty_cash_total, cash_denomination_counts,
+                    created_by_user_id, updated_by_user_id, created_at, updated_at)
+                   VALUES (?, ?, ?, '{}', 0, '{}', 0, '{}', 1, 1, ?, ?)""",
+                ("HBE", "Hotel", self.sales_date, created, created),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        with mock.patch.object(app_module, "get_current_user", return_value=hotel_user):
+            resp = self.client.get(f"/hotel/sales-update?date={self.sales_date}")
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        self.assertIn("se-lock-banner", html)
+        self.assertIn('data-sales-entry="actual_cash"', html)
+        actual_block = html.split('data-sales-entry="actual_cash"', 1)[1].split(">", 1)[0]
+        self.assertIn("readonly", actual_block)

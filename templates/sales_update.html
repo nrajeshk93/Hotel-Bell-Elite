@@ -198,7 +198,7 @@
                       <button type="button" class="se-row-action" id="open-sales-tips" title="Manage tips by employee" aria-label="Open tip entry"{% if outlet_record.sales_entry_locked %} disabled{% endif %}>{{ se_row_more_icon() }}</button>
                     </div>
                     {% else %}
-                    <input type="number" min="0" step="0.01" value="{{ outlet_record.sales_entry_values.get(field_key, 0) }}" inputmode="decimal" data-sales-entry="{{ field_key }}" data-sales-location="{{ outlet }}" data-entry-label="{{ field_label }}" aria-label="{{ outlet }} {{ field_label }} amount"{% if field_key in manual_sales_entry_keys|default([]) %} class="se-entry-input--manual"{% else %} class="se-entry-input--upload" readonly tabindex="-1"{% endif %}>
+                    <input type="number" min="0" step="0.01" value="{{ outlet_record.sales_entry_values.get(field_key, 0) }}" inputmode="decimal" data-sales-entry="{{ field_key }}" data-sales-location="{{ outlet }}" data-entry-label="{{ field_label }}" aria-label="{{ outlet }} {{ field_label }} amount"{% if field_key in manual_sales_entry_keys|default([]) and not outlet_record.sales_entry_locked %} class="se-entry-input--manual"{% else %} class="se-entry-input--upload" readonly tabindex="-1"{% endif %}>
                     {% endif %}
                   </td>
                 </tr>

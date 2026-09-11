@@ -189,7 +189,7 @@ class CashLedgerHelperTests(unittest.TestCase):
         conn.close()
 
     def test_hotel_invoice_cash_settlements_appear_in_cash_ledger(self):
-        """Hotel FO cash settles show as Actual Cash even without Sales Update entry."""
+        """Hotel stay + FBE cash settles show as Actual Cash (matches Sales Update)."""
         conn = _memory_conn()
         db_mod.ensure_hotel_room_invoices_schema(conn)
         payload = {
@@ -219,10 +219,22 @@ class CashLedgerHelperTests(unittest.TestCase):
                 json.dumps(payload),
             ),
         )
-        # Room-transfer bill cash also counts as Hotel cash.
-        rt_payload = {
-            "source": "pos_room_transfer",
-            "stay": {"payments": [{"method": "cash", "amount": 150}]},
+        fbe_payload = {
+            "source": "fb_combined_transfer",
+            "stay": {
+                "fbTransferInvoiceNumber": "FBE/TEST/1",
+                "invoiceNumber": "FBE/TEST/1",
+                "fbTransferPayments": [
+                    {
+                        "method": "cash",
+                        "amount": 150,
+                        "invoiceNumber": "FBE/TEST/1",
+                    }
+                ],
+                # Room stay advance must not leak into FBE cash.
+                "advancePaid": 5600,
+                "paymentMethod": "",
+            },
         }
         conn.execute(
             """INSERT INTO hotel_room_invoices
@@ -230,7 +242,7 @@ class CashLedgerHelperTests(unittest.TestCase):
                 estimated_total, balance_amount, status, source, payload_json)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                "RT/TEST/1",
+                "FBE/TEST/1",
                 "room-1",
                 "101",
                 "Guest",
@@ -238,8 +250,8 @@ class CashLedgerHelperTests(unittest.TestCase):
                 150,
                 0,
                 "settled",
-                "pos_room_transfer",
-                json.dumps(rt_payload),
+                "fb_combined_transfer",
+                json.dumps(fbe_payload),
             ),
         )
         conn.commit()
@@ -252,6 +264,9 @@ class CashLedgerHelperTests(unittest.TestCase):
         self.assertEqual(hotel_sales[0]["detail"], "Hotel")
         self.assertEqual(hotel_sales[0]["description"], "Actual cash — Hotel")
         self.assertAlmostEqual(float(hotel_sales[0]["amount"]), 218.0, places=2)
+
+        sales_entry = db_mod.hotel_sales_entry_from_invoices(conn, "2026-09-10")
+        self.assertAlmostEqual(float(sales_entry["cash"]), 218.0, places=2)
         conn.close()
 
     def test_location_filter_scopes_sales_and_expenses(self):

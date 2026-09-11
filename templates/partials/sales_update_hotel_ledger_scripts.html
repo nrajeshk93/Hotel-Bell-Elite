@@ -86,7 +86,8 @@
     const digital = amount('card') + amount('upi') + amount('online_order');
     const cash = amount('cash');
     const expense = amount('expense');
-    const difference = actual - (cash + amount('card') + amount('upi') + amount('room_credit') + amount('bor') + amount('online_order'));
+    // Settlement cash vs counted Actual Cash (same as Restaurant / Bar).
+    const difference = cash - amount('actual_cash');
     function setKpi(id, value){
       const el = document.getElementById(id);
       if (el) el.textContent = formatInrKpi(value);
@@ -841,7 +842,10 @@
   }
 
   async function saveSalesEntry(){
-    if (!widget || salesEntryLocked) return;
+    if (!widget) return;
+    if (salesEntryLocked) {
+      throw new Error('This entry was saved more than 7 days ago. Only a Super Administrator can change it.');
+    }
     const resp = await fetch(widget.dataset.saveUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -864,6 +868,10 @@
 
   function scheduleSave(){
     clearTimeout(saveTimer);
+    if (salesEntryLocked) {
+      if (statusEl) statusEl.textContent = 'This entry was saved more than 7 days ago. Only a Super Administrator can change it.';
+      return;
+    }
     if (statusEl) statusEl.textContent = 'Unsaved changes...';
     saveTimer = setTimeout(async () => {
       try {
@@ -1009,9 +1017,13 @@
     });
     input.addEventListener('blur', () => {
       if (input.value === '') input.value = '0';
+      updateKpis(buildSalesEntries());
       scheduleSave();
     });
-    input.addEventListener('input', scheduleSave);
+    input.addEventListener('input', () => {
+      updateKpis(buildSalesEntries());
+      scheduleSave();
+    });
   }
 
   entryInputs.filter((input) => manualSalesEntryKeys.has(String(input.dataset.salesEntry || ''))).forEach(attachZeroClearBehavior);

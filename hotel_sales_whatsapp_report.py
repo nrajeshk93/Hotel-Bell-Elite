@@ -316,12 +316,8 @@ def _merge_outlet_entry(
 def outlet_difference(vals: dict[str, Any], location: str) -> float:
     """Reuse Sales Update Difference rules from app.py (no Flask import).
 
-    Hotel: total_sales − (cash+card+upi+room_credit+bor+online_order)  [= get_difference]
-    Restaurant/Bar: cash − actual_cash  [= get_cash_actual_difference]
+    All outlets: cash − actual_cash  [= get_cash_actual_difference]
     """
-    if location == "Hotel":
-        tenders = sum(_money(vals.get(k)) for k in _TENDER_KEYS_FOR_DIFFERENCE)
-        return _round2(_money(vals.get("total_sales")) - tenders)
     return _round2(_money(vals.get("cash")) - _money(vals.get("actual_cash")))
 
 
