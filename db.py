@@ -16425,18 +16425,20 @@ def hotel_invoice_cash_totals_by_day(conn, date_from, date_to):
 def hotel_sales_entry_from_invoices(conn, sales_date):
     """Build Hotel Sales Entry totals from room invoices for one day.
 
-    Stay invoices feed ``total_sales`` and Guest Credit / BOR. F&B combined-transfer
-    (FBE) and open POS room-transfer bills feed a separate ``room_transfer`` line so
-    Restaurant/Bar POS totals are not double-counted in Hotel Actual Sales. FO
-    settlement tenders (cash/card/upi/bor) from stay and FBE/RT still land on the
-    Hotel tender lines for cash control. Unpaid remainder maps to ``room_credit``
-    for stay invoices only. Bank transfer folds into ``card``.
+    Stay invoices feed ``total_sales`` and Guest Credit / BOR. Settled F&B
+    combined-transfer (FBE) invoices feed a separate ``room_transfer`` line so
+    Restaurant/Bar POS totals are not double-counted in Hotel Actual Sales.
+    Open/unsettled FBE and provisional POS RT (``RT/…``) invoices are excluded
+    until an FBE bill is generated and settled. FO settlement tenders
+    (cash/card/upi/bor) from stay and settled FBE land on the Hotel tender lines
+    for cash control. Unpaid remainder maps to ``room_credit`` for stay invoices
+    only. Bank transfer folds into ``card``.
     """
     ensure_hotel_room_invoices_schema(conn)
     day = str(sales_date)[:10]
     rows = conn.execute(
         """
-        SELECT estimated_total, payload_json, source
+        SELECT estimated_total, payload_json, source, status
         FROM hotel_room_invoices
         WHERE lower(COALESCE(status, '')) IN ('open', 'settled')
           AND substr(invoice_generated_at, 1, 10) = ?
@@ -16445,14 +16447,19 @@ def hotel_sales_entry_from_invoices(conn, sales_date):
     ).fetchall()
 
     total_sales = cash = card = upi = room_credit = bor = room_transfer = 0.0
-    transfer_sources = {
-        HOTEL_INVOICE_SOURCE_FB_COMBINED,
-        HOTEL_INVOICE_SOURCE_POS_TRANSFER,
-    }
     for row in rows:
         amount = float(row["estimated_total"] or 0)
         source_raw = row["source"] if "source" in row.keys() else ""
         source = str(source_raw or "").strip().lower() or HOTEL_INVOICE_SOURCE_HOTEL
+        status = str((row["status"] if "status" in row.keys() else "") or "").strip().lower()
+
+        # Provisional POS RT bills are not Sales Update Room Transfer until FBE.
+        if source == HOTEL_INVOICE_SOURCE_POS_TRANSFER:
+            continue
+        # Unsettled FBE stays off Hotel Sales Update until FO settles the bill.
+        if source == HOTEL_INVOICE_SOURCE_FB_COMBINED and status != "settled":
+            continue
+
         amounts = _hotel_invoice_payment_amounts_from_payload(
             row["payload_json"], source=source_raw
         )
@@ -16471,10 +16478,8 @@ def hotel_sales_entry_from_invoices(conn, sales_date):
         card += pay_card
         bor += pay_bor
 
-        if source in transfer_sources:
+        if source == HOTEL_INVOICE_SOURCE_FB_COMBINED:
             room_transfer += amount
-            # FBE/RT unpaid remainder stays off Guest Credit — already attributed
-            # on Restaurant/Bar when POS settled as room transfer.
             continue
 
         total_sales += amount
@@ -16496,10 +16501,10 @@ def hotel_sales_entry_from_invoices(conn, sales_date):
 
 
 def hotel_room_transfer_settlement_breakdown(conn, sales_date):
-    """Settlement tally for Hotel Room Transfer (FBE + open POS RT) on one day.
+    """Settlement tally for Hotel Room Transfer: settled FBE invoices only.
 
-    Read-only view for Sales Update: invoice totals and FO tender splits. Outstanding
-    is amount not covered by cash/card/upi/credit/bor — not folded into Guest Credit.
+    Read-only Sales Update view. Provisional POS RT (``RT/…``) and unsettled FBE
+    bills are excluded until the combined F&B transfer invoice is settled.
     """
     ensure_hotel_room_invoices_schema(conn)
     day = str(sales_date)[:10]
@@ -16507,19 +16512,15 @@ def hotel_room_transfer_settlement_breakdown(conn, sales_date):
         """
         SELECT invoice_number, estimated_total, payload_json, source, status
         FROM hotel_room_invoices
-        WHERE lower(COALESCE(status, '')) IN ('open', 'settled')
+        WHERE lower(COALESCE(status, '')) = 'settled'
           AND substr(invoice_generated_at, 1, 10) = ?
-          AND lower(COALESCE(NULLIF(TRIM(source), ''), 'hotel')) IN (?, ?)
+          AND lower(COALESCE(NULLIF(TRIM(source), ''), 'hotel')) = ?
         ORDER BY invoice_generated_at ASC, invoice_number ASC
         """,
-        (
-            day,
-            HOTEL_INVOICE_SOURCE_FB_COMBINED,
-            HOTEL_INVOICE_SOURCE_POS_TRANSFER,
-        ),
+        (day, HOTEL_INVOICE_SOURCE_FB_COMBINED),
     ).fetchall()
 
-    total = cash = card = upi = credit = bor = outstanding = 0.0
+    total = cash = card = upi = credit = bor = 0.0
     invoices = []
     for row in rows:
         amount = round(float(row["estimated_total"] or 0), 2)
@@ -16537,8 +16538,6 @@ def hotel_room_transfer_settlement_breakdown(conn, sales_date):
         )
         pay_credit = round(float(amounts.get("credit") or 0), 2)
         pay_bor = round(float(amounts.get("bor") or 0), 2)
-        allocated = round(pay_cash + pay_card + pay_upi + pay_credit + pay_bor, 2)
-        inv_outstanding = round(max(0.0, amount - allocated), 2)
 
         methods = []
         for key, value in (
@@ -16551,15 +16550,12 @@ def hotel_room_transfer_settlement_breakdown(conn, sales_date):
             if value > 0.004:
                 methods.append(key)
         if methods:
-            labels = [
+            payment_label = " + ".join(
                 HOTEL_ROOM_PAYMENT_METHOD_LABELS.get(
                     key, str(key).replace("_", " ").title()
                 )
                 for key in methods
-            ]
-            payment_label = " + ".join(labels)
-            if inv_outstanding > 0.004:
-                payment_label = f"{payment_label} + Outstanding"
+            )
         else:
             payment_label = _hotel_invoice_payment_mode_label(
                 row["status"] if "status" in row.keys() else "", None
@@ -16578,7 +16574,6 @@ def hotel_room_transfer_settlement_breakdown(conn, sales_date):
                 "upi": pay_upi,
                 "credit": pay_credit,
                 "bor": pay_bor,
-                "outstanding": inv_outstanding,
                 "payment_label": payment_label,
             }
         )
@@ -16588,7 +16583,6 @@ def hotel_room_transfer_settlement_breakdown(conn, sales_date):
         upi += pay_upi
         credit += pay_credit
         bor += pay_bor
-        outstanding += inv_outstanding
 
     return {
         "total": round(total, 2),
@@ -16597,7 +16591,6 @@ def hotel_room_transfer_settlement_breakdown(conn, sales_date):
         "upi": round(upi, 2),
         "credit": round(credit, 2),
         "bor": round(bor, 2),
-        "outstanding": round(outstanding, 2),
         "invoices": invoices,
     }
 

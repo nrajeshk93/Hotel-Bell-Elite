@@ -18193,7 +18193,6 @@ def _load_outlet_entry_bundle(
             "upi": 0.0,
             "credit": 0.0,
             "bor": 0.0,
-            "outstanding": 0.0,
             "invoices": [],
         }
     return bundle

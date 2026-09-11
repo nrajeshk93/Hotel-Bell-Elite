@@ -381,12 +381,13 @@ class InvoiceSalesKpisTests(unittest.TestCase):
         self.conn.commit()
         entry = db_mod.hotel_sales_entry_from_invoices(self.conn, "2026-04-12")
         self.assertEqual(entry["total_sales"], 2000.0)
-        self.assertEqual(entry["room_transfer"], 450.0)
+        # Unsettled FBE is excluded from Room Transfer until FO settles it.
+        self.assertEqual(entry["room_transfer"], 0.0)
         self.assertEqual(entry["upi"], 2000.0)
         self.assertEqual(entry["room_credit"], 0.0)
         self.assertEqual(entry["cash"], 0.0)
 
-    def test_hotel_sales_entry_open_pos_rt_feeds_room_transfer(self):
+    def test_hotel_sales_entry_open_pos_rt_excluded_from_room_transfer(self):
         self.conn.execute(
             """
             INSERT INTO hotel_room_invoices (
@@ -408,7 +409,7 @@ class InvoiceSalesKpisTests(unittest.TestCase):
         self.conn.commit()
         entry = db_mod.hotel_sales_entry_from_invoices(self.conn, "2026-04-12")
         self.assertEqual(entry["total_sales"], 0.0)
-        self.assertEqual(entry["room_transfer"], 150.0)
+        self.assertEqual(entry["room_transfer"], 0.0)
         self.assertEqual(entry["room_credit"], 0.0)
 
     def test_hotel_room_transfer_settlement_breakdown_cash_settled(self):
@@ -440,12 +441,12 @@ class InvoiceSalesKpisTests(unittest.TestCase):
         )
         self.assertEqual(breakdown["total"], 68.0)
         self.assertEqual(breakdown["cash"], 68.0)
-        self.assertEqual(breakdown["outstanding"], 0.0)
+        self.assertNotIn("outstanding", breakdown)
         self.assertEqual(len(breakdown["invoices"]), 1)
         self.assertEqual(breakdown["invoices"][0]["invoice_number"], "FBE/26-27/00007")
         self.assertIn("Cash", breakdown["invoices"][0]["payment_label"])
 
-    def test_hotel_room_transfer_settlement_breakdown_unpaid_and_excludes_stay(self):
+    def test_hotel_room_transfer_settlement_breakdown_excludes_unsettled_and_rt(self):
         self._insert_hotel(
             invoice_number="HBE/RM/STAY/ONLY",
             generated_at="2026-04-12 09:00:00",
@@ -453,7 +454,7 @@ class InvoiceSalesKpisTests(unittest.TestCase):
             status="settled",
             payments=[{"method": "upi", "amount": 2000.0}],
         )
-        payload = {
+        unpaid_fbe = {
             "source": "fb_combined_transfer",
             "stay": {
                 "fbTransferInvoiceNumber": "FBE/26-27/00008",
@@ -471,19 +472,37 @@ class InvoiceSalesKpisTests(unittest.TestCase):
                       '2026-04-01', '2026-04-02', ?, ?, 0, 450, 'open',
                       'fb_combined_transfer', ?)
             """,
-            ("FBE/26-27/00008", "2026-04-12 11:00:00", 450.0, json.dumps(payload)),
+            ("FBE/26-27/00008", "2026-04-12 11:00:00", 450.0, json.dumps(unpaid_fbe)),
+        )
+        self.conn.execute(
+            """
+            INSERT INTO hotel_room_invoices (
+                invoice_number, room_id, room_number, room_type_label,
+                guest_name, booking_number, check_in_date, check_out_date,
+                invoice_generated_at, estimated_total, advance_paid,
+                balance_amount, status, source, payload_json
+            ) VALUES (?, 'r103', '103', 'Restaurant Transfer', 'Guest', '',
+                      '2026-04-01', '2026-04-02', ?, ?, 0, 150, 'open',
+                      'pos_room_transfer', ?)
+            """,
+            (
+                "RT/26-27/00020",
+                "2026-04-12 12:00:00",
+                150.0,
+                json.dumps({"source": "pos_room_transfer"}),
+            ),
         )
         self.conn.commit()
         breakdown = db_mod.hotel_room_transfer_settlement_breakdown(
             self.conn, "2026-04-12"
         )
-        self.assertEqual(breakdown["total"], 450.0)
+        self.assertEqual(breakdown["total"], 0.0)
         self.assertEqual(breakdown["cash"], 0.0)
-        self.assertEqual(breakdown["outstanding"], 450.0)
-        self.assertEqual(len(breakdown["invoices"]), 1)
-        self.assertEqual(breakdown["invoices"][0]["invoice_number"], "FBE/26-27/00008")
+        self.assertEqual(breakdown["invoices"], [])
         numbers = [row["invoice_number"] for row in breakdown["invoices"]]
         self.assertNotIn("HBE/RM/STAY/ONLY", numbers)
+        self.assertNotIn("FBE/26-27/00008", numbers)
+        self.assertNotIn("RT/26-27/00020", numbers)
 
     def test_pos_sales_entry_from_invoices_by_outlet(self):
         self._insert_pos(
