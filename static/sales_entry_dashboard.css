@@ -577,13 +577,157 @@ body.se-cash-mode .content.se-content.sr-kpi-canvas{
 .staff-expense-payment-listbox.is-open{z-index:60}
 /* Absolute panels must escape the scrollable dialog; otherwise menus clip and feel "frozen". */
 #sales-expense-modal .sales-expense-modal-box,
-#sales-tips-modal .sales-expense-modal-box{
+#sales-tips-modal .sales-expense-modal-box,
+#room-transfer-settlement-modal .sales-expense-modal-box{
   overflow:visible;
 }
 #sales-expense-modal .staff-credit-list,
 #sales-tips-modal .staff-credit-list{
   max-height:min(220px,32vh);
   overflow:auto;
+}
+#room-transfer-settlement-modal .se-rt-settle-kpi-row{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:10px;
+  margin:0 0 14px;
+}
+#room-transfer-settlement-modal .staff-credit-history{
+  margin-top:4px;
+  padding-top:0;
+  border-top:0;
+}
+#room-transfer-settlement-modal .se-rt-invoice-hdr{
+  margin:0;
+  padding:0 0 10px;
+  border-bottom:0;
+  background:transparent;
+}
+#room-transfer-settlement-modal .se-rt-invoice-hdr .card-title{
+  font-size:13px;
+  font-weight:700;
+}
+#room-transfer-settlement-modal .se-rt-invoice-count{
+  font-size:12px;
+  font-weight:600;
+  color:var(--txt3);
+}
+#room-transfer-settlement-modal .se-rt-invoice-table-wrap{
+  max-height:calc(40px + 5 * 48px);
+  overflow:auto;
+  -webkit-overflow-scrolling:touch;
+  border:1px solid var(--border-s);
+  border-radius:10px;
+  background:#fff;
+}
+#room-transfer-settlement-modal .se-rt-invoice-table{
+  width:100%;
+  border-collapse:collapse;
+}
+#room-transfer-settlement-modal .se-rt-invoice-table th,
+#room-transfer-settlement-modal .se-rt-invoice-table td{
+  padding:11px 14px;
+  text-align:left;
+  border-bottom:1px solid var(--border-s);
+  font-size:13px;
+  vertical-align:middle;
+}
+#room-transfer-settlement-modal .se-rt-invoice-table th{
+  background:#F8FAFD;
+  color:var(--txt3);
+  font-size:10px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.5px;
+  position:sticky;
+  top:0;
+  z-index:2;
+  box-shadow:0 1px 0 var(--border-s);
+}
+#room-transfer-settlement-modal .se-rt-invoice-table tr:last-child td{
+  border-bottom:0;
+}
+#room-transfer-settlement-modal .se-rt-invoice-table .pl-col-amount{
+  width:110px;
+  white-space:nowrap;
+  text-align:right;
+}
+#room-transfer-settlement-modal .se-rt-invoice-table .pl-amount{
+  font-weight:700;
+  color:var(--txt);
+}
+#room-transfer-settlement-modal .se-rt-invoice-table-wrap.is-empty .se-rt-invoice-table{
+  display:none;
+}
+#room-transfer-settlement-modal .se-rt-invoice-table th.pl-sortable{
+  cursor:pointer;
+  user-select:none;
+  white-space:nowrap;
+}
+#room-transfer-settlement-modal .se-rt-invoice-table th.pl-sortable:hover{
+  color:var(--txt2);
+}
+#room-transfer-settlement-modal .se-rt-invoice-table th.pl-sortable::after{
+  content:'⇅';
+  display:inline-block;
+  margin-left:6px;
+  font-size:9px;
+  opacity:.35;
+  vertical-align:middle;
+}
+#room-transfer-settlement-modal .se-rt-invoice-table th.pl-sortable.is-sorted-asc::after,
+#room-transfer-settlement-modal .se-rt-invoice-table th.pl-sortable.is-sorted-desc::after{
+  opacity:1;
+  color:#2563EB;
+}
+#room-transfer-settlement-modal .se-rt-invoice-table th.pl-sortable.is-sorted-asc::after{content:'▲'}
+#room-transfer-settlement-modal .se-rt-invoice-table th.pl-sortable.is-sorted-desc::after{content:'▼'}
+#room-transfer-settlement-modal .se-rt-invoice-table th.pl-sortable:focus-visible{
+  outline:2px solid #2563EB;
+  outline-offset:2px;
+}
+#room-transfer-settlement-modal .se-rt-invoice-empty{
+  margin:0;
+  padding:18px 14px;
+  text-align:center;
+}
+#room-transfer-settlement-modal .se-rt-settle-total-footer{
+  margin:14px 0 0;
+}
+#room-transfer-settlement-modal .se-rt-settle-kpi-row .hbe-kpi-card{
+  margin:0;
+  min-width:0;
+  box-shadow:none;
+}
+#room-transfer-settlement-modal .se-rt-settle-kpi-row .pl-summary-body{
+  padding:12px 12px;
+  gap:10px;
+}
+#room-transfer-settlement-modal .se-rt-settle-kpi-row .hbe-kpi-icon{
+  width:34px;
+  height:34px;
+  flex-shrink:0;
+}
+#room-transfer-settlement-modal .se-rt-settle-kpi-row .hbe-kpi-icon svg{
+  width:16px;
+  height:16px;
+}
+#room-transfer-settlement-modal .se-rt-settle-kpi-row .pl-summary-label{
+  font-size:10px;
+  letter-spacing:.04em;
+}
+#room-transfer-settlement-modal .se-rt-settle-kpi-row .pl-summary-value{
+  font-size:15px;
+  line-height:1.15;
+  margin-top:2px;
+}
+#room-transfer-settlement-modal .se-rt-settle-outstanding{
+  color:#B45309;
+}
+@media (max-width:640px){
+  #room-transfer-settlement-modal .se-rt-settle-kpi-row{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
 }
 #sales-expense-modal .se-filter-chip--listbox.is-open,
 #sales-tips-modal .se-filter-chip--listbox.is-open{z-index:80}

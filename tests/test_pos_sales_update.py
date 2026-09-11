@@ -512,6 +512,10 @@ class PosSalesUpdateTests(unittest.TestCase):
         self.assertNotIn('id="se-upload-hotel"', html)
         self.assertIn("Back Office Receipt", html)
         self.assertIn('data-sales-entry="bor"', html)
+        self.assertIn("Room Transfer", html)
+        self.assertIn('data-sales-entry="room_transfer"', html)
+        self.assertIn('id="open-room-transfer-settlement"', html)
+        self.assertIn('id="room-transfer-settlement-modal"', html)
         self.assertNotRegex(
             html,
             r'class="de-nav-group is-open[^"]*" id="de-nav-sales-analytics-group"',

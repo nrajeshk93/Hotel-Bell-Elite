@@ -16495,6 +16495,113 @@ def hotel_sales_entry_from_invoices(conn, sales_date):
     }
 
 
+def hotel_room_transfer_settlement_breakdown(conn, sales_date):
+    """Settlement tally for Hotel Room Transfer (FBE + open POS RT) on one day.
+
+    Read-only view for Sales Update: invoice totals and FO tender splits. Outstanding
+    is amount not covered by cash/card/upi/credit/bor — not folded into Guest Credit.
+    """
+    ensure_hotel_room_invoices_schema(conn)
+    day = str(sales_date)[:10]
+    rows = conn.execute(
+        """
+        SELECT invoice_number, estimated_total, payload_json, source, status
+        FROM hotel_room_invoices
+        WHERE lower(COALESCE(status, '')) IN ('open', 'settled')
+          AND substr(invoice_generated_at, 1, 10) = ?
+          AND lower(COALESCE(NULLIF(TRIM(source), ''), 'hotel')) IN (?, ?)
+        ORDER BY invoice_generated_at ASC, invoice_number ASC
+        """,
+        (
+            day,
+            HOTEL_INVOICE_SOURCE_FB_COMBINED,
+            HOTEL_INVOICE_SOURCE_POS_TRANSFER,
+        ),
+    ).fetchall()
+
+    total = cash = card = upi = credit = bor = outstanding = 0.0
+    invoices = []
+    for row in rows:
+        amount = round(float(row["estimated_total"] or 0), 2)
+        source_raw = row["source"] if "source" in row.keys() else ""
+        amounts = _hotel_invoice_payment_amounts_from_payload(
+            row["payload_json"], source=source_raw
+        )
+        if not isinstance(amounts, dict):
+            amounts = {}
+        pay_cash = round(float(amounts.get("cash") or 0), 2)
+        pay_upi = round(float(amounts.get("upi") or 0), 2)
+        pay_card = round(
+            float(amounts.get("card") or 0) + float(amounts.get("bank_transfer") or 0),
+            2,
+        )
+        pay_credit = round(float(amounts.get("credit") or 0), 2)
+        pay_bor = round(float(amounts.get("bor") or 0), 2)
+        allocated = round(pay_cash + pay_card + pay_upi + pay_credit + pay_bor, 2)
+        inv_outstanding = round(max(0.0, amount - allocated), 2)
+
+        methods = []
+        for key, value in (
+            ("cash", pay_cash),
+            ("card", pay_card),
+            ("upi", pay_upi),
+            ("credit", pay_credit),
+            ("bor", pay_bor),
+        ):
+            if value > 0.004:
+                methods.append(key)
+        if methods:
+            labels = [
+                HOTEL_ROOM_PAYMENT_METHOD_LABELS.get(
+                    key, str(key).replace("_", " ").title()
+                )
+                for key in methods
+            ]
+            payment_label = " + ".join(labels)
+            if inv_outstanding > 0.004:
+                payment_label = f"{payment_label} + Outstanding"
+        else:
+            payment_label = _hotel_invoice_payment_mode_label(
+                row["status"] if "status" in row.keys() else "", None
+            )
+
+        invoices.append(
+            {
+                "invoice_number": str(row["invoice_number"] or "").strip(),
+                "source": str(source_raw or "").strip(),
+                "status": str((row["status"] if "status" in row.keys() else "") or "")
+                .strip()
+                .lower(),
+                "amount": amount,
+                "cash": pay_cash,
+                "card": pay_card,
+                "upi": pay_upi,
+                "credit": pay_credit,
+                "bor": pay_bor,
+                "outstanding": inv_outstanding,
+                "payment_label": payment_label,
+            }
+        )
+        total += amount
+        cash += pay_cash
+        card += pay_card
+        upi += pay_upi
+        credit += pay_credit
+        bor += pay_bor
+        outstanding += inv_outstanding
+
+    return {
+        "total": round(total, 2),
+        "cash": round(cash, 2),
+        "card": round(card, 2),
+        "upi": round(upi, 2),
+        "credit": round(credit, 2),
+        "bor": round(bor, 2),
+        "outstanding": round(outstanding, 2),
+        "invoices": invoices,
+    }
+
+
 def pos_sales_entry_from_invoices(conn, outlet, sales_date):
     """Build Restaurant/Bar Sales Entry totals from POS invoices for one day.
 

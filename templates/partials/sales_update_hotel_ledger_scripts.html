@@ -11,6 +11,7 @@
   let expenseEntries = {{ outlet_records['Hotel'].expense_entries|default([])|tojson }};
   let editingExpenseId = null;
   let saveTimer = null;
+  const roomTransferSettlement = {{ outlet_records['Hotel'].room_transfer_settlement|default({})|tojson }};
 
   const expenseModal = document.getElementById('sales-expense-modal');
   const openExpenseModalBtn = document.getElementById('open-sales-expense');
@@ -28,6 +29,22 @@
   const salesExpenseCategoryInput = document.getElementById('sales-expense-category-input');
   const salesExpenseCategoryValue = document.getElementById('sales-expense-category-value');
   const salesExpenseCategoryTrigger = document.getElementById('sales-expense-category-trigger');
+  const roomTransferModal = document.getElementById('room-transfer-settlement-modal');
+  const openRoomTransferBtn = document.getElementById('open-room-transfer-settlement');
+  const roomTransferHeroTotalEl = document.getElementById('room-transfer-settlement-hero-total');
+  const roomTransferSettleCashEl = document.getElementById('room-transfer-settle-cash');
+  const roomTransferSettleCardEl = document.getElementById('room-transfer-settle-card');
+  const roomTransferSettleUpiEl = document.getElementById('room-transfer-settle-upi');
+  const roomTransferSettleCreditEl = document.getElementById('room-transfer-settle-credit');
+  const roomTransferSettleBorEl = document.getElementById('room-transfer-settle-bor');
+  const roomTransferSettleOutstandingEl = document.getElementById('room-transfer-settle-outstanding');
+  const roomTransferListEl = document.getElementById('room-transfer-settlement-list');
+  const roomTransferListWrapEl = document.getElementById('room-transfer-settlement-list-wrap');
+  const roomTransferEmptyEl = document.getElementById('room-transfer-settlement-empty');
+  const roomTransferTotalEl = document.getElementById('room-transfer-settlement-total');
+  const roomTransferInvoiceTable = roomTransferListWrapEl
+    ? roomTransferListWrapEl.querySelector('table.se-rt-invoice-table')
+    : null;
   const salesExpenseCategoryList = document.getElementById('sales-expense-category-list');
   const salesExpenseCategorySearch = document.getElementById('sales-expense-category-search');
   const salesExpenseCategoryOptions = document.getElementById('sales-expense-category-options');
@@ -1142,5 +1159,165 @@
   }
 
   renderExpenseEntries(expenseEntries);
+  renderRoomTransferSettlement(roomTransferSettlement);
+
+  function escapeHtml(value){
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function renderRoomTransferSettlement(data){
+    const settlement = data && typeof data === 'object' ? data : {};
+    const total = Number(settlement.total || 0);
+    const cash = Number(settlement.cash || 0);
+    const card = Number(settlement.card || 0);
+    const upi = Number(settlement.upi || 0);
+    const credit = Number(settlement.credit || 0);
+    const bor = Number(settlement.bor || 0);
+    const outstanding = Number(settlement.outstanding || 0);
+    if (roomTransferHeroTotalEl) roomTransferHeroTotalEl.textContent = formatInrKpi(total);
+    if (roomTransferSettleCashEl) roomTransferSettleCashEl.textContent = formatInrKpi(cash);
+    if (roomTransferSettleCardEl) roomTransferSettleCardEl.textContent = formatInrKpi(card);
+    if (roomTransferSettleUpiEl) roomTransferSettleUpiEl.textContent = formatInrKpi(upi);
+    if (roomTransferSettleCreditEl) roomTransferSettleCreditEl.textContent = formatInrKpi(credit);
+    if (roomTransferSettleBorEl) roomTransferSettleBorEl.textContent = formatInrKpi(bor);
+    if (roomTransferSettleOutstandingEl) roomTransferSettleOutstandingEl.textContent = formatInrKpi(outstanding);
+    const invoices = Array.isArray(settlement.invoices) ? settlement.invoices : [];
+    if (roomTransferTotalEl) {
+      const count = invoices.length;
+      roomTransferTotalEl.textContent = count === 1 ? '1 invoice' : `${count} invoices`;
+    }
+    if (roomTransferListEl) {
+      if (!invoices.length) {
+        roomTransferListEl.innerHTML = '';
+        if (roomTransferEmptyEl) roomTransferEmptyEl.hidden = false;
+        if (roomTransferListWrapEl) roomTransferListWrapEl.classList.add('is-empty');
+      } else {
+        if (roomTransferEmptyEl) roomTransferEmptyEl.hidden = true;
+        if (roomTransferListWrapEl) roomTransferListWrapEl.classList.remove('is-empty');
+        roomTransferListEl.innerHTML = invoices.map((row) => {
+          const numberRaw = String(row.invoice_number || '—');
+          const labelRaw = String(row.payment_label || 'Un Settled');
+          const amountNum = Number(row.amount || 0);
+          const number = escapeHtml(numberRaw);
+          const label = escapeHtml(labelRaw);
+          const amount = formatInrKpi(amountNum);
+          return `<tr data-sort-row><td data-label="Invoice Number" data-sort-value="${escapeHtml(numberRaw)}">${number}</td><td data-label="Settlement Mode" data-sort-value="${escapeHtml(labelRaw)}">${label}</td><td class="pl-col-amount pl-amount" data-label="Total" data-sort-value="${amountNum}">${amount}</td></tr>`;
+        }).join('');
+        resetRoomTransferInvoiceSortState();
+      }
+    }
+    if (typeof window.initHbeTableScroll === 'function') {
+      window.initHbeTableScroll();
+    }
+  }
+
+  function resetRoomTransferInvoiceSortState(){
+    if (!roomTransferInvoiceTable) return;
+    roomTransferInvoiceTable.querySelectorAll('th.pl-sortable').forEach((th) => {
+      th.classList.remove('is-sorted-asc', 'is-sorted-desc');
+      th.setAttribute('aria-sort', 'none');
+    });
+    roomTransferInvoiceTable.dataset.rtSortKey = '';
+    roomTransferInvoiceTable.dataset.rtSortAsc = '1';
+  }
+
+  function initRoomTransferInvoiceSort(){
+    if (!roomTransferInvoiceTable || !roomTransferListEl) return;
+    if (roomTransferInvoiceTable.getAttribute('data-pl-sort-bound') === '1') return;
+    roomTransferInvoiceTable.setAttribute('data-pl-sort-bound', '1');
+    const headers = Array.from(roomTransferInvoiceTable.querySelectorAll('th.pl-sortable'));
+
+    function cellSortValue(row, colIndex, type){
+      const cell = row.cells[colIndex];
+      if (!cell) return type === 'number' ? 0 : '';
+      let raw = cell.getAttribute('data-sort-value');
+      if (raw == null || raw === '') raw = (cell.textContent || '').trim();
+      if (type === 'number') {
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : 0;
+      }
+      return String(raw);
+    }
+
+    function sortBy(th){
+      const key = th.getAttribute('data-sort') || '';
+      const type = th.getAttribute('data-sort-type') || 'text';
+      const colIndex = th.cellIndex;
+      if (colIndex < 0) return;
+
+      let ascending = true;
+      if (roomTransferInvoiceTable.dataset.rtSortKey === key) {
+        ascending = roomTransferInvoiceTable.dataset.rtSortAsc !== '1';
+      }
+      roomTransferInvoiceTable.dataset.rtSortKey = key;
+      roomTransferInvoiceTable.dataset.rtSortAsc = ascending ? '1' : '0';
+
+      const rows = Array.from(roomTransferListEl.querySelectorAll('tr[data-sort-row]'));
+      rows.sort((a, b) => {
+        const av = cellSortValue(a, colIndex, type);
+        const bv = cellSortValue(b, colIndex, type);
+        let cmp = 0;
+        if (type === 'number') cmp = av - bv;
+        else cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+        return ascending ? cmp : -cmp;
+      });
+      rows.forEach((row) => roomTransferListEl.appendChild(row));
+
+      headers.forEach((header) => {
+        header.classList.remove('is-sorted-asc', 'is-sorted-desc');
+        header.setAttribute('aria-sort', 'none');
+      });
+      th.classList.add(ascending ? 'is-sorted-asc' : 'is-sorted-desc');
+      th.setAttribute('aria-sort', ascending ? 'ascending' : 'descending');
+    }
+
+    headers.forEach((th) => {
+      th.addEventListener('click', () => sortBy(th));
+      th.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          sortBy(th);
+        }
+      });
+    });
+  }
+
+  initRoomTransferInvoiceSort();
+
+  function readRoomTransferSettlement(){
+    if (openRoomTransferBtn && openRoomTransferBtn.dataset.roomTransferSettlement) {
+      try {
+        const parsed = JSON.parse(openRoomTransferBtn.dataset.roomTransferSettlement);
+        if (parsed && typeof parsed === 'object') return parsed;
+      } catch (err) {}
+    }
+    return roomTransferSettlement && typeof roomTransferSettlement === 'object'
+      ? roomTransferSettlement
+      : {};
+  }
+
+  function openRoomTransferSettlement(){
+    if (!roomTransferModal) return;
+    renderRoomTransferSettlement(readRoomTransferSettlement());
+    roomTransferModal.classList.add('open');
+    roomTransferModal.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeRoomTransferSettlement(){
+    if (!roomTransferModal) return;
+    roomTransferModal.classList.remove('open');
+    roomTransferModal.setAttribute('aria-hidden', 'true');
+  }
+
+  if (openRoomTransferBtn) openRoomTransferBtn.addEventListener('click', openRoomTransferSettlement);
+  if (roomTransferModal) {
+    roomTransferModal.addEventListener('click', (event) => {
+      if (event.target === roomTransferModal) closeRoomTransferSettlement();
+    });
+  }
 })();
 </script>

@@ -103,6 +103,7 @@ from db import (
     list_license_renewals,
     update_app_license,
     hotel_sales_entry_from_invoices,
+    hotel_room_transfer_settlement_breakdown,
     hotel_invoice_cash_totals_by_day,
     pos_sales_entry_from_invoices,
     indian_fiscal_year_bounds,
@@ -18148,6 +18149,11 @@ def _load_outlet_entry_bundle(
         staff_account_entries = _sales_staff_account_entries(conn, company, location, sales_date)
         staff_account_total = _sales_staff_account_total(conn, company, location, sales_date)
         sales_entries["staff_account"] = staff_account_total
+        room_transfer_settlement = (
+            {}
+            if is_future
+            else hotel_room_transfer_settlement_breakdown(conn, sales_date)
+        )
     else:
         sales_entries = build_sales_entry_values(conn, company, location, sales_date, sales_entries)
         if not is_future:
@@ -18160,6 +18166,7 @@ def _load_outlet_entry_bundle(
                     sales_entries[key] = parse_money(invoice_entries.get(key))
         expense_entries = []
         expense_total = 0.0
+        room_transfer_settlement = {}
     if location in TIP_OUTLET_LOCATIONS:
         tip_entries = _sales_tip_entries(conn, company, location, sales_date)
         tip_total = _sales_tip_total(conn, company, location, sales_date)
@@ -18179,6 +18186,16 @@ def _load_outlet_entry_bundle(
         bundle["expense_total"] = expense_total
         bundle["staff_account_entries"] = staff_account_entries
         bundle["staff_account_total"] = staff_account_total
+        bundle["room_transfer_settlement"] = room_transfer_settlement or {
+            "total": 0.0,
+            "cash": 0.0,
+            "card": 0.0,
+            "upi": 0.0,
+            "credit": 0.0,
+            "bor": 0.0,
+            "outstanding": 0.0,
+            "invoices": [],
+        }
     return bundle
 
 
