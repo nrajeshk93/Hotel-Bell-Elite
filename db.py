@@ -16380,6 +16380,41 @@ def _hotel_payload_sales_entry_tenders(payload_json):
     return cash, card, upi, room_credit, bor, other
 
 
+def hotel_invoice_cash_totals_by_day(conn, date_from, date_to):
+    """Sum front-desk cash tenders on hotel ledger invoices by generated day.
+
+    Includes stay invoices and room-transfer / F&B combined-transfer bills —
+    cash collected at the hotel desk for any of these belongs in Cash Ledger
+    under Hotel. Cancelled invoices are excluded.
+    """
+    ensure_hotel_room_invoices_schema(conn)
+    day_from = str(date_from)[:10]
+    day_to = str(date_to)[:10]
+    rows = conn.execute(
+        """
+        SELECT substr(invoice_generated_at, 1, 10) AS sales_day, payload_json
+        FROM hotel_room_invoices
+        WHERE lower(COALESCE(status, '')) IN ('open', 'settled')
+          AND substr(invoice_generated_at, 1, 10) >= ?
+          AND substr(invoice_generated_at, 1, 10) <= ?
+        """,
+        (day_from, day_to),
+    ).fetchall()
+    by_day = {}
+    for row in rows:
+        day = str(row["sales_day"] or "")[:10]
+        if not day:
+            continue
+        h_cash, _card, _upi, _room, _bor, _other = _hotel_payload_sales_entry_tenders(
+            row["payload_json"]
+        )
+        cash = round(float(h_cash or 0), 2)
+        if abs(cash) < 0.005:
+            continue
+        by_day[day] = round(by_day.get(day, 0.0) + cash, 2)
+    return by_day
+
+
 def hotel_sales_entry_from_invoices(conn, sales_date):
     """Build Hotel Sales Entry totals from room invoices for one day.
 

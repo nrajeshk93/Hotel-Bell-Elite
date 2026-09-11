@@ -643,7 +643,10 @@
       name: document.getElementById('pl-add-supplier-name') ? document.getElementById('pl-add-supplier-name').value.trim() : '',
       gst: document.getElementById('pl-add-supplier-gst') ? document.getElementById('pl-add-supplier-gst').value.trim() : '',
       phone: document.getElementById('pl-add-supplier-phone') ? document.getElementById('pl-add-supplier-phone').value.trim() : '',
-      address: document.getElementById('pl-add-supplier-address') ? document.getElementById('pl-add-supplier-address').value.trim() : ''
+      address: document.getElementById('pl-add-supplier-address') ? document.getElementById('pl-add-supplier-address').value.trim() : '',
+      bank_name: document.getElementById('pl-add-supplier-bank-name') ? document.getElementById('pl-add-supplier-bank-name').value.trim() : '',
+      bank_account_number: document.getElementById('pl-add-supplier-bank-account') ? document.getElementById('pl-add-supplier-bank-account').value.trim() : '',
+      ifsc_code: document.getElementById('pl-add-supplier-ifsc') ? document.getElementById('pl-add-supplier-ifsc').value.trim() : ''
     };
     if (!payload.name) {
       setSupplierError('Supplier name is required.');
@@ -654,7 +657,12 @@
     try {
       var res = await fetch(supplierCreateUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
         body: JSON.stringify(payload)
       });
       var data = await res.json();
@@ -684,7 +692,15 @@
   if (supplierOpenBtn) {
     supplierOpenBtn.addEventListener('click', function(){
       setSupplierError('');
-      ['pl-add-supplier-name', 'pl-add-supplier-gst', 'pl-add-supplier-phone', 'pl-add-supplier-address'].forEach(function(id){
+      [
+        'pl-add-supplier-name',
+        'pl-add-supplier-gst',
+        'pl-add-supplier-phone',
+        'pl-add-supplier-address',
+        'pl-add-supplier-bank-name',
+        'pl-add-supplier-bank-account',
+        'pl-add-supplier-ifsc'
+      ].forEach(function(id){
         var el = document.getElementById(id);
         if (el) el.value = '';
       });

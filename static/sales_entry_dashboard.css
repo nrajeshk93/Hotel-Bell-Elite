@@ -615,6 +615,13 @@ body.se-cash-mode .content.se-content.sr-kpi-canvas{
 .staff-supplier-modal-backdrop{z-index:120}
 .staff-supplier-modal-box{width:560px;max-width:92vw;max-height:calc(100vh - 48px);overflow:auto}
 .staff-supplier-modal-grid{margin-bottom:0}
+.staff-supplier-modal-grid .sm-textarea{
+  min-height:84px;
+  height:auto;
+  padding-top:10px;
+  padding-bottom:10px;
+  resize:vertical;
+}
 .staff-supplier-modal-actions{margin-top:18px;padding-top:16px;border-top:1px solid var(--border-s)}
 .staff-field--full{grid-column:1/-1}
 .visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}

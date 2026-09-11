@@ -1824,10 +1824,11 @@ body.su-module .st-stock-main{
   width:100%;
 }
 
-/* Inventory table: lean on .pl-table; only width + stock-specific chrome */
+/* Inventory table: content-sized columns + horizontal scroll (Purchase / Expense pattern). */
 body.su-module .st-stock-inv-table{
   min-width:720px;
-  table-layout:fixed;
+  table-layout:auto;
+  width:100%;
 }
 body.su-module .st-stock-inv-table--priced{
   min-width:820px;
@@ -1838,13 +1839,23 @@ body.su-module .st-stock-card-actions{
   gap:10px;
   flex-shrink:0;
 }
+/* Check stays compact; other cols size to content (no % crush / ellipsis). */
 body.su-module .st-stock-inv-table col.st-stock-col-check-w{width:44px}
-body.su-module .st-stock-inv-table col.st-stock-col-product-w{width:auto}
-body.su-module .st-stock-inv-table col.st-stock-col-category-w{width:18%}
-body.su-module .st-stock-inv-table col.st-stock-col-qty-w{width:12%}
-body.su-module .st-stock-inv-table col.st-stock-col-unit-w{width:10%}
-body.su-module .st-stock-inv-table col.st-stock-col-status-w{width:14%}
-body.su-module .st-stock-inv-table col.st-stock-col-value-w{width:12%}
+body.su-module .st-stock-inv-table col.st-stock-col-product-w,
+body.su-module .st-stock-inv-table col.st-stock-col-outlet-w,
+body.su-module .st-stock-inv-table col.st-stock-col-category-w,
+body.su-module .st-stock-inv-table col.st-stock-col-qty-w,
+body.su-module .st-stock-inv-table col.st-stock-col-unit-w,
+body.su-module .st-stock-inv-table col.st-stock-col-status-w,
+body.su-module .st-stock-inv-table col.st-stock-col-value-w{
+  width:auto;
+}
+body.su-module .st-stock-inv-table th,
+body.su-module .st-stock-inv-table td{
+  white-space:nowrap;
+  overflow:visible;
+  text-overflow:clip;
+}
 body.su-module .st-stock-inv-table th.st-stock-col-check,
 body.su-module .st-stock-inv-table td.st-stock-col-check{
   width:44px;
@@ -2120,19 +2131,22 @@ body.su-module .st-stock-move-pill--sale{
 }
 body.su-module .st-stock-inv-table .st-stock-product-name,
 body.su-module .st-stock-movements-table .st-stock-product-name{
-  overflow:hidden;
-  text-overflow:ellipsis;
+  overflow:visible;
+  text-overflow:clip;
   white-space:nowrap;
+  max-width:none;
 }
 body.su-module .st-stock-movements-table{
   min-width:680px;
-  table-layout:fixed;
+  table-layout:auto;
 }
-body.su-module .st-stock-move-col-when{width:18%}
-body.su-module .st-stock-move-col-item{width:28%}
-body.su-module .st-stock-move-col-change{width:12%}
-body.su-module .st-stock-move-col-type{width:20%}
-body.su-module .st-stock-move-col-by{width:22%}
+body.su-module .st-stock-move-col-when,
+body.su-module .st-stock-move-col-item,
+body.su-module .st-stock-move-col-change,
+body.su-module .st-stock-move-col-type,
+body.su-module .st-stock-move-col-by{
+  width:auto;
+}
 body.su-module .st-stock-qty{font-variant-numeric:tabular-nums}
 body.su-module .st-stock-updated{
   color:var(--txt3,#94A3B8);

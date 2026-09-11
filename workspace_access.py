@@ -105,6 +105,7 @@ _REPORTS_SUBMODULES = (
     {"key": "menu_sales", "label": "Menu Insights"},
     {"key": "unit_insights", "label": "Unit Insight"},
     {"key": "customer_insights", "label": "Customer Insights"},
+    {"key": "dc_office", "label": "DC Office"},
     {
         "key": "gst",
         "label": "GST",
@@ -709,6 +710,10 @@ _REPORTS_ENDPOINT_GROUPS = {
         "sales_report_customer_insights",
         "sales_report_customer_insights_export",
     },
+    "dc_office": {
+        "sales_report_dc_office",
+        "sales_report_dc_office_export",
+    },
     "gst_hotel": {
         "gst_hotel_report",
         "gst_hotel_report_export",
@@ -786,7 +791,6 @@ _SALES_ANALYTICS_ENDPOINT_GROUPS = {
         "upload_hotel_occupancy_report",
         "save_hotel_ledger",
         "clear_hotel_ledger",
-        "create_supplier",
         "save_sales_update",
         "sales_update_add_expense",
         "sales_update_edit_expense",
@@ -894,6 +898,7 @@ _ACCOUNTS_ENDPOINT_GROUPS = {
         "purchase_ledger_delete",
         "export_purchase_ledger_report",
         "list_supplier_options",
+        "create_supplier",
     },
     "cash_ledger": {
         "cash_ledger",
@@ -931,6 +936,7 @@ _ACCOUNTS_ENDPOINT_GROUPS = {
         "delete_supplier",
         "export_supplier_report",
         "list_supplier_options",
+        "create_supplier",
     },
 }
 _ACCOUNTS_PARENT_ENDPOINTS = set().union(*_ACCOUNTS_ENDPOINT_GROUPS.values()) | {"accounts"}
@@ -1911,6 +1917,13 @@ def user_can_access_endpoint_sales_analytics(user, endpoint):
     if (
         endpoint in _POS_RESTAURANT_SALES_WRITE_ENDPOINTS
         and user_can_access_dashboard(user, "point_of_sale")
+    ):
+        return True
+    # Inline supplier create is shared by Purchases / Supplier Master (not SA UI).
+    if endpoint == "create_supplier" and (
+        user_can_access_supplier_master(user)
+        or user_can_access_accounts_submodule(user, "purchase_ledger")
+        or user_can_access_dashboard(user, "accounts")
     ):
         return True
     return False

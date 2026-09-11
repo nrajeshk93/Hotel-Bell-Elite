@@ -188,6 +188,72 @@ class CashLedgerHelperTests(unittest.TestCase):
         )
         conn.close()
 
+    def test_hotel_invoice_cash_settlements_appear_in_cash_ledger(self):
+        """Hotel FO cash settles show as Actual Cash even without Sales Update entry."""
+        conn = _memory_conn()
+        db_mod.ensure_hotel_room_invoices_schema(conn)
+        payload = {
+            "source": "hotel",
+            "stay": {
+                "payments": [
+                    {"method": "cash", "amount": 68},
+                    {"method": "upi", "amount": 932},
+                ]
+            },
+        }
+        conn.execute(
+            """INSERT INTO hotel_room_invoices
+               (invoice_number, room_id, room_number, guest_name, invoice_generated_at,
+                estimated_total, balance_amount, status, source, payload_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "HBE/TEST/1",
+                "room-1",
+                "101",
+                "Guest",
+                "2026-09-10 14:00:00",
+                1000,
+                0,
+                "settled",
+                "hotel",
+                json.dumps(payload),
+            ),
+        )
+        # Room-transfer bill cash also counts as Hotel cash.
+        rt_payload = {
+            "source": "pos_room_transfer",
+            "stay": {"payments": [{"method": "cash", "amount": 150}]},
+        }
+        conn.execute(
+            """INSERT INTO hotel_room_invoices
+               (invoice_number, room_id, room_number, guest_name, invoice_generated_at,
+                estimated_total, balance_amount, status, source, payload_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "RT/TEST/1",
+                "room-1",
+                "101",
+                "Guest",
+                "2026-09-10 16:00:00",
+                150,
+                0,
+                "settled",
+                "pos_room_transfer",
+                json.dumps(rt_payload),
+            ),
+        )
+        conn.commit()
+
+        entries = app_module._build_cash_ledger_entries(
+            conn, "HBE", date(2026, 9, 10), date(2026, 9, 10), location="Hotel"
+        )
+        hotel_sales = [e for e in entries if e["entry_type"] == "sales_cash"]
+        self.assertEqual(len(hotel_sales), 1)
+        self.assertEqual(hotel_sales[0]["detail"], "Hotel")
+        self.assertEqual(hotel_sales[0]["description"], "Actual cash — Hotel")
+        self.assertAlmostEqual(float(hotel_sales[0]["amount"]), 218.0, places=2)
+        conn.close()
+
     def test_location_filter_scopes_sales_and_expenses(self):
         conn = _memory_conn()
         conn.execute(

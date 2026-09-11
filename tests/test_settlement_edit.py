@@ -317,14 +317,16 @@ class HotelSettlementEditTests(unittest.TestCase):
         sales_day = str(invoice["invoice_generated_at"])[:10]
         estimated = float(invoice["estimated_total"])
 
-        self.app_mod.upsert_sales_row(
-            self.user,
+        saved_after_settle = self.app_mod.load_sales_row(
             self.app_mod.DEFAULT_COMPANY,
             self.app_mod.OUTLET_HOTEL,
             sales_day,
-            self.app_mod.build_hotel_sales_entry_values({"actual_cash": estimated}),
-            {},
-            {},
+        )
+        self.assertIsNotNone(saved_after_settle)
+        self.assertAlmostEqual(
+            float(saved_after_settle["sales_entry_values"]["actual_cash"]),
+            estimated,
+            places=2,
         )
 
         page = self.client.get("/hotel/invoice-ledger")
@@ -363,6 +365,40 @@ class HotelSettlementEditTests(unittest.TestCase):
             conn.close()
         totals = self.app_mod._cash_ledger_totals(entries)
         self.assertAlmostEqual(float(totals["sales_total"]), 0.0, places=2)
+
+    def test_first_cash_settle_updates_hotel_actual_cash_and_cash_ledger(self):
+        inv_no, _room_id = self._settle_walkin("room-104")
+        detail = self.client.get(f"/hotel/invoice-ledger/api/{inv_no}").get_json()
+        invoice = detail["invoice"]
+        sales_day = str(invoice["invoice_generated_at"])[:10]
+        cash_amount = float((invoice.get("payment_amounts") or {}).get("cash") or 0)
+        self.assertGreater(cash_amount, 0)
+
+        saved = self.app_mod.load_sales_row(
+            self.app_mod.DEFAULT_COMPANY,
+            self.app_mod.OUTLET_HOTEL,
+            sales_day,
+        )
+        self.assertIsNotNone(saved)
+        self.assertAlmostEqual(
+            float(saved["sales_entry_values"]["actual_cash"]),
+            cash_amount,
+            places=2,
+        )
+
+        conn = db_mod.get_db()
+        try:
+            entries = self.app_mod._build_cash_ledger_entries(
+                conn,
+                self.app_mod.DEFAULT_COMPANY,
+                date.fromisoformat(sales_day),
+                date.fromisoformat(sales_day),
+                location=self.app_mod.OUTLET_HOTEL,
+            )
+        finally:
+            conn.close()
+        totals = self.app_mod._cash_ledger_totals(entries)
+        self.assertAlmostEqual(float(totals["sales_total"]), cash_amount, places=2)
 
 
 if __name__ == "__main__":

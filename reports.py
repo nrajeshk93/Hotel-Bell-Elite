@@ -375,6 +375,17 @@ REPORT_DEFINITIONS = [
         "downloadable": True,
     },
     {
+        "id": "dc_office",
+        "name": "DC Office",
+        "description": "Bar opening stock as Bottles and Pegs 30ML for the DC monthly register.",
+        "icon": "invoice",
+        "icon_tone": "blue",
+        "category": "sales",
+        "view_route": "sales_report_dc_office",
+        "download_route": "sales_report_dc_office_export",
+        "downloadable": True,
+    },
+    {
         "id": "gst_hotel",
         "name": "Hotel",
         "description": "Monthly GST Excel matching the statutory pack.",

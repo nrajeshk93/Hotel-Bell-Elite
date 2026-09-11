@@ -607,55 +607,58 @@ def _draw_trend_arrow(draw, cx, cy, color, *, up: bool, size: int = 12):
 
 
 def _draw_trend_chip(draw, x, y, pct, *, compact=False):
-    """Small rounded trend badge with geometric arrow. Returns (w, h)."""
+    """Rounded trend badge with geometric arrow. Sized to FINAL / user reference."""
     meta = _trend_label(pct)
     if meta is None:
         return 0, 0
     label, color, bg = meta
     up = (pct or 0) >= 0
-    font = _font(_sf(16 if compact else 18), 'bold')
+    # Reference outlet pills ~44px tall with ~30px ink; compact was half that.
+    font = _font(_sf(40 if compact else 42), 'bold')
     text_w = int(_text_len(draw, label, font))
-    arrow_w = _s(16 if compact else 18)
-    gap = _s(8)
-    pad_x = _s(14 if compact else 16)
-    pad_y = _s(8 if compact else 9)
-    chip_h = max(_sy(34 if compact else 40), int(getattr(font, 'size', 16) + pad_y * 2))
+    arrow_w = _s(28 if compact else 30)
+    gap = _s(10)
+    pad_x = _s(20 if compact else 22)
+    pad_y = _s(12 if compact else 13)
+    chip_h = max(_sy(52 if compact else 56), int(getattr(font, 'size', 40) + pad_y * 2))
     chip_w = pad_x * 2 + arrow_w + gap + text_w
-    radius = _s(12 if compact else 14)
+    radius = _s(14 if compact else 16)
     _rounded(draw, (x, y, x + chip_w, y + chip_h), radius, fill=bg)
     cy = y + chip_h / 2
-    _draw_trend_arrow(draw, x + pad_x + arrow_w / 2, cy, color, up=up, size=_s(12 if compact else 14))
+    _draw_trend_arrow(draw, x + pad_x + arrow_w / 2, cy, color, up=up, size=_s(20 if compact else 22))
     draw.text((x + pad_x + arrow_w + gap, cy), label, font=font, fill=color, anchor='lm')
     return chip_w, chip_h
 
 
 def _draw_hero_trend(draw, right_x, cy, pct, vs_label):
-    """Soft pale-red/green rounded badge + 'vs yesterday' underneath."""
+    """Hero % + arrow on soft rose wash (no opaque chip slab — that read as erased)."""
     meta = _trend_label(pct)
     if meta is None:
         return
     label, color, bg = meta
     up = (pct or 0) >= 0
-    font = _font(_sf(26), 'bold')
-    vs_font = _font(_sf(15), 'medium')
+    # Reference hero % ink ~45px tall — prior 26px font was ~half.
+    font = _font(_sf(58), 'bold')
+    vs_font = _font(_sf(22), 'medium')
     text_w = int(_text_len(draw, label, font))
     vs_w = int(_text_len(draw, vs_label, vs_font))
-    arrow_w = _s(20)
-    gap_a = _s(8)
-    pad_x = _s(18)
-    chip_h = _sy(46)
-    chip_w = max(_s(140), pad_x * 2 + arrow_w + gap_a + text_w)
-    block_w = max(chip_w, vs_w + _s(8))
+    arrow_w = _s(36)
+    gap_a = _s(14)
+    # Tight content width — right-aligned; wash shows left of the glyphs
+    content_w = arrow_w + gap_a + text_w
+    block_w = max(content_w, vs_w + _s(8))
     x0 = right_x - block_w
-    gap = _sy(8)
-    vs_h = _sy(16)
-    unit_h = chip_h + gap + vs_h
+    gap = _sy(10)
+    vs_h = _sy(20)
+    # Ink band ~reference (~45–52px), not a tall 84px pill
+    ink_h = _sy(52)
+    unit_h = ink_h + gap + vs_h
     top = cy - unit_h // 2
-    bx0 = x0 + (block_w - chip_w) // 2
-    _rounded(draw, (bx0, top, bx0 + chip_w, top + chip_h), _s(14), fill=bg)
-    _draw_trend_arrow(draw, bx0 + pad_x + arrow_w / 2, top + chip_h / 2, color, up=up, size=_s(14))
-    draw.text((bx0 + pad_x + arrow_w + gap_a, top + chip_h / 2), label, font=font, fill=color, anchor='lm')
-    draw.text((x0 + block_w / 2, top + chip_h + gap + vs_h // 2), vs_label, font=vs_font, fill='#6B7280', anchor='mm')
+    bx0 = x0 + (block_w - content_w) // 2
+    ink_cy = top + ink_h / 2
+    _draw_trend_arrow(draw, bx0 + arrow_w / 2, ink_cy, color, up=up, size=_s(28))
+    draw.text((bx0 + arrow_w + gap_a, ink_cy), label, font=font, fill=color, anchor='lm')
+    draw.text((x0 + block_w / 2, top + ink_h + gap + vs_h // 2), vs_label, font=vs_font, fill='#6B7280', anchor='mm')
 
 
 def _draw_header(img, draw, date_label, weekday, x0, x1, y0, h):
@@ -683,24 +686,25 @@ def _draw_header(img, draw, date_label, weekday, x0, x1, y0, h):
         anchor='lm',
     )
 
-    # Compact date pill (right)
-    date_font = _font(_sf(22), 'bold')
-    day_font = _font(_sf(14), 'medium')
+    # Date pill (right) — match user reference scale
+    date_font = _font(_sf(32), 'bold')
+    day_font = _font(_sf(26), 'medium')
     date_w = int(_text_len(draw, date_label, date_font))
     day_w = int(_text_len(draw, weekday, day_font))
-    icon_sz = _s(24)
-    pad_x = _s(16)
-    pill_w = pad_x + icon_sz + _s(10) + max(date_w, day_w) + pad_x
-    pill_h = _sy(58)
+    icon_sz = _s(28)
+    pad_x = _s(18)
+    pill_w = pad_x + icon_sz + _s(12) + max(date_w, day_w) + pad_x
+    pill_h = _sy(72)
     px1 = x1
     px0 = px1 - pill_w
     py0 = mid - pill_h // 2
-    _rounded(draw, (px0, py0, px1, py0 + pill_h), _s(14), fill=DATE_PILL_BG)
+    _rounded(draw, (px0, py0, px1, py0 + pill_h), _s(16), fill=DATE_PILL_BG)
     icon_box = (px0 + pad_x, mid - icon_sz // 2, px0 + pad_x + icon_sz, mid + icon_sz // 2)
     _icon_calendar(draw, icon_box, TEXT)
-    tx = px0 + pad_x + icon_sz + _s(10)
-    draw.text((tx, mid - _sy(10)), date_label, font=date_font, fill=TEXT, anchor='lm')
-    draw.text((tx, mid + _sy(12)), weekday, font=day_font, fill=MUTED, anchor='lm')
+    # Stack date + weekday, centred under each other in the text column
+    tx = px0 + pad_x + icon_sz + _s(12) + max(date_w, day_w) / 2
+    draw.text((tx, mid - _sy(14)), date_label, font=date_font, fill=TEXT, anchor='mm')
+    draw.text((tx, mid + _sy(16)), weekday, font=day_font, fill=MUTED, anchor='mm')
 
 
 def _draw_hero(img, draw, box, amount, trend, vs_label):
@@ -738,26 +742,30 @@ def _draw_hero(img, draw, box, amount, trend, vs_label):
 
     pad = _s(42)
     cy = (y0 + y1) // 2
-    label_font = _font(_sf(16), 'semibold')
-    draw.text((x0 + pad, cy - _sy(56)), 'TOTAL SALES', font=label_font, fill=MUTED, anchor='lm')
+    # Match FINAL / user reference: TOTAL SALES top-left, large amount left under it
+    label_font = _font(_sf(28), 'semibold')
+    draw.text((x0 + pad, y0 + _sy(34)), 'TOTAL SALES', font=label_font, fill='#334659', anchor='lt')
 
-    reserve = _s(210) + pad
+    div_x = x0 + int((x1 - x0) * 0.78)
+    amt_left = x0 + pad
+    amt_right = (div_x - _s(28)) if trend is not None else (x1 - pad)
+    # Reference digit height ~110px @1728 → ~134–138 design font
     _draw_rupee_amount(
         draw,
-        x0 + pad,
-        cy + _sy(4),
-        x1 - reserve,
+        amt_left,
+        y0 + _sy(148),
+        amt_right,
         amount,
-        _sf(70),
-        _sf(40),
+        _sf(136),
+        _sf(72),
         TEXT,
         'extrabold',
         underline=False,
+        align='left',
     )
 
     if trend is not None:
         # Vertical divider ~78% across; trend badge + vs yesterday on the right
-        div_x = x0 + int((x1 - x0) * 0.78)
         draw.line((div_x, y0 + _sy(44), div_x, y1 - _sy(44)), fill=DIVIDER, width=max(1, _s(1)))
         _draw_hero_trend(draw, x1 - pad, cy, trend, vs_label)
 
@@ -786,26 +794,27 @@ def _draw_outlet_card(img, draw, box, accent, label, amount, trend, *, show_tren
     pad_l = bar_w + _s(20)
     pad_r = _s(14)
     pad_t = _s(22)
-    label_font = _font(_sf(16), 'semibold')
-    draw.text((x0 + pad_l, y0 + pad_t), label, font=label_font, fill=MUTED, anchor='lt')
+    # Match user reference: left stack label → large ₹ → % chip
+    label_font = _font(_sf(24), 'semibold')
+    draw.text((x0 + pad_l, y0 + pad_t), label, font=label_font, fill='#3F5268', anchor='lt')
 
-    # Top-stacked: label → amount → badge (no bottom anchoring)
-    amount_y = y0 + pad_t + _sy(32)
+    amount_y = y0 + pad_t + _sy(52)
     _draw_rupee_amount(
         draw,
         x0 + pad_l,
         amount_y,
         x1 - pad_r,
         amount,
-        _sf(38),
-        _sf(24),
+        _sf(76),
+        _sf(44),
         TEXT,
         'bold',
+        align='left',
     )
 
     if show_trend and trend is not None:
-        # Mockup places chip in lower third of the card (under amount with air)
-        badge_y = y1 - _sy(70)
+        # Chip left-aligned under amount (reference ~y lower third)
+        badge_y = y1 - _sy(58)
         _draw_trend_chip(draw, x0 + pad_l, badge_y, trend, compact=True)
 
 
@@ -919,6 +928,58 @@ def _paint_rect(base: Image.Image, box: tuple[int, int, int, int], rgb: tuple[in
     ImageDraw.Draw(base).rectangle(box, fill=rgb)
 
 
+def _paint_rounded_rect(
+    base: Image.Image,
+    box: tuple[int, int, int, int],
+    rgb: tuple[int, int, int],
+    radius: int,
+) -> None:
+    """Fill a rounded rect — keeps trend wash inside the hero's rounded chrome."""
+    ImageDraw.Draw(base).rounded_rectangle(box, radius=max(1, int(radius)), fill=rgb)
+
+
+def _paint_hero_rose_wash(
+    base: Image.Image,
+    box: tuple[int, int, int, int],
+    *,
+    left_rgb: tuple[int, int, int] = (253, 248, 245),
+    right_rgb: tuple[int, int, int] = (253, 236, 234),
+    fade_px: int = 36,
+    right_fade_px: int = 28,
+) -> None:
+    """Soft rose wash with feathered left/right edges — no hard vertical seams."""
+    x0, y0, x1, y1 = box
+    w, h = max(1, x1 - x0), max(1, y1 - y0)
+    layer = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+    px = layer.load()
+    fade = max(1, int(fade_px))
+    rfade = max(1, int(right_fade_px))
+    lr, lg, lb = left_rgb
+    rr, rg, rb = right_rgb
+    for x in range(w):
+        if x < fade:
+            t = x / fade
+            t = t * t * (3 - 2 * t)
+            r = int(lr + (rr - lr) * t)
+            g = int(lg + (rg - lg) * t)
+            b = int(lb + (rb - lb) * t)
+            a = int(255 * max(0.35, t))  # keep soft coverage, not a hard cut-in
+        else:
+            r, g, b, a = rr, rg, rb, 255
+        # feather right edge into hero chrome (no vertical line)
+        dist_r = w - 1 - x
+        if dist_r < rfade:
+            rt = dist_r / rfade
+            rt = rt * rt * (3 - 2 * rt)
+            a = int(a * rt)
+        for y in range(h):
+            px[x, y] = (r, g, b, a)
+    mask = Image.new('L', (w, h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, w - 1, h - 1), radius=18, fill=255)
+    layer.putalpha(Image.composite(layer.split()[-1], Image.new('L', (w, h), 0), mask))
+    base.alpha_composite(layer, (x0, y0))
+
+
 def _card_fill(base: Image.Image, xy: tuple[int, int]) -> tuple[int, int, int]:
     rgb = base.convert('RGB').getpixel(xy)
     # Keep pale card/hero faces (cream/lavender OK). Reject ink, accents, chips.
@@ -932,13 +993,13 @@ def _trend_chip_size(draw, pct, *, compact=False) -> tuple[int, int]:
     if meta is None:
         return 0, 0
     label, color, bg = meta
-    font = _font(_sf(16 if compact else 18), 'bold')
+    font = _font(_sf(40 if compact else 42), 'bold')
     text_w = int(_text_len(draw, label, font))
-    arrow_w = _s(16 if compact else 18)
-    gap = _s(8)
-    pad_x = _s(14 if compact else 16)
-    pad_y = _s(8 if compact else 9)
-    chip_h = max(_sy(34 if compact else 40), int(getattr(font, 'size', 16) + pad_y * 2))
+    arrow_w = _s(28 if compact else 30)
+    gap = _s(10)
+    pad_x = _s(20 if compact else 22)
+    pad_y = _s(12 if compact else 13)
+    chip_h = max(_sy(52 if compact else 56), int(getattr(font, 'size', 40) + pad_y * 2))
     chip_w = pad_x * 2 + arrow_w + gap + text_w
     return chip_w, chip_h
 
@@ -1024,14 +1085,14 @@ def _render_sales_report_template(payload: dict[str, Any], out_path: Path) -> st
         # Amount layout slots (blank template has NO value boxes anymore — borders
         # stripped from HBE_Daily_Sales_blank.png). Center numbers in these slots.
         # On final mockup (use_field_wipes), paint soft fills only to erase baked digits.
-        HERO_AMT_BOX = (110, 325, 860, 450)
+        HERO_AMT_BOX = (110, 330, 900, 460)
         HERO_TREND_BOX = (1385, 305, 1635, 425)
         OUTLET_SLOTS = [
-            # hotel / restaurant / bar / difference — center across card content
-            {'box': (120, 585, 350, 655), 'chip_y': 668, 'sample': (220, 620), 'fallback': (246, 250, 254), 'show_chip': True},
-            {'box': (525, 585, 760, 655), 'chip_y': 668, 'sample': (640, 555), 'fallback': (254, 251, 247), 'show_chip': True},
-            {'box': (940, 585, 1160, 655), 'chip_y': 668, 'sample': (1050, 620), 'fallback': (249, 248, 255), 'show_chip': True},
-            {'box': (1340, 590, 1525, 655), 'chip_y': None, 'sample': (1420, 555), 'fallback': (246, 250, 249), 'show_chip': False},
+            # hotel / restaurant / bar / difference — left stack matching reference
+            {'box': (108, 585, 420, 670), 'chip_x': 137, 'chip_y': 686, 'wipe': (100, 575, 420, 745), 'sample': (220, 620), 'fallback': (246, 250, 254), 'show_chip': True},
+            {'box': (522, 585, 850, 670), 'chip_x': 557, 'chip_y': 686, 'wipe': (510, 575, 850, 745), 'sample': (640, 555), 'fallback': (254, 251, 247), 'show_chip': True},
+            {'box': (928, 585, 1250, 670), 'chip_x': 963, 'chip_y': 686, 'wipe': (915, 575, 1255, 745), 'sample': (1050, 620), 'fallback': (249, 248, 255), 'show_chip': True},
+            {'box': (1335, 585, 1560, 670), 'chip_x': None, 'chip_y': None, 'wipe': (1330, 580, 1580, 700), 'sample': (1400, 620), 'fallback': (245, 251, 248), 'show_chip': False},
         ]
         WIPE_DATE = (1410, 98, 1638, 180)
 
@@ -1046,6 +1107,9 @@ def _render_sales_report_template(payload: dict[str, Any], out_path: Path) -> st
                 return fallback
             if min(rgb) < 220 or (max(rgb) - min(rgb)) > 55:
                 return fallback
+            # Reject flat pure/near-white — it reads as an erased white layer
+            if min(rgb) >= 252 and (max(rgb) - min(rgb)) <= 4:
+                return fallback
             return rgb
 
         def _expand_wipe(box: tuple[int, int, int, int], need_w: int, *, left: int) -> tuple[int, int, int, int]:
@@ -1053,17 +1117,16 @@ def _render_sales_report_template(payload: dict[str, Any], out_path: Path) -> st
             return (x0, y0, max(x1, left + need_w), y1)
 
         # --- Date: keep outer pill + calendar icon; erase inner text box; paint date ---
-        date_font = _font(26, 'bold')
-        day_font = _font(16, 'medium')
-        # Text slot inside pill (right of icon/divider) — cover baked box outline always
-        DATE_TEXT_BOX = (1408, 94, 1658, 182)
+        # Reference: date ~32px bold (~30px ink), weekday ~20px under it, centred in text slot
+        date_font = _font(32, 'bold')
+        day_font = _font(26, 'medium')
+        DATE_TEXT_BOX = (1400, 90, 1665, 190)
         pill_rgb = _safe_fill((1500, 140), _hex_rgb(DATE_PILL_BG))
         _paint_rect(base, DATE_TEXT_BOX, pill_rgb)
         draw = ImageDraw.Draw(base)
-        # Center date+weekday in the text slot
         dx0, dy0, dx1, dy1 = DATE_TEXT_BOX
         cx = (dx0 + dx1) // 2
-        draw.text((cx, 118), date_label, font=date_font, fill=TEXT, anchor='mt')
+        draw.text((cx, 112), date_label, font=date_font, fill=TEXT, anchor='mt')
         draw.text((cx, 148), weekday, font=day_font, fill=MUTED, anchor='mt')
 
         # --- Section labels: slightly darker; TOTAL SALES larger to suit amount panel ---
@@ -1076,38 +1139,67 @@ def _render_sales_report_template(payload: dict[str, Any], out_path: Path) -> st
         draw.text((118, 290), 'TOTAL SALES', font=total_font, fill=TOTAL_LABEL, anchor='lm')
 
         # Outlet headers — larger labels only (amounts unchanged)
-        outlet_label_font = _font(22, 'semibold')
+        outlet_label_font = _font(26, 'semibold')
         outlet_labels = [
             # wipe wide enough for larger glyphs; keep above amount row
-            ((112, 538, 250, 575), (118, 556), 'HOTEL', (200, 535), (246, 250, 254)),
-            ((518, 538, 760, 575), (526, 556), 'RESTAURANT', (600, 535), (254, 251, 247)),
-            ((930, 538, 1040, 575), (940, 556), 'BAR', (1020, 535), (248, 247, 253)),
-            ((1340, 540, 1550, 580), (1347, 560), 'DIFFERENCE', (1400, 535), (245, 250, 248)),
+            ((106, 530, 280, 575), (108, 548), 'HOTEL', (200, 535), (246, 250, 254)),
+            ((518, 530, 800, 575), (522, 548), 'RESTAURANT', (600, 535), (254, 251, 247)),
+            ((924, 530, 1060, 575), (928, 548), 'BAR', (1020, 535), (248, 247, 253)),
+            ((1330, 530, 1580, 575), (1335, 548), 'DIFFERENCE', (1400, 535), (245, 250, 248)),
         ]
         for wipe, xy, text, sample, fallback in outlet_labels:
             _paint_rect(base, wipe, _safe_fill(sample, fallback))
             draw = ImageDraw.Draw(base)
             draw.text(xy, text, font=outlet_label_font, fill=SECTION_LABEL, anchor='lm')
 
-        # --- Hero amount: center in slot (wipe only on final mockup) ---
+        # --- Hero amount: left under TOTAL SALES (match user reference / FINAL mockup) ---
+        # Wipe wide cream zone so prior centred glyphs never ghost under the trend.
+        # Tight amount clear only — wide wipe flattened the soft left peach ("erased" look)
+        HERO_WIPE = (110, 330, 900, 460)
         hx0, hy0, hx1, hy1 = HERO_AMT_BOX
+        peach = (252, 248, 245)  # blank/reference hero face
         if use_field_wipes:
-            _paint_rect(base, HERO_AMT_BOX, _safe_fill((300, 380), (247, 242, 236)))
+            _paint_rect(base, HERO_WIPE, _safe_fill((300, 380), peach))
+            draw = ImageDraw.Draw(base)
+        else:
+            # blank: only clear digit slot with matching peach (keep soft chrome elsewhere)
+            _paint_rect(base, HERO_WIPE, peach)
             draw = ImageDraw.Draw(base)
         _draw_rupee_amount(
-            draw, hx0, (hy0 + hy1) // 2, hx1, total, 70, 42, TEXT, 'extrabold',
-            underline=False, align='center',
+            draw, hx0, (hy0 + hy1) // 2, hx1, total, 136, 72, TEXT, 'extrabold',
+            underline=False, align='left',
         )
 
-        # --- Hero trend: one flat pink panel (cover left lip so no double layer) ---
-        TREND_FLAT = (253, 236, 234)
-        # Pink panel left edge ~1346; wipe from before that so outer lip never peeks
-        trend_wipe = (1340, 280, 1668, 450)
-        _paint_rect(base, trend_wipe, TREND_FLAT)
+        # --- Hero trend: restore soft peach left of %, then one divider + rose ---
+        # Flat wipes left a washed-out/"erased" band left of the %. Copy blank chrome
+        # back for that zone (keeps grain + warm peach like the reference), then
+        # start the rose further right so it doesn't flash in right after the line.
+        div_x = 1278  # match reference
+        try:
+            chrome = Image.open(tpl).convert('RGBA')
+            # Restore soft peach/grain left of % (flat wipes looked erased)
+            rx0, ry0, rx1, ry1 = 1100, 255, 1380, 470
+            base.paste(chrome.crop((rx0, ry0, rx1, ry1)), (rx0, ry0))
+        except OSError:
+            pass
+        # Cover ONLY the baked second divider (~x1285–1287), keep peach texture
+        peach = (253, 249, 246)
+        _paint_rect(base, (1283, 282, 1290, 450), peach)
+        # Soft rose where blank/reference warm — no opaque chip on top
+        rose_box = (1325, 262, 1672, 462)
+        _paint_hero_rose_wash(
+            base,
+            rose_box,
+            left_rgb=(254, 249, 244),
+            right_rgb=(253, 236, 234),
+            fade_px=48,
+            right_fade_px=32,
+        )
         draw = ImageDraw.Draw(base)
-        _draw_hero_trend(draw, 1615, (trend_wipe[1] + trend_wipe[3]) // 2, trend_total, vs_label)
+        draw.line((div_x, 284, div_x, 448), fill=DIVIDER, width=2)
+        _draw_hero_trend(draw, 1610, (rose_box[1] + rose_box[3]) // 2, trend_total, vs_label)
 
-        # --- Outlet cards: center amounts; chips centered under them ---
+        # --- Outlet cards: left-aligned label/amount/% matching reference ---
         outlet_vals = [
             (hotel, trend_hotel),
             (restaurant, trend_restaurant),
@@ -1116,15 +1208,23 @@ def _render_sales_report_template(payload: dict[str, Any], out_path: Path) -> st
         ]
         for (amt, tr), spec in zip(outlet_vals, OUTLET_SLOTS):
             x0, y0, x1, y1 = spec['box']
-            if use_field_wipes:
-                _paint_rect(base, spec['box'], _safe_fill(spec['sample'], spec['fallback']))
-                draw = ImageDraw.Draw(base)
+            wipe = spec.get('wipe') or spec['box']
+            # Prefer card tint fallback — sampled white was leaving a white layer on Difference
+            fill = spec['fallback']
+            sampled = _safe_fill(spec['sample'], fill)
+            if min(sampled) < 252:
+                fill = sampled
+            _paint_rect(base, wipe, fill)
+            draw = ImageDraw.Draw(base)
             ay = (y0 + y1) // 2
-            _draw_rupee_amount(draw, x0, ay, x1, amt, 40, 26, TEXT, 'bold', align='center')
-            if spec['show_chip'] and tr is not None and spec['chip_y'] is not None:
-                chip_w, chip_h = _trend_chip_size(draw, tr, compact=True)
-                cx = (x0 + x1 - chip_w) // 2
-                _draw_trend_chip(draw, cx, spec['chip_y'], tr, compact=True)
+            _draw_rupee_amount(
+                draw, x0, ay, x1, amt, 76, 44, TEXT, 'bold', align='left',
+            )
+            if spec['show_chip'] and tr is not None and spec.get('chip_y') is not None:
+                chip_x = spec.get('chip_x')
+                if chip_x is None:
+                    chip_x = x0
+                _draw_trend_chip(draw, chip_x, spec['chip_y'], tr, compact=True)
 
         out_path = Path(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)

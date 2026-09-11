@@ -1,0 +1,418 @@
+{% set de_soft_body_class = 'de-open su-module ep-module' %}
+{% set de_soft_page_title = (page_title|default('DC Office')) ~ ' | Hotel Bell Elite' %}
+{% if not is_partial_main %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>{{ page_title|default('DC Office') }} | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+{% include 'partials/hbe_fonts.html' %}
+<link rel="stylesheet" href="{{ asset('sales_entry_dashboard.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_header.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_premium.css') }}">
+<link rel="stylesheet" href="{{ asset('de_workspace_shell.css') }}">
+<link rel="stylesheet" href="{{ asset('purchase_ledger.css') }}">
+<link rel="stylesheet" href="{{ asset('employees_premium.css') }}">
+<link rel="stylesheet" href="{{ asset('employees_list.css') }}">
+<link rel="stylesheet" href="{{ asset('ep_form_listbox.css') }}">
+<link rel="stylesheet" href="{{ asset('hbe_table_scroll.css') }}">
+<link rel="stylesheet" href="{{ asset('hbe_kpi.css') }}">
+<style>
+#dc-office-report-page{box-sizing:border-box;}
+#dc-office-report-page .ep-header-filters.sr-topbar-filters{
+  display:flex;flex-wrap:nowrap;align-items:flex-end;justify-content:stretch;
+  gap:12px;width:100%;min-width:0;
+}
+#dc-office-report-page #dco-search-chip.ep-search-chip{
+  flex:1 1 auto;width:auto;min-width:min(160px,100%);max-width:none;
+}
+#dc-office-report-page #dco-month-form.ep-topbar-filter-form{
+  display:flex;flex-wrap:nowrap;flex:0 0 auto;width:auto;min-width:0;gap:12px;
+}
+#dc-office-report-page #dco-month-form .ep-toolbar-listbox{
+  flex:0 1 auto;width:clamp(112px,12vw,160px);min-width:104px;max-width:180px;
+}
+#dc-office-report-page #dco-stock-table{
+  table-layout:fixed;
+  width:100%;
+}
+#dc-office-report-page #dco-stock-table col.dco-col{
+  width:25%;
+}
+#dc-office-report-page #dco-stock-table th,
+#dc-office-report-page #dco-stock-table td{
+  width:25%;
+  box-sizing:border-box;
+  padding-left:12px;
+  padding-right:12px;
+  text-align:left;
+  vertical-align:middle;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+#dc-office-report-page #dco-stock-table td .pl-name{
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+#dc-office-report-page #dco-stock-table th.pl-col-amount,
+#dc-office-report-page #dco-stock-table td.pl-col-amount{
+  text-align:left;
+}
+@media(max-width:900px){
+  #dc-office-report-page .ep-header-filters.sr-topbar-filters{flex-wrap:wrap}
+  #dc-office-report-page #dco-search-chip.ep-search-chip{
+    flex:1 1 100%;width:100%;min-width:0;max-width:none;
+  }
+  #dc-office-report-page #dco-month-form.ep-topbar-filter-form{
+    flex:1 1 100%;width:100%;
+  }
+  #dc-office-report-page #dco-month-form .ep-toolbar-listbox{
+    flex:1 1 calc(50% - 6px);width:auto;max-width:none;min-width:0;
+  }
+}
+</style>
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="{{ de_soft_body_class }}">
+{% endif %}
+{% if is_partial_main %}
+<link rel="stylesheet" href="{{ asset('sales_update_header.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_premium.css') }}">
+<link rel="stylesheet" href="{{ asset('purchase_ledger.css') }}">
+<link rel="stylesheet" href="{{ asset('employees_premium.css') }}">
+<link rel="stylesheet" href="{{ asset('employees_list.css') }}">
+<link rel="stylesheet" href="{{ asset('ep_form_listbox.css') }}">
+<link rel="stylesheet" href="{{ asset('hbe_table_scroll.css') }}">
+<link rel="stylesheet" href="{{ asset('hbe_kpi.css') }}">
+<style>
+#dc-office-report-page{box-sizing:border-box;}
+#dc-office-report-page .ep-header-filters.sr-topbar-filters{
+  display:flex;flex-wrap:nowrap;align-items:flex-end;justify-content:stretch;
+  gap:12px;width:100%;min-width:0;
+}
+#dc-office-report-page #dco-search-chip.ep-search-chip{
+  flex:1 1 auto;width:auto;min-width:min(160px,100%);max-width:none;
+}
+#dc-office-report-page #dco-month-form.ep-topbar-filter-form{
+  display:flex;flex-wrap:nowrap;flex:0 0 auto;width:auto;min-width:0;gap:12px;
+}
+#dc-office-report-page #dco-month-form .ep-toolbar-listbox{
+  flex:0 1 auto;width:clamp(112px,12vw,160px);min-width:104px;max-width:180px;
+}
+#dc-office-report-page #dco-stock-table{
+  table-layout:fixed;
+  width:100%;
+}
+#dc-office-report-page #dco-stock-table col.dco-col{
+  width:25%;
+}
+#dc-office-report-page #dco-stock-table th,
+#dc-office-report-page #dco-stock-table td{
+  width:25%;
+  box-sizing:border-box;
+  padding-left:12px;
+  padding-right:12px;
+  text-align:left;
+  vertical-align:middle;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+#dc-office-report-page #dco-stock-table td .pl-name{
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+#dc-office-report-page #dco-stock-table th.pl-col-amount,
+#dc-office-report-page #dco-stock-table td.pl-col-amount{
+  text-align:left;
+}
+@media(max-width:900px){
+  #dc-office-report-page .ep-header-filters.sr-topbar-filters{flex-wrap:wrap}
+  #dc-office-report-page #dco-search-chip.ep-search-chip{
+    flex:1 1 100%;width:100%;min-width:0;max-width:none;
+  }
+  #dc-office-report-page #dco-month-form.ep-topbar-filter-form{
+    flex:1 1 100%;width:100%;
+  }
+  #dc-office-report-page #dco-month-form .ep-toolbar-listbox{
+    flex:1 1 calc(50% - 6px);width:auto;max-width:none;min-width:0;
+  }
+}
+</style>
+{% endif %}
+
+{% from 'partials/ep_form_listbox_macros.html' import ep_toolbar_listbox %}
+{% set ep_month_names = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
+{% set ep_month_opts = namespace(options=[]) %}
+{% for m in range(1, 13) %}
+  {% set ep_month_opts.options = ep_month_opts.options + [(m|string, ep_month_names[m])] %}
+{% endfor %}
+{% set ep_year_opts = namespace(options=[]) %}
+{% set _ep_year_now = (today_year|default(sel_year|default(2026)))|int %}
+{% for y in range(_ep_year_now - 5, _ep_year_now + 4) %}
+  {% set ep_year_opts.options = ep_year_opts.options + [(y|string, y|string)] %}
+{% endfor %}
+{% if sel_year is defined %}
+  {% set _ep_year_has_sel = namespace(found=false) %}
+  {% for opt in ep_year_opts.options %}
+    {% if opt[0] == sel_year|string %}{% set _ep_year_has_sel.found = true %}{% endif %}
+  {% endfor %}
+  {% if not _ep_year_has_sel.found %}
+    {% set ep_year_opts.options = [(sel_year|string, sel_year|string)] + ep_year_opts.options %}
+  {% endif %}
+{% endif %}
+
+{% include 'partials/de_workspace_shell_open.html' %}
+<div class="main-wrapper" id="dc-office-report-page" data-dc-office-report>
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          {% include 'partials/su_page_back.html' with context %}
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <h1>{{ page_title|default('DC Office') }}</h1>
+          </div>
+        </div>
+      </div>
+      <div class="su-header-tools">
+        <a class="btn btn-primary" href="{{ dc_office_export_url }}" download="{{ dc_office_export_filename }}">Export</a>
+      </div>
+    </div>
+    <div class="se-sales-header-card">
+      <div class="se-sales-header-filters">
+        <div class="ep-header-filters sr-topbar-filters" aria-label="DC Office period filters">
+          <div class="se-filter-chip se-filter-chip--search ep-search-chip" id="dco-search-chip">
+            <label class="se-filter-chip-label" for="dco-search-input">Search</label>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              </span>
+              <div class="ep-search-form">
+                <input type="search" id="dco-search-input" class="ep-search-input" value="" placeholder="Search product…"
+                       autocomplete="off" aria-label="Search DC Office products">
+              </div>
+            </div>
+          </div>
+          <form method="GET" action="{{ filter_form_action }}" id="dco-month-form" class="ep-topbar-filter-form" aria-label="DC Office month filters">
+            {% if from_hub %}<input type="hidden" name="from_hub" value="{{ from_hub }}">{% endif %}
+            {{ ep_toolbar_listbox('month', 'Month', ep_month_opts.options, sel_month|string, ep_month_names[sel_month], 'dco-month-form') }}
+            {{ ep_toolbar_listbox('year', 'Year', ep_year_opts.options, sel_year|string, sel_year|string, 'dco-month-form') }}
+          </form>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section class="content se-content" aria-label="DC Office opening stock">
+    <div class="pl-summary-row">
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Product count">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Products</div>
+            <div class="pl-summary-value">{{ product_count }}</div>
+            <div class="pl-summary-meta">{{ month_label }} header</div>
+          </div>
+        </div>
+      </article>
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Bottles total">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M8 2h8v4H8z"/><path d="M9 6h6l1 14H8L9 6z"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Opening bottles</div>
+            <div class="pl-summary-value">{{ bottles_total }}</div>
+            <div class="pl-summary-meta">Counter + warehouse</div>
+          </div>
+        </div>
+      </article>
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Pegs total">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M8 2v6l-2 10h12l-2-10V2z"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Opening pegs 30ML</div>
+            <div class="pl-summary-value">{{ pegs_total }}</div>
+            <div class="pl-summary-meta">Remainder after bottles</div>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <article class="card pl-list-panel pl-list-panel--scroll emp-list-panel emp-list-panel--scroll hbe-scroll-panel" aria-label="DC Office opening stock">
+      <div class="card-hdr">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          <span>Opening stock</span>
+        </div>
+        <span class="pl-count emp-list-count" id="dco-entry-count" data-period="{{ month_label }}">{{ rows|length }} product{{ '' if rows|length == 1 else 's' }} · {{ month_label }}</span>
+      </div>
+      <div class="card-body pl-card-body--flush emp-card-body--flush">
+        {% if rows %}
+        <div class="pl-table-wrap emp-table-wrap" tabindex="0" aria-label="DC Office products, scroll for more">
+          <table id="dco-stock-table" class="emp-pl-table pl-table" aria-label="DC Office opening stock">
+            <colgroup>
+              <col class="dco-col" span="4">
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="pl-sortable" data-sort="name" scope="col" tabindex="0" aria-sort="none">Particulars</th>
+                <th class="pl-sortable" data-sort="category" scope="col" tabindex="0" aria-sort="none">Category</th>
+                <th class="pl-sortable pl-col-amount" data-sort="bottles" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Bottel</th>
+                <th class="pl-sortable pl-col-amount" data-sort="pegs" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Pegs 30ML</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in rows %}
+              <tr class="ep-card-row" data-sort-row data-search="{{ (row.name ~ ' ' ~ (row.category_name or ''))|lower }}">
+                <td data-label="Particulars" data-sort-value="{{ row.name or '' }}"><div class="pl-name">{{ row.name }}</div></td>
+                <td data-label="Category" data-sort-value="{{ row.category_name or '' }}">{{ row.category_name or '—' }}</td>
+                <td class="pl-col-amount" data-label="Bottel" data-sort-value="{{ row.bottles }}">{{ row.bottles }}</td>
+                <td class="pl-col-amount" data-label="Pegs 30ML" data-sort-value="{{ row.pegs_30ml }}">{{ row.pegs_30ml }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="pl-empty emp-empty">No active bar products in Product Master.</div>
+        {% endif %}
+      </div>
+    </article>
+  </section>
+</div>
+<script src="{{ asset('ep_form_listbox.js') }}"></script>
+<script>
+(function(){
+  if (typeof window.initEpListboxes === 'function') window.initEpListboxes();
+  if (typeof window.initSuFilterListboxes === 'function') window.initSuFilterListboxes();
+
+  var table = document.getElementById('dco-stock-table');
+  var searchInput = document.getElementById('dco-search-input');
+  var searchChip = document.getElementById('dco-search-chip');
+  var countEl = document.getElementById('dco-entry-count');
+  var periodLabel = countEl ? (countEl.getAttribute('data-period') || '') : '';
+  var tbody = table ? table.tBodies[0] : null;
+
+  function updateCount(visible){
+    if (!countEl) return;
+    var label = visible === 1 ? 'product' : 'products';
+    countEl.textContent = visible + ' ' + label + (periodLabel ? ' · ' + periodLabel : '');
+  }
+
+  function applySearch(){
+    if (!tbody) return;
+    var q = (searchInput && searchInput.value || '').trim().toLowerCase();
+    if (searchChip) searchChip.classList.toggle('is-active', !!q);
+    var rows = tbody.querySelectorAll('tr[data-sort-row]');
+    var visible = 0;
+    for (var i = 0; i < rows.length; i++){
+      var hay = rows[i].getAttribute('data-search') || '';
+      var show = !q || hay.indexOf(q) !== -1;
+      rows[i].hidden = !show;
+      if (show) visible += 1;
+    }
+    updateCount(visible);
+  }
+
+  function initDcOfficeTableSort(){
+    if (!table || !tbody || table.getAttribute('data-pl-sort-bound') === '1') return;
+    table.setAttribute('data-pl-sort-bound', '1');
+    var headers = Array.from(table.querySelectorAll('th.pl-sortable'));
+    var activeKey = '';
+    var ascending = true;
+
+    function cellSortValue(row, colIndex, type){
+      var cell = row.cells[colIndex];
+      if (!cell) return type === 'number' ? 0 : '';
+      var raw = cell.getAttribute('data-sort-value');
+      if (raw == null || raw === '') raw = (cell.textContent || '').trim();
+      if (type === 'number') {
+        var n = Number(raw);
+        return isFinite(n) ? n : 0;
+      }
+      return String(raw);
+    }
+
+    function sortBy(th){
+      var key = th.getAttribute('data-sort') || '';
+      var type = th.getAttribute('data-sort-type') || 'text';
+      var colIndex = th.cellIndex;
+      if (colIndex < 0) return;
+
+      if (activeKey === key) ascending = !ascending;
+      else {
+        activeKey = key;
+        ascending = true;
+      }
+
+      var rows = Array.from(tbody.querySelectorAll('tr[data-sort-row]'));
+      rows.sort(function(a, b){
+        var av = cellSortValue(a, colIndex, type);
+        var bv = cellSortValue(b, colIndex, type);
+        var cmp = 0;
+        if (type === 'number') cmp = av - bv;
+        else cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+        return ascending ? cmp : -cmp;
+      });
+      rows.forEach(function(row){ tbody.appendChild(row); });
+
+      headers.forEach(function(h){
+        h.classList.remove('is-sorted-asc', 'is-sorted-desc');
+        h.setAttribute('aria-sort', 'none');
+      });
+      th.classList.add(ascending ? 'is-sorted-asc' : 'is-sorted-desc');
+      th.setAttribute('aria-sort', ascending ? 'ascending' : 'descending');
+      applySearch();
+    }
+
+    headers.forEach(function(th){
+      th.addEventListener('click', function(){ sortBy(th); });
+      th.addEventListener('keydown', function(e){
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          sortBy(th);
+        }
+      });
+    });
+  }
+
+  initDcOfficeTableSort();
+
+  if (searchInput){
+    searchInput.addEventListener('input', applySearch);
+    applySearch();
+  }
+
+  var monthForm = document.getElementById('dco-month-form');
+  if (monthForm){
+    monthForm.addEventListener('change', function(){ monthForm.submit(); });
+  }
+})();
+</script>
+{% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
+</body>
+</html>
+{% endif %}

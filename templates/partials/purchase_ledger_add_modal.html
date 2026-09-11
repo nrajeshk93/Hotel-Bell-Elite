@@ -163,28 +163,39 @@
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
       <span id="pl-add-supplier-modal-title">Add supplier</span>
     </div>
-    <p class="staff-credit-copy">Enter supplier details. Name is required; GST is optional and must be unique when provided.</p>
     <div id="pl-add-supplier-add-error" class="staff-credit-error"></div>
     <div class="staff-grid staff-supplier-modal-grid">
       <div class="staff-field staff-field--inline staff-field--full">
         <label for="pl-add-supplier-name">Supplier name *</label>
         <input id="pl-add-supplier-name" class="staff-input" type="text" placeholder="e.g. ABC Supplies Pvt Ltd">
       </div>
-      <div class="staff-field staff-field--inline">
+      <div class="staff-field staff-field--inline staff-field--full">
         <label for="pl-add-supplier-gst">GST</label>
-        <input id="pl-add-supplier-gst" class="staff-input" type="text" placeholder="Optional — e.g. 29ABCDE1234F1Z5">
-      </div>
-      <div class="staff-field staff-field--inline">
-        <label for="pl-add-supplier-phone">Phone number</label>
-        <input id="pl-add-supplier-phone" class="staff-input" type="text" placeholder="Optional">
+        <input id="pl-add-supplier-gst" class="staff-input" type="text" placeholder="e.g. 29ABCDE1234F1Z5">
       </div>
       <div class="staff-field staff-field--inline staff-field--full">
         <label for="pl-add-supplier-address">Address</label>
-        <input id="pl-add-supplier-address" class="staff-input" type="text" placeholder="Optional">
+        <textarea id="pl-add-supplier-address" class="staff-input sm-textarea" rows="3" placeholder="Street, city, state"></textarea>
+      </div>
+      <div class="staff-field staff-field--inline">
+        <label for="pl-add-supplier-phone">Phone number</label>
+        <input id="pl-add-supplier-phone" class="staff-input" type="text" placeholder="e.g. 9876543210">
+      </div>
+      <div class="staff-field staff-field--inline">
+        <label for="pl-add-supplier-bank-name">Bank name</label>
+        <input id="pl-add-supplier-bank-name" class="staff-input" type="text" placeholder="e.g. HDFC Bank">
+      </div>
+      <div class="staff-field staff-field--inline">
+        <label for="pl-add-supplier-bank-account">Bank account number</label>
+        <input id="pl-add-supplier-bank-account" class="staff-input" type="text" placeholder="e.g. 1234567890">
+      </div>
+      <div class="staff-field staff-field--inline staff-field--full">
+        <label for="pl-add-supplier-ifsc">IFSC code</label>
+        <input id="pl-add-supplier-ifsc" class="staff-input" type="text" placeholder="e.g. HDFC0001234">
       </div>
     </div>
     <div class="staff-credit-actions">
-      <button type="button" class="btn staff-primary" id="pl-add-supplier-save">Save supplier</button>
+      <button type="button" class="btn staff-primary" id="pl-add-supplier-save">Save</button>
       <button type="button" class="btn staff-secondary" id="pl-add-supplier-cancel">Cancel</button>
     </div>
   </div>

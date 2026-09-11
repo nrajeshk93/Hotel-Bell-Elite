@@ -2049,7 +2049,7 @@ def reverse_stock_for_deleted_purchase_expense(
     return None
 
 
-def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None):
+def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None, allow_inactive=False):
     """Deduct recipe ingredients for a closed POS invoice (idempotent).
 
     Matches ingredients to counter ``store_stock_items`` by outlet + product
@@ -2059,6 +2059,9 @@ def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None):
     unit mismatches, and missing product names are skipped with logging only —
     never raises into POS close/settle. Marks ``pos_invoices.stock_deducted_at``
     so re-close / reprint does not double-deduct.
+
+    ``allow_inactive``: rebuild scripts may deduct settled rows (``is_active=0``).
+    Live close/settle always leaves the row active until settle finishes.
     """
     ensure_pos_schema(conn)
     ensure_stores_schema(conn)
@@ -2077,7 +2080,9 @@ def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None):
         """,
         (invoice_id,),
     ).fetchone()
-    if not inv or not int(inv["is_active"] or 0):
+    if not inv:
+        return {"ok": False, "reason": "not_found"}
+    if not allow_inactive and not int(inv["is_active"] or 0):
         return {"ok": False, "reason": "not_found"}
     if (inv["stock_deducted_at"] or "").strip():
         return {"ok": True, "skipped": True, "reason": "already_deducted"}

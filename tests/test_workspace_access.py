@@ -445,6 +445,28 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(get_endpoint_dashboard_module("export_cash_ledger_report"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("export_purchase_ledger_report"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("export_supplier_report"), "accounts")
+        self.assertEqual(get_endpoint_dashboard_module("create_supplier"), "accounts")
+        self.assertEqual(get_endpoint_dashboard_module("list_supplier_options"), "accounts")
+        self.assertTrue(user_can_access_endpoint_accounts(user, "create_supplier"))
+        purchase_only = {
+            "id": 41,
+            "is_admin": False,
+            "dashboard_access": {"accounts"},
+            "accounts_access": {"purchase_ledger"},
+            "sales_analytics_access": set(),
+        }
+        self.assertTrue(user_can_access_endpoint_accounts(purchase_only, "create_supplier"))
+        self.assertFalse(
+            user_can_access_endpoint_accounts(
+                {
+                    "id": 42,
+                    "is_admin": False,
+                    "dashboard_access": {"accounts"},
+                    "accounts_access": {"cash_ledger"},
+                },
+                "create_supplier",
+            )
+        )
 
     def test_master_hub_grants_unlock_all_master_cards(self):
         """Master-tree checkboxes cover every Masters hub card (dual-grant with owners)."""
@@ -481,6 +503,7 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertTrue(user_can_access_menu_master(master_only))
         self.assertTrue(user_can_access_employee_master(master_only))
         self.assertTrue(user_can_access_endpoint_accounts(master_only, "supplier_master"))
+        self.assertTrue(user_can_access_endpoint_accounts(master_only, "create_supplier"))
         self.assertTrue(user_can_access_endpoint_stores(master_only, "stores_product_master"))
         self.assertTrue(user_can_access_endpoint_point_of_sale(master_only, "point_of_sale_menu"))
 

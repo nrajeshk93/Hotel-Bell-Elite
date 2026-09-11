@@ -103,6 +103,7 @@ from db import (
     list_license_renewals,
     update_app_license,
     hotel_sales_entry_from_invoices,
+    hotel_invoice_cash_totals_by_day,
     pos_sales_entry_from_invoices,
     indian_fiscal_year_bounds,
     is_valid_agency_gst,
@@ -358,6 +359,7 @@ from asset_digest import (
 )
 from gst_hotel import register_gst_hotel
 from gst_fnb import register_gst_fnb
+from dc_office_report import register_dc_office
 from main_dashboard_data import (
     build_financial_flow,
     build_outlet_boards,
@@ -800,6 +802,7 @@ register_back_office_receipt(
 register_seo_privacy(app)
 register_gst_hotel(app)
 register_gst_fnb(app)
+register_dc_office(app)
 
 
 def _access_nav_view():
@@ -1073,11 +1076,27 @@ def enforce_access():
             and endpoint in {"create_agency", "list_agencies_api"}
             and user_can_access_dashboard(user, "hotel")
         )
+        supplier_ok = (
+            endpoint
+            in {
+                "supplier_master",
+                "save_supplier",
+                "delete_supplier",
+                "export_supplier_report",
+                "list_supplier_options",
+                "create_supplier",
+            }
+            and (
+                user_can_access_supplier_master(user)
+                or user_can_access_accounts_submodule(user, "purchase_ledger")
+            )
+        )
         if (
             not agency_ok
             and not customer_ok
             and not pos_restaurant_sales_ok
             and not hotel_agency_ok
+            and not supplier_ok
         ):
             label = _DASHBOARD_MODULE_LABELS.get(required_dashboard, "requested")
             return _permission_denied_response(f"You do not have access to {label}.")
@@ -4711,14 +4730,14 @@ def _hotel_invoice_cash_amount(invoice):
     return 0.0
 
 
-def _sync_hotel_resettlement_actual_cash(conn, invoice_before, invoice_after, *, user=None):
-    try:
-        before_balance = float((invoice_before or {}).get("balance_amount") or 0)
-    except (TypeError, ValueError):
-        before_balance = 0.0
-    before_status = str((invoice_before or {}).get("status") or "").strip().lower()
-    if before_status != "settled" and before_balance > 0.009:
-        return False
+def _sync_hotel_settlement_actual_cash(conn, invoice_before, invoice_after, *, user=None):
+    """Apply hotel/room-transfer invoice cash tender deltas to Hotel Actual Cash.
+
+    Cash Ledger reads ``actual_cash`` from Hotel sales_updates. Any bill payment
+    that changes cash tenders (first settle, partial pay, or same-day resettle —
+    stay or room-transfer invoice) must update that figure so the ledger matches
+    front-desk collections regardless of other settlement modes on the bill.
+    """
     sales_day = _hotel_invoice_sales_day(invoice_after) or _hotel_invoice_sales_day(invoice_before)
     if not sales_day:
         return False
@@ -4807,6 +4826,20 @@ def _sync_hotel_resettlement_actual_cash(conn, invoice_before, invoice_after, *,
             ),
         )
     return True
+
+
+def _hotel_room_invoice_number_from_room(room):
+    if not isinstance(room, dict):
+        return ""
+    stay = room.get("stay") if isinstance(room.get("stay"), dict) else {}
+    return str(stay.get("invoiceNumber") or stay.get("invoice_number") or "").strip()
+
+
+def _sync_hotel_resettlement_actual_cash(conn, invoice_before, invoice_after, *, user=None):
+    """Backward-compatible alias for settlement → Actual Cash sync."""
+    return _sync_hotel_settlement_actual_cash(
+        conn, invoice_before, invoice_after, user=user
+    )
 
 
 def load_sales_row(company, location, sales_date):
@@ -7165,6 +7198,7 @@ def reports():
         "menu_sales",
         "unit_insights",
         "customer_insights",
+        "dc_office",
         "gst_hotel",
         "gst_fnb",
     }
@@ -11612,6 +11646,7 @@ def hotel_room_transfer_invoices_export():
 )
 def hotel_invoice_ledger_settle_selected_api():
     """Record one payment across multiple open hotel invoices."""
+    user = get_current_user() or {}
     data = request.get_json(silent=True) or {}
     invoice_numbers = data.get("invoice_numbers") or data.get("invoiceNumbers") or []
     payment = data.get("payment") if isinstance(data.get("payment"), dict) else None
@@ -11630,6 +11665,12 @@ def hotel_invoice_ledger_settle_selected_api():
     try:
         ensure_hotel_rooms_schema(conn)
         try:
+            before_by_number = {}
+            for raw_no in invoice_numbers or []:
+                inv_no = str(raw_no or "").strip()
+                if not inv_no:
+                    continue
+                before_by_number[inv_no] = get_hotel_room_invoice(conn, inv_no)
             result = record_hotel_room_invoices_payment(
                 conn,
                 invoice_numbers,
@@ -11639,6 +11680,18 @@ def hotel_invoice_ledger_settle_selected_api():
                 else None,
                 note=note,
             )
+            for invoice_after in result.get("invoices") or []:
+                if not isinstance(invoice_after, dict):
+                    continue
+                inv_no = str(invoice_after.get("invoice_number") or "").strip()
+                if not inv_no:
+                    continue
+                _sync_hotel_settlement_actual_cash(
+                    conn,
+                    before_by_number.get(inv_no),
+                    invoice_after,
+                    user=user,
+                )
             conn.commit()
         except ValueError as exc:
             conn.rollback()
@@ -11722,7 +11775,7 @@ def hotel_invoice_ledger_settle_api(invoice_number):
                 note=note,
             )
             if invoice_before and result.get("invoice"):
-                _sync_hotel_resettlement_actual_cash(
+                _sync_hotel_settlement_actual_cash(
                     conn,
                     invoice_before,
                     result.get("invoice"),
@@ -13023,6 +13076,11 @@ def hotel_room_detail_api(room_id):
                         or actor.get("id")
                         or ""
                     ).strip()
+                room_before = get_hotel_room(conn, room_id)
+                inv_before_no = _hotel_room_invoice_number_from_room(room_before)
+                invoice_before = (
+                    get_hotel_room_invoice(conn, inv_before_no) if inv_before_no else None
+                )
                 result = generate_hotel_room_invoice(
                     conn,
                     room_id,
@@ -13032,6 +13090,18 @@ def hotel_room_detail_api(room_id):
                     invoice_kind=invoice_kind,
                     created_by=created_by,
                 )
+                inv_after_no = (
+                    str((result.get("hotelInvoice") or {}).get("invoiceNumber") or "").strip()
+                    or _hotel_room_invoice_number_from_room(result.get("room"))
+                    or inv_before_no
+                )
+                invoice_after = (
+                    get_hotel_room_invoice(conn, inv_after_no) if inv_after_no else None
+                )
+                if invoice_after:
+                    _sync_hotel_settlement_actual_cash(
+                        conn, invoice_before, invoice_after, user=actor
+                    )
                 conn.commit()
                 return jsonify(
                     {
@@ -13061,6 +13131,12 @@ def hotel_room_detail_api(room_id):
                         or data.get("payment_reference"),
                         "note": note,
                     }
+                actor = get_current_user()
+                room_before = get_hotel_room(conn, room_id)
+                inv_before_no = _hotel_room_invoice_number_from_room(room_before)
+                invoice_before = (
+                    get_hotel_room_invoice(conn, inv_before_no) if inv_before_no else None
+                )
                 result = record_hotel_room_payment(
                     conn,
                     room_id,
@@ -13068,6 +13144,16 @@ def hotel_room_detail_api(room_id):
                     payment_splits=payment_splits if isinstance(payment_splits, list) else None,
                     note=note,
                 )
+                inv_after_no = _hotel_room_invoice_number_from_room(
+                    result.get("room")
+                ) or inv_before_no
+                invoice_after = (
+                    get_hotel_room_invoice(conn, inv_after_no) if inv_after_no else None
+                )
+                if invoice_after:
+                    _sync_hotel_settlement_actual_cash(
+                        conn, invoice_before, invoice_after, user=actor
+                    )
                 conn.commit()
                 return jsonify(
                     {
@@ -15299,36 +15385,101 @@ def _normalize_cash_ledger_transfer_destination(value):
 
 def _cash_ledger_sales_rows(conn, company, date_from, date_to, location=None):
     outlets = _cash_ledger_outlet_scope(location)
-    placeholders = ",".join("?" for _ in outlets)
-    rows = conn.execute(
-        f"""SELECT id, location, sales_date, sales_entry_values
-            FROM sales_updates
-            WHERE company = ?
-              AND location IN ({placeholders})
-              AND sales_date >= ? AND sales_date <= ?
-            ORDER BY sales_date, location, id""",
-        (company, *outlets, date_from.isoformat(), date_to.isoformat()),
-    ).fetchall()
+    include_hotel = OUTLET_HOTEL in outlets
+    non_hotel_outlets = tuple(outlet for outlet in outlets if outlet != OUTLET_HOTEL)
     entries = []
+
+    if non_hotel_outlets:
+        placeholders = ",".join("?" for _ in non_hotel_outlets)
+        rows = conn.execute(
+            f"""SELECT id, location, sales_date, sales_entry_values
+                FROM sales_updates
+                WHERE company = ?
+                  AND location IN ({placeholders})
+                  AND sales_date >= ? AND sales_date <= ?
+                ORDER BY sales_date, location, id""",
+            (company, *non_hotel_outlets, date_from.isoformat(), date_to.isoformat()),
+        ).fetchall()
+        for row in rows:
+            item = dict(row)
+            try:
+                values = json.loads(item.get("sales_entry_values") or "{}")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                values = {}
+            amount = parse_money(values.get("actual_cash"))
+            if amount <= 0:
+                continue
+            entries.append(
+                {
+                    "id": f"sales-{item['id']}",
+                    "source_id": item["id"],
+                    "entry_type": CASH_LEDGER_ENTRY_SALES,
+                    "entry_date": item["sales_date"],
+                    "location": item["location"] or "",
+                    "detail": item["location"] or "",
+                    "expense_code": "",
+                    "description": f"Actual cash — {item['location']}",
+                    "amount": amount,
+                    "signed_amount": amount,
+                    "can_delete": False,
+                }
+            )
+
+    if include_hotel:
+        entries.extend(
+            _cash_ledger_hotel_sales_rows(conn, company, date_from, date_to)
+        )
+    return entries
+
+
+def _cash_ledger_hotel_sales_rows(conn, company, date_from, date_to):
+    """Hotel Actual Cash from invoice cash settles (fallback: Sales Update actual_cash)."""
+    invoice_cash_by_day = hotel_invoice_cash_totals_by_day(conn, date_from, date_to)
+    rows = conn.execute(
+        """SELECT id, sales_date, sales_entry_values
+           FROM sales_updates
+           WHERE company = ?
+             AND location = ?
+             AND sales_date >= ? AND sales_date <= ?
+           ORDER BY sales_date, id""",
+        (company, OUTLET_HOTEL, date_from.isoformat(), date_to.isoformat()),
+    ).fetchall()
+    sales_by_day = {}
     for row in rows:
         item = dict(row)
+        day = str(item.get("sales_date") or "")[:10]
+        if not day or day in sales_by_day:
+            continue
         try:
             values = json.loads(item.get("sales_entry_values") or "{}")
         except (TypeError, ValueError, json.JSONDecodeError):
             values = {}
-        amount = parse_money(values.get("actual_cash"))
+        sales_by_day[day] = {
+            "id": item.get("id"),
+            "actual_cash": parse_money(values.get("actual_cash")),
+        }
+
+    entries = []
+    for day in sorted(set(invoice_cash_by_day) | set(sales_by_day)):
+        invoice_cash = round_half_up(invoice_cash_by_day.get(day, 0.0), 2)
+        sales_row = sales_by_day.get(day) or {}
+        actual_cash = round_half_up(sales_row.get("actual_cash") or 0.0, 2)
+        # Prefer FO invoice cash collections so settlements appear even when
+        # Hotel Actual Cash was never typed on Sales Update.
+        amount = invoice_cash if invoice_cash > 0.004 else actual_cash
         if amount <= 0:
             continue
+        source_id = sales_row.get("id") or 0
         entries.append(
             {
-                "id": f"sales-{item['id']}",
-                "source_id": item["id"],
+                "id": f"sales-hotel-{day}",
+                "source_id": source_id,
                 "entry_type": CASH_LEDGER_ENTRY_SALES,
-                "entry_date": item["sales_date"],
-                "location": item["location"] or "",
-                "detail": item["location"] or "",
+                "entry_date": day,
+                "location": OUTLET_HOTEL,
+                "detail": OUTLET_HOTEL,
                 "expense_code": "",
-                "description": f"Actual cash — {item['location']}",
+                "description": f"Actual cash — {OUTLET_HOTEL}",
                 "amount": amount,
                 "signed_amount": amount,
                 "can_delete": False,
@@ -20486,8 +20637,8 @@ def create_supplier():
     user = get_current_user()
     can_add = (
         user_can_access_supplier_master(user)
-        or user_can_access_sales_analytics_submodule(user, "hotel")
         or user_can_access_dashboard(user, "accounts")
+        or user_can_access_accounts_submodule(user, "purchase_ledger")
     )
     if not can_add:
         return jsonify({"ok": False, "error": "You do not have access to add suppliers."}), 403
