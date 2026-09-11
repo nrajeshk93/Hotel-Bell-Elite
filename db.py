@@ -16425,10 +16425,12 @@ def hotel_invoice_cash_totals_by_day(conn, date_from, date_to):
 def hotel_sales_entry_from_invoices(conn, sales_date):
     """Build Hotel Sales Entry totals from room invoices for one day.
 
-    Includes stay invoices plus F&B combined-transfer (FBE) and POS room-transfer
-    bills generated that day. Tender splits use the same payment rows as Invoice
-    Ledger (stay ``payments`` / FBE ``fbTransferPayments``). Unpaid remainder maps
-    to ``room_credit`` (Guest Credit). Bank transfer folds into ``card``.
+    Stay invoices feed ``total_sales`` and Guest Credit / BOR. F&B combined-transfer
+    (FBE) and open POS room-transfer bills feed a separate ``room_transfer`` line so
+    Restaurant/Bar POS totals are not double-counted in Hotel Actual Sales. FO
+    settlement tenders (cash/card/upi/bor) from stay and FBE/RT still land on the
+    Hotel tender lines for cash control. Unpaid remainder maps to ``room_credit``
+    for stay invoices only. Bank transfer folds into ``card``.
     """
     ensure_hotel_room_invoices_schema(conn)
     day = str(sales_date)[:10]
@@ -16442,27 +16444,45 @@ def hotel_sales_entry_from_invoices(conn, sales_date):
         (day,),
     ).fetchall()
 
-    total_sales = cash = card = upi = room_credit = bor = 0.0
+    total_sales = cash = card = upi = room_credit = bor = room_transfer = 0.0
+    transfer_sources = {
+        HOTEL_INVOICE_SOURCE_FB_COMBINED,
+        HOTEL_INVOICE_SOURCE_POS_TRANSFER,
+    }
     for row in rows:
         amount = float(row["estimated_total"] or 0)
-        total_sales += amount
-        source = row["source"] if "source" in row.keys() else ""
+        source_raw = row["source"] if "source" in row.keys() else ""
+        source = str(source_raw or "").strip().lower() or HOTEL_INVOICE_SOURCE_HOTEL
         amounts = _hotel_invoice_payment_amounts_from_payload(
-            row["payload_json"], source=source
+            row["payload_json"], source=source_raw
         )
         if not isinstance(amounts, dict):
             amounts = {}
-        cash += float(amounts.get("cash") or 0)
-        upi += float(amounts.get("upi") or 0)
-        card += float(amounts.get("card") or 0)
-        card += float(amounts.get("bank_transfer") or 0)
-        room_credit += float(amounts.get("credit") or 0)
-        bor += float(amounts.get("bor") or 0)
+        pay_cash = float(amounts.get("cash") or 0)
+        pay_upi = float(amounts.get("upi") or 0)
+        pay_card = float(amounts.get("card") or 0) + float(
+            amounts.get("bank_transfer") or 0
+        )
+        pay_credit = float(amounts.get("credit") or 0)
+        pay_bor = float(amounts.get("bor") or 0)
 
-    allocated = cash + card + upi + room_credit + bor
-    remainder = round(total_sales - allocated, 2)
-    if remainder > 0.005:
-        room_credit += remainder
+        cash += pay_cash
+        upi += pay_upi
+        card += pay_card
+        bor += pay_bor
+
+        if source in transfer_sources:
+            room_transfer += amount
+            # FBE/RT unpaid remainder stays off Guest Credit — already attributed
+            # on Restaurant/Bar when POS settled as room transfer.
+            continue
+
+        total_sales += amount
+        room_credit += pay_credit
+        allocated = pay_cash + pay_card + pay_upi + pay_credit + pay_bor
+        remainder = round(amount - allocated, 2)
+        if remainder > 0.005:
+            room_credit += remainder
 
     return {
         "total_sales": round(total_sales, 2),
@@ -16471,6 +16491,7 @@ def hotel_sales_entry_from_invoices(conn, sales_date):
         "upi": round(upi, 2),
         "room_credit": round(room_credit, 2),
         "bor": round(bor, 2),
+        "room_transfer": round(room_transfer, 2),
     }
 
 

@@ -337,10 +337,79 @@ class InvoiceSalesKpisTests(unittest.TestCase):
         )
         self.conn.commit()
         entry = db_mod.hotel_sales_entry_from_invoices(self.conn, "2026-04-12")
-        self.assertEqual(entry["total_sales"], 5068.0)
+        # Stay only in Total Sales; FBE peeled to Room Transfer (no Rest/Bar double-count).
+        self.assertEqual(entry["total_sales"], 5000.0)
+        self.assertEqual(entry["room_transfer"], 68.0)
         self.assertEqual(entry["cash"], 68.0)
         self.assertEqual(entry["room_credit"], 5000.0)
         self.assertEqual(entry["upi"], 0.0)
+
+    def test_hotel_sales_entry_peels_unpaid_fbe_from_guest_credit(self):
+        self._insert_hotel(
+            invoice_number="HBE/RM/ENTRY/STAY2",
+            generated_at="2026-04-12 09:00:00",
+            total=2000.0,
+            status="settled",
+            payments=[{"method": "upi", "amount": 2000.0}],
+        )
+        payload = {
+            "source": "fb_combined_transfer",
+            "stay": {
+                "fbTransferInvoiceNumber": "FBE/26-27/00008",
+                "invoiceNumber": "FBE/26-27/00008",
+                "fbTransferPayments": [],
+            },
+        }
+        self.conn.execute(
+            """
+            INSERT INTO hotel_room_invoices (
+                invoice_number, room_id, room_number, room_type_label,
+                guest_name, booking_number, check_in_date, check_out_date,
+                invoice_generated_at, estimated_total, advance_paid,
+                balance_amount, status, source, payload_json
+            ) VALUES (?, 'r102', '102', 'F&B Transfers', 'Guest', '',
+                      '2026-04-01', '2026-04-02', ?, ?, 0, 450, 'open',
+                      'fb_combined_transfer', ?)
+            """,
+            (
+                "FBE/26-27/00008",
+                "2026-04-12 11:00:00",
+                450.0,
+                json.dumps(payload),
+            ),
+        )
+        self.conn.commit()
+        entry = db_mod.hotel_sales_entry_from_invoices(self.conn, "2026-04-12")
+        self.assertEqual(entry["total_sales"], 2000.0)
+        self.assertEqual(entry["room_transfer"], 450.0)
+        self.assertEqual(entry["upi"], 2000.0)
+        self.assertEqual(entry["room_credit"], 0.0)
+        self.assertEqual(entry["cash"], 0.0)
+
+    def test_hotel_sales_entry_open_pos_rt_feeds_room_transfer(self):
+        self.conn.execute(
+            """
+            INSERT INTO hotel_room_invoices (
+                invoice_number, room_id, room_number, room_type_label,
+                guest_name, booking_number, check_in_date, check_out_date,
+                invoice_generated_at, estimated_total, advance_paid,
+                balance_amount, status, source, payload_json
+            ) VALUES (?, 'r103', '103', 'Restaurant Transfer', 'Guest', '',
+                      '2026-04-01', '2026-04-02', ?, ?, 0, 150, 'open',
+                      'pos_room_transfer', ?)
+            """,
+            (
+                "RT/26-27/00001",
+                "2026-04-12 12:00:00",
+                150.0,
+                json.dumps({"source": "pos_room_transfer"}),
+            ),
+        )
+        self.conn.commit()
+        entry = db_mod.hotel_sales_entry_from_invoices(self.conn, "2026-04-12")
+        self.assertEqual(entry["total_sales"], 0.0)
+        self.assertEqual(entry["room_transfer"], 150.0)
+        self.assertEqual(entry["room_credit"], 0.0)
 
     def test_pos_sales_entry_from_invoices_by_outlet(self):
         self._insert_pos(

@@ -571,6 +571,7 @@ HOTEL_SALES_ENTRY_FIELDS = (
     ("staff_account", "Employee Credit"),
     ("room_credit", "Guest Credit"),
     ("bor", "Back Office Receipt"),
+    ("room_transfer", "Room Transfer"),
     ("actual_cash", "Actual Cash"),
     ("tips", "Tips"),
     ("expense", "Expense"),
@@ -691,7 +692,15 @@ def _expense_category_choices(conn=None, module=None):
 def _expense_category_labels(conn=None, module=None):
     return dict(_expense_category_choices(conn, module=module))
 
-HOTEL_IMPORT_FIELD_KEYS = ("total_sales", "cash", "card", "upi", "room_credit", "bor")
+HOTEL_IMPORT_FIELD_KEYS = (
+    "total_sales",
+    "cash",
+    "card",
+    "upi",
+    "room_credit",
+    "bor",
+    "room_transfer",
+)
 ROOM_TRANSFER_PAYMENT_STATUSES = _sorted_label_choices((
     ("unpaid", "Un Paid"),
     ("paid", "Paid"),
@@ -18124,10 +18133,13 @@ def _load_outlet_entry_bundle(
             invoice_entries = hotel_sales_entry_from_invoices(conn, sales_date)
         else:
             invoice_entries = rollup_hotel_ledger_entries(ledger_entries)
-            # Guest Credit / Back Office Receipt follow live hotel settlements, not the FO upload.
+            # Guest Credit / BOR / Room Transfer follow live hotel settlements, not the FO upload.
             live_entries = hotel_sales_entry_from_invoices(conn, sales_date)
             invoice_entries["room_credit"] = parse_money(live_entries.get("room_credit"))
             invoice_entries["bor"] = parse_money(live_entries.get("bor"))
+            invoice_entries["room_transfer"] = parse_money(
+                live_entries.get("room_transfer")
+            )
         for key in HOTEL_IMPORT_FIELD_KEYS:
             sales_entries[key] = parse_money(invoice_entries.get(key))
         expense_total = _sales_expense_total(conn, company, location, sales_date)
