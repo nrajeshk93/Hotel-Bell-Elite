@@ -15,6 +15,7 @@
     '/main-dashboard',
     '/master',
     '/settings',
+    '/help/tickets',
     '/license'
   ];
   var SKIP_SCRIPT_PARTS = [

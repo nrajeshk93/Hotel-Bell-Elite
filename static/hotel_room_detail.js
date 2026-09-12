@@ -2229,10 +2229,9 @@
         setVisible(bodyEl, false);
       }
     } else {
+      /* First HBE mint allowed at ₹0 (complimentary); after mint only pending lines. */
       var hasHotelToInvoice =
-        invoiceGenerated
-          ? pendingHotelLines.length > 0
-          : lines.length > 0 || estimated > 0;
+        !invoiceGenerated || pendingHotelLines.length > 0;
       var hasFbToInvoice = pendingFbLines.length > 0;
       var hotelAlreadyInvoiced = !!(invoiceGenerated || hotelHistory.length);
       var fbAlreadyInvoiced = fbHistory.length > 0;
@@ -3392,7 +3391,7 @@
     }
     var hasHotelCharges =
       modalHotelLines.length > 0 ||
-      (invoiceKind !== 'fb' && !invoiceGenerated && summary.estimated > 0);
+      (invoiceKind !== 'fb' && !invoiceGenerated);
     var hasFbCharges =
       modalFbLines.length > 0 ||
       (invoiceKind !== 'hotel' &&

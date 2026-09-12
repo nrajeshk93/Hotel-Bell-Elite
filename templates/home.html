@@ -129,7 +129,7 @@
           <div class="db-profile-menu" role="menu" aria-label="Profile menu">
             <div class="db-profile-name">{{ display_name }}</div>
             {% if role_label %}<div class="db-profile-role">{{ role_label }}</div>{% endif %}
-            <form method="POST" action="{{ url_for('logout') }}" class="db-profile-logout-form" data-de-no-soft-nav="1">
+<form method="POST" action="{{ url_for('logout') }}" class="db-profile-logout-form" data-de-no-soft-nav="1">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="db-profile-logout de-logout-btn" data-de-no-soft-nav="1">Logout</button>
             </form>

@@ -20883,7 +20883,8 @@ def generate_hotel_room_invoice(
 
     will_mint_hotel = want_hotel and (
         pending_hotel > 0.009
-        or (not has_primary_hbe and float(stay.get("estimatedTotal") or 0) > 0.009)
+        # First HBE mint is allowed even when estimatedTotal is ₹0 (complimentary).
+        or not has_primary_hbe
     )
     will_mint_fb = want_fb and (
         pending_fb > 0.009
@@ -20903,11 +20904,8 @@ def generate_hotel_room_invoice(
     elif has_primary_hbe or has_any_fbe:
         if pending_hotel <= 0.009 and pending_fb <= 0.009:
             raise ValueError("No pending charges to invoice.")
-    else:
-        has_hotel_charges = float(stay.get("estimatedTotal") or 0) > 0.009
-        has_fb_transfers = _hotel_fb_transfer_total(stay) > 0.009
-        if not has_hotel_charges and not has_fb_transfers:
-            raise ValueError("No charges to invoice yet.")
+    elif not will_mint_hotel and not will_mint_fb:
+        raise ValueError("No charges to invoice yet.")
 
     detach_stay_after_save = (
         _normalize_hotel_room_status(room.get("status")) != "occupied"
@@ -24356,6 +24354,18 @@ def init_db():
         cursor.execute(
             "ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0"
         )
+    if "mfa_enabled" not in existing_user_cols:
+        cursor.execute(
+            "ALTER TABLE users ADD COLUMN mfa_enabled INTEGER NOT NULL DEFAULT 0"
+        )
+    if "mfa_secret" not in existing_user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN mfa_secret TEXT")
+    if "mfa_backup_codes_hash" not in existing_user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN mfa_backup_codes_hash TEXT")
+    if "mfa_enforced" not in existing_user_cols:
+        cursor.execute(
+            "ALTER TABLE users ADD COLUMN mfa_enforced INTEGER NOT NULL DEFAULT 0"
+        )
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS login_logs (
@@ -25083,6 +25093,11 @@ def init_db():
     get_hotel_rooms_layout(conn)
     ensure_agencies_schema(conn)
     ensure_communication_hub_schema(conn)
+    try:
+        from help_tickets import ensure_help_tickets_schema as _ensure_help_tickets_schema
+        _ensure_help_tickets_schema(conn)
+    except Exception:
+        pass
     ensure_app_license_schema(conn)
 
     conn.commit()

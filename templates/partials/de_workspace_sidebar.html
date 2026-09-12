@@ -8,6 +8,7 @@
 {% set master_view = de_nav_master_view|default('') %}
 {% set report_view = de_nav_report_view|default('') %}
 {% set settings_view = de_nav_settings_view|default('') %}
+{% set help_view = de_nav_help_view|default('') %}
 {% set license_view = de_nav_license_view|default('') %}
 {% set communication_hub_view = de_nav_communication_hub_view|default('') %}
 {% set accounts_open = nav_section == 'accounts' %}
@@ -20,6 +21,7 @@
 {% set master_open = nav_section == 'master' %}
 {% set report_open = nav_section == 'report' %}
 {% set settings_open = nav_section == 'settings' %}
+{% set help_open = nav_section == 'help' %}
 {% set license_open = nav_section == 'license' %}
 {% set show_license_nav = show_license_nav|default(false) %}
 {% set nav_year = sel_year|default(today_year|default('')) %}
@@ -277,6 +279,18 @@
       </div>
     </div>
     {% endif %}
+
+
+    <div class="de-nav-group{% if help_open %} is-open is-child-active{% endif %}" id="de-nav-help-group">
+      <button type="button" class="de-nav-group-toggle" id="de-nav-help-toggle" aria-expanded="{{ 'true' if help_open else 'false' }}" aria-controls="de-nav-help-sub" onclick="toggleDeNavGroup(event, 'de-nav-help-group')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4"/><path d="M12 17h.01"/></svg>
+        <span>Help</span>
+        <svg class="de-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
+      <div class="de-nav-sub" id="de-nav-help-sub">
+        <a class="de-nav-subitem{% if help_view == 'tickets' %} is-active{% endif %}" id="de-nav-help-tickets" href="{{ url_for('help_tickets') }}"{% if help_view == 'tickets' %} aria-current="page"{% endif %}>My Tickets</a>
+      </div>
+    </div>
 
     {% if has_dashboard_access('settings') %}
     <div class="de-nav-group{% if settings_open %} is-open is-child-active{% endif %}" id="de-nav-settings-group">

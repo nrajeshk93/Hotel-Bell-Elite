@@ -66,6 +66,7 @@
         <div id="login-offline-notice" class="login-notice" hidden>You're offline. You can still sign in with your password on this device.</div>
 
         <form method="POST" action="{{ url_for('login') }}" class="login-form" autocomplete="on" id="login-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="form-group">
             <label for="username">Username</label>
             <div class="login-field">

@@ -33,6 +33,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
 
 import auth_security
+import mfa_totp
 import activity_audit
 import csrf_protect
 from secret_key import get_secret_key
@@ -349,6 +350,7 @@ from meal_plan_report import build_meal_plan_report
 from kot_report import build_kot_report, kot_report_excel_bytes
 from stores import register_stores
 from communication_hub import register_communication_hub
+from help_tickets import register_help_tickets
 from back_office_receipt import register_back_office_receipt
 from seo_privacy import register_seo_privacy
 from asset_digest import (
@@ -805,6 +807,7 @@ register_communication_hub(
     pop_auth_notice=_pop_auth_notice,
     get_user=get_current_user,
 )
+register_help_tickets(app, get_current_user=get_current_user)
 register_back_office_receipt(
     app,
     pop_auth_notice=_pop_auth_notice,
@@ -959,6 +962,8 @@ def enforce_access():
     if not user:
         if request.path == "/api/mobile/login" and request.method == "POST":
             return None
+        if request.path == "/api/mobile/login/mfa" and request.method == "POST":
+            return None
         xhr = (
             request.headers.get("X-Requested-With") == "XMLHttpRequest"
             or request.is_json
@@ -985,7 +990,7 @@ def enforce_access():
             return jsonify({"ok": False, "error": "Please sign in again."}), 401
         if endpoint == "mobile_session" or (
             request.path.startswith("/api/mobile/")
-            and endpoint not in {"mobile_ota_manifest", "mobile_ota_apk", "mobile_login"}
+            and endpoint not in {"mobile_ota_manifest", "mobile_ota_apk", "mobile_login", "mobile_login_mfa"}
         ):
             return jsonify({"ok": False, "error": "Not signed in"}), 401
         if request.path.startswith("/preview-api/") or request.path.startswith("/mobile-app"):
@@ -5692,6 +5697,30 @@ def _security_headers(response):
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "same-origin")
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault(
+        "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+    )
+    response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+    # Report-only CSP — do not enforce yet (inline scripts/styles still used).
+    response.headers.setdefault(
+        "Content-Security-Policy-Report-Only",
+        (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; "
+            "font-src 'self' data:; "
+            "connect-src 'self'; "
+            "frame-ancestors 'self'; "
+            "base-uri 'self'; "
+            "form-action 'self'"
+        ),
+    )
+    if _request_is_https():
+        response.headers.setdefault(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains",
+        )
     path = request.path or ""
     if not (
         path.startswith("/webhook/")
@@ -5704,6 +5733,7 @@ def _security_headers(response):
         except RuntimeError:
             pass
     return response
+
 
 
 @app.after_request
@@ -5989,11 +6019,12 @@ def login():
             )
 
         auth_security.clear_login_failures(conn, int(row["id"]))
+        mfa_on = mfa_totp.user_mfa_enabled(row)
         _write_login_log(
             conn,
             username=username,
-            success=True,
-            reason="success",
+            success=not mfa_on,
+            reason="mfa_pending" if mfa_on else "success",
             user_id=int(row["id"]),
         )
         auth_security.upgrade_password_hash_if_needed(
@@ -6007,11 +6038,314 @@ def login():
         conn.close()
 
     auth_security.clear_captcha_challenge(session)
+    if mfa_totp.user_mfa_enabled(row):
+        session.clear()
+        mfa_totp.set_pending_mfa_session(
+            session,
+            int(row["id"]),
+            must_change_password=bool(row["must_change_password"]),
+        )
+        return redirect(url_for("login_mfa"))
+
     session.clear()
     session[AUTH_USER_SESSION_KEY] = int(row["id"])
     if bool(row["must_change_password"]):
         return redirect(url_for("change_password"))
     return redirect(url_for("home"))
+
+
+
+@app.route("/login/mfa", methods=["GET", "POST"], endpoint="login_mfa")
+def login_mfa():
+    if not mfa_totp.mfa_feature_enabled():
+        mfa_totp.clear_pending_mfa_session(session)
+        return redirect(url_for("login_get"))
+    """Second factor after password. Does not set user_id until code verifies."""
+    if get_current_user():
+        return redirect(url_for("home"))
+
+    pending_id = mfa_totp.get_pending_mfa_user_id(session)
+    if not pending_id:
+        return redirect(url_for("index"))
+
+    error = ""
+    if request.method == "POST":
+        code = (request.form.get("code") or request.form.get("mfa_code") or "").strip()
+        conn = get_db()
+        try:
+            row = conn.execute(
+                "SELECT * FROM users WHERE id = ? AND is_active = 1",
+                (pending_id,),
+            ).fetchone()
+            if not row or not mfa_totp.user_mfa_enabled(row):
+                mfa_totp.clear_pending_mfa_session(session)
+                return redirect(url_for("index"))
+
+            secret = mfa_totp.decrypt_secret(row["mfa_secret"] or "")
+            ok = mfa_totp.verify_totp(secret, code)
+            if not ok:
+                ok = mfa_totp.verify_and_consume_backup_code(conn, pending_id, code)
+                if ok:
+                    conn.commit()
+
+            if not ok:
+                _write_login_log(
+                    conn,
+                    username=row["username"],
+                    success=False,
+                    reason="mfa_invalid",
+                    user_id=pending_id,
+                )
+                conn.commit()
+                error = "Invalid authenticator or backup code."
+            else:
+                must_change = bool(session.get(mfa_totp.MFA_PENDING_MUST_CHANGE)) or bool(
+                    row["must_change_password"]
+                )
+                _write_login_log(
+                    conn,
+                    username=row["username"],
+                    success=True,
+                    reason="success",
+                    user_id=pending_id,
+                )
+                conn.commit()
+                mfa_totp.clear_pending_mfa_session(session)
+                session.clear()
+                session[AUTH_USER_SESSION_KEY] = int(pending_id)
+                if must_change:
+                    return redirect(url_for("change_password"))
+                return redirect(url_for("home"))
+        finally:
+            conn.close()
+
+    return render_template("login_mfa.html", error=error)
+
+
+@app.route("/security/mfa", methods=["GET"], endpoint="security_mfa")
+def security_mfa():
+    if not mfa_totp.mfa_feature_enabled():
+        return redirect(url_for("home"))
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("index"))
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
+    finally:
+        conn.close()
+    enabled = mfa_totp.user_mfa_enabled(row)
+    backup_count = len(
+        mfa_totp.load_backup_code_hashes(
+            (row["mfa_backup_codes_hash"] if row and "mfa_backup_codes_hash" in row.keys() else "")
+            or ""
+        )
+    )
+    notice = session.pop("mfa_notice", "")
+    backup_codes = session.pop("mfa_backup_codes_once", None)
+    setup_secret = session.get(mfa_totp.MFA_SETUP_SECRET) or ""
+    qr_url = ""
+    if setup_secret:
+        uri = mfa_totp.provisioning_uri(setup_secret, user.get("username") or "user")
+        qr_url = mfa_totp.qr_data_url(uri)
+    return render_template(
+        "security_mfa.html",
+        enabled=enabled,
+        backup_count=backup_count,
+        notice=notice,
+        error="",
+        setup_secret=setup_secret,
+        qr_url=qr_url,
+        backup_codes=backup_codes,
+        username=user.get("username") or "",
+    )
+
+
+@app.route("/security/mfa/setup", methods=["POST"], endpoint="security_mfa_setup")
+def security_mfa_setup():
+    if not mfa_totp.mfa_feature_enabled():
+        return redirect(url_for("home"))
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("index"))
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT mfa_enabled FROM users WHERE id = ?",
+            (user["id"],),
+        ).fetchone()
+    finally:
+        conn.close()
+    if mfa_totp.user_mfa_enabled(row):
+        session["mfa_notice"] = "Authenticator MFA is already enabled."
+        return redirect(url_for("security_mfa"))
+    session[mfa_totp.MFA_SETUP_SECRET] = mfa_totp.generate_secret()
+    return redirect(url_for("security_mfa"))
+
+
+@app.route("/security/mfa/confirm", methods=["POST"], endpoint="security_mfa_confirm")
+def security_mfa_confirm():
+    if not mfa_totp.mfa_feature_enabled():
+        return redirect(url_for("home"))
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("index"))
+    secret = session.get(mfa_totp.MFA_SETUP_SECRET) or ""
+    code = (request.form.get("code") or "").strip()
+    if not secret or not mfa_totp.verify_totp(secret, code):
+        conn = get_db()
+        try:
+            row = conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
+        finally:
+            conn.close()
+        enabled = mfa_totp.user_mfa_enabled(row)
+        uri = mfa_totp.provisioning_uri(secret, user.get("username") or "user") if secret else ""
+        return render_template(
+            "security_mfa.html",
+            enabled=enabled,
+            backup_count=0,
+            notice="",
+            error="That code did not match. Scan the QR again and enter a fresh 6-digit code.",
+            setup_secret=secret,
+            qr_url=mfa_totp.qr_data_url(uri) if uri else "",
+            backup_codes=None,
+            username=user.get("username") or "",
+        )
+    codes = mfa_totp.generate_backup_codes()
+    conn = get_db()
+    try:
+        conn.execute(
+            f"""UPDATE users
+                   SET mfa_enabled = 1,
+                       mfa_secret = ?,
+                       mfa_backup_codes_hash = ?,
+                       updated_at = {SQL_NOW}
+                 WHERE id = ?""",
+            (mfa_totp.encrypt_secret(secret), mfa_totp.backup_codes_to_storage(codes), user["id"]),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    session.pop(mfa_totp.MFA_SETUP_SECRET, None)
+    session["mfa_backup_codes_once"] = codes
+    session["mfa_notice"] = "Authenticator MFA is now enabled. Save your backup codes."
+    return redirect(url_for("security_mfa"))
+
+
+@app.route("/security/mfa/disable", methods=["POST"], endpoint="security_mfa_disable")
+def security_mfa_disable():
+    if not mfa_totp.mfa_feature_enabled():
+        return redirect(url_for("home"))
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("index"))
+    password = request.form.get("password") or ""
+    code = (request.form.get("code") or "").strip()
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
+        if not row or not mfa_totp.user_mfa_enabled(row):
+            session["mfa_notice"] = "MFA is not enabled."
+            return redirect(url_for("security_mfa"))
+        if not auth_security.verify_password_for_row(row, password):
+            return render_template(
+                "security_mfa.html",
+                enabled=True,
+                backup_count=len(mfa_totp.load_backup_code_hashes(row["mfa_backup_codes_hash"] or "")),
+                notice="",
+                error="Password is incorrect.",
+                setup_secret="",
+                qr_url="",
+                backup_codes=None,
+                username=user.get("username") or "",
+            )
+        secret = mfa_totp.decrypt_secret(row["mfa_secret"] or "")
+        if not mfa_totp.verify_totp(secret, code):
+            if not mfa_totp.verify_and_consume_backup_code(conn, user["id"], code):
+                return render_template(
+                    "security_mfa.html",
+                    enabled=True,
+                    backup_count=len(mfa_totp.load_backup_code_hashes(row["mfa_backup_codes_hash"] or "")),
+                    notice="",
+                    error="Authenticator or backup code is incorrect.",
+                    setup_secret="",
+                    qr_url="",
+                    backup_codes=None,
+                    username=user.get("username") or "",
+                )
+            conn.commit()
+        conn.execute(
+            f"""UPDATE users
+                   SET mfa_enabled = 0,
+                       mfa_secret = NULL,
+                       mfa_backup_codes_hash = NULL,
+                       updated_at = {SQL_NOW}
+                 WHERE id = ?""",
+            (user["id"],),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    session.pop(mfa_totp.MFA_SETUP_SECRET, None)
+    session["mfa_notice"] = "Authenticator MFA has been disabled."
+    return redirect(url_for("security_mfa"))
+
+
+@app.route("/security/mfa/regenerate-backup", methods=["POST"], endpoint="security_mfa_regenerate_backup")
+def security_mfa_regenerate_backup():
+    if not mfa_totp.mfa_feature_enabled():
+        return redirect(url_for("home"))
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("index"))
+    password = request.form.get("password") or ""
+    code = (request.form.get("code") or "").strip()
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
+        if not row or not mfa_totp.user_mfa_enabled(row):
+            session["mfa_notice"] = "Enable MFA before regenerating backup codes."
+            return redirect(url_for("security_mfa"))
+        if not auth_security.verify_password_for_row(row, password):
+            session["mfa_notice"] = ""
+            return render_template(
+                "security_mfa.html",
+                enabled=True,
+                backup_count=len(mfa_totp.load_backup_code_hashes(row["mfa_backup_codes_hash"] or "")),
+                notice="",
+                error="Password is incorrect.",
+                setup_secret="",
+                qr_url="",
+                backup_codes=None,
+                username=user.get("username") or "",
+            )
+        secret = mfa_totp.decrypt_secret(row["mfa_secret"] or "")
+        if not mfa_totp.verify_totp(secret, code):
+            return render_template(
+                "security_mfa.html",
+                enabled=True,
+                backup_count=len(mfa_totp.load_backup_code_hashes(row["mfa_backup_codes_hash"] or "")),
+                notice="",
+                error="Authenticator code is incorrect.",
+                setup_secret="",
+                qr_url="",
+                backup_codes=None,
+                username=user.get("username") or "",
+            )
+        codes = mfa_totp.generate_backup_codes()
+        conn.execute(
+            f"""UPDATE users
+                   SET mfa_backup_codes_hash = ?,
+                       updated_at = {SQL_NOW}
+                 WHERE id = ?""",
+            (mfa_totp.backup_codes_to_storage(codes), user["id"]),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    session["mfa_backup_codes_once"] = codes
+    session["mfa_notice"] = "New backup codes generated. Previous codes no longer work."
+    return redirect(url_for("security_mfa"))
 
 
 @app.route("/change-password", methods=["GET", "POST"])
@@ -22224,6 +22558,45 @@ def mobile_login():
         )
         return jsonify(data), status
 
+    # Opt-in MFA: password ok but do not grant full session yet.
+    conn = get_db()
+    try:
+        mfa_row = conn.execute(
+            "SELECT mfa_enabled, mfa_secret FROM users WHERE id = ?",
+            (int(data["user_id"]),),
+        ).fetchone()
+    finally:
+        conn.close()
+    if mfa_totp.user_mfa_enabled(mfa_row):
+        session.clear()
+        mfa_token = mfa_totp.set_pending_mfa_session(
+            session,
+            int(data["user_id"]),
+            must_change_password=bool(data.get("must_change_password")),
+        )
+        activity_audit.record_activity_log(
+            "login",
+            "auth",
+            f"{data.get('username') or username} password ok; MFA pending (mobile)",
+            user_id=int(data["user_id"]),
+            username=data.get("username") or username,
+            entity_type="session",
+            details={"source": "mobile", "mfa_pending": True},
+            endpoint="mobile_login",
+            method="POST",
+            path="/api/mobile/login",
+            ip_address=ip,
+            status_code=200,
+        )
+        return jsonify(
+            {
+                "ok": False,
+                "mfa_required": True,
+                "mfa_token": mfa_token,
+                "username": data.get("username") or username,
+            }
+        )
+
     session.clear()
     session[AUTH_USER_SESSION_KEY] = int(data["user_id"])
     activity_audit.record_activity_log(
@@ -22263,6 +22636,96 @@ def mobile_login():
             "auth_mode": "cookie",
         }
     )
+
+
+
+
+@app.route("/api/mobile/login/mfa", methods=["POST"], endpoint="mobile_login_mfa")
+def mobile_login_mfa():
+    """Complete mobile sign-in with TOTP or backup code after mfa_required."""
+    payload = request.get_json(silent=True) or {}
+    mfa_token = str(payload.get("mfa_token") or "").strip()
+    code = str(payload.get("code") or payload.get("mfa_code") or "").strip()
+    if not mfa_token or not code:
+        return jsonify({"ok": False, "error": "Enter the authenticator code."}), 400
+
+    pending_id = mfa_totp.get_pending_mfa_user_id(session, require_token=mfa_token)
+    if not pending_id:
+        return jsonify({"ok": False, "error": "MFA session expired. Sign in again."}), 401
+
+    ip = activity_audit.client_ip_from_request()
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM users WHERE id = ? AND is_active = 1",
+            (pending_id,),
+        ).fetchone()
+        if not row or not mfa_totp.user_mfa_enabled(row):
+            mfa_totp.clear_pending_mfa_session(session)
+            return jsonify({"ok": False, "error": "MFA is not available for this account."}), 400
+
+        secret = mfa_totp.decrypt_secret(row["mfa_secret"] or "")
+        ok = mfa_totp.verify_totp(secret, code)
+        if not ok:
+            ok = mfa_totp.verify_and_consume_backup_code(conn, pending_id, code)
+            if ok:
+                conn.commit()
+        if not ok:
+            activity_audit.record_activity_log(
+                "login_failed",
+                "auth",
+                f"Failed mobile MFA for {row['username']}",
+                user_id=pending_id,
+                username=row["username"],
+                entity_type="session",
+                details={"source": "mobile", "error": "mfa_invalid"},
+                endpoint="mobile_login_mfa",
+                method="POST",
+                path="/api/mobile/login/mfa",
+                ip_address=ip,
+                status_code=401,
+            )
+            return jsonify({"ok": False, "error": "Invalid authenticator or backup code."}), 401
+
+        from workspace_access import build_user_context, mobile_module_access
+
+        user = build_user_context(conn, row)
+        access = mobile_module_access(user)
+        must_change = bool(session.get(mfa_totp.MFA_PENDING_MUST_CHANGE)) or bool(
+            row["must_change_password"]
+        )
+        mfa_totp.clear_pending_mfa_session(session)
+        session.clear()
+        session[AUTH_USER_SESSION_KEY] = int(pending_id)
+        activity_audit.record_activity_log(
+            "login",
+            "auth",
+            f"{row['username']} signed in (mobile MFA)",
+            user_id=pending_id,
+            username=row["username"],
+            entity_type="session",
+            details={"source": "mobile", "mfa": True},
+            endpoint="mobile_login_mfa",
+            method="POST",
+            path="/api/mobile/login/mfa",
+            ip_address=ip,
+            status_code=200,
+        )
+        display_name = str(user.get("display_name") or user.get("username") or row["username"]).strip()
+        return jsonify(
+            {
+                "ok": True,
+                "must_change_password": must_change,
+                "user_id": int(pending_id),
+                "username": row["username"],
+                "display_name": display_name,
+                "access": access or {},
+                "auth_mode": "cookie",
+            }
+        )
+    finally:
+        conn.close()
+
 
 
 @app.route("/api/mobile/version", methods=["GET"], endpoint="mobile_ota_manifest")

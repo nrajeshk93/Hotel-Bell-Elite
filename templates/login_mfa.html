@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Hotel Bell Elite — Authenticator</title>
+  {% include 'partials/de_android_head.html' %}
+  {% include 'partials/hbe_login_fonts.html' %}
+<link rel="stylesheet" href="{{ asset('login_premium.css') }}" />
+</head>
+<body class="login-page">
+  <div class="login-shell">
+    <aside class="login-brand" aria-hidden="false">
+      <div class="login-brand-media" style="--login-hero:url('{{ asset('login_hero.jpg') }}')"></div>
+      <div class="login-brand-veil" aria-hidden="true"></div>
+      <div class="login-brand-inner">
+        <div class="login-brand-top">
+          <img class="login-mark login-mark--on-dark" src="{{ url_for('static', filename='hbe_mark_sm.png') }}" width="72" height="72" alt="" />
+          <h1 class="login-brand-name">Hotel Bell Elite</h1>
+          <p class="login-brand-tag">Experience excellence</p>
+        </div>
+        <div class="login-brand-copy">
+          <h2 class="login-welcome">One more step</h2>
+          <p class="login-welcome-sub">Enter the code from your authenticator app</p>
+        </div>
+      </div>
+    </aside>
+
+    <main class="login-panel">
+      <div class="login-panel-card">
+        <div class="login-panel-head">
+          <img class="login-mark login-mark--badge" src="{{ asset('hbe_mark_form_sm.png') }}" width="88" height="88" alt="Hotel Bell Elite" />
+          <h2 class="login-panel-title">Two-factor authentication</h2>
+          <p class="login-panel-sub">Enter a 6-digit authenticator code or a backup code.</p>
+        </div>
+
+        {% if error %}
+          <div class="login-error">{{ error }}</div>
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('login_mfa') }}" class="login-form" autocomplete="one-time-code">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="form-group">
+            <label for="code">Authentication code</label>
+            <div class="login-field">
+              <span class="login-field-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V8a4 4 0 0 1 8 0v2"/></svg>
+              </span>
+              <input type="text" id="code" name="code" inputmode="numeric" pattern="[0-9A-Za-z\-]{6,16}" placeholder="123456 or backup code" autocomplete="one-time-code" required autofocus />
+            </div>
+          </div>
+          <button type="submit" class="login-btn">Verify and continue</button>
+        </form>
+
+        <p class="login-panel-sub" style="margin-top:18px;text-align:center">
+          <a href="{{ url_for('index') }}" style="color:#64748B;font-weight:600;text-decoration:none">Back to sign in</a>
+        </p>
+      </div>
+    </main>
+  </div>
+  <script src="{{ asset('csrf.js') }}"></script>
+</body>
+</html>

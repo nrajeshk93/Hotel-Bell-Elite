@@ -22,26 +22,30 @@ _UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 # Endpoint names that must never require a CSRF token.
 EXEMPT_ENDPOINTS = frozenset(
     {
-        "index",
-        "login",
-        "login_get",
-        "login_captcha",
-        "login_resend_unlock",
-        "unlock_account",
-        "whatsapp_webhook",
-        "print_agent_heartbeat",
-        "print_agent_updates_latest",
-        "print_jobs_pending",
-        "print_jobs_ack",
-        "static",
-        "favicon",
-        "service_worker",
-        "robots_txt",
-        "sitemap_xml",
-        "customer_feedback_public",
-        "customer_feedback_review",
         "communication_hub_api_feedback_invite_create",
         "communication_hub_api_feedback_send_whatsapp",
+        "customer_feedback_public",
+        "customer_feedback_review",
+        "favicon",
+        "index",
+        "login",
+        "login_captcha",
+        "login_get",
+        "login_mfa",
+        "login_resend_unlock",
+        "mobile_login_mfa",
+        "print_agent_heartbeat",
+        "print_agent_updates_latest",
+        "print_jobs_ack",
+        "print_jobs_pending",
+        "robots_txt",
+        "security_txt",
+        "security_txt_root",
+        "service_worker",
+        "sitemap_xml",
+        "static",
+        "unlock_account",
+        "whatsapp_webhook",
     }
 )
 
@@ -125,10 +129,12 @@ def csrf_should_check(app) -> bool:
         return False
     if _path_is_exempt():
         return False
-    # Cookie-authenticated requests only — login/unlock/webhook have no user session.
-    if not session.get(AUTH_USER_SESSION_KEY):
-        return False
-    return True
+    # Cookie-authenticated requests, or browser MFA verify after password.
+    if session.get(AUTH_USER_SESSION_KEY):
+        return True
+    if session.get("mfa_pending_user_id") and request.endpoint == "login_mfa":
+        return True
+    return False
 
 
 def csrf_protect_request(app) -> None:

@@ -1,0 +1,190 @@
+{% set de_soft_body_class = 'de-open su-module help-tickets-module' %}
+{% set de_soft_page_title = 'My Tickets | Help | Hotel Bell Elite' %}
+{% from 'partials/ep_form_listbox_macros.html' import ep_listbox %}
+{% if not is_partial_main %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>My Tickets | Help | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+{% include 'partials/hbe_fonts.html' %}
+<link rel="stylesheet" href="{{ asset('sales_entry_dashboard.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_header.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_premium.css') }}">
+<link rel="stylesheet" href="{{ asset('de_workspace_shell.css') }}">
+<link rel="stylesheet" href="{{ asset('ep_form_listbox.css') }}">
+<link rel="stylesheet" href="{{ asset('help_tickets.css') }}">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module help-tickets-module">
+{% endif %}
+{% include 'partials/de_workspace_shell_open.html' %}
+{% if is_partial_main %}
+<link rel="stylesheet" href="{{ asset('sales_entry_dashboard.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_header.css') }}">
+<link rel="stylesheet" href="{{ asset('sales_update_premium.css') }}">
+<link rel="stylesheet" href="{{ asset('ep_form_listbox.css') }}">
+<link rel="stylesheet" href="{{ asset('help_tickets.css') }}">
+{% endif %}
+<div class="main-wrapper ht-page" id="help-tickets-page"
+     data-list-url="{{ url_for('help_api_tickets_list') }}"
+     data-create-url="{{ url_for('help_api_tickets_create') }}"
+     data-contact-email="{{ help_contact_email }}">
+  <header class="ht-header">
+    <div class="ht-header-left">
+      <h1>My Tickets</h1>
+    </div>
+    <button type="button" class="ht-btn-primary" id="ht-open-create">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      Create Ticket
+    </button>
+  </header>
+
+  <div class="ht-toolbar">
+    <div class="ht-tabs" role="tablist">
+      <button type="button" class="ht-tab is-active" data-type="all" role="tab" aria-selected="true">All</button>
+      <button type="button" class="ht-tab" data-type="issue" role="tab" aria-selected="false">Issues / Bugs</button>
+      <button type="button" class="ht-tab" data-type="improvement" role="tab" aria-selected="false">Improvements</button>
+    </div>
+    <div class="ht-filters">
+      <label class="ht-search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+        <input type="search" id="ht-search" placeholder="Search tickets..." autocomplete="off">
+      </label>
+      <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ht-status-listbox" data-se-listbox data-se-listbox-change="htStatusChanged" id="ht-status-listbox">
+        <span class="se-filter-chip-label" id="ht-status-label">Status</span>
+        <div class="se-filter-chip-control">
+          <input type="hidden" id="ht-status" name="status" value="">
+          <button type="button" class="se-filter-chip-trigger" id="ht-status-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="ht-status-list" aria-labelledby="ht-status-label ht-status-value">
+            <span class="se-filter-chip-value" id="ht-status-value">All Status</span>
+          </button>
+          <span class="se-filter-chip-chev" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </span>
+        </div>
+        <div class="se-filter-listbox" id="ht-status-list" role="listbox" aria-labelledby="ht-status-label" hidden>
+          <div class="ep-listbox-options">
+            <button type="button" class="se-filter-listbox-option is-selected" role="option" data-value="" data-name="all status" data-label="All Status" aria-selected="true">All Status</button>
+            {% for s in help_statuses %}
+            <button type="button" class="se-filter-listbox-option" role="option" data-value="{{ s.value }}" data-name="{{ s.label|lower }}" data-label="{{ s.label }}" aria-selected="false">{{ s.label }}</button>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ht-table-wrap">
+    <table class="ht-table" aria-label="My tickets">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>TYPE</th>
+          <th>SUBJECT</th>
+          <th>MODULE</th>
+          <th>PRIORITY</th>
+          <th>STATUS</th>
+          <th>CREATED ON</th>
+          <th>UPDATED ON</th>
+        </tr>
+      </thead>
+      <tbody id="ht-tbody">
+        <tr class="ht-loading-row"><td colspan="8">Loading tickets…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="ht-modal" id="ht-create-modal" hidden aria-hidden="true">
+  <div class="ht-modal-backdrop" data-ht-close></div>
+  <div class="ht-modal-card" role="dialog" aria-modal="true" aria-labelledby="ht-modal-title">
+    <header class="ht-modal-header">
+      <button type="button" class="ht-icon-btn" data-ht-close aria-label="Back">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <h2 id="ht-modal-title">Create Support Ticket</h2>
+      <button type="button" class="ht-icon-btn" data-ht-close aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+    <form id="ht-create-form" class="ht-modal-body" novalidate>
+      <div class="ht-field">
+        <label class="ht-label">Ticket Type <span class="ht-req">*</span></label>
+        <div class="ht-type-cards">
+          <label class="ht-type-card is-selected">
+            <input type="radio" name="ticket_type" value="issue" checked>
+            <span class="ht-radio" aria-hidden="true"></span>
+            <span class="ht-type-icon ht-type-icon--issue" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M8 8h.01M16 8h.01"/><path d="M9 15c1.2.8 2.5 1.2 3.9 1.2s2.7-.4 3.9-1.2"/><path d="M12 3c-1.5 0-2.7 1.2-2.7 2.7 0 .4.1.8.2 1.1C7.4 7.2 5.5 9.7 5.5 12.7c0 3.7 3 6.8 6.5 6.8s6.5-3.1 6.5-6.8c0-3-1.9-5.5-4-5.9.1-.3.2-.7.2-1.1C14.7 4.2 13.5 3 12 3z"/></svg>
+            </span>
+            <span class="ht-type-text">Issue / Bug</span>
+          </label>
+          <label class="ht-type-card">
+            <input type="radio" name="ticket_type" value="improvement">
+            <span class="ht-radio" aria-hidden="true"></span>
+            <span class="ht-type-icon ht-type-icon--improvement" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg>
+            </span>
+            <span class="ht-type-text">Improvement</span>
+          </label>
+        </div>
+      </div>
+      <div class="ht-field">
+        <label class="ht-label" for="ht-subject">Subject <span class="ht-req">*</span></label>
+        <input id="ht-subject" name="subject" type="text" maxlength="200" placeholder="Enter a short summary" required>
+      </div>
+      <div class="ht-field">
+        <label class="ht-label" for="ht-description">Description <span class="ht-req">*</span></label>
+        <div class="ht-textarea-wrap">
+          <textarea id="ht-description" name="description" maxlength="1000" rows="5" placeholder="Provide more details..." required></textarea>
+          <span class="ht-char-count" id="ht-char-count">0/1000</span>
+        </div>
+      </div>
+      <div class="ht-field-row">
+        <div class="ht-field ht-field--listbox">
+          {{ ep_listbox('priority', 'Priority', help_priority_options, selected='medium', placeholder='Select priority', field_id='ht-priority', extra_class='ht-form-listbox') }}
+        </div>
+        <div class="ht-field ht-field--listbox">
+          {{ ep_listbox('module', 'Module', help_module_options, selected='', placeholder='Select module', field_id='ht-module', extra_class='ht-form-listbox', searchable=true) }}
+        </div>
+        <div class="ht-field">
+          <label class="ht-label">Attachments</label>
+          <label class="ht-dropzone">
+            <input type="file" id="ht-files" name="files" multiple hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.4 11.6 12 21a5 5 0 0 1-7.1-7.1l9.2-9.2a3.5 3.5 0 0 1 5 5L10 18"/></svg>
+            <span><strong>Choose files</strong> or drag &amp; drop</span>
+          </label>
+        </div>
+      </div>
+      <div class="ht-field">
+        <label class="ht-label" for="ht-email">Contact Email <span class="ht-req">*</span></label>
+        <input id="ht-email" name="contact_email" type="email" value="{{ help_contact_email }}" readonly required>
+      </div>
+      <p class="ht-form-error" id="ht-form-error" hidden></p>
+      <footer class="ht-modal-footer">
+        <button type="button" class="ht-btn-secondary" data-ht-close>Cancel</button>
+        <button type="submit" class="ht-btn-primary" id="ht-submit">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>
+          Submit Ticket
+        </button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<script src="{{ asset('ep_form_listbox.js') }}"></script>
+<script src="{{ asset('help_tickets.js') }}" defer></script>
+{% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
+</body>
+</html>
+{% endif %}

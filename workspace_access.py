@@ -224,6 +224,14 @@ _WORKSPACE_MODULE_REGISTRY = (
         "permission_children": _REPORTS_SUBMODULES,
     },
     {
+        "key": "help",
+        "label": "Help",
+        # Always available support desk; tickets are user-scoped in the UI.
+        "permission_scope": None,
+        "permission_field": None,
+        "permission_children": (),
+    },
+    {
         "key": "settings",
         "label": "Settings",
         # Workspace settings hub Overview only; outlet settings live under Restaurant/Bar/Hotel.
@@ -741,6 +749,8 @@ _PUBLIC_ENDPOINTS = {
     "login_get",
     "login_captcha",
     "login_resend_unlock",
+    "login_mfa",
+    "mobile_login_mfa",
     "unlock_account",
     "logout",
     "static",
@@ -748,6 +758,8 @@ _PUBLIC_ENDPOINTS = {
     "whatsapp_webhook",
     "robots_txt",
     "sitemap_xml",
+    "security_txt",
+    "security_txt_root",
     "mobile_ota_manifest",
     "mobile_ota_apk",
     "mobile_shell_ota_manifest",

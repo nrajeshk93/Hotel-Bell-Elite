@@ -1317,6 +1317,46 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(complimentary.status_code, 200, complimentary.get_data(as_text=True))
         self.assertEqual(float(complimentary.get_json()["room"]["stay"]["roomRate"]), 0.0)
 
+    def test_generate_invoice_allows_complimentary_zero_total(self):
+        """Complimentary stay (₹0 room rate) can still mint a primary HBE invoice."""
+        complimentary = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Comp",
+                    "lastName": "Guest",
+                    "mobile": "9000000099",
+                    "checkInDate": "2026-07-29",
+                    "roomRate": 0,
+                    "ratePlan": "EP",
+                },
+            },
+        )
+        self.assertEqual(complimentary.status_code, 200, complimentary.get_data(as_text=True))
+        stay = complimentary.get_json()["room"]["stay"]
+        self.assertEqual(float(stay.get("roomRate") or 0), 0.0)
+        self.assertLessEqual(float(stay.get("estimatedTotal") or 0), 0.009)
+
+        generated = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "generate_invoice", "invoice_kind": "hotel", "payment_splits": []},
+        )
+        self.assertEqual(generated.status_code, 200, generated.get_data(as_text=True))
+        body = generated.get_json()
+        stay = body["room"]["stay"]
+        self.assertTrue(body.get("minted"))
+        self.assertTrue(stay.get("invoiceGenerated"))
+        self.assertTrue(str(stay.get("invoiceNumber") or "").startswith("HBE/"))
+        self.assertLessEqual(float(stay.get("estimatedTotal") or 0), 0.009)
+
+        again = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "generate_invoice", "invoice_kind": "hotel", "amount": 0},
+        )
+        self.assertEqual(again.status_code, 400, again.get_data(as_text=True))
+        self.assertIn("No pending", again.get_data(as_text=True))
+
     def test_room_transfer_vacant_only(self):
         checkin = self.client.put(
             "/hotel/api/rooms/room-101",
