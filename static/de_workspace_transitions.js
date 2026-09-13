@@ -15,7 +15,6 @@
     '/main-dashboard',
     '/master',
     '/settings',
-    '/help/tickets',
     '/license'
   ];
   var SKIP_SCRIPT_PARTS = [
@@ -82,102 +81,12 @@
     }
   }
 
-  /** Full-document GETs so SW can cache Hotel shells (rooms / reservations /
-   *  invoice ledger). Online only — same pattern as Restaurant/Bar. */
-  function warmHotelOfflineHtmlShells(){
-    if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
-    if(window.__deHotelHtmlWarm) return;
-    window.__deHotelHtmlWarm = true;
-    [
-      '/hotel/rooms',
-      '/hotel/reservations',
-      '/hotel/invoice-ledger',
-      '/hotel/sales-update',
-      '/hotel/credit'
-    ].forEach(function(path){
-      try{
-        fetch(path, {
-          credentials: 'same-origin',
-          cache: 'no-store',
-          headers: { Accept: 'text/html' }
-        }).catch(function(){});
-        fetch(path + (path.indexOf('?') >= 0 ? '&' : '?') + 'partial=main', {
-          credentials: 'same-origin',
-          cache: 'no-store',
-          headers: {
-            Accept: 'text/html',
-            'X-Requested-With': 'XMLHttpRequest',
-            'X-De-Partial': 'main'
-          }
-        }).catch(function(){});
-      } catch(e){}
-    });
-  }
-
-  function prefetchHotelGroupfunction prefetchHotelGroup(){
+  function prefetchHotelGroup(){
     if(!shouldSoftNavigate()) return;
     syncSoftNavBuildId(false);
-    ['/hotel/rooms', '/hotel/reservations', '/hotel/invoice-ledger'].forEach(function(path){
+    ['/hotel/rooms', '/hotel/reservations'].forEach(function(path){
       try{
         prefetchSoftNav(withSalesScope(new URL(path, window.location.origin).toString()));
-      } catch(e){}
-    });
-    warmHotelOfflineHtmlShells();
-  }
-
-
-  /** Warm common entry shells for Accounts / Stores / Payroll / Reports /
-   *  Master / Communication / Help / Dashboard so offline soft-nav does not
-   *  kick users to Sign In. Online only. */
-  function warmWorkspaceOfflineHtmlShells(){
-    if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
-    if(window.__deWorkspaceHtmlWarm) return;
-    window.__deWorkspaceHtmlWarm = true;
-    var paths = [
-      '/home',
-      '/main-dashboard',
-      '/accounts/purchase-ledger',
-      '/accounts/cash-ledger',
-      '/accounts/purchase-verification',
-      '/accounts/credit-payment',
-      '/accounts/back-office-receipt',
-      '/employees',
-      '/attendance_overview',
-      '/credits',
-      '/sales_update/tips',
-      '/point-of-sale/menu',
-      '/bar-point-of-sale/menu',
-      '/point-of-sale/sales-update',
-      '/bar-point-of-sale/sales-update',
-      '/hotel/sales-update',
-      '/hotel/credit',
-      '/stores/stock',
-      '/stores/orders',
-      '/stores/indent',
-      '/stores/stock/audit',
-      '/reports',
-      '/master',
-      '/communication-hub',
-      '/help/tickets',
-      '/access-management',
-      '/settings'
-    ];
-    paths.forEach(function(path){
-      try{
-        fetch(path, {
-          credentials: 'same-origin',
-          cache: 'no-store',
-          headers: { Accept: 'text/html' }
-        }).catch(function(){});
-        fetch(path + (path.indexOf('?') >= 0 ? '&' : '?') + 'partial=main', {
-          credentials: 'same-origin',
-          cache: 'no-store',
-          headers: {
-            Accept: 'text/html',
-            'X-Requested-With': 'XMLHttpRequest',
-            'X-De-Partial': 'main'
-          }
-        }).catch(function(){});
       } catch(e){}
     });
   }
@@ -191,10 +100,10 @@
     if(!shouldSoftNavigate()) return;
     function runWarm(){
       try{ syncSoftNavBuildId(false); } catch(e0){}
+      try{ warmHbeFontFaces(); } catch(eFonts){}
       try{ prefetchRestaurantGroup(); } catch(e1){}
       try{ prefetchBarPosGroup(); } catch(e2){}
       try{ prefetchHotelGroup(); } catch(e3){}
-      try{ warmWorkspaceOfflineHtmlShells(); } catch(e4){}
     }
     if(criticalWarmTimer){
       try{ window.clearTimeout(criticalWarmTimer); } catch(e){}
@@ -393,32 +302,19 @@
     /* Prefer assets already stamped with the live content hash from a warm
        soft-nav HTML snapshot — bare /static/foo.js would miss ?v=<hash>. */
     try{
-      var paths = outlet === 'bar'
-        ? ['/bar-point-of-sale', '/bar-point-of-sale/invoice', '/bar-point-of-sale/invoice-ledger']
-        : ['/point-of-sale', '/point-of-sale/invoice', '/point-of-sale/invoice-ledger'];
+      var paths = posOfflineWarmPaths(outlet);
       for(var i = 0; i < paths.length; i++){
         var key = navCacheKey(withSalesScope(new URL(paths[i], window.location.origin).toString()));
         var entry = prefetchCache.get(key);
         if(entry && entry.html){
           warmAssetsFromHtml(entry.html);
-          return;
         }
       }
     } catch(e){}
   }
 
-  /** Full-document GETs so the service worker can cache POS shells (including
-   *  Invoice Ledger, which is live-only for soft-nav prefetch). Online only. */
-  function warmPosOfflineHtmlShells(outlet){
-    if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
-    if(outlet === 'bar'){
-      if(window.__deBarPosHtmlWarm) return;
-      window.__deBarPosHtmlWarm = true;
-    } else {
-      if(window.__dePosHtmlWarm) return;
-      window.__dePosHtmlWarm = true;
-    }
-    var paths = outlet === 'bar'
+  function posOfflineWarmPaths(outlet){
+    return outlet === 'bar'
       ? [
           '/bar-point-of-sale',
           '/bar-point-of-sale/invoice',
@@ -433,23 +329,95 @@
           '/point-of-sale/menu',
           '/point-of-sale/sales-update'
         ];
-    paths.forEach(function(path){
+  }
+
+  function warmStaticUrl(url){
+    if(!url || String(url).indexOf('/static/') === -1) return;
+    try{
+      fetch(url, { credentials: 'same-origin', cache: 'no-store' }).catch(function(){});
+    } catch(e){}
+  }
+
+  function warmFontUrlsFromCss(cssText, cssHref){
+    if(!cssText) return;
+    var re = /url\(\s*['"]?([^'")]+)['"]?\s*\)/gi;
+    var m;
+    var base = cssHref || ('/static/' + 'hbe_fonts.css');
+    while((m = re.exec(cssText))){
+      var raw = m[1];
+      if(!raw || raw.indexOf('data:') === 0) continue;
+      if(!/\.(woff2?|ttf|otf)(\?|#|$)/i.test(raw)) continue;
       try{
-        fetch(path, {
-          credentials: 'same-origin',
-          cache: 'no-store',
-          headers: { Accept: 'text/html' }
-        }).catch(function(){});
-        fetch(path + (path.indexOf('?') >= 0 ? '&' : '?') + 'partial=main', {
-          credentials: 'same-origin',
-          cache: 'no-store',
-          headers: {
-            Accept: 'text/html',
-            'X-Requested-With': 'XMLHttpRequest',
-            'X-De-Partial': 'main'
-          }
-        }).catch(function(){});
+        var abs = new URL(raw, new URL(base, window.location.origin)).href;
+        warmStaticUrl(abs);
       } catch(e){}
+    }
+  }
+
+  function warmCssAndFonts(href){
+    if(!href || String(href).indexOf('/static/') === -1) return;
+    warmStaticUrl(href);
+    try{
+      fetch(href, { credentials: 'same-origin', cache: 'no-store' }).then(function(res){
+        return res && res.ok ? res.text() : '';
+      }).then(function(css){
+        warmFontUrlsFromCss(css, href);
+      }).catch(function(){});
+    } catch(e){}
+  }
+
+  function warmHbeFontFaces(){
+    if(window.__deHbeFontsWarm) return;
+    window.__deHbeFontsWarm = true;
+    /* Concatenate so the HTML rewriter cannot bake a stale ?v= into this file. */
+    var names = ['hbe_fonts.css', 'hbe_login_fonts.css'];
+    var hrefs = names.map(function(name){ return '/static/' + name; });
+    try{
+      document.querySelectorAll('link[rel="stylesheet"]').forEach(function(el){
+        var href = el.getAttribute('href') || '';
+        names.forEach(function(name){
+          if(href.indexOf(name) !== -1) hrefs.push(href);
+        });
+      });
+    } catch(e){}
+    var seen = {};
+    hrefs.forEach(function(href){
+      if(!href || seen[href]) return;
+      seen[href] = true;
+      warmCssAndFonts(href);
+    });
+  }
+
+  /** Full + partial GETs so the SW can cache POS shells (Invoice Ledger / Menu /
+   *  Sales Update are live-only for soft-nav prefetch). Then warm linked CSS +
+   *  @font-face URLs through the SW. Online only. */
+  function warmPosOfflineHtmlShells(outlet){
+    if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if(outlet === 'bar'){
+      if(window.__deBarPosHtmlWarm) return;
+      window.__deBarPosHtmlWarm = true;
+    } else {
+      if(window.__dePosHtmlWarm) return;
+      window.__dePosHtmlWarm = true;
+    }
+    try{ warmHbeFontFaces(); } catch(eFonts){}
+    posOfflineWarmPaths(outlet).forEach(function(path){
+      [
+        { url: path, headers: { Accept: 'text/html' } },
+        { url: path + '?partial=main', headers: { Accept: 'text/html', 'X-De-Partial': 'main' } }
+      ].forEach(function(job){
+        try{
+          fetch(job.url, {
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: job.headers
+          }).then(function(res){
+            return res && res.ok ? res.text() : '';
+          }).then(function(html){
+            if(html) warmAssetsFromHtml(html);
+          }).catch(function(){});
+        } catch(e){}
+      });
     });
   }
 
@@ -983,6 +951,7 @@
     if(path === '/accounts' || path.indexOf('/accounts/') === 0) return true;
     if(path === '/stores' || path.indexOf('/stores/') === 0) return true;
     if(path === '/communication-hub' || path.indexOf('/communication-hub/') === 0) return true;
+    if(path === '/help' || path.indexOf('/help/') === 0) return true;
     if(path.indexOf('/reports/sales/') === 0) return true;
     return false;
   }
@@ -1067,7 +1036,9 @@
       link.rel = 'stylesheet';
       link.href = href;
       document.head.appendChild(link);
+      warmCssAndFonts(href);
     }
+    try{ warmHbeFontFaces(); } catch(eFonts){}
   }
 
   function prefetchSoftNav(url){
@@ -1546,7 +1517,7 @@
   }
 
   function waitForStylesheets(links, timeoutMs){
-    if(!links || !links.length) return Promise.resolve();
+    if(!links || !links.length) return Promise.resolve({ status: 'ready', results: [] });
     /* Destination CSS is warmed as real stylesheets during prefetch. Cap the
        swap wait so a cold sheet cannot freeze the old module for seconds. */
     var limit = timeoutMs == null ? 160 : timeoutMs;
@@ -1558,27 +1529,65 @@
     }
     function waitOne(link){
       return new Promise(function(resolve){
-        if(sheetReady(link)){ resolve(); return; }
+        if(sheetReady(link)){ resolve({ ok: true, status: 'ready', link: link }); return; }
         var settled = false;
         var timer = null;
-        function finish(){
+        function finish(status){
           if(settled) return;
           settled = true;
           if(timer) clearInterval(timer);
-          resolve();
+          resolve({ ok: status !== 'error', status: status, link: link });
         }
-        link.addEventListener('load', finish, { once: true });
-        link.addEventListener('error', finish, { once: true });
+        link.addEventListener('load', function(){ finish('load'); }, { once: true });
+        /* Offline miss used to count as "ready" and swap into a black panel. */
+        link.addEventListener('error', function(){ finish('error'); }, { once: true });
         var polls = 0;
         timer = setInterval(function(){
           polls++;
-          if(sheetReady(link) || polls > 100) finish();
+          if(sheetReady(link)) finish('ready');
+          else if(polls > 100) finish('timeout');
         }, 20);
       });
     }
-    var allReady = Promise.all(links.map(waitOne)).then(function(){ return 'ready'; });
-    var timedOut = new Promise(function(resolve){ setTimeout(function(){ resolve('timeout'); }, limit); });
+    var allReady = Promise.all(links.map(waitOne)).then(function(results){
+      return { status: 'ready', results: results };
+    });
+    var timedOut = new Promise(function(resolve){
+      setTimeout(function(){ resolve({ status: 'timeout', results: [] }); }, limit);
+    });
     return Promise.race([allReady, timedOut]);
+  }
+
+  function stylesheetWaitFailedOffline(result, addedLinks){
+    if(!isBrowserOffline()) return false;
+    if(!result) return false;
+    if(result.status === 'ready' && result.results && result.results.length){
+      return result.results.some(function(r){ return r && r.ok === false; });
+    }
+    if(result.status === 'timeout'){
+      return (addedLinks || []).some(function(link){
+        try{ return !link.sheet; } catch(e){ return true; }
+      });
+    }
+    return false;
+  }
+
+  function abortSoftNavStylesheetMiss(addedLinks, navToken){
+    /* Keep the current view — do not swap into an unstyled / black panel. */
+    (addedLinks || []).forEach(function(el){
+      try{
+        if(el && el.parentNode) el.parentNode.removeChild(el);
+      } catch(e){}
+    });
+    if(navToken != null && !isCurrentSoftNav(navToken)) return;
+    markMainLoading(false);
+    setSoftNavFlag(false);
+    document.documentElement.classList.remove('de-soft-navigating');
+    hideSoftNavProgress();
+    try{ hideOverlay(); } catch(eOv){}
+    try{ sessionStorage.removeItem(NAV_FLAG); } catch(e){}
+    notifyShellOffline('Offline — styles for this page are not cached yet. Open it once while online.');
+    try{ history.back(); } catch(eBack){}
   }
 
   function scriptPathname(src){
@@ -2498,7 +2507,13 @@
       });
     };
 
-    waitForStylesheets(addedLinks).then(finishSwap);
+    waitForStylesheets(addedLinks).then(function(result){
+      if(stylesheetWaitFailedOffline(result, addedLinks)){
+        abortSoftNavStylesheetMiss(addedLinks, navToken);
+        return;
+      }
+      finishSwap();
+    });
   }
 
   function logoutWhileKeepingFullscreen(url){
@@ -2730,7 +2745,13 @@
         });
       };
 
-      waitForStylesheets(addedLinks).then(finishSwap);
+      waitForStylesheets(addedLinks).then(function(result){
+        if(stylesheetWaitFailedOffline(result, addedLinks)){
+          abortSoftNavStylesheetMiss(addedLinks, navToken);
+          return;
+        }
+        finishSwap();
+      });
       return;
     }
 
@@ -2944,48 +2965,23 @@
       var parser = new DOMParser();
       var doc = parser.parseFromString(html, 'text/html');
       var authShell = false;
-      var requestedPath = '/';
-      try{
-        requestedPath = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
-      } catch(eReq){}
       try{
         var finalPath = new URL(swapUrl, window.location.href).pathname.replace(/\/$/, '') || '/';
         if(finalPath === '/' || finalPath === '/login') authShell = true;
       } catch(ePath){}
       if(!authShell && (doc.body && doc.body.classList.contains('login-page'))) authShell = true;
-      if(!authShell && htmlLooksLikeAuthShell(html)) authShell = true;
-      /* Offline SW used to return the Sign In shell for uncached POS pages
-         (e.g. Invoice Ledger). Never paint that as a soft-nav destination —
-         it looks like a logout and can replaceState to /login in fullscreen. */
-      var requestedAuth = requestedPath === '/' || requestedPath === '/login';
-      if(authShell && !requestedAuth){
-        throw new Error('auth-shell');
-      }
       if(authShell || !doc.querySelector('.de-main-wrapper')){
-        if(shouldKeepFullscreen() && requestedAuth){
+        /* Offline SW used to return the Sign In shell for uncached POS pages.
+           Never paint that as a soft-swap — it looks like a forced logout. */
+        if(isBrowserOffline()){
+          throw new Error(authShell ? 'auth-shell' : 'missing main wrapper for soft nav');
+        }
+        if(shouldKeepFullscreen()){
           applySoftSwap(doc, swapUrl, done, sidebarScroll, nav.token);
           return;
         }
         throw new Error(authShell ? 'auth-shell' : 'missing main wrapper for soft nav');
       }
-      /* Never soft-swap a different module (e.g. Home HTML for Invoice Ledger). */
-      (function(){
-        var pathOnly = '/';
-        try{ pathOnly = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/'; } catch(eP){}
-        var okMatch = true;
-        if(pathOnly === '/point-of-sale/invoice-ledger' || pathOnly === '/bar-point-of-sale/invoice-ledger'){
-          okMatch = !!doc.querySelector('#pos-invoice-ledger-page, [data-pos-invoice-ledger]');
-        } else if(pathOnly === '/point-of-sale/menu' || pathOnly === '/bar-point-of-sale/menu'){
-          okMatch = !!doc.querySelector('#pos-menu-page, [data-pos-menu]');
-        } else if(pathOnly === '/point-of-sale/sales-update' || pathOnly === '/bar-point-of-sale/sales-update' || pathOnly === '/hotel/sales-update'){
-          okMatch = !!doc.querySelector('#se-sales-header, .su-header, .su-module');
-        } else if(pathOnly === '/hotel/invoice-ledger'){
-          okMatch = !!doc.querySelector('#hotel-invoice-ledger-page, [data-hotel-invoice-ledger]');
-        }
-        if(!okMatch){
-          throw new Error('soft-nav-content-mismatch');
-        }
-      })();
       applySoftSwap(doc, swapUrl, done, sidebarScroll, nav.token);
     }).catch(function(err){
       if(err && err.name === 'AbortError'){
@@ -3013,21 +3009,19 @@
       if(typeof done === 'function') done();
       var errMsg = String(err && err.message || err || '');
       var authFail = errMsg.indexOf('auth-shell') !== -1;
-      var contentMiss = errMsg.indexOf('soft-nav-content-mismatch') !== -1;
-      /* Offline: keep current page. Never paint Home for a missed module. */
-      if(isBrowserOffline()){
-        if(authFail || contentMiss){
-          notifyShellOffline('Offline — open Invoice Ledger / Menu / Sales Update once while online so they cache. Pending POS orders still sync when you reconnect.');
-        } else {
-          notifyShellOffline('Offline — open this page once while online to use it offline.');
-        }
-        try{ history.back(); } catch(eBackOff){}
-        return;
-      }
-      /* Auth redirect while online: do NOT hard-nav to the target (paints Sign In).
+      /* Auth redirect: do NOT hard-nav to the target (that paints Sign In and looks like logout).
          Restore the previous history entry so the user stays on the last good page. */
       if(authFail){
+        if(isBrowserOffline()){
+          notifyShellOffline('Offline — open this page once while online to use it offline.');
+        }
         try{ history.back(); } catch(eBack){}
+        return;
+      }
+      /* Offline with no cached partial: keep current page, undo pushState URL, no hard-nav. */
+      if(isBrowserOffline()){
+        notifyShellOffline('Offline — open this page once while online to use it offline.');
+        try{ history.back(); } catch(eBack2){}
         return;
       }
       // Soft-nav already pushState'd the target URL. Failing silently leaves a stale

@@ -69,6 +69,20 @@ PRECACHE_STATIC = (
     "pwa-icon-192.png",
     "pwa-icon-512.png",
     "favicon-32.png",
+    "hbe_fonts.css",
+    "hbe_login_fonts.css",
+    "fonts/inter-latin-400-normal.woff2",
+    "fonts/inter-latin-500-normal.woff2",
+    "fonts/inter-latin-600-normal.woff2",
+    "fonts/inter-latin-700-normal.woff2",
+    "fonts/inter-latin-800-normal.woff2",
+    "fonts/cormorant-garamond-latin-500-normal.woff2",
+    "fonts/cormorant-garamond-latin-600-normal.woff2",
+    "fonts/cormorant-garamond-latin-700-normal.woff2",
+    "fonts/manrope-latin-400-normal.woff2",
+    "fonts/manrope-latin-500-normal.woff2",
+    "fonts/manrope-latin-600-normal.woff2",
+    "fonts/manrope-latin-700-normal.woff2",
 )
 
 ALIAS_PATHS = (
@@ -179,12 +193,19 @@ def _build(root, fingerprint=""):
             precache.append(url)
             seen.add(url)
         bare = "/static/%s" % name
-        if name in ALIAS_PATHS and bare not in seen:
+        always_bare = name in ALIAS_PATHS or name.endswith(
+            (".woff2", ".woff", ".ttf", ".otf")
+        )
+        if always_bare and bare not in seen:
             precache.append(bare)
             seen.add(bare)
 
     aliases = {}
-    for name in ALIAS_PATHS:
+    alias_names = list(ALIAS_PATHS)
+    for name in PRECACHE_STATIC:
+        if name.endswith((".woff2", ".woff", ".ttf", ".otf")) and name not in alias_names:
+            alias_names.append(name)
+    for name in alias_names:
         bare = "/static/%s" % name
         urls = []
         if name in hashed_url:

@@ -20,6 +20,22 @@ def _read(*parts):
 
 
 class PosOfflineLocalOverlaySourceTests(unittest.TestCase):
+    def test_sw_caches_app_css_js_and_fonts(self):
+        sw = _read("static", "sw.js")
+        fn = sw[sw.find("function isAppCachedStatic") : sw.find("self.addEventListener('fetch'")]
+        self.assertIn("css|js|woff2", fn)
+        self.assertIn("/static/fonts/", fn)
+        self.assertIn("exact-path-only", fn)
+        digest = _read("asset_digest.py")
+        self.assertIn('"hbe_fonts.css"', digest)
+        self.assertIn('"fonts/inter-latin-400-normal.woff2"', digest)
+        self.assertIn('"fonts/inter-latin-700-normal.woff2"', digest)
+        trans = _read("static", "de_workspace_transitions.js")
+        self.assertIn("warmAssetsFromHtml", trans)
+        self.assertIn("warmHbeFontFaces", trans)
+        self.assertIn("abortSoftNavStylesheetMiss", trans)
+        self.assertNotIn("Only POS + precache shells", sw)
+
     def test_sw_does_not_cache_floor_occupancy(self):
         sw = _read("static", "sw.js")
         self.assertIn("__HBE_CACHE_VERSION__", sw)
@@ -149,6 +165,17 @@ class PosOfflineLocalOverlaySourceTests(unittest.TestCase):
         ledger = _read("static", "pos_invoice_ledger.js")
         self.assertIn("isVoidedLocalOrder", ledger)
         self.assertIn("orderHasServerInvoiceId", ledger)
+
+    def test_ledger_loads_offline_sync_orchestrator(self):
+        ledger = _read("templates", "point_of_sale_invoice_ledger.html")
+        self.assertIn("pos_offline.js", ledger)
+        self.assertIn("hbe_offline_sync.js", ledger)
+        self.assertLess(
+            ledger.find("pos_offline.js"), ledger.find("hbe_offline_sync.js")
+        )
+        self.assertLess(
+            ledger.find("hbe_offline_sync.js"), ledger.find("pos_invoice_ledger.js")
+        )
 
     def test_ledger_overlays_pending_rows(self):
         js = _read("static", "pos_invoice_ledger.js")

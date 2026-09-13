@@ -45,8 +45,14 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("isWorkspaceHtml", body)
         self.assertIn("partial", body)
         self.assertIn("networkFirstStatic", body)
-        self.assertIn("Only POS + precache shells", body)
+        self.assertIn("App CSS/JS + self-hosted fonts", body)
+        self.assertIn("/static/fonts/", body)
+        self.assertIn(".woff2", body)
+        self.assertIn("hbe_fonts.css", body)
+        self.assertIn("inter-latin-400-normal.woff2", body)
+        self.assertIn("/point-of-sale/sales-update", body)
         self.assertNotIn("Runtime network-first for page CSS/JS", body)
+        self.assertNotIn("Only POS + precache shells", body)
         self.assertIn("networkOnlyFloor", body)
         self.assertIn("PURGE_DATA_CACHES", body)
         self.assertIn("NetworkOnly", body)
@@ -58,16 +64,13 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("de_workspace_transitions.js", body)
         self.assertIn("de_workspace_shell.css", body)
         self.assertIn("/bar-point-of-sale/invoice", body)
-        self.assertIn("Exact path only", body)
-        self.assertIn("X-Hbe-Offline-Miss", body)
-        self.assertIn("This page is not cached yet", body)
-        self.assertIn("Back to Tables", body)
-        self.assertIn("Back to Bar Tables", body)
-        self.assertIn("Never return /home", body)
-        self.assertIn("Cache workspace HTML shells", body)
-        self.assertIn("X-Hbe-Offline-Miss", body)
-        self.assertIn("Exact path only", body)
-        self.assertIn("partial=main", body)
+        self.assertIn("isPosAppShellPath", body)
+        self.assertIn("/point-of-sale/invoice-ledger", body)
+        self.assertIn("/bar-point-of-sale/invoice-ledger", body)
+        self.assertIn("pathname === '/point-of-sale'", body)
+        self.assertIn("offlineWorkspaceUnavailableResponse", body)
+        self.assertIn("matchPosOfflineShell", body)
+        self.assertIn("workspace-miss", body)
         self.assertIn("offline_login.html", body)
         self.assertIn("offline_auth.js", body)
         self.assertIn("'/login'", body)
@@ -106,6 +109,24 @@ class AppShellPwaTests(unittest.TestCase):
         ]
         self.assertNotIn("caches.match", floor_fn)
         self.assertNotIn("cache.put", floor_fn)
+
+    def test_soft_nav_refuses_offline_auth_shell_paint(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "static", "de_workspace_transitions.js"), encoding="utf-8") as fh:
+            js = fh.read()
+        self.assertIn("Never paint that as a soft-swap", js)
+        self.assertIn("warmPosOfflineHtmlShells", js)
+        self.assertIn("/point-of-sale/invoice-ledger", js)
+        self.assertIn("/point-of-sale/menu", js)
+        self.assertIn("/point-of-sale/sales-update", js)
+        self.assertIn("?partial=main", js)
+        self.assertIn("warmHbeFontFaces", js)
+        self.assertIn("warmFontUrlsFromCss", js)
+        self.assertIn("warmCssAndFonts", js)
+        self.assertIn("abortSoftNavStylesheetMiss", js)
+        self.assertIn("stylesheetWaitFailedOffline", js)
+        self.assertIn("do not swap into an unstyled / black panel", js)
+        self.assertIn("Offline miss used to count as \"ready\" and swap into a black panel", js)
 
     def test_offline_login_shell_is_public(self):
         resp = self.client.get("/static/offline_login.html")
@@ -213,8 +234,6 @@ class AppShellPwaTests(unittest.TestCase):
         body = resp.get_data(as_text=True)
         resp.close()
         self.assertIn("notifyShellOffline", body)
-        self.assertIn("soft-nav-content-mismatch", body)
-        self.assertIn("partial=main", body)
         self.assertIn("de-shell-offline-chip", body)
         self.assertIn("isBrowserOffline", body)
 
@@ -342,6 +361,7 @@ class OfflineSyncOrchestratorTests(unittest.TestCase):
         for rel in (
             "templates/point_of_sale_invoice.html",
             "templates/point_of_sale.html",
+            "templates/point_of_sale_invoice_ledger.html",
         ):
             with open(os.path.join(root, rel), encoding="utf-8") as fh:
                 html = fh.read()
@@ -356,10 +376,9 @@ class OfflineSyncOrchestratorTests(unittest.TestCase):
         )
         with open(path, encoding="utf-8") as fh:
             js = fh.read()
-        self.assertIn("Any workspace shell HTML", js)
-        self.assertIn("/accounts/purchase-ledger", js)
-        self.assertIn("/main-dashboard", js)
+        self.assertIn("Any workspace shell HTML (all modules)", js)
         self.assertIn("Skip static/API/exports", js)
+        self.assertIn("warmStaticAssetsFromHtml", js)
 
 
 

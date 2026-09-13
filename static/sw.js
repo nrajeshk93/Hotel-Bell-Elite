@@ -172,11 +172,11 @@ function isAppCachedStatic(url) {
   if (url.pathname.indexOf('/static/pos_') === 0) return true;
   var key = url.pathname + (url.search || '');
   if (PRECACHE.indexOf(key) !== -1 || PRECACHE.indexOf(url.pathname) !== -1) return true;
-  /* Only POS + precache shells. Report/ledger CSS/JS follow content hashes
-     in the document — intercepting every .css/.js pinned stale layouts. */
-  if (/\.(png|ico|webp|svg|jpe?g)$/i.test(url.pathname) && url.pathname.indexOf('/static/') === 0) {
-    return true;
-  }
+  /* App CSS/JS + self-hosted fonts (ledger/workspace shells). HTML stays
+     exact-path-only so a miss cannot paint the wrong page. */
+  if (/\.(css|js|woff2?|ttf|otf)$/i.test(url.pathname)) return true;
+  if (url.pathname.indexOf('/static/fonts/') === 0) return true;
+  if (/\.(png|ico|webp|svg|jpe?g)$/i.test(url.pathname)) return true;
   return false;
 }
 
@@ -294,7 +294,7 @@ function putHtmlCache(cache, req, res) {
          that painted /home without the left sidebar after login. */
       return;
     }
-    /* Bare path fallback for any workspace shell (all modules). */
+    /* Bare path fallback for navigate without query (POS shells + home + sign-in). */
     if (shouldCacheHtmlPath(u.pathname)) {
       cache.put(u.pathname, res.clone());
     }
@@ -431,21 +431,65 @@ function offlineNavigateFallback() {
   });
 }
 
+function isPosAppShellPath(pathname) {
+  /* Operational POS shells (Tables / Invoice / Invoice Ledger). Not hotel
+     reports or accounts ledgers — those stay network-only. */
+  return (
+    pathname === '/point-of-sale' ||
+    pathname === '/bar-point-of-sale' ||
+    pathname === '/point-of-sale/invoice' ||
+    pathname === '/bar-point-of-sale/invoice' ||
+    pathname === '/point-of-sale/invoice-ledger' ||
+    pathname === '/bar-point-of-sale/invoice-ledger' ||
+    pathname === '/point-of-sale/menu' ||
+    pathname === '/bar-point-of-sale/menu' ||
+    pathname === '/point-of-sale/sales-update' ||
+    pathname === '/bar-point-of-sale/sales-update'
+  );
+}
+
 function shouldCacheHtmlPath(pathname) {
-  /* Cache workspace HTML shells for offline soft-nav across ALL modules.
-     Visited-online pages keep working offline; reconnect PURGE_DATA_CACHES
-     drops them so online always refetches fresh data. Skip static/API/auth
-     plumbing and file exports. */
-  pathname = String(pathname || '');
-  if (!pathname || pathname.indexOf('/static/') === 0) return false;
-  if (pathname.indexOf('/api/') !== -1) return false;
-  if (pathname === '/sw.js') return false;
-  if (pathname === '/logout' || pathname.indexOf('/logout/') === 0) return false;
-  if (pathname === '/hbe-build.json') return false;
-  /* Downloads / export endpoints — not navigable shells. */
-  if (/\/(export|download)(\b|\/|$)/i.test(pathname)) return false;
-  if (/\.(xlsx|xls|csv|pdf|zip|docx?)$/i.test(pathname)) return false;
-  return true;
+  /* Offline shells only (Sign In + Home + POS operational pages).
+     PURGE_DATA_CACHES on reconnect removes these so online always refetches. */
+  return (
+    pathname === '/' ||
+    pathname === '/login' ||
+    pathname === '/home' ||
+    isPosAppShellPath(pathname)
+  );
+}
+
+function matchPosOfflineShell(pathname) {
+  /* Exact shell only — never substitute Tables HTML for Invoice Ledger (or
+     vice versa). Soft-nav already tried matchHtmlCache (incl. partial=main). */
+  var keys = [pathname, pathname + '?partial=main'];
+  function next(i) {
+    if (i >= keys.length) return Promise.resolve(null);
+    return caches.match(keys[i]).then(function (hit) {
+      return hit || next(i + 1);
+    });
+  }
+  return next(0);
+}
+
+function offlineWorkspaceUnavailableResponse(pathname) {
+  /* Must NOT look like Sign In — soft-nav treats login HTML as auth-shell and
+     can paint logout inside fullscreen. Keep the existing POS document instead. */
+  var html =
+    '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>Offline</title></head><body>' +
+    '<p>Offline — open this page once while online to use it offline.</p>' +
+    '</body></html>';
+  return new Response(html, {
+    status: 503,
+    statusText: 'Offline',
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'X-Hbe-Offline-Shell': 'workspace-miss',
+      'X-Hbe-Offline-Path': String(pathname || '')
+    }
+  });
 }
 
 function networkFirstHtml(req) {
@@ -472,38 +516,17 @@ function networkFirstHtml(req) {
       }
       return matchHtmlCache(req).then(function (cached) {
         if (cached) return cached;
-        /* Exact path only. Never return /home (or Tables) HTML for Invoice Ledger /
-           Menu / Sales Update — that paints the wrong page. Soft-nav treats 503
-           as an offline miss and stays on the current module. */
-        var backHref = '/home';
-        var backLabel = 'Back to Home';
-        if (pathname.indexOf('/bar-point-of-sale') === 0) {
-          backHref = '/bar-point-of-sale/invoice';
-          backLabel = 'Back to Bar Tables';
-        } else if (pathname.indexOf('/point-of-sale') === 0) {
-          backHref = '/point-of-sale/invoice';
-          backLabel = 'Back to Tables';
-        } else if (pathname.indexOf('/hotel/') === 0) {
-          backHref = '/hotel/rooms';
-          backLabel = 'Back to Rooms';
+        if (isPosAppShellPath(pathname)) {
+          return matchPosOfflineShell(pathname).then(function (pos) {
+            return pos || offlineWorkspaceUnavailableResponse(pathname);
+          });
         }
-        return new Response(
-          '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
-            '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-            '<title>Hotel Bell Elite</title></head><body style="font-family:system-ui;padding:24px">' +
-            '<h1>You\'re offline</h1>' +
-            '<p>This page is not cached yet. Open it once while online, then it works offline.</p>' +
-            '<p><a href="' + backHref + '">' + backLabel + '</a></p>' +
-            '</body></html>',
-          {
-            status: 503,
-            statusText: 'Offline',
-            headers: {
-              'Content-Type': 'text/html; charset=utf-8',
-              'X-Hbe-Offline-Miss': '1'
-            }
-          }
-        );
+        return caches.match('/home').then(function (home) {
+          return home || caches.match('/point-of-sale/invoice').then(function (pos) {
+            /* Non-POS workspace miss: home/POS if present; else login shell. */
+            return pos || offlineNavigateFallback();
+          });
+        });
       });
     });
 }
