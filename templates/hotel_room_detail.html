@@ -110,6 +110,8 @@
 >
   <script type="application/json" id="hrd-room-bootstrap">{{ room|tojson }}</script>
   <header class="hrd-header">
+        <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Open navigation" aria-label="Open navigation"><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg></button>
+        
     <div class="hrd-header-main">
       <a class="hrd-back" href="{{ url_for('hotel_rooms') }}" data-hrd-back aria-label="Back to Rooms">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>

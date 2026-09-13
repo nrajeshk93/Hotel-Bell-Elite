@@ -38,6 +38,8 @@
 <div class="de-main-inner hotel-rooms-page" id="hotel-rooms-page" data-hotel-rooms data-hotel-rooms-api="/hotel/api/rooms" data-customers-api="/hotel/api/customers" data-agencies-api="{{ url_for('list_agencies_api') }}" data-agencies="{{ agencies|default([])|tojson|e }}">
   <header class="hotel-rooms-header">
     <div class="hotel-rooms-header-copy">
+        <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Open navigation" aria-label="Open navigation"><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg></button>
+        
       <h1>Rooms</h1>
     </div>
     <div class="hotel-rooms-header-actions" aria-label="Page tools"></div>

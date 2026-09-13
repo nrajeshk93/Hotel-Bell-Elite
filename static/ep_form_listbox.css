@@ -500,3 +500,16 @@ body.hotel-reservations-module .ep-toolbar-listbox.is-open .se-filter-listbox{
 .an-range-chev {
   display: none !important;
 }
+
+@media (max-width: 900px) {
+  .ep-form-listbox,
+  .se-filter-chip--listbox {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+  }
+  .se-filter-listbox {
+    max-width: min(100vw - 24px, 360px);
+  }
+}
+

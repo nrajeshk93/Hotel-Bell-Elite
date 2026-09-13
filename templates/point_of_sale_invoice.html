@@ -40,6 +40,8 @@
      data-tip-delete-url="{{ tip_delete_url }}" data-pos-outlet="{{ pos_outlet|default('restaurant') }}" data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}">
   {% set pos_tables_endpoint = 'bar_point_of_sale' if (pos_outlet|default('restaurant')) == 'bar' else 'point_of_sale' %}
   <header class="pos-inv-header">
+        <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Open navigation" aria-label="Open navigation"><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg></button>
+        
     <div class="pos-inv-header-title-row">
       <a class="pos-inv-back" href="{{ url_for(pos_tables_endpoint) }}" aria-label="Back to Tables" title="Back to Tables">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>

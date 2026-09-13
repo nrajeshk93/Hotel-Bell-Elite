@@ -58,6 +58,14 @@ class AppShellPwaTests(unittest.TestCase):
         self.assertIn("de_workspace_transitions.js", body)
         self.assertIn("de_workspace_shell.css", body)
         self.assertIn("/bar-point-of-sale/invoice", body)
+        self.assertIn("/point-of-sale/invoice-ledger", body)
+        self.assertIn("/bar-point-of-sale/invoice-ledger", body)
+        self.assertIn("/hotel/rooms", body)
+        self.assertIn("/hotel/reservations", body)
+        self.assertIn("/hotel/invoice-ledger", body)
+        self.assertIn("never fall through to Sign In", body)
+        self.assertIn("Cache workspace HTML shells", body)
+        self.assertIn("/accounts/purchase-ledger", body)
         self.assertIn("offline_login.html", body)
         self.assertIn("offline_auth.js", body)
         self.assertIn("'/login'", body)
@@ -344,8 +352,10 @@ class OfflineSyncOrchestratorTests(unittest.TestCase):
         )
         with open(path, encoding="utf-8") as fh:
             js = fh.read()
-        self.assertIn("Only login/home shells", js)
-        self.assertIn("never stash reports", js)
+        self.assertIn("Any workspace shell HTML", js)
+        self.assertIn("/accounts/purchase-ledger", js)
+        self.assertIn("/main-dashboard", js)
+        self.assertIn("Skip static/API/exports", js)
 
 
 

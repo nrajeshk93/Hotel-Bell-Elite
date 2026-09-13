@@ -33,6 +33,8 @@
 
 <div class="de-main-inner pos-settings-page" id="hotel-settings-page" data-hotel-settings data-settings-rev="taxes-v4" data-hotel-api-base="/hotel">
   <header class="pos-set-header">
+        <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Open navigation" aria-label="Open navigation"><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg></button>
+        
     <div class="pos-set-header-main">
       <a class="pos-set-back" href="{{ url_for('settings') }}" data-hotel-set-back aria-label="Back to Settings">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>

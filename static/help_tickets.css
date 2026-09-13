@@ -83,3 +83,18 @@
 .ht-field--listbox .ep-form-listbox{width:100%}
 .ht-modal .se-filter-listbox{z-index:80}
 .ht-status--under_review,.ht-status--planned{background:#e8f0ff;color:#2563eb}
+
+.ht-header-left{display:flex;align-items:center;gap:10px}
+.ht-header .de-sb-pin-btn{
+  display:none;
+  border:1px solid #e2e8f0;
+  background:#fff;
+  border-radius:12px;
+  width:42px;height:42px;
+  align-items:center;justify-content:center;
+  cursor:pointer;color:#0f172a;flex:0 0 auto;
+}
+.ht-header .de-sb-pin-btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+@media(max-width:760px){
+  .ht-header .de-sb-pin-btn{display:inline-flex}
+}

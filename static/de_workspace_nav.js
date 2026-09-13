@@ -715,6 +715,11 @@
   }
 
   function toggleDeSidebarExpandedPin(){
+    /* Phone: same as header pin — open/close the drawer. */
+    if(window.innerWidth <= 760){
+      toggleDeSidebar();
+      return;
+    }
     setDeSidebarPinned(!isDeSidebarPinned(getSidebar()));
   }
 
@@ -856,8 +861,19 @@
     var sidebar = getSidebar();
     var overlay = getSbOverlay();
     if(!sidebar || !overlay) return;
-    sidebar.classList.toggle('open');
-    overlay.classList.toggle('open');
+    var willOpen = !sidebar.classList.contains('open');
+    if(willOpen){
+      /* sb-off CSS must not keep the phone drawer off-screen. */
+      document.body.classList.remove('sb-off');
+      try{ localStorage.setItem('sb-collapsed', '0'); } catch(e){}
+      sidebar.classList.add('open');
+      overlay.classList.add('open');
+      document.body.classList.add('de-mobile-nav-open');
+    } else {
+      sidebar.classList.remove('open');
+      overlay.classList.remove('open');
+      document.body.classList.remove('de-mobile-nav-open');
+    }
   }
 
   function closeDeSidebar(){
@@ -865,6 +881,7 @@
     var overlay = getSbOverlay();
     if(sidebar) sidebar.classList.remove('open');
     if(overlay) overlay.classList.remove('open');
+    document.body.classList.remove('de-mobile-nav-open');
   }
 
   function toggleDeSidebarPin(){

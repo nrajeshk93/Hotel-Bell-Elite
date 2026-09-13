@@ -4,6 +4,7 @@
    mergeMissingSidebarLinks can add modules introduced mid-session (e.g. Settings)
    without a full page reload. #}
 <link rel="stylesheet" href="{{ asset('hbe_table_scroll.css') }}">
+<link rel="stylesheet" href="{{ asset('de_workspace_responsive.css') }}">
 <link rel="stylesheet" href="{{ asset('reports_page_scroll.css') }}">
 <div hidden data-de-soft-nav-merge-root="1" aria-hidden="true">
 {% include 'partials/de_workspace_sidebar.html' %}
@@ -11,6 +12,7 @@
 <div class="de-main-wrapper" data-de-partial="main"{% if de_soft_body_class is defined and de_soft_body_class %} data-de-body-class="{{ de_soft_body_class }}"{% endif %}{% if de_soft_page_title is defined and de_soft_page_title %} data-de-page-title="{{ de_soft_page_title }}"{% endif %}>
 {% else %}
 <link rel="stylesheet" href="{{ asset('hbe_table_scroll.css') }}">
+<link rel="stylesheet" href="{{ asset('de_workspace_responsive.css') }}">
 <link rel="stylesheet" href="{{ asset('reports_page_scroll.css') }}">
 <link rel="stylesheet" href="{{ asset('hbe_kpi.css') }}">
 <link rel="stylesheet" href="{{ asset('hbe_app_toast.css') }}">
@@ -19,6 +21,9 @@
 {% include 'partials/de_fullscreen_bootstrap.html' %}
 <div id="ep-workspace" class="de-module">
 <div class="de-sb-overlay" id="de-sb-overlay" onclick="closeDeSidebar()"></div>
+<button type="button" class="de-mobile-nav-fab" id="de-mobile-nav-fab" onclick="toggleDeSidebarPin()" title="Open navigation" aria-label="Open navigation">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+</button>
 <div class="de-app-shell">
 {% include 'partials/de_workspace_sidebar.html' %}
 <div class="de-main-wrapper">

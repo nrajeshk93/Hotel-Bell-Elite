@@ -82,12 +82,78 @@
     }
   }
 
+  /** Full-document GETs so SW can cache Hotel shells (rooms / reservations /
+   *  invoice ledger). Online only — same pattern as Restaurant/Bar. */
+  function warmHotelOfflineHtmlShells(){
+    if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if(window.__deHotelHtmlWarm) return;
+    window.__deHotelHtmlWarm = true;
+    ['/hotel/rooms', '/hotel/reservations', '/hotel/invoice-ledger'].forEach(function(path){
+      try{
+        fetch(path, {
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: { Accept: 'text/html' }
+        }).catch(function(){});
+      } catch(e){}
+    });
+  }
+
   function prefetchHotelGroup(){
     if(!shouldSoftNavigate()) return;
     syncSoftNavBuildId(false);
-    ['/hotel/rooms', '/hotel/reservations'].forEach(function(path){
+    ['/hotel/rooms', '/hotel/reservations', '/hotel/invoice-ledger'].forEach(function(path){
       try{
         prefetchSoftNav(withSalesScope(new URL(path, window.location.origin).toString()));
+      } catch(e){}
+    });
+    warmHotelOfflineHtmlShells();
+  }
+
+
+  /** Warm common entry shells for Accounts / Stores / Payroll / Reports /
+   *  Master / Communication / Help / Dashboard so offline soft-nav does not
+   *  kick users to Sign In. Online only. */
+  function warmWorkspaceOfflineHtmlShells(){
+    if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if(window.__deWorkspaceHtmlWarm) return;
+    window.__deWorkspaceHtmlWarm = true;
+    var paths = [
+      '/home',
+      '/main-dashboard',
+      '/accounts/purchase-ledger',
+      '/accounts/cash-ledger',
+      '/accounts/purchase-verification',
+      '/accounts/credit-payment',
+      '/accounts/back-office-receipt',
+      '/employees',
+      '/attendance_overview',
+      '/credits',
+      '/sales_update/tips',
+      '/point-of-sale/menu',
+      '/bar-point-of-sale/menu',
+      '/point-of-sale/sales-update',
+      '/bar-point-of-sale/sales-update',
+      '/hotel/sales-update',
+      '/hotel/credit',
+      '/stores/stock',
+      '/stores/orders',
+      '/stores/indent',
+      '/stores/stock/audit',
+      '/reports',
+      '/master',
+      '/communication-hub',
+      '/help/tickets',
+      '/access-management',
+      '/settings'
+    ];
+    paths.forEach(function(path){
+      try{
+        fetch(path, {
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: { Accept: 'text/html' }
+        }).catch(function(){});
       } catch(e){}
     });
   }
@@ -104,6 +170,7 @@
       try{ prefetchRestaurantGroup(); } catch(e1){}
       try{ prefetchBarPosGroup(); } catch(e2){}
       try{ prefetchHotelGroup(); } catch(e3){}
+      try{ warmWorkspaceOfflineHtmlShells(); } catch(e4){}
     }
     if(criticalWarmTimer){
       try{ window.clearTimeout(criticalWarmTimer); } catch(e){}
@@ -303,8 +370,8 @@
        soft-nav HTML snapshot — bare /static/foo.js would miss ?v=<hash>. */
     try{
       var paths = outlet === 'bar'
-        ? ['/bar-point-of-sale', '/bar-point-of-sale/invoice']
-        : ['/point-of-sale', '/point-of-sale/invoice'];
+        ? ['/bar-point-of-sale', '/bar-point-of-sale/invoice', '/bar-point-of-sale/invoice-ledger']
+        : ['/point-of-sale', '/point-of-sale/invoice', '/point-of-sale/invoice-ledger'];
       for(var i = 0; i < paths.length; i++){
         var key = navCacheKey(withSalesScope(new URL(paths[i], window.location.origin).toString()));
         var entry = prefetchCache.get(key);
@@ -314,6 +381,31 @@
         }
       }
     } catch(e){}
+  }
+
+  /** Full-document GETs so the service worker can cache POS shells (including
+   *  Invoice Ledger, which is live-only for soft-nav prefetch). Online only. */
+  function warmPosOfflineHtmlShells(outlet){
+    if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if(outlet === 'bar'){
+      if(window.__deBarPosHtmlWarm) return;
+      window.__deBarPosHtmlWarm = true;
+    } else {
+      if(window.__dePosHtmlWarm) return;
+      window.__dePosHtmlWarm = true;
+    }
+    var paths = outlet === 'bar'
+      ? ['/bar-point-of-sale', '/bar-point-of-sale/invoice', '/bar-point-of-sale/invoice-ledger']
+      : ['/point-of-sale', '/point-of-sale/invoice', '/point-of-sale/invoice-ledger'];
+    paths.forEach(function(path){
+      try{
+        fetch(path, {
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: { Accept: 'text/html' }
+        }).catch(function(){});
+      } catch(e){}
+    });
   }
 
   function prefetchRestaurantGroup(){
@@ -328,6 +420,7 @@
       prefetchSoftNav(withSalesScope(links[i].href || href));
     }
     warmPosShellAssets('restaurant');
+    warmPosOfflineHtmlShells('restaurant');
     // Warm Restaurant JSON + persist floor snapshot so first Tables soft-nav paints tiles.
     if(!window.__dePosApiWarm){
       window.__dePosApiWarm = true;
@@ -355,6 +448,7 @@
       prefetchSoftNav(withSalesScope(links[i].href || href));
     }
     warmPosShellAssets('bar');
+    warmPosOfflineHtmlShells('bar');
     if(!window.__deBarPosApiWarm){
       window.__deBarPosApiWarm = true;
       warmPosFloorSnapshot(null, 'bar');
@@ -2805,13 +2899,25 @@
       var parser = new DOMParser();
       var doc = parser.parseFromString(html, 'text/html');
       var authShell = false;
+      var requestedPath = '/';
+      try{
+        requestedPath = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
+      } catch(eReq){}
       try{
         var finalPath = new URL(swapUrl, window.location.href).pathname.replace(/\/$/, '') || '/';
         if(finalPath === '/' || finalPath === '/login') authShell = true;
       } catch(ePath){}
       if(!authShell && (doc.body && doc.body.classList.contains('login-page'))) authShell = true;
+      if(!authShell && htmlLooksLikeAuthShell(html)) authShell = true;
+      /* Offline SW used to return the Sign In shell for uncached POS pages
+         (e.g. Invoice Ledger). Never paint that as a soft-nav destination —
+         it looks like a logout and can replaceState to /login in fullscreen. */
+      var requestedAuth = requestedPath === '/' || requestedPath === '/login';
+      if(authShell && !requestedAuth){
+        throw new Error('auth-shell');
+      }
       if(authShell || !doc.querySelector('.de-main-wrapper')){
-        if(shouldKeepFullscreen()){
+        if(shouldKeepFullscreen() && requestedAuth){
           applySoftSwap(doc, swapUrl, done, sidebarScroll, nav.token);
           return;
         }
@@ -2844,15 +2950,23 @@
       if(typeof done === 'function') done();
       var errMsg = String(err && err.message || err || '');
       var authFail = errMsg.indexOf('auth-shell') !== -1;
-      /* Auth redirect: do NOT hard-nav to the target (that paints Sign In and looks like logout).
+      /* Offline: keep current POS page (Tables/Invoice). Never hard-nav or
+         paint Sign In — that drops the session UX and stalls outbox sync. */
+      if(isBrowserOffline()){
+        if(authFail){
+          notifyShellOffline('Offline — open this page once while online, or stay on the current module. Pending POS orders still sync when you reconnect.');
+        } else {
+          notifyShellOffline('Offline — open this page once while online to use it offline.');
+        }
+        /* Soft-nav may have pushState'd the target URL already — undo so the
+           address bar stays on the last good page (Tables/Invoice). */
+        try{ history.back(); } catch(eBackOff){}
+        return;
+      }
+      /* Auth redirect while online: do NOT hard-nav to the target (paints Sign In).
          Restore the previous history entry so the user stays on the last good page. */
       if(authFail){
         try{ history.back(); } catch(eBack){}
-        return;
-      }
-      /* Offline with no cached partial: keep sidebar, do not hard-nav into a blank error. */
-      if(isBrowserOffline()){
-        notifyShellOffline('Offline — open this page once while online to use it offline.');
         return;
       }
       // Soft-nav already pushState'd the target URL. Failing silently leaves a stale

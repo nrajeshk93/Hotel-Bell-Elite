@@ -1,0 +1,157 @@
+/* Hotel Bell Elite — shared mobile + tablet workspace compactness.
+   Loaded from the workspace shell so every module page inherits it. */
+
+/* ---- Tablet (portrait/landscape between phone and desktop) ---- */
+@media (max-width: 1100px) {
+  #main-app.de-module .de-main-wrapper,
+  #ep-workspace.de-module .de-main-wrapper,
+  #dashboard.de-module .de-main-wrapper {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .su-header,
+  .ht-header,
+  .db-home-header,
+  .hotel-rooms-header,
+  .hotel-reservations-header,
+  .am-header,
+  .pos-tables-header,
+  .se-filter-bar,
+  .pl-header-tools,
+  .su-header-tools {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .se-filter-chip,
+  .pl-header-field,
+  .ht-filters .se-filter-chip,
+  .ep-form-listbox {
+    max-width: 100%;
+  }
+
+  .su-title h1,
+  .ht-header h1,
+  .db-home-title h1 {
+    font-size: clamp(1.25rem, 2.4vw, 1.75rem);
+  }
+
+  /* Wide tables: keep page from forcing horizontal body scroll */
+  .user-table-wrap,
+  .ht-table-wrap,
+  .pl-table-wrap,
+  .se-table-wrap,
+  .am-table-wrap,
+  .de-table-scroll,
+  .hbe-table-scroll,
+  table.ht-table,
+  .rdx-table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 900px) {
+  .ht-field-row,
+  .su-kpi-row,
+  .db-home-grid,
+  .pl-filter-row,
+  .se-filter-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  .ht-filters,
+  .su-header-tools,
+  .pl-header-tools {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .ht-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ht-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Modals nearly full-bleed on tablet */
+  .ht-modal-card,
+  .md-modal-card,
+  .se-modal-card {
+    width: min(720px, calc(100vw - 24px)) !important;
+    max-height: calc(100vh - 24px);
+  }
+}
+
+/* ---- Phone ---- */
+@media (max-width: 760px) {
+  #main-app.de-module .de-main-wrapper,
+  #ep-workspace.de-module .de-main-wrapper,
+  #dashboard.de-module .de-main-wrapper {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .su-header,
+  .ht-header,
+  .db-home-header,
+  .hotel-rooms-header,
+  .hotel-reservations-header {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  /* Ensure header pins are tappable */
+  .de-main-wrapper .de-sb-pin-btn,
+  .de-main-wrapper .sb-pin-btn.de-sb-pin-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    flex: 0 0 auto;
+  }
+
+  .ht-btn-primary span,
+  .ht-btn-primary {
+    white-space: nowrap;
+  }
+
+  .ht-header {
+    gap: 8px;
+  }
+
+  .ht-header .ht-btn-primary {
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+
+  /* Prevent double horizontal scroll on body */
+  #ep-workspace.de-module,
+  #main-app.de-module,
+  #dashboard.de-module,
+  .de-app-shell {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  input, select, textarea, button {
+    font-size: 16px; /* iOS zoom prevention */
+  }
+}
+
+/* ---- Short tablets / landscape phones ---- */
+@media (max-height: 500px) and (max-width: 1100px) {
+  .ht-modal-card,
+  .md-modal-card {
+    max-height: calc(100vh - 12px);
+  }
+}

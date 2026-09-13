@@ -325,12 +325,23 @@
   function putCachedHtml(path, html) {
     if (!global.caches || !htmlLooksLikeAppShell(html)) return Promise.resolve(false);
     var key = String(path || HOME_PATH);
-    /* Only login/home shells — never stash reports/ledgers into SW cache. */
-    var allowed =
-      key === '/' ||
-      key === '/login' ||
-      key === HOME_PATH ||
-      key.indexOf('/static/offline_login.html') === 0;
+    /* Any workspace shell HTML (all modules). Skip static/API/exports.
+       Reconnect purge refreshes online. */
+    var allowed = false;
+    if (key.indexOf('/static/offline_login.html') === 0) {
+      allowed = true;
+    } else if (
+      key &&
+      key.indexOf('/static/') !== 0 &&
+      key.indexOf('/api/') === -1 &&
+      key !== '/sw.js' &&
+      key !== '/logout' &&
+      key.indexOf('/logout/') !== 0 &&
+      !/\/(export|download)(\b|\/|$)/i.test(key) &&
+      !/\.(xlsx|xls|csv|pdf|zip|docx?)$/i.test(key)
+    ) {
+      allowed = true;
+    }
     if (!allowed) return Promise.resolve(false);
     return resolveAppCacheName()
       .then(function (name) {
@@ -382,7 +393,23 @@
   }
 
   function findCachedAppShell() {
-    var paths = [HOME_PATH, '/point-of-sale/invoice', '/bar-point-of-sale/invoice'];
+    var paths = [
+      HOME_PATH,
+      '/main-dashboard',
+      '/point-of-sale/invoice',
+      '/bar-point-of-sale/invoice',
+      '/hotel/rooms',
+      '/accounts/purchase-ledger',
+      '/stores/stock',
+      '/employees',
+      '/reports',
+      '/master',
+      '/communication-hub',
+      '/help/tickets',
+      '/point-of-sale',
+      '/bar-point-of-sale',
+      '/hotel/reservations'
+    ];
     var i = 0;
     function next() {
       if (i >= paths.length) return Promise.resolve(null);

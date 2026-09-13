@@ -92,6 +92,8 @@
 
   <script src="/static/de_pwa.js?v=14"></script>
   <script src="/static/offline_auth.js?v=12"></script>
+  <script src="/static/pos_offline.js"></script>
+  <script src="/static/hbe_offline_sync.js"></script>
   <script>
   (function () {
     /* Escape hatch: stale SW shells still showing Reconnect must not block Sign In. */
@@ -148,6 +150,23 @@
     if (window.HbeOfflineAuth && form) {
       window.HbeOfflineAuth.bindLoginForm(form, { noticeEl: notice });
     }
+  })();
+  </script>
+
+  <script>
+  (function () {
+    function flushWhenOnline() {
+      try {
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+        var sync = window.HbeOfflineSync;
+        if (sync && typeof sync.runReconnect === 'function') {
+          sync.runReconnect({ source: 'offline-login-online' });
+        }
+      } catch (e) {}
+    }
+    window.addEventListener('online', flushWhenOnline);
+    if (document.readyState === 'complete') flushWhenOnline();
+    else window.addEventListener('load', flushWhenOnline);
   })();
   </script>
 </body>

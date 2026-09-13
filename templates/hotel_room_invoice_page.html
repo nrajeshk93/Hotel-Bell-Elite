@@ -65,6 +65,8 @@
   data-room-bootstrap="{{ room|tojson|e }}"
 >
   <header class="pos-inv-header">
+        <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Open navigation" aria-label="Open navigation"><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg></button>
+        
     <div class="pos-inv-header-title-row">
       <a class="pos-inv-btn pos-inv-btn--ghost hri-pos-back" href="{{ url_for('hotel_invoice_ledger') if ledger_edit else url_for('hotel_room_detail', room_id=room.id) }}" data-hri-back aria-label="{{ 'Back to Invoice Ledger' if ledger_edit else 'Back to room' }}">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>

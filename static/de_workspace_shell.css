@@ -1564,7 +1564,19 @@ body.de-open.sb-off #ep-workspace.de-module .de-sb-pin-btn svg{
 #main-app.de-module .de-nav-chevron,#ep-workspace.de-module .de-nav-chevron,#dashboard.de-module .de-nav-chevron{display:block;max-width:14px;}
 #main-app.de-module .de-help-compact,#ep-workspace.de-module .de-help-compact,#dashboard.de-module .de-help-compact{display:none;}
 #main-app.de-module .de-help-expanded,#ep-workspace.de-module .de-help-expanded,#dashboard.de-module .de-help-expanded{display:block;}
-body.de-open.sb-off #main-app.de-module .de-sidebar,body.de-open.sb-off #ep-workspace.de-module .de-sidebar,body.sb-off #dashboard.de-module .de-sidebar{transform:translateX(calc(-1 * (var(--de-sidebar-expanded) + 12px)));}
+body.de-open.sb-off #main-app.de-module .de-sidebar:not(.open),
+body.de-open.sb-off #ep-workspace.de-module .de-sidebar:not(.open),
+body.sb-off #dashboard.de-module .de-sidebar:not(.open){
+  transform:translateX(calc(-1 * (var(--de-sidebar-expanded) + 12px)));
+}
+#main-app.de-module .de-sidebar.open,
+#ep-workspace.de-module .de-sidebar.open,
+#dashboard.de-module .de-sidebar.open,
+body.de-open.sb-off #main-app.de-module .de-sidebar.open,
+body.de-open.sb-off #ep-workspace.de-module .de-sidebar.open,
+body.sb-off #dashboard.de-module .de-sidebar.open{
+  transform:translateX(0)!important;
+}
 }
 
 /* Whole-app shell offline chip + toast (PWA). */
@@ -1604,3 +1616,45 @@ body.de-open.sb-off #main-app.de-module .de-sidebar,body.de-open.sb-off #ep-work
   opacity:1;
   transform:translateX(-50%) translateY(0);
 }
+
+/* Floating mobile nav (workspace pages without a header pin). */
+.de-mobile-nav-fab{
+  display:none;
+  align-items:center;
+  justify-content:center;
+  position:fixed;
+  top:calc(10px + env(safe-area-inset-top, 0px));
+  left:calc(10px + env(safe-area-inset-left, 0px));
+  z-index:60;
+  width:44px;
+  height:44px;
+  border:0;
+  border-radius:12px;
+  background:#fff;
+  color:#0f172a;
+  box-shadow:0 8px 24px rgba(15,23,42,.18);
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+.de-mobile-nav-fab svg{
+  width:22px;
+  height:22px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+@media(max-width:760px){
+  .de-mobile-nav-fab{display:inline-flex;}
+  body:has(.de-sidebar.open) .de-mobile-nav-fab,
+  body:has(.de-sb-overlay.open) .de-mobile-nav-fab{
+    opacity:0;
+    pointer-events:none;
+  }
+  /* Prefer page header pin when present — hide FAB to avoid double controls. */
+  body:has(.de-main-wrapper .de-sb-pin-btn) .de-mobile-nav-fab{
+    display:none!important;
+  }
+}
+
