@@ -127,35 +127,54 @@
       return new Promise(function (resolve, reject) {
         var tx = db.transaction(storeName, mode);
         var store = tx.objectStore(storeName);
-        var done = false;
-        function finish(err, result) {
-          if (done) return;
-          done = true;
-          if (err) reject(err);
+        var result;
+        var resultReady = false;
+        var txDone = false;
+        var txErr = null;
+        var settled = false;
+        function maybeFinish() {
+          if (settled || !resultReady || !txDone) return;
+          settled = true;
+          if (txErr) reject(txErr);
           else resolve(result);
         }
+        /* Attach tx handlers BEFORE awaiting fn — getAll+delete can complete
+           the transaction before a late oncomplete assignment, which hung
+           discardPending / flush draft cleanup forever. */
+        tx.oncomplete = function () {
+          txDone = true;
+          maybeFinish();
+        };
+        tx.onerror = function () {
+          txDone = true;
+          txErr = tx.error || new Error('IndexedDB transaction failed');
+          maybeFinish();
+        };
+        tx.onabort = function () {
+          txDone = true;
+          txErr = tx.error || new Error('IndexedDB transaction aborted');
+          maybeFinish();
+        };
         try {
           Promise.resolve(fn(store)).then(
-            function (result) {
-              tx.oncomplete = function () {
-                finish(null, result);
-              };
-              tx.onerror = function () {
-                finish(tx.error || new Error('IndexedDB transaction failed'));
-              };
-              tx.onabort = function () {
-                finish(tx.error || new Error('IndexedDB transaction aborted'));
-              };
+            function (value) {
+              result = value;
+              resultReady = true;
+              maybeFinish();
             },
             function (err) {
               try {
                 tx.abort();
               } catch (e) {}
-              finish(err);
+              if (settled) return;
+              settled = true;
+              reject(err);
             }
           );
         } catch (err) {
-          finish(err);
+          if (settled) return;
+          settled = true;
+          reject(err);
         }
       });
     });
@@ -720,9 +739,30 @@
                   opts.onSynced(row.localId, result.data.invoice || null, usedPayload);
                 } catch (e) {}
               }
-              return removeOutbox(row.id).then(function () {
-                return next(i + 1);
-              });
+              var syncedLocalId = String(row.localId || '').trim();
+              var syncedOrderNo = String(
+                (usedPayload && (usedPayload.orderNo || usedPayload.order_no)) || ''
+              ).trim();
+              return removeOutbox(row.id)
+                .then(function () {
+                  /* Drop matching drafts too — otherwise Invoice Ledger keeps an
+                     Unsynced SPC/… hex row beside the new server SPC/{n}/… row. */
+                  return discardPending({
+                    localId: syncedLocalId,
+                    orderNo: syncedOrderNo
+                  }).catch(function () {
+                    return { removed: 0 };
+                  });
+                })
+                .then(function () {
+                  notifyChange('invoice', {
+                    synced: true,
+                    localId: syncedLocalId,
+                    orderNo: syncedOrderNo,
+                    invoice: (result.data && result.data.invoice) || null
+                  });
+                  return next(i + 1);
+                });
             });
         }
 

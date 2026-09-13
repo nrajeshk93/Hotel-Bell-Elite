@@ -1176,6 +1176,7 @@
       if (
         unsettledRow &&
         page.contains(unsettledRow) &&
+        !unsettledRow.classList.contains('is-local-pending') &&
         !ev.target.closest('.pl-col-actions, .cp-col-check, .pos-il-row-check, #pos-il-select-all, #pos-il-selection-bar')
       ) {
         ev.preventDefault();
@@ -1616,7 +1617,10 @@
   function discardLocalLedgerOrder(row) {
     if (!row) return;
     var api = global.HbePosOffline;
-    if (!api || typeof api.discardPending !== 'function') return;
+    if (!api || typeof api.discardPending !== 'function') {
+      toast('Offline storage is not ready on this page. Open POS once online, then try again.');
+      return;
+    }
     var localId = String(row.getAttribute('data-local-id') || '').trim();
     var orderNo = String(row.getAttribute('data-order-no') || '').trim();
     if (!localId && !orderNo) return;
@@ -1635,9 +1639,12 @@
           toast('Offline invoice not found on this device.');
           return;
         }
-        row.remove();
+        if (row.isConnected) row.remove();
         var page = document.getElementById('pos-invoice-ledger-page');
-        if (page) updateVisibleCount(page);
+        if (page) {
+          overlayPendingLedgerRows(page);
+          updateVisibleCount(page);
+        }
         toast('Discarded unsynced invoice ' + label + '.');
       })
       .catch(function () {

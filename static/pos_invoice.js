@@ -733,14 +733,8 @@
         }
         rememberGuestFromPayload(payload, invoice);
         notifyPosLocalChange('invoice', payload);
-        if (localId && api.saveDraft) {
-          api.saveDraft(localId, {
-            invoiceId: invoice && invoice.id,
-            orderNo: (invoice && invoice.order_no) || (payload && payload.orderNo) || '',
-            payload: payload || {},
-            dirty: false
-          });
-        }
+        /* flushOutbox discards matching drafts after sync — do not re-save a
+           server-linked draft that would reappear as Unsynced on the ledger. */
       }
     }).then(function (summary) {
       if (summary && summary.authExpired) {

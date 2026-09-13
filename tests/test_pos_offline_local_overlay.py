@@ -153,7 +153,36 @@ class PosOfflineLocalOverlaySourceTests(unittest.TestCase):
         self.assertIn("invoiceFromOfflinePayload", js)
         self.assertIn("warmCustomerCatalog", js)
 
+    def test_flush_outbox_discards_matching_draft_after_sync(self):
+        """Reconnect must not leave Unsynced SPC/hex beside server SPC/n."""
+        path = os.path.join(ROOT, "static", "pos_offline.js")
+        with open(path, encoding="utf-8") as fh:
+            body = fh.read()
+        self.assertIn("Drop matching drafts too", body)
+        self.assertIn("discardPending({", body)
+        # withStore must not hang discard/flush (handlers before fn)
+        self.assertIn("Attach tx handlers BEFORE awaiting fn", body)
+
+    def test_invoice_onsynced_does_not_resave_server_draft(self):
+        path = os.path.join(ROOT, "static", "pos_invoice.js")
+        with open(path, encoding="utf-8") as fh:
+            body = fh.read()
+        self.assertIn("flushOutbox discards matching drafts after sync", body)
+        # Old bug: onSynced re-wrote saveDraft with invoiceId
+        self.assertNotIn(
+            "api.saveDraft(localId, {\n            invoiceId: invoice && invoice.id",
+            body,
+        )
+
+    def test_ledger_discard_and_local_pending_settle_guard(self):
+        path = os.path.join(ROOT, "static", "pos_invoice_ledger.js")
+        with open(path, encoding="utf-8") as fh:
+            body = fh.read()
+        self.assertIn("Offline storage is not ready on this page", body)
+        self.assertIn("!unsettledRow.classList.contains('is-local-pending')", body)
+
     def test_voided_local_order_nos_are_purged(self):
+
         js = _read("static", "pos_offline.js")
         self.assertIn("spc/3a4e1a/26-27", js)
         self.assertIn("spc/72503b/26-27", js)
