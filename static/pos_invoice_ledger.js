@@ -1670,7 +1670,15 @@
     var outlet =
       (page && page.getAttribute('data-pos-outlet')) ||
       (String(window.location.pathname || '').indexOf('/bar-point-of-sale') === 0 ? 'bar' : 'restaurant');
-    api.pendingOrders().then(function (orders) {
+    var ready =
+      typeof api.purgeOrphanSyncedDrafts === 'function' && navigator.onLine !== false
+        ? api.purgeOrphanSyncedDrafts().catch(function () {
+            return { removed: 0 };
+          })
+        : Promise.resolve({ removed: 0 });
+    ready.then(function () {
+      return api.pendingOrders();
+    }).then(function (orders) {
       var table = ensureLedgerTable(page);
       if (!table) return;
       var tbody = table.querySelector('tbody');

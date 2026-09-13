@@ -153,7 +153,28 @@ class PosOfflineLocalOverlaySourceTests(unittest.TestCase):
         self.assertIn("invoiceFromOfflinePayload", js)
         self.assertIn("warmCustomerCatalog", js)
 
+    def test_purge_orphan_synced_drafts_helper(self):
+        path = os.path.join(ROOT, "static", "pos_offline.js")
+        with open(path, encoding="utf-8") as fh:
+            body = fh.read()
+        self.assertIn("function purgeOrphanSyncedDrafts", body)
+        self.assertIn("isOfflineTempOrderNo", body)
+        self.assertIn("purgeOrphanSyncedDrafts: purgeOrphanSyncedDrafts", body)
+
+    def test_ledger_overlay_purges_orphans_before_paint(self):
+        path = os.path.join(ROOT, "static", "pos_invoice_ledger.js")
+        with open(path, encoding="utf-8") as fh:
+            body = fh.read()
+        self.assertIn("purgeOrphanSyncedDrafts", body)
+
+    def test_reconnect_flush_purges_orphan_drafts(self):
+        path = os.path.join(ROOT, "static", "hbe_offline_sync.js")
+        with open(path, encoding="utf-8") as fh:
+            body = fh.read()
+        self.assertIn("purgeOrphanSyncedDrafts", body)
+
     def test_flush_outbox_discards_matching_draft_after_sync(self):
+
         """Reconnect must not leave Unsynced SPC/hex beside server SPC/n."""
         path = os.path.join(ROOT, "static", "pos_offline.js")
         with open(path, encoding="utf-8") as fh:

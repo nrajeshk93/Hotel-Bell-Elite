@@ -766,7 +766,13 @@
             });
         }
 
-        return next(0);
+        return next(0).then(function (summary) {
+          return purgeOrphanSyncedDrafts().then(function (purged) {
+            summary = summary || {};
+            summary.orphansPurged = (purged && purged.removed) || 0;
+            return summary;
+          });
+        });
       })
       .then(
         function (summary) {
@@ -967,6 +973,78 @@
   }
 
   /** True when the local row was marked Generate Invoice / customer bill. */
+  function isOfflineTempOrderNo(orderNo) {
+    return /^(SPC|INV)\/[0-9A-Fa-f]{6}\//.test(String(orderNo || "").trim());
+  }
+
+  /**
+   * Drafts left behind after a successful outbox flush (old bug) or drafts that
+   * already carry a server invoiceId. Safe while online: anything still in the
+   * outbox is kept. Call from reconnect + Invoice Ledger overlay.
+   */
+  function purgeOrphanSyncedDrafts() {
+    if (!isOnline()) {
+      return Promise.resolve({ removed: 0, skipped: true });
+    }
+    return Promise.all([listOutbox(), listDrafts()])
+      .then(function (pair) {
+        var outbox = pair[0] || [];
+        var drafts = pair[1] || [];
+        var outboxLocalIds = {};
+        var outboxOrderNos = {};
+        outbox.forEach(function (row) {
+          var lid = String((row && row.localId) || "").trim();
+          if (lid) outboxLocalIds[lid] = true;
+          var payload = (row && row.payload) || {};
+          var on = String(payload.orderNo || payload.order_no || "")
+            .trim()
+            .toLowerCase();
+          if (on) outboxOrderNos[on] = true;
+        });
+        var victims = [];
+        drafts.forEach(function (row) {
+          if (!row) return;
+          var lid = String(row.localId || "").trim();
+          var payload = row.payload || {};
+          var on = String(
+            payload.orderNo || payload.order_no || row.orderNo || ""
+          ).trim();
+          var onKey = on.toLowerCase();
+          if (lid && outboxLocalIds[lid]) return;
+          if (onKey && outboxOrderNos[onKey]) return;
+          var serverLinked = orderHasServerInvoiceId({
+            invoiceId: row.invoiceId,
+            payload: payload
+          });
+          if (!serverLinked && !isOfflineTempOrderNo(on)) return;
+          victims.push({ localId: lid, orderNo: onKey || on });
+        });
+        if (!victims.length) return { removed: 0 };
+        return victims
+          .reduce(function (chain, v) {
+            return chain.then(function (sum) {
+              return discardPending({
+                localId: v.localId,
+                orderNo: v.orderNo
+              }).then(function (summary) {
+                sum.removed += (summary && summary.removed) || 0;
+                return sum;
+              });
+            });
+          }, Promise.resolve({ removed: 0 }))
+          .then(function (sum) {
+            if (sum.removed) {
+              notifyChange("invoice", { purgedOrphans: true, removed: sum.removed });
+            }
+            return sum;
+          });
+      })
+      .catch(function () {
+        return { removed: 0 };
+      });
+  }
+
+
   function orderHasCustomerBill(order) {
     if (!order || typeof order !== "object") return false;
     var payload = order.payload || {};
@@ -1304,6 +1382,8 @@
     purgeLegacyServerDraftZombies: purgeLegacyServerDraftZombies,
     applyPendingToFloor: applyPendingToFloor,
     orderHasServerInvoiceId: orderHasServerInvoiceId,
+    isOfflineTempOrderNo: isOfflineTempOrderNo,
+    purgeOrphanSyncedDrafts: purgeOrphanSyncedDrafts,
     orderHasCustomerBill: orderHasCustomerBill,
     applyUnsyncedOrdersToFloorTables: applyUnsyncedOrdersToFloorTables,
     patchFloorOccupancy: patchFloorOccupancy,

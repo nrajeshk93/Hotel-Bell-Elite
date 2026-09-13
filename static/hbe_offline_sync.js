@@ -149,9 +149,21 @@
     if (!api || typeof api.flushOutbox !== 'function' || !isOnline()) {
       return Promise.resolve({ flushed: 0, skipped: true });
     }
-    return api.flushOutbox({}).catch(function () {
-      return { flushed: 0, error: 'network', failed: true };
-    });
+    return api
+      .flushOutbox({})
+      .then(function (summary) {
+        if (api && typeof api.purgeOrphanSyncedDrafts === 'function') {
+          return api.purgeOrphanSyncedDrafts().then(function (purged) {
+            summary = summary || {};
+            summary.orphansPurged = (purged && purged.removed) || 0;
+            return summary;
+          });
+        }
+        return summary;
+      })
+      .catch(function () {
+        return { flushed: 0, error: 'network', failed: true };
+      });
   }
 
   function ensureSyncChip() {
