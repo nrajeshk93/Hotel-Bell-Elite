@@ -472,118 +472,38 @@ function networkFirstHtml(req) {
       }
       return matchHtmlCache(req).then(function (cached) {
         if (cached) return cached;
-        /* Restaurant / Bar / Hotel workspace: never fall through to Sign In
-           (looks like logout; soft-nav may replaceState to /login). */
-        var posFallbacks = [];
-        var backHref = '/point-of-sale/invoice';
-        var backLabel = 'Back to Tables';
+        /* Exact path only. Never return /home (or Tables) HTML for Invoice Ledger /
+           Menu / Sales Update — that paints the wrong page. Soft-nav treats 503
+           as an offline miss and stays on the current module. */
+        var backHref = '/home';
+        var backLabel = 'Back to Home';
         if (pathname.indexOf('/bar-point-of-sale') === 0) {
-          posFallbacks = [
-            '/bar-point-of-sale/invoice-ledger',
-            '/bar-point-of-sale/invoice',
-            '/bar-point-of-sale',
-            '/point-of-sale/invoice',
-            '/home'
-          ];
           backHref = '/bar-point-of-sale/invoice';
           backLabel = 'Back to Bar Tables';
         } else if (pathname.indexOf('/point-of-sale') === 0) {
-          posFallbacks = [
-            '/point-of-sale/invoice-ledger',
-            '/point-of-sale/invoice',
-            '/point-of-sale',
-            '/bar-point-of-sale/invoice',
-            '/home'
-          ];
-        } else if (pathname.indexOf('/hotel/') === 0 || pathname.indexOf('/sales_update/hotel') === 0) {
-          posFallbacks = [
-            '/hotel/invoice-ledger',
-            '/hotel/rooms',
-            '/hotel/reservations',
-            '/home',
-            '/point-of-sale/invoice'
-          ];
+          backHref = '/point-of-sale/invoice';
+          backLabel = 'Back to Tables';
+        } else if (pathname.indexOf('/hotel/') === 0) {
           backHref = '/hotel/rooms';
           backLabel = 'Back to Rooms';
-        } else if (pathname.indexOf('/accounts') === 0) {
-          posFallbacks = [
-            '/accounts/purchase-ledger',
-            '/accounts/cash-ledger',
-            '/accounts',
-            '/home'
-          ];
-          backHref = '/accounts/purchase-ledger';
-          backLabel = 'Back to Purchases';
-        } else if (pathname.indexOf('/stores') === 0) {
-          posFallbacks = ['/stores/stock', '/stores/orders', '/stores/indent', '/home'];
-          backHref = '/stores/stock';
-          backLabel = 'Back to Stores';
-        } else if (
-          pathname.indexOf('/employees') === 0 ||
-          pathname.indexOf('/attendance') === 0 ||
-          pathname.indexOf('/credits') === 0 ||
-          pathname === '/sales_update/tips'
-        ) {
-          posFallbacks = ['/employees', '/attendance_overview', '/credits', '/home'];
-          backHref = '/employees';
-          backLabel = 'Back to Employee';
-        } else if (pathname.indexOf('/reports') === 0 || pathname === '/report') {
-          posFallbacks = ['/reports', '/main-dashboard', '/home'];
-          backHref = '/reports';
-          backLabel = 'Back to Reports';
-        } else if (pathname.indexOf('/master') === 0) {
-          posFallbacks = ['/master', '/home'];
-          backHref = '/master';
-          backLabel = 'Back to Master';
-        } else if (pathname.indexOf('/communication-hub') === 0) {
-          posFallbacks = ['/communication-hub', '/home'];
-          backHref = '/communication-hub';
-          backLabel = 'Back to Communication';
-        } else if (pathname.indexOf('/access-management') === 0) {
-          posFallbacks = ['/access-management', '/home'];
-          backHref = '/access-management';
-          backLabel = 'Back to Access';
-        } else if (pathname.indexOf('/help') === 0) {
-          posFallbacks = ['/help/tickets', '/home'];
-          backHref = '/help/tickets';
-          backLabel = 'Back to Help';
-        } else {
-          /* Any other workspace module — never Sign In. */
-          posFallbacks = [
-            '/home',
-            '/main-dashboard',
-            '/point-of-sale/invoice',
-            '/hotel/rooms',
-            '/accounts/purchase-ledger',
-            '/reports',
-            '/master'
-          ];
-          backHref = '/home';
-          backLabel = 'Back to Home';
         }
-        function nextPos(i) {
-          if (i >= posFallbacks.length) {
-            /* Last resort: 503 workspace page — NOT the login shell. */
-            return new Response(
-              '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
-                '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-                '<title>Hotel Bell Elite</title></head><body style="font-family:system-ui;padding:24px">' +
-                '<h1>You\'re offline</h1>' +
-                '<p>This page is not available offline yet. Open this page once while online, or go back to a cached module.</p>' +
-                '<p><a href="' + backHref + '">' + backLabel + '</a></p>' +
-                '</body></html>',
-              {
-                status: 503,
-                statusText: 'Offline',
-                headers: { 'Content-Type': 'text/html; charset=utf-8' }
-              }
-            );
+        return new Response(
+          '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
+            '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+            '<title>Hotel Bell Elite</title></head><body style="font-family:system-ui;padding:24px">' +
+            '<h1>You\'re offline</h1>' +
+            '<p>This page is not cached yet. Open it once while online, then it works offline.</p>' +
+            '<p><a href="' + backHref + '">' + backLabel + '</a></p>' +
+            '</body></html>',
+          {
+            status: 503,
+            statusText: 'Offline',
+            headers: {
+              'Content-Type': 'text/html; charset=utf-8',
+              'X-Hbe-Offline-Miss': '1'
+            }
           }
-          return caches.match(posFallbacks[i]).then(function (hit) {
-            return hit || nextPos(i + 1);
-          });
-        }
-        return nextPos(0);
+        );
       });
     });
 }

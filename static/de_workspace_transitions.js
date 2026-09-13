@@ -88,18 +88,33 @@
     if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
     if(window.__deHotelHtmlWarm) return;
     window.__deHotelHtmlWarm = true;
-    ['/hotel/rooms', '/hotel/reservations', '/hotel/invoice-ledger'].forEach(function(path){
+    [
+      '/hotel/rooms',
+      '/hotel/reservations',
+      '/hotel/invoice-ledger',
+      '/hotel/sales-update',
+      '/hotel/credit'
+    ].forEach(function(path){
       try{
         fetch(path, {
           credentials: 'same-origin',
           cache: 'no-store',
           headers: { Accept: 'text/html' }
         }).catch(function(){});
+        fetch(path + (path.indexOf('?') >= 0 ? '&' : '?') + 'partial=main', {
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: {
+            Accept: 'text/html',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-De-Partial': 'main'
+          }
+        }).catch(function(){});
       } catch(e){}
     });
   }
 
-  function prefetchHotelGroup(){
+  function prefetchHotelGroupfunction prefetchHotelGroup(){
     if(!shouldSoftNavigate()) return;
     syncSoftNavBuildId(false);
     ['/hotel/rooms', '/hotel/reservations', '/hotel/invoice-ledger'].forEach(function(path){
@@ -153,6 +168,15 @@
           credentials: 'same-origin',
           cache: 'no-store',
           headers: { Accept: 'text/html' }
+        }).catch(function(){});
+        fetch(path + (path.indexOf('?') >= 0 ? '&' : '?') + 'partial=main', {
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: {
+            Accept: 'text/html',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-De-Partial': 'main'
+          }
         }).catch(function(){});
       } catch(e){}
     });
@@ -395,14 +419,35 @@
       window.__dePosHtmlWarm = true;
     }
     var paths = outlet === 'bar'
-      ? ['/bar-point-of-sale', '/bar-point-of-sale/invoice', '/bar-point-of-sale/invoice-ledger']
-      : ['/point-of-sale', '/point-of-sale/invoice', '/point-of-sale/invoice-ledger'];
+      ? [
+          '/bar-point-of-sale',
+          '/bar-point-of-sale/invoice',
+          '/bar-point-of-sale/invoice-ledger',
+          '/bar-point-of-sale/menu',
+          '/bar-point-of-sale/sales-update'
+        ]
+      : [
+          '/point-of-sale',
+          '/point-of-sale/invoice',
+          '/point-of-sale/invoice-ledger',
+          '/point-of-sale/menu',
+          '/point-of-sale/sales-update'
+        ];
     paths.forEach(function(path){
       try{
         fetch(path, {
           credentials: 'same-origin',
           cache: 'no-store',
           headers: { Accept: 'text/html' }
+        }).catch(function(){});
+        fetch(path + (path.indexOf('?') >= 0 ? '&' : '?') + 'partial=main', {
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: {
+            Accept: 'text/html',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-De-Partial': 'main'
+          }
         }).catch(function(){});
       } catch(e){}
     });
@@ -2923,6 +2968,24 @@
         }
         throw new Error(authShell ? 'auth-shell' : 'missing main wrapper for soft nav');
       }
+      /* Never soft-swap a different module (e.g. Home HTML for Invoice Ledger). */
+      (function(){
+        var pathOnly = '/';
+        try{ pathOnly = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/'; } catch(eP){}
+        var okMatch = true;
+        if(pathOnly === '/point-of-sale/invoice-ledger' || pathOnly === '/bar-point-of-sale/invoice-ledger'){
+          okMatch = !!doc.querySelector('#pos-invoice-ledger-page, [data-pos-invoice-ledger]');
+        } else if(pathOnly === '/point-of-sale/menu' || pathOnly === '/bar-point-of-sale/menu'){
+          okMatch = !!doc.querySelector('#pos-menu-page, [data-pos-menu]');
+        } else if(pathOnly === '/point-of-sale/sales-update' || pathOnly === '/bar-point-of-sale/sales-update' || pathOnly === '/hotel/sales-update'){
+          okMatch = !!doc.querySelector('#se-sales-header, .su-header, .su-module');
+        } else if(pathOnly === '/hotel/invoice-ledger'){
+          okMatch = !!doc.querySelector('#hotel-invoice-ledger-page, [data-hotel-invoice-ledger]');
+        }
+        if(!okMatch){
+          throw new Error('soft-nav-content-mismatch');
+        }
+      })();
       applySoftSwap(doc, swapUrl, done, sidebarScroll, nav.token);
     }).catch(function(err){
       if(err && err.name === 'AbortError'){
@@ -2950,16 +3013,14 @@
       if(typeof done === 'function') done();
       var errMsg = String(err && err.message || err || '');
       var authFail = errMsg.indexOf('auth-shell') !== -1;
-      /* Offline: keep current POS page (Tables/Invoice). Never hard-nav or
-         paint Sign In — that drops the session UX and stalls outbox sync. */
+      var contentMiss = errMsg.indexOf('soft-nav-content-mismatch') !== -1;
+      /* Offline: keep current page. Never paint Home for a missed module. */
       if(isBrowserOffline()){
-        if(authFail){
-          notifyShellOffline('Offline — open this page once while online, or stay on the current module. Pending POS orders still sync when you reconnect.');
+        if(authFail || contentMiss){
+          notifyShellOffline('Offline — open Invoice Ledger / Menu / Sales Update once while online so they cache. Pending POS orders still sync when you reconnect.');
         } else {
           notifyShellOffline('Offline — open this page once while online to use it offline.');
         }
-        /* Soft-nav may have pushState'd the target URL already — undo so the
-           address bar stays on the last good page (Tables/Invoice). */
         try{ history.back(); } catch(eBackOff){}
         return;
       }
