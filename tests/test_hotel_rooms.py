@@ -5511,6 +5511,197 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(checkout.status_code, 400, checkout.get_data(as_text=True))
         self.assertIn("Additional Invoice", checkout.get_data(as_text=True))
 
+    def test_checkout_allows_tagged_fb_when_stay_fbe_flags_cleared(self):
+        """Folio FBE tags are enough — lost stay-level FBE flags must not block checkout.
+
+        Merge dissolve / primary handoff can clear fbTransferInvoiceNumber while
+        transfer lines keep invoicedInvoiceNumber (Room 202 production bug).
+        """
+        self._checkin_with_charges(advance=0)
+        conn = db_mod.get_db()
+        try:
+            db_mod.append_hotel_room_folio_charge(
+                conn,
+                "room-101",
+                amount=168.0,
+                kind="restaurant_room_transfer",
+                label="Restaurant Room Transfer · SPC/2426/2026-27",
+                source="pos",
+                invoice_id="2426",
+                order_no="SPC/2426/2026-27",
+                outlet="restaurant",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        hotel = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "generate_invoice",
+                "invoice_kind": "hotel",
+                "payment_splits": [],
+            },
+        )
+        self.assertEqual(hotel.status_code, 200, hotel.get_data(as_text=True))
+        fb = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "generate_invoice",
+                "invoice_kind": "fb",
+                "payment_splits": [],
+            },
+        )
+        self.assertEqual(fb.status_code, 200, fb.get_data(as_text=True))
+        fb_no = fb.get_json()["room"]["stay"]["fbTransferInvoiceNumber"]
+        self.assertTrue(str(fb_no).startswith("FBE/"))
+
+        # Simulate merge handoff wiping stay-level FBE flags but leaving folio tags.
+        conn = db_mod.get_db()
+        try:
+            layout = db_mod.get_hotel_rooms_layout(conn)
+            rooms = layout.get("rooms") or []
+            room = next(r for r in rooms if r.get("id") == "room-101")
+            stay = dict(room.get("stay") or {})
+            for line in stay.get("folioCharges") or []:
+                if isinstance(line, dict) and str(line.get("kind") or "").endswith(
+                    "_room_transfer"
+                ):
+                    self.assertEqual(line.get("invoicedInvoiceNumber"), fb_no)
+            stay["fbTransferInvoiceNumber"] = ""
+            stay["fbTransferInvoiceGenerated"] = False
+            stay["fbTransferInvoiceGeneratedAt"] = ""
+            stay["invoiceHistory"] = [
+                entry
+                for entry in (stay.get("invoiceHistory") or [])
+                if str(entry.get("kind") or "").lower() != "fb"
+            ]
+            room["stay"] = stay
+            db_mod.save_hotel_rooms_layout(conn, layout.get("floors") or [], rooms)
+            conn.commit()
+        finally:
+            conn.close()
+
+        healed = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]["stay"]
+        self.assertEqual(healed.get("fbTransferInvoiceNumber"), fb_no)
+        self.assertTrue(healed.get("fbTransferInvoiceGenerated"))
+        self.assertEqual(db_mod._hotel_pending_fb_total(healed), 0.0)
+
+        closed = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "checkout"},
+        )
+        self.assertEqual(closed.status_code, 200, closed.get_data(as_text=True))
+        self.assertEqual(closed.get_json()["room"]["status"], "dirty")
+
+    def test_merged_checkout_allows_tagged_fb_after_primary_handoff(self):
+        """After merge primary check-out, successor room keeps folio FBE tags and can leave."""
+        self._checkin_with_charges("room-101", advance=0)
+        check_in, check_out = self._stay_window(nights=2)
+        self.client.put(
+            "/hotel/api/rooms/room-102",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Asha",
+                    "lastName": "Nair",
+                    "mobile": "9000000011",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 2,
+                    "roomRate": 2000,
+                    "advancePaid": 0,
+                },
+            },
+        )
+        self.client.put(
+            "/hotel/api/rooms/room-102",
+            json={"action": "merge_rooms", "fromRoomId": "room-102", "toRoomId": "room-101"},
+        )
+        conn = db_mod.get_db()
+        try:
+            db_mod.append_hotel_room_folio_charge(
+                conn,
+                "room-101",
+                amount=189.0,
+                kind="restaurant_room_transfer",
+                label="Restaurant Room Transfer · SPC/2431/2026-27",
+                source="pos",
+                invoice_id="2431",
+                order_no="SPC/2431/2026-27",
+                outlet="restaurant",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        hotel = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "generate_invoice",
+                "invoice_kind": "hotel",
+                "payment_splits": [],
+            },
+        )
+        self.assertEqual(hotel.status_code, 200, hotel.get_data(as_text=True))
+        fb = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "generate_invoice",
+                "invoice_kind": "fb",
+                "payment_splits": [],
+            },
+        )
+        self.assertEqual(fb.status_code, 200, fb.get_data(as_text=True))
+        fb_no = fb.get_json()["room"]["stay"]["fbTransferInvoiceNumber"]
+        hbe = hotel.get_json()["room"]["stay"]["invoiceNumber"]
+
+        # Primary leaves; member inherits the shared bill (merge dissolves).
+        closed_primary = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "checkout"},
+        )
+        self.assertEqual(
+            closed_primary.status_code, 200, closed_primary.get_data(as_text=True)
+        )
+
+        member = self.client.get("/hotel/api/rooms/room-102").get_json()["room"]
+        self.assertEqual(member["status"], "occupied")
+        mstay = member["stay"]
+        self.assertEqual(mstay.get("invoiceNumber"), hbe)
+        # Folio tags must still allow checkout even if FBE stay flags dropped.
+        conn = db_mod.get_db()
+        try:
+            layout = db_mod.get_hotel_rooms_layout(conn)
+            rooms = layout.get("rooms") or []
+            room = next(r for r in rooms if r.get("id") == "room-102")
+            stay = dict(room.get("stay") or {})
+            tagged = [
+                line
+                for line in (stay.get("folioCharges") or [])
+                if isinstance(line, dict)
+                and str(line.get("kind") or "").endswith("_room_transfer")
+                and line.get("invoicedInvoiceNumber")
+            ]
+            if tagged:
+                stay["fbTransferInvoiceNumber"] = ""
+                stay["fbTransferInvoiceGenerated"] = False
+                stay["fbTransferInvoiceGeneratedAt"] = ""
+                room["stay"] = stay
+                db_mod.save_hotel_rooms_layout(conn, layout.get("floors") or [], rooms)
+                conn.commit()
+        finally:
+            conn.close()
+
+        closed_member = self.client.put(
+            "/hotel/api/rooms/room-102",
+            json={"action": "checkout"},
+        )
+        self.assertEqual(
+            closed_member.status_code, 200, closed_member.get_data(as_text=True)
+        )
+        self.assertEqual(closed_member.get_json()["room"]["status"], "dirty")
+
     def test_invoice_ledger_extra_bed_and_folio_sync_estimated_total(self):
         """Editing Extra Bed + folio on ledger must update ledger estimated_total."""
         self._checkin_with_charges(advance=0)

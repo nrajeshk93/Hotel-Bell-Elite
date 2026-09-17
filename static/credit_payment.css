@@ -83,6 +83,7 @@ body.su-module #credit-payment-page .content.se-content{
   max-width:none;
   min-width:0;
   min-height:min(62vh, calc(44px + 12 * 52px));
+  overflow:auto;
 }
 
 body.su-module .cp-view-tabs{
@@ -576,7 +577,9 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
   display:none;
 }
 
-/* Pending + Approved tables — fill panel width (no overflow min-width trap). */
+/* Pending + history tables — content-sized columns + horizontal scroll
+   (same pattern as Purchase / Expense + Transfer Ledger: table-layout:auto,
+   nowrap cells, no ellipsis crush). */
 #credit-payment-page #cp-outstanding-table{
   table-layout:auto;
   width:100%;
@@ -584,8 +587,9 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
   border-spacing:0;
 }
 #credit-payment-page #cp-history-table{
-  table-layout:fixed;
+  table-layout:auto;
   width:100%;
+  min-width:1480px;
   border-collapse:separate;
   border-spacing:0;
 }
@@ -636,8 +640,8 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
 #credit-payment-page #cp-history-table .cp-expense-codes{
   width:auto;
   min-width:12ch;
-  max-width:min(280px, 32vw);
-  white-space:normal;
+  max-width:none;
+  white-space:nowrap;
   overflow:visible;
   text-overflow:clip;
   vertical-align:middle;
@@ -646,24 +650,25 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
   white-space:nowrap;
 }
 #credit-payment-page #cp-history-table .cp-expense-code-list{
-  display:flex;
-  flex-wrap:wrap;
+  display:inline-flex;
+  flex-wrap:nowrap;
   gap:4px;
   align-items:center;
-  max-width:100%;
+  max-width:none;
   overflow:visible;
 }
 #credit-payment-page #cp-history-table .cp-expense-code-list .pl-expense-code{
   margin:0;
-  max-width:100%;
+  max-width:none;
   white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
+  overflow:visible;
+  text-overflow:clip;
 }
 #credit-payment-page #cp-history-table .cp-col-party{
   width:auto;
   min-width:18ch;
   overflow:visible;
+  text-overflow:clip;
 }
 #credit-payment-page #cp-history-table th.cp-col-party{
   white-space:nowrap;
@@ -676,6 +681,9 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
 }
 #credit-payment-page #cp-history-table .cp-col-party .pl-meta{
   white-space:nowrap;
+  overflow:visible;
+  text-overflow:clip;
+  max-width:none;
 }
 #credit-payment-page #cp-history-table .pl-col-date{
   width:auto;
@@ -746,6 +754,7 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
   max-width:none;
   white-space:nowrap;
   overflow:visible;
+  text-overflow:clip;
 }
 #credit-payment-page #cp-history-table .cp-txn-chip{
   display:inline-block;
@@ -758,6 +767,7 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
   font:650 11.5px/1.35 Inter,system-ui,sans-serif;
   white-space:nowrap;
   overflow:visible;
+  text-overflow:clip;
   word-break:normal;
 }
 #credit-payment-page #cp-history-table .cp-tender-col{
@@ -1526,10 +1536,20 @@ body.su-module .cp-status-pill--cleared{
     min-width:0;
     table-layout:auto;
   }
-  #credit-payment-page #cp-history-table .cp-expense-code-list,
+  #credit-payment-page #cp-history-table{
+    min-width:0;
+  }
+  #credit-payment-page #cp-history-table .cp-expense-code-list{
+    flex-wrap:wrap;
+    white-space:normal;
+  }
+  #credit-payment-page #cp-history-table .cp-expense-code-list .pl-expense-code,
   #credit-payment-page #cp-history-table .cp-txn-chip{
     white-space:normal;
     word-break:break-word;
+    overflow:visible;
+    text-overflow:clip;
+    max-width:none;
   }
   #credit-payment-page #cp-history-table .cp-tender-col,
   #credit-payment-page #cp-history-table .pl-col-amount,

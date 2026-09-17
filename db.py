@@ -13385,10 +13385,47 @@ def _hotel_allocate_fb_invoice_balances(stay):
     return out
 
 
+def _hotel_heal_fb_invoice_flags_from_folio(stay):
+    """Restore stay-level FBE flags from folio tags after merge / primary handoff.
+
+    Merge dissolve or primary checkout can clear fbTransferInvoiceNumber while
+    folio lines keep invoicedInvoiceNumber. Without this heal, checkout and the
+    Generate F&B button treat already-invoiced transfers as pending.
+    """
+    if not isinstance(stay, dict):
+        return stay
+    fbe = _hotel_str(
+        stay.get("fbTransferInvoiceNumber") or stay.get("fb_transfer_invoice_number"), 60
+    )
+    if fbe:
+        return stay
+    fb_lines = _hotel_fb_transfer_lines(stay)
+    if not fb_lines:
+        return stay
+    tagged = []
+    for line in fb_lines:
+        inv = _hotel_folio_line_invoiced_no(line)
+        if inv:
+            tagged.append(inv)
+    if not tagged:
+        return stay
+    # Only heal when every transfer line is already tagged (nothing left to mint).
+    if any(not _hotel_folio_line_invoiced_no(line) for line in fb_lines):
+        return stay
+    # Prefer the latest FBE number when multiple combined invoices exist.
+    healed = sorted(set(tagged))[-1]
+    stay["fbTransferInvoiceNumber"] = healed
+    stay["fbTransferInvoiceGenerated"] = True
+    if not stay.get("fbTransferInvoiceGeneratedAt"):
+        stay["fbTransferInvoiceGeneratedAt"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return stay
+
+
 def _hotel_backfill_invoice_lock_fields(stay):
     """Tag legacy folio lines and snapshots after first invoice (pre-lock data)."""
     if not isinstance(stay, dict):
         return stay
+    stay = _hotel_heal_fb_invoice_flags_from_folio(stay)
     hbe = _hotel_str(stay.get("invoiceNumber") or stay.get("invoice_number"), 60)
     fbe = _hotel_str(
         stay.get("fbTransferInvoiceNumber") or stay.get("fb_transfer_invoice_number"), 60
@@ -21143,14 +21180,13 @@ def require_hotel_room_invoice_for_checkout(conn, room_id):
                 stay["invoiceGenerated"] = True
                 break
     if stay.get("invoiceGenerated") and inv_no:
+        # Pending hotel extras OR untagged F&B transfers (folio tags are source of
+        # truth — do not re-require F&B when stay-level fbTransferInvoice* was
+        # cleared by merge dissolve / primary handoff while lines stay tagged).
         if _hotel_has_pending_charges(stay):
             raise ValueError(
                 "Generate Additional Invoice before check out — pending charges remain."
             )
-        if _hotel_fb_transfer_total(stay) > 0.009 and not stay.get(
-            "fbTransferInvoiceGenerated"
-        ):
-            raise ValueError("Generate Invoice to check out (F&B transfers invoice required).")
         return
     raise ValueError("Generate Invoice to check out")
 

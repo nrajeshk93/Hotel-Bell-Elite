@@ -1327,16 +1327,31 @@
         generatedAt: (stay && stay.fbTransferInvoiceGeneratedAt) || '',
         estimatedTotal: Math.round(Number((stay && stay.fbTransferTotal) || 0) * 100) / 100
       });
+      seen[primaryFbe] = true;
     }
+    /* Heal FBE history from folio tags when stay-level FBE flags were cleared. */
+    var folio = Array.isArray(stay && stay.folioCharges) ? stay.folioCharges : [];
+    folio.forEach(function (item) {
+      if (!item || !isFbTransferFolio(item)) return;
+      var inv = folioLineInvoicedNo(item);
+      if (!inv || seen[inv]) return;
+      seen[inv] = true;
+      out.push({
+        kind: 'fb',
+        invoiceNumber: inv,
+        generatedAt: '',
+        estimatedTotal: Math.round(Number(item.amount || 0) * 100) / 100
+      });
+    });
     return out;
   }
 
   function pendingFbChargeLinesFromStay(stay) {
-    var all = fbChargeLinesFromStay(stay);
-    var hasFbe = invoiceHistoryEntries(stay).some(function (entry) {
-      return entry.kind === 'fb';
-    });
-    if (!hasFbe) return all;
+    /*
+     * Always skip folio lines already tagged with an FBE number. Stay-level
+     * fbTransferInvoiceNumber / invoiceHistory can be cleared after merge
+     * dissolve while tags remain — treating those as pending blocked checkout.
+     */
     var folio = Array.isArray(stay && stay.folioCharges) ? stay.folioCharges : [];
     var lines = [];
     var labelFn = global.hotelFolioChargeDisplayLabel;
