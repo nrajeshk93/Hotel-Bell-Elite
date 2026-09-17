@@ -381,6 +381,24 @@ def _parse_outlet(raw: str | None) -> str:
     return key if key in OUTLET_KEYS else "bar"
 
 
+def _stock_outlet_for_product(product_outlet: str | None, invoice_outlet: str) -> str:
+    """Where POS sales should hit stock for a Product Master row.
+
+    Bar-only products sold on Restaurant must still deduct Bar counter stock
+    (same physical liquor). Restaurant-only → restaurant. Both/blank → invoice
+    outlet.
+    """
+    inv = _normalize_outlet_key(invoice_outlet or "restaurant")
+    if inv not in OUTLET_KEYS:
+        inv = "restaurant"
+    prod = _normalize_outlet_key(product_outlet or "")
+    if prod == "bar":
+        return "bar"
+    if prod == "restaurant":
+        return "restaurant"
+    return inv
+
+
 def _parse_outlet_filter(raw: str | None) -> str:
     """Outlet filter for Stores list UI — All, Bar, or Restaurant. Defaults to All."""
     if raw is None or not str(raw).strip():
@@ -2052,16 +2070,19 @@ def reverse_stock_for_deleted_purchase_expense(
 def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None, allow_inactive=False):
     """Deduct recipe ingredients for a closed POS invoice (idempotent).
 
-    Matches ingredients to counter ``store_stock_items`` by outlet + product
-    name + product default unit (after converting recipe qty). Full recipe qty
-    is always deducted (``allow_negative``) — counter stock may go below zero
-    and missing counter rows are created negative. Menus without recipes,
-    unit mismatches, and missing product names are skipped with logging only —
-    never raises into POS close/settle. Marks ``pos_invoices.stock_deducted_at``
-    so re-close / reprint does not double-deduct.
+    Matches ingredients to counter ``store_stock_items`` by **product master
+    outlet** (not only the invoice POS): bar-only products always hit Bar
+    counter even when sold on Restaurant. Name + product default unit (after
+    converting recipe qty) identify the row. Full recipe qty is always deducted
+    (``allow_negative``) — counter stock may go below zero and missing counter
+    rows are created negative. Menus without recipes, unit mismatches, and
+    missing product names are skipped with logging only — never raises into POS
+    close/settle. Marks ``pos_invoices.stock_deducted_at`` so re-close / reprint
+    does not double-deduct.
 
-    ``allow_inactive``: rebuild scripts may deduct settled rows (``is_active=0``).
-    Live close/settle always leaves the row active until settle finishes.
+    ``allow_inactive``: close / clear-all / rebuild scripts pass True because
+    those paths set ``is_active=0`` before deducting. Live callers that leave
+    the row active may omit it.
     """
     ensure_pos_schema(conn)
     ensure_stores_schema(conn)
@@ -2199,7 +2220,10 @@ def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None, allow_inacti
                 need = float(per_portion) * float(sold_qty)
                 if need <= 0:
                     continue
-                key = (invoice_outlet, product_name, product_unit)
+                stock_outlet = _stock_outlet_for_product(
+                    recipe.get("product_outlet"), invoice_outlet
+                )
+                key = (stock_outlet, product_name, product_unit)
                 needs[key] = needs.get(key, 0.0) + need
 
     deducted: list[dict[str, Any]] = []

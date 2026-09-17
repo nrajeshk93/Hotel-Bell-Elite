@@ -6490,7 +6490,10 @@ def close_pos_invoice_and_free_table(conn, invoice_id, *, user_id=None):
     try:
         from stores import deduct_stock_for_pos_invoice
 
-        deduct_stock_for_pos_invoice(conn, invoice_id, user_id=user_id)
+        # Close already sets is_active=0 (ghost-cart contract); still deduct.
+        deduct_stock_for_pos_invoice(
+            conn, invoice_id, user_id=user_id, allow_inactive=True
+        )
     except Exception:
         import logging
 
@@ -7358,7 +7361,10 @@ def clear_all_pos_tables(conn, *, user_id=None, outlet=POS_OUTLET_RESTAURANT):
 
             for inv_id in closed_ids:
                 try:
-                    deduct_stock_for_pos_invoice(conn, inv_id, user_id=user_id)
+                    # Clear-all closes + deactivates first; still deduct stock.
+                    deduct_stock_for_pos_invoice(
+                        conn, inv_id, user_id=user_id, allow_inactive=True
+                    )
                 except Exception:
                     import logging
 

@@ -463,6 +463,133 @@ class PosStockDeductionTests(unittest.TestCase):
         self.assertEqual(moves[0]["place"], "counter")
         self.assertAlmostEqual(float(moves[0]["qty_delta"]), -0.1, places=3)
 
+    def test_restaurant_sale_of_bar_product_deducts_bar_counter(self):
+        """Bar-only Product Master stock must not fork into Restaurant rows."""
+        import stores as stores_mod
+
+        self.assertEqual(
+            stores_mod._stock_outlet_for_product("bar", "restaurant"), "bar"
+        )
+        self.assertEqual(
+            stores_mod._stock_outlet_for_product("restaurant", "bar"), "restaurant"
+        )
+        self.assertEqual(
+            stores_mod._stock_outlet_for_product("both", "restaurant"), "restaurant"
+        )
+
+        conn = db_mod.get_db()
+        try:
+            cat = conn.execute(
+                "SELECT id FROM store_product_categories WHERE is_active = 1 ORDER BY id LIMIT 1"
+            ).fetchone()
+            cat_id = cat["id"]
+            conn.execute(
+                """
+                INSERT INTO store_products
+                    (category_id, name, default_unit, outlet, approximate_price, is_active, sort_order)
+                VALUES (?, 'Absolute Madrin', 'mL', 'bar', 260, 1, 3)
+                """,
+                (cat_id,),
+            )
+            product_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute(
+                """
+                INSERT INTO store_stock_items
+                    (outlet, place, item_name, unit, qty_on_hand, updated_at)
+                VALUES ('bar', 'counter', 'Absolute Madrin', 'mL', 750.0, datetime('now','localtime')),
+                       ('bar', 'warehouse', 'Absolute Madrin', 'mL', 2250.0, datetime('now','localtime'))
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO pos_menu_categories (name, sort_order, is_visible, is_active, outlet)
+                VALUES ('Restaurant Bar', 3, 1, 1, 'restaurant')
+                """
+            )
+            rest_cat_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute(
+                """
+                INSERT INTO pos_menu_items
+                    (category_id, product_id, name, code, variant, rate, sort_order, is_active, outlet)
+                VALUES (?, ?, 'ABSOLUTE MADRIN', 'AM1', '', 260, 1, 1, 'restaurant')
+                """,
+                (rest_cat_id, product_id),
+            )
+            menu_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute(
+                """
+                INSERT INTO pos_menu_recipe_lines (menu_item_id, product_id, qty, unit, sort_order)
+                VALUES (?, ?, 30, 'ml', 1)
+                """,
+                (menu_id, product_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        payload = {
+            "orderNo": "ORD-REST-BAR-STOCK-1",
+            "savedAt": "2026-09-17 10:00:00",
+            "orderType": "dine_in",
+            "table": "T1",
+            "captain": "",
+            "customerName": "Guest",
+            "customerMobile": "9876543210",
+            "notes": "",
+            "discountType": "pct",
+            "discountValue": 0,
+            "serviceType": "pct",
+            "serviceValue": 0,
+            "tipAmount": 0,
+            "couponCode": "",
+            "lines": [
+                {
+                    "uid": "1",
+                    "menuId": menu_id,
+                    "name": "ABSOLUTE MADRIN",
+                    "variant": "",
+                    "rate": 260,
+                    "qty": 2,
+                }
+            ],
+            "totals": {
+                "subtotal": 520,
+                "discount": 0,
+                "discountType": "pct",
+                "discountValue": 0,
+                "gst": 0,
+                "service": 0,
+                "serviceType": "pct",
+                "serviceValue": 0,
+                "tip": 0,
+                "roundOff": 0,
+                "total": 520,
+            },
+        }
+        saved = self.client.post("/point-of-sale/api/invoices", json=payload)
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        invoice = saved.get_json()["invoice"]
+        self.assertEqual(invoice["outlet"], "restaurant")
+        invoice_id = invoice["id"]
+
+        close = self.client.post(f"/point-of-sale/api/invoices/{invoice_id}/close")
+        self.assertEqual(close.status_code, 200, close.get_data(as_text=True))
+        # 2 × 30 ml from Bar counter only — must not create a Restaurant stock row.
+        self.assertAlmostEqual(
+            self._on_hand("Absolute Madrin", "mL", "bar", "counter"), 690.0, places=3
+        )
+        self.assertAlmostEqual(
+            self._on_hand("Absolute Madrin", "mL", "bar", "warehouse"), 2250.0, places=3
+        )
+        self.assertIsNone(
+            self._on_hand("Absolute Madrin", "mL", "restaurant", "counter")
+        )
+        moves = self._sale_movements(invoice_id)
+        self.assertEqual(len(moves), 1)
+        self.assertEqual(moves[0]["outlet"], "bar")
+        self.assertEqual(moves[0]["place"], "counter")
+        self.assertAlmostEqual(float(moves[0]["qty_delta"]), -60.0, places=3)
+
 
 if __name__ == "__main__":
     unittest.main()

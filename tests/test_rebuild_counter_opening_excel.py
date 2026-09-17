@@ -267,6 +267,178 @@ class RebuildCounterFromOpeningExcelTests(unittest.TestCase):
         products = self.conn.execute("SELECT COUNT(*) AS c FROM store_products").fetchone()
         self.assertGreaterEqual(int(products["c"]), 2)
 
+    def test_stock_report_sets_counter_and_warehouse_then_replays_bar_sales(self):
+        xlsx = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+        xlsx.close()
+        self.addCleanup(lambda: os.path.exists(xlsx.name) and os.unlink(xlsx.name))
+        wb = Workbook()
+        ws = wb.active
+        ws.append(["ITEM NAME", "CATEGORY", "STOCK ON 01 SEPT 2026", "TRANSFER ENTRY ", "Warehouse stock"])
+        ws.append(["KINGFISHER STRONG", "BEER", 20, 12, 8])
+        wb.save(xlsx.name)
+
+        # Seed warehouse row that must be overwritten.
+        self.conn.execute(
+            """
+            INSERT INTO store_stock_items
+                (outlet, place, item_name, unit, qty_on_hand, updated_at)
+            VALUES ('bar', 'warehouse', 'Kingfisher Strong', 'Bottle', 1.0, datetime('now','localtime'))
+            """
+        )
+        self._insert_closed_invoice(
+            outlet="bar",
+            menu_item_id=self.menu_item_id,
+            qty=2,
+            order_date="2026-09-02",
+            order_no="BAR-SR1",
+        )
+        self.conn.commit()
+
+        report = self.rebuild.rebuild_bar_stock_from_sept_report(
+            self.conn,
+            xlsx_path=xlsx.name,
+            from_date="2026-09-01",
+            to_date="2026-09-10",
+            dry_run=False,
+        )
+        self.conn.commit()
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["matched"], 1)
+        self.assertEqual(report["invoice_count"], 1)
+        self.assertEqual(report["replay"]["replayed"], 1)
+
+        counter = self.conn.execute(
+            """
+            SELECT qty_on_hand FROM store_stock_items
+            WHERE outlet = 'bar' AND place = 'counter'
+              AND lower(item_name) = 'kingfisher strong' AND lower(unit) = 'bottle'
+            """
+        ).fetchone()
+        warehouse = self.conn.execute(
+            """
+            SELECT qty_on_hand FROM store_stock_items
+            WHERE outlet = 'bar' AND place = 'warehouse'
+              AND lower(item_name) = 'kingfisher strong' AND lower(unit) = 'bottle'
+            """
+        ).fetchone()
+        self.assertIsNotNone(counter)
+        self.assertIsNotNone(warehouse)
+        # Opening counter 12 − 2 sold = 10; warehouse stays 8
+        self.assertAlmostEqual(float(counter["qty_on_hand"]), 10.0, places=3)
+        self.assertAlmostEqual(float(warehouse["qty_on_hand"]), 8.0, places=3)
+
+    def test_stock_report_restaurant_sale_of_bar_product_hits_bar_counter(self):
+        """Absolute Madrin-style: Sep 1 counter 1 bottle, restaurant pours deduct Bar."""
+        xlsx = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+        xlsx.close()
+        self.addCleanup(lambda: os.path.exists(xlsx.name) and os.unlink(xlsx.name))
+
+        cat_id = self.conn.execute(
+            "SELECT id FROM store_product_categories WHERE is_active = 1 ORDER BY id LIMIT 1"
+        ).fetchone()["id"]
+        self.conn.execute(
+            """
+            INSERT INTO store_products
+                (category_id, name, default_unit, outlet, approximate_price, is_active, sort_order)
+            VALUES (?, 'Absolute Madrin', 'mL', 'bar', 260, 1, 5)
+            """,
+            (cat_id,),
+        )
+        product_id = self.conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO store_product_variants
+                (product_id, label, qty_in_base, approximate_price, sort_order, is_active)
+            VALUES (?, '750 mL', 750, 0, 10, 1)
+            """,
+            (product_id,),
+        )
+        self.conn.execute(
+            """
+            INSERT INTO pos_menu_categories (name, sort_order, is_visible, is_active, outlet)
+            VALUES ('Restaurant Bar', 9, 1, 1, 'restaurant')
+            """
+        )
+        rest_cat = self.conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO pos_menu_items
+                (category_id, product_id, name, code, variant, rate, sort_order, is_active, outlet)
+            VALUES (?, ?, 'ABSOLUTE MADRIN', 'AM1', '', 286, 1, 1, 'restaurant')
+            """,
+            (rest_cat, product_id),
+        )
+        menu_id = self.conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        self.conn.execute(
+            """
+            INSERT INTO pos_menu_recipe_lines (menu_item_id, product_id, qty, unit, sort_order)
+            VALUES (?, ?, 30, 'ml', 1)
+            """,
+            (menu_id, product_id),
+        )
+
+        wb = Workbook()
+        ws = wb.active
+        ws.append(["ITEM NAME", "CATEGORY", "STOCK ON 01 SEPT 2026", "TRANSFER ENTRY ", "Warehouse stock"])
+        ws.append(["ABSOLUTE MADRIN", "Vodka", 4, 1, 3])
+        wb.save(xlsx.name)
+
+        # 2 + 12 restaurant pours + 1 bar pour = 15 × 30 ml = 450 ml
+        self._insert_closed_invoice(
+            outlet="restaurant",
+            menu_item_id=menu_id,
+            qty=2,
+            order_date="2026-09-01",
+            order_no="SPC-M1",
+        )
+        self._insert_closed_invoice(
+            outlet="restaurant",
+            menu_item_id=menu_id,
+            qty=12,
+            order_date="2026-09-10",
+            order_no="SPC-M2",
+            stock_deducted_at="",
+        )
+        self._insert_closed_invoice(
+            outlet="bar",
+            menu_item_id=menu_id,
+            qty=1,
+            order_date="2026-09-12",
+            order_no="INV-M3",
+        )
+        self.conn.commit()
+
+        report = self.rebuild.rebuild_bar_stock_from_sept_report(
+            self.conn,
+            xlsx_path=xlsx.name,
+            from_date="2026-09-01",
+            to_date="2026-09-17",
+            dry_run=False,
+        )
+        self.conn.commit()
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["restaurant_bar_sales"]["applied"], 2)
+
+        counter = self.conn.execute(
+            """
+            SELECT qty_on_hand FROM store_stock_items
+            WHERE outlet = 'bar' AND place = 'counter'
+              AND lower(item_name) = 'absolute madrin' AND lower(unit) = 'ml'
+            """
+        ).fetchone()
+        warehouse = self.conn.execute(
+            """
+            SELECT qty_on_hand FROM store_stock_items
+            WHERE outlet = 'bar' AND place = 'warehouse'
+              AND lower(item_name) = 'absolute madrin' AND lower(unit) = 'ml'
+            """
+        ).fetchone()
+        self.assertIsNotNone(counter)
+        self.assertIsNotNone(warehouse)
+        # 750 − 450 = 300; warehouse 3×750 untouched
+        self.assertAlmostEqual(float(counter["qty_on_hand"]), 300.0, places=3)
+        self.assertAlmostEqual(float(warehouse["qty_on_hand"]), 2250.0, places=3)
+
 
 if __name__ == "__main__":
     unittest.main()
