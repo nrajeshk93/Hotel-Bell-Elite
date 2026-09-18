@@ -590,6 +590,177 @@ class PosStockDeductionTests(unittest.TestCase):
         self.assertEqual(moves[0]["place"], "counter")
         self.assertAlmostEqual(float(moves[0]["qty_delta"]), -60.0, places=3)
 
+    def _seed_bar_drink(self, *, counter_ml=100.0):
+        """Bar menu drink: 30 ml Absolute per portion."""
+        conn = db_mod.get_db()
+        try:
+            cat = conn.execute(
+                "SELECT id FROM store_product_categories WHERE is_active = 1 ORDER BY id LIMIT 1"
+            ).fetchone()
+            cat_id = cat["id"]
+            conn.execute(
+                """
+                INSERT INTO store_products
+                    (category_id, name, default_unit, outlet, approximate_price, is_active, sort_order)
+                VALUES (?, 'Test Vodka', 'mL', 'bar', 200, 1, 9)
+                """,
+                (cat_id,),
+            )
+            product_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute(
+                """
+                INSERT INTO store_stock_items
+                    (outlet, place, item_name, unit, qty_on_hand, updated_at)
+                VALUES ('bar', 'counter', 'Test Vodka', 'mL', ?, datetime('now','localtime'))
+                """,
+                (float(counter_ml),),
+            )
+            conn.execute(
+                """
+                INSERT INTO pos_menu_categories (name, sort_order, is_visible, is_active, outlet)
+                VALUES ('Bar Spirits', 9, 1, 1, 'bar')
+                """
+            )
+            bar_cat_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute(
+                """
+                INSERT INTO pos_menu_items
+                    (category_id, product_id, name, code, variant, rate, sort_order, is_active, outlet)
+                VALUES (?, ?, 'Vodka Shot', 'VS1', '', 150, 1, 1, 'bar')
+                """,
+                (bar_cat_id, product_id),
+            )
+            menu_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute(
+                """
+                INSERT INTO pos_menu_recipe_lines (menu_item_id, product_id, qty, unit, sort_order)
+                VALUES (?, ?, 30, 'ml', 1)
+                """,
+                (menu_id, product_id),
+            )
+            conn.commit()
+            return menu_id
+        finally:
+            conn.close()
+
+    def test_bar_menu_stock_check_blocks_when_ingredients_short(self):
+        menu_id = self._seed_bar_drink(counter_ml=20.0)  # need 30 ml for qty 1
+        res = self.client.post(
+            "/point-of-sale/api/menu/stock-check",
+            json={
+                "outlet": "restaurant",
+                "lines": [{"menuItemId": menu_id, "qty": 1, "outlet": "bar"}],
+            },
+        )
+        self.assertEqual(res.status_code, 409, res.get_data(as_text=True))
+        body = res.get_json()
+        self.assertFalse(body.get("ok"))
+        self.assertTrue(body.get("shortages"))
+        self.assertIn("Test Vodka", body.get("error") or "")
+
+        ok = self.client.post(
+            "/bar-point-of-sale/api/menu/stock-check",
+            json={
+                "outlet": "bar",
+                "lines": [{"menuItemId": menu_id, "qty": 1, "outlet": "bar"}],
+            },
+        )
+        # Still short on bar POS too.
+        self.assertEqual(ok.status_code, 409)
+
+    def test_bar_menu_stock_check_ok_when_enough(self):
+        menu_id = self._seed_bar_drink(counter_ml=100.0)
+        res = self.client.post(
+            "/bar-point-of-sale/api/menu/stock-check",
+            json={
+                "outlet": "bar",
+                "lines": [
+                    {"menuItemId": menu_id, "qty": 2, "outlet": "bar"},
+                    {"menuItemId": self.menu_item_id, "qty": 5, "outlet": "restaurant"},
+                ],
+            },
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        self.assertTrue(res.get_json().get("ok"))
+
+    def test_bar_menu_close_blocked_when_ingredients_short(self):
+        menu_id = self._seed_bar_drink(counter_ml=20.0)
+        payload = {
+            "orderNo": "ORD-BAR-SHORT-1",
+            "savedAt": "2026-07-25 10:00:00",
+            "orderType": "takeaway",
+            "table": "",
+            "captain": "",
+            "customerName": "Guest",
+            "customerMobile": "9876543210",
+            "notes": "",
+            "discountType": "pct",
+            "discountValue": 0,
+            "serviceType": "pct",
+            "serviceValue": 0,
+            "tipAmount": 0,
+            "couponCode": "",
+            "lines": [
+                {
+                    "uid": "1",
+                    "menuId": menu_id,
+                    "name": "Vodka Shot",
+                    "variant": "",
+                    "rate": 150,
+                    "qty": 1,
+                    "outlet": "bar",
+                }
+            ],
+            "totals": {
+                "subtotal": 150,
+                "discount": 0,
+                "discountType": "pct",
+                "discountValue": 0,
+                "gst": 0,
+                "service": 0,
+                "serviceType": "pct",
+                "serviceValue": 0,
+                "tip": 0,
+                "roundOff": 0,
+                "total": 150,
+            },
+        }
+        # Sold from Restaurant POS — bar menu still blocked.
+        saved = self.client.post("/point-of-sale/api/invoices", json=payload)
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        invoice_id = saved.get_json()["invoice"]["id"]
+        close = self.client.post(f"/point-of-sale/api/invoices/{invoice_id}/close")
+        self.assertEqual(close.status_code, 400, close.get_data(as_text=True))
+        err = (close.get_json() or {}).get("error") or ""
+        self.assertIn("Test Vodka", err)
+        self.assertAlmostEqual(
+            self._on_hand("Test Vodka", "mL", "bar", "counter"), 20.0, places=3
+        )
+        # Invoice must remain open (rollback).
+        inv = self.client.get(f"/point-of-sale/api/invoices/{invoice_id}")
+        self.assertEqual(inv.status_code, 200)
+        self.assertEqual((inv.get_json().get("invoice") or {}).get("status"), "open")
+
+    def test_restaurant_menu_still_allows_negative_on_close(self):
+        """Kitchen shortfalls must not block — only Bar menu is strict."""
+        # Existing test_insufficient_stock covers this path; keep an explicit alias
+        # via stock-check so restaurant-only carts always pass.
+        res = self.client.post(
+            "/point-of-sale/api/menu/stock-check",
+            json={
+                "outlet": "restaurant",
+                "lines": [
+                    {
+                        "menuItemId": self.menu_item_id,
+                        "qty": 99,
+                        "outlet": "restaurant",
+                    }
+                ],
+            },
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        self.assertTrue(res.get_json().get("ok"))
+
 
 if __name__ == "__main__":
     unittest.main()

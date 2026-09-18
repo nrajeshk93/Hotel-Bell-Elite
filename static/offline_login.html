@@ -4,16 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Hotel Bell Elite — Sign In</title>
-  <meta name="theme-color" content="#0061FF">
+  <meta name="theme-color" content="#0B0D10">
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="manifest" href="/static/manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
-  <link rel="stylesheet" href="/static/login_premium.css?v=12" />
+  <link rel="stylesheet" href="/static/hbe_login_fonts.css" />
+  <link rel="stylesheet" href="/static/login_premium.css" />
 </head>
 <body class="login-page">
   <div class="login-shell">
     <aside class="login-brand" aria-hidden="false">
-      <div class="login-brand-media" style="--login-hero:url('/static/login_hero.jpg?v=2')"></div>
+      <div class="login-brand-media" style="--login-hero:url('/static/login_hero.jpg')"></div>
       <div class="login-brand-veil" aria-hidden="true"></div>
       <div class="login-brand-inner">
         <div class="login-brand-top">
@@ -54,12 +55,12 @@
     <main class="login-panel">
       <div class="login-panel-card">
         <div class="login-panel-head">
-          <img class="login-mark login-mark--badge" src="/static/hbe_mark_form_sm.png?v=3" width="88" height="88" alt="Hotel Bell Elite" />
+          <img class="login-mark login-mark--badge" src="/static/hbe_mark_form_sm.png" width="88" height="88" alt="Hotel Bell Elite" />
           <h2 class="login-panel-title">Hotel Bell Elite</h2>
           <p class="login-panel-sub">Sign in to access your account</p>
         </div>
 
-        <div id="login-offline-notice" class="login-notice" hidden>You're offline. You can still sign in with your password on this device.</div>
+        <div id="login-offline-notice" class="login-notice">You're offline. You can still sign in with your password on this device.</div>
 
         <form method="POST" action="/login" class="login-form" autocomplete="on" id="login-form">
           <div class="form-group">
@@ -90,8 +91,8 @@
     </main>
   </div>
 
-  <script src="/static/de_pwa.js?v=14"></script>
-  <script src="/static/offline_auth.js?v=12"></script>
+  <script src="/static/de_pwa.js"></script>
+  <script src="/static/offline_auth.js"></script>
   <script src="/static/pos_offline.js"></script>
   <script src="/static/hbe_offline_sync.js"></script>
   <script>
@@ -99,7 +100,7 @@
     /* Escape hatch: stale SW shells still showing Reconnect must not block Sign In. */
     var notice = document.getElementById('login-offline-notice');
     if (notice && /Reconnect to sign in/i.test(notice.textContent || '')) {
-      window.location.replace('/static/offline_login.html?v=10');
+      window.location.replace('/static/offline_login.html');
       return;
     }
     var eye = document.getElementById('login-toggle-password');
@@ -129,7 +130,7 @@
         }
         if (runSubmit()) return;
         var s = document.createElement('script');
-        s.src = '/static/offline_auth.js?v=12';
+        s.src = '/static/offline_auth.js';
         s.onload = function () {
           if (!runSubmit() && notice) {
             notice.hidden = false;

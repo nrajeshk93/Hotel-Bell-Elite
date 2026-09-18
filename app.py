@@ -15545,6 +15545,53 @@ def point_of_sale_api_menu_items():
         conn.close()
 
 
+@app.route(
+    "/point-of-sale/api/menu/stock-check",
+    methods=["POST"],
+    endpoint="point_of_sale_api_menu_stock_check",
+)
+@app.route(
+    "/bar-point-of-sale/api/menu/stock-check",
+    methods=["POST"],
+    endpoint="bar_point_of_sale_api_menu_stock_check",
+)
+def point_of_sale_api_menu_stock_check():
+    """Preflight Bar menu cart lines against Counter stock (ingredient recipes).
+
+    Restaurant food lines are ignored. Used by Invoice add/qty+ so Bar drinks
+    cannot be billed when ingredients would push Counter below zero.
+    """
+    outlet = _pos_outlet_from_request()
+    data = request.get_json(silent=True) or {}
+    inv_outlet = str(data.get("outlet") or outlet or "restaurant").strip().lower()
+    if inv_outlet not in ("bar", "restaurant"):
+        inv_outlet = outlet if outlet in ("bar", "restaurant") else "restaurant"
+    raw_lines = data.get("lines")
+    if not isinstance(raw_lines, list):
+        raw_lines = []
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        ensure_stores_schema(conn)
+        from stores import check_bar_menu_stock_for_lines
+
+        result = check_bar_menu_stock_for_lines(
+            conn, invoice_outlet=inv_outlet, lines=raw_lines
+        )
+        payload = {
+            "ok": bool(result.get("ok")),
+            "shortages": result.get("shortages") or [],
+        }
+        if not payload["ok"]:
+            payload["error"] = (result.get("error") or "").strip() or (
+                "Not enough Bar Counter stock for this drink."
+            )
+            return jsonify(payload), 409
+        return jsonify(payload)
+    finally:
+        conn.close()
+
+
 @app.route("/point-of-sale/api/menu/items/<int:item_id>", methods=["GET"], endpoint="point_of_sale_api_menu_item_detail")
 @app.route("/bar-point-of-sale/api/menu/items/<int:item_id>", methods=["GET"], endpoint="bar_point_of_sale_api_menu_item_detail")
 def point_of_sale_api_menu_item_detail(item_id):

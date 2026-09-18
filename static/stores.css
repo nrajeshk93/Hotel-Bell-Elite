@@ -1909,8 +1909,11 @@ body.su-module #st-stock-page .st-stock-list-hdr > .st-stock-card-actions{
 body.su-module .modal-box.st-stock-bar-bottles-box{
   width:760px;
   max-width:calc(100vw - 32px);
+  max-height:calc(100vh - 48px);
   padding:0;
   overflow:hidden;
+  display:flex;
+  flex-direction:column;
   border:1px solid var(--border,#E2E8F0);
   border-radius:14px;
   box-shadow:0 18px 48px rgba(15,23,42,.16);
@@ -1925,18 +1928,20 @@ body.st-stock-modal-open{
 html.st-stock-modal-open .de-main-wrapper,
 html.st-stock-modal-open #ep-workspace .de-main-wrapper,
 html.st-stock-modal-open #de-fs-app .de-main-wrapper,
-.de-main-wrapper[data-st-scroll-locked="1"]{
+html.st-stock-modal-open #ep-workspace.de-module .de-main-wrapper:has(#st-stock-page),
+html.st-stock-modal-open #main-app.de-module .de-main-wrapper:has(#st-stock-page),
+html.st-stock-modal-open #de-fs-app .de-main-wrapper:has(#st-stock-page),
+.de-main-wrapper[data-st-scroll-locked="1"],
+html.st-stock-modal-open #st-stock-page .pl-table-wrap,
+html.st-stock-modal-open #st-stock-page .hbe-scroll-panel,
+html.st-stock-modal-open #st-stock-page .pl-list-panel--scroll,
+#st-stock-page .pl-table-wrap[data-st-scroll-locked="1"],
+#st-stock-page .hbe-scroll-panel[data-st-scroll-locked="1"]{
   overflow:hidden !important;
-  overscroll-behavior:none;
+  overscroll-behavior:none !important;
 }
 #st-stock-bar-bottles-modal.modal-overlay{
-  overscroll-behavior:contain;
-  touch-action:none;
-}
-#st-stock-bar-bottles-modal .st-stock-bar-bottles-table-wrap{
-  overscroll-behavior:contain;
-  touch-action:pan-y;
-  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:none;
 }
 #st-stock-bar-bottles-modal .st-stock-bar-bottles-hdr.card-hdr{
   display:flex;
@@ -1946,6 +1951,7 @@ html.st-stock-modal-open #de-fs-app .de-main-wrapper,
   margin:0;
   padding:14px 18px;
   border-bottom:1px solid var(--border-s,#EEF2F7);
+  flex:0 0 auto;
   flex-wrap:wrap;
   background:#fff;
 }
@@ -1968,16 +1974,25 @@ html.st-stock-modal-open #de-fs-app .de-main-wrapper,
 }
 #st-stock-bar-bottles-modal .st-stock-bar-bottles-body{
   padding:0;
+  flex:1 1 auto;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
 }
+#st-stock-bar-bottles-modal .st-stock-bar-bottles-table-wrap,
 #st-stock-bar-bottles-modal .st-stock-bar-bottles-table-wrap.pl-table-wrap{
   margin:0;
   border:0;
   border-radius:0;
-  overflow:auto;
-  max-height:min(56vh, 440px);
-  background:#fff;
+  flex:1 1 auto;
+  min-height:0;
+  max-height:none;
+  overflow:auto !important;
   overscroll-behavior:contain;
   touch-action:pan-y;
+  -webkit-overflow-scrolling:touch;
+  background:#fff;
 }
 #st-stock-bar-bottles-modal .st-stock-bar-bottles-table.pl-table{
   width:100%;

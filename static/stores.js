@@ -4874,30 +4874,77 @@
   }
 
   var _stStockModalScrollLockCount = 0;
+  var _stStockModalLockedMains = [];
+
+  function onBottlesModalWheelCapture(e) {
+    var modal = document.getElementById('st-stock-bar-bottles-modal');
+    if (!modal || !modal.classList.contains('active')) return;
+    // Always consume wheel while open so .de-main-wrapper / stock tables never move.
+    e.preventDefault();
+    if (typeof e.stopPropagation === 'function') e.stopPropagation();
+    var wrap = modal.querySelector('.st-stock-bar-bottles-table-wrap');
+    if (!wrap) return;
+    if (modal.contains(e.target) || e.target === modal) {
+      wrap.scrollTop += e.deltaY;
+    }
+  }
+
+  function onBottlesModalTouchCapture(e) {
+    var modal = document.getElementById('st-stock-bar-bottles-modal');
+    if (!modal || !modal.classList.contains('active')) return;
+    var wrap = modal.querySelector('.st-stock-bar-bottles-table-wrap');
+    // Allow native touch scrolling inside the modal table only.
+    if (wrap && wrap.contains(e.target)) return;
+    e.preventDefault();
+  }
 
   function lockStockModalBackgroundScroll(lock) {
-    var main = document.querySelector('#ep-workspace .de-main-wrapper, #de-fs-app .de-main-wrapper, .de-main-wrapper');
+    var mains = Array.from(document.querySelectorAll(
+      '#ep-workspace .de-main-wrapper, #de-fs-app .de-main-wrapper, .de-main-wrapper'
+    ));
+    var stockScrollers = Array.from(document.querySelectorAll(
+      '#st-stock-page .pl-table-wrap, #st-stock-page .hbe-scroll-panel, #st-stock-page .pl-list-panel--scroll'
+    ));
     if (lock) {
       _stStockModalScrollLockCount += 1;
       if (_stStockModalScrollLockCount > 1) return;
-      if (main) {
-        main.setAttribute('data-st-scroll-lock-top', String(main.scrollTop || 0));
+      _stStockModalLockedMains = [];
+      mains.forEach(function (main) {
+        _stStockModalLockedMains.push({
+          el: main,
+          top: main.scrollTop || 0
+        });
         main.setAttribute('data-st-scroll-locked', '1');
-      }
+        main.style.setProperty('overflow', 'hidden', 'important');
+      });
+      stockScrollers.forEach(function (el) {
+        el.setAttribute('data-st-scroll-locked', '1');
+        el.style.setProperty('overflow', 'hidden', 'important');
+      });
       document.documentElement.classList.add('st-stock-modal-open');
       if (document.body) document.body.classList.add('st-stock-modal-open');
+      document.addEventListener('wheel', onBottlesModalWheelCapture, { capture: true, passive: false });
+      document.addEventListener('touchmove', onBottlesModalTouchCapture, { capture: true, passive: false });
       return;
     }
     _stStockModalScrollLockCount = Math.max(0, _stStockModalScrollLockCount - 1);
     if (_stStockModalScrollLockCount > 0) return;
     document.documentElement.classList.remove('st-stock-modal-open');
     if (document.body) document.body.classList.remove('st-stock-modal-open');
-    if (main && main.getAttribute('data-st-scroll-locked') === '1') {
-      var top = parseFloat(main.getAttribute('data-st-scroll-lock-top') || '0');
+    document.removeEventListener('wheel', onBottlesModalWheelCapture, true);
+    document.removeEventListener('touchmove', onBottlesModalTouchCapture, true);
+    _stStockModalLockedMains.forEach(function (entry) {
+      var main = entry.el;
+      if (!main) return;
       main.removeAttribute('data-st-scroll-locked');
-      main.removeAttribute('data-st-scroll-lock-top');
-      if (isFinite(top)) main.scrollTop = top;
-    }
+      main.style.removeProperty('overflow');
+      if (isFinite(entry.top)) main.scrollTop = entry.top;
+    });
+    _stStockModalLockedMains = [];
+    stockScrollers.forEach(function (el) {
+      el.removeAttribute('data-st-scroll-locked');
+      el.style.removeProperty('overflow');
+    });
   }
 
   function syncStockBarUnitTabs(mode) {
@@ -5108,18 +5155,6 @@
       modal.addEventListener('click', function (e) {
         if (e.target === modal) closeStockBarBottlesModal();
       });
-      modal.addEventListener('wheel', function (e) {
-        var wrap = modal.querySelector('.st-stock-bar-bottles-table-wrap');
-        if (wrap && wrap.contains(e.target)) {
-          var canScroll = wrap.scrollHeight > wrap.clientHeight + 1;
-          var delta = e.deltaY || 0;
-          var atTop = wrap.scrollTop <= 0 && delta < 0;
-          var atBottom = wrap.scrollTop + wrap.clientHeight >= wrap.scrollHeight - 1 && delta > 0;
-          if (!canScroll || atTop || atBottom) e.preventDefault();
-          return;
-        }
-        e.preventDefault();
-      }, { passive: false });
       var closeBtn = document.getElementById('st-stock-bar-bottles-close');
       if (closeBtn) {
         closeBtn.addEventListener('click', function (e) {

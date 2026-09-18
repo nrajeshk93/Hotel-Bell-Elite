@@ -510,6 +510,155 @@ def _resolve_stock_product_identity(conn, outlet, item_name, unit) -> tuple[str,
     return canon_name, canon_unit
 
 
+# Historic Product Master quirk: Excel bottle counts were stored as liters via ×0.275
+# (e.g. Breezer Cranberry). When master is corrected to Bottle, invert that path.
+_STOCK_LITER_PER_BOTTLE_QUIRK = 0.275
+
+
+def _volume_qty_as_bottles(
+    qty: float,
+    from_unit: str,
+    *,
+    liter_per_bottle: float = _STOCK_LITER_PER_BOTTLE_QUIRK,
+) -> float:
+    """Convert liter/ml on-hand into bottles for a Bottle Product Master.
+
+    Handles mixed rows where an opening used the 0.275 L/bottle quirk and later
+    whole bottle counts were posted as liters without conversion (e.g. 6.6 + 17
+    → 41 bottles).
+    """
+    try:
+        q = float(qty or 0)
+    except (TypeError, ValueError):
+        q = 0.0
+    unit_key = _normalize_pos_menu_unit(from_unit)
+    if unit_key == "ml":
+        q = q / 1000.0
+        unit_key = "liter"
+    if unit_key != "liter":
+        return round(q, 3)
+    if abs(q) < 1e-9:
+        return 0.0
+    sign = 1.0 if q >= 0 else -1.0
+    q = abs(q)
+    per = float(liter_per_bottle) if liter_per_bottle and liter_per_bottle > 0 else 0.275
+    bottles_exact = q / per
+    if abs(bottles_exact - round(bottles_exact)) < 1e-6:
+        return sign * float(round(bottles_exact))
+    if abs(q - round(q)) < 1e-6:
+        return sign * float(round(q))
+    for k in range(int(q) + 1, -1, -1):
+        rem = q - k
+        if rem < -1e-9:
+            continue
+        b = rem / per
+        if abs(b - round(b)) < 1e-6:
+            return sign * float(round(b) + k)
+    return sign * round(bottles_exact, 3)
+
+
+def _repair_stock_units_to_product_master(conn) -> int:
+    """Realign stock rows whose unit drifted from Product Master (liter → Bottle).
+
+    Idempotent. Merges into an existing master-unit row when present, deletes
+    empty ml ghost rows for bottle/can masters. Returns rows touched.
+    """
+    try:
+        rows = conn.execute(
+            """
+            SELECT s.id, s.item_name, s.unit, s.outlet, s.place, s.qty_on_hand,
+                   p.default_unit AS master_unit, p.name AS master_name
+            FROM store_stock_items s
+            JOIN store_products p
+              ON p.is_active = 1
+             AND lower(trim(p.name)) = lower(trim(s.item_name))
+             AND (
+                  lower(trim(coalesce(p.outlet, ''))) = lower(trim(s.outlet))
+                  OR lower(trim(coalesce(p.outlet, ''))) IN ('both', '')
+             )
+            WHERE lower(trim(coalesce(s.unit, '')))
+                != lower(trim(coalesce(p.default_unit, '')))
+            ORDER BY s.id
+            """
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return 0
+    if not rows:
+        return 0
+
+    touched = 0
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for row in rows:
+        stock_unit = str(row["unit"] or "").strip()
+        master_unit = str(row["master_unit"] or "").strip()
+        if not master_unit:
+            continue
+        sk = _normalize_pos_menu_unit(stock_unit)
+        mk = _normalize_pos_menu_unit(master_unit)
+        try:
+            qty = float(row["qty_on_hand"] or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+        canon_name = _normalize_stock_item_name(row["master_name"] or row["item_name"])
+        outlet = str(row["outlet"] or "").strip()
+        place = _normalize_stock_place(row["place"])
+
+        # Empty ml ghosts left after master moved to bottle/can.
+        if sk == "ml" and mk in ("bottle", "can", "pack") and abs(qty) < 0.0001:
+            conn.execute("DELETE FROM store_stock_items WHERE id = ?", (int(row["id"]),))
+            touched += 1
+            continue
+
+        if sk not in ("liter", "ml") or mk != "bottle":
+            continue
+
+        new_qty = _volume_qty_as_bottles(qty, stock_unit)
+        # Prefer an existing Bottle row for the same place.
+        siblings = conn.execute(
+            """
+            SELECT id, qty_on_hand, item_name, unit FROM store_stock_items
+            WHERE outlet = ? AND place = ? AND id != ?
+            """,
+            (outlet, place, int(row["id"])),
+        ).fetchall()
+        name_key = canon_name.lower()
+        master_key = _stock_unit_match_key(master_unit)
+        merge_into = None
+        for sib in siblings:
+            s_name, s_unit = _stock_identity_keys(sib["item_name"], sib["unit"])
+            if s_name == name_key and s_unit == master_key:
+                merge_into = sib
+                break
+        if merge_into is not None:
+            try:
+                prior = float(merge_into["qty_on_hand"] or 0)
+            except (TypeError, ValueError):
+                prior = 0.0
+            conn.execute(
+                """
+                UPDATE store_stock_items
+                SET qty_on_hand = ?, item_name = ?, unit = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (round(prior + new_qty, 3), canon_name, master_unit, now, int(merge_into["id"])),
+            )
+            conn.execute("DELETE FROM store_stock_items WHERE id = ?", (int(row["id"]),))
+        else:
+            conn.execute(
+                """
+                UPDATE store_stock_items
+                SET qty_on_hand = ?, item_name = ?, unit = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (round(new_qty, 3), canon_name, master_unit, now, int(row["id"])),
+            )
+        touched += 1
+
+    if touched:
+        conn.commit()
+    return touched
+
+
 def _stock_qty_on_hand(conn, outlet: str, place: str, item_name: str, unit: str) -> float:
     name_key, unit_key = _stock_identity_keys(item_name, unit)
     rows = conn.execute(
@@ -2067,18 +2216,294 @@ def reverse_stock_for_deleted_purchase_expense(
     return None
 
 
-def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None, allow_inactive=False):
+def compute_pos_recipe_needs(
+    conn,
+    menu_qty_by_id: dict[int, float],
+    invoice_outlet: str,
+    *,
+    skipped: list[dict[str, Any]] | None = None,
+    log_order_no: str = "",
+) -> dict[tuple[str, str, str], float]:
+    """Expand menu sold qty into counter stock needs (outlet, name, unit) → qty.
+
+    Same math as POS close deduct. Skips (no recipe / missing product / unit
+    mismatch) are appended to ``skipped`` when provided; never raises.
+    """
+    needs: dict[tuple[str, str, str], float] = {}
+    if not menu_qty_by_id:
+        return needs
+    skip = skipped if skipped is not None else []
+    order_no = (log_order_no or "").strip() or "?"
+    inv_outlet = _normalize_outlet_key(invoice_outlet or "restaurant")
+    if inv_outlet not in OUTLET_KEYS:
+        inv_outlet = "restaurant"
+
+    recipes = list_pos_menu_recipe_lines(conn, list(menu_qty_by_id.keys()))
+    recipes_by_menu: dict[int, list] = {}
+    for recipe in recipes:
+        recipes_by_menu.setdefault(int(recipe["menu_item_id"]), []).append(recipe)
+
+    for mid, sold_qty in menu_qty_by_id.items():
+        recipe_lines = recipes_by_menu.get(int(mid)) or []
+        if not recipe_lines:
+            skip.append({"reason": "no_recipe", "menu_item_id": mid, "qty": sold_qty})
+            logger.info(
+                "POS stock: no recipe for menu_item_id=%s on invoice %s",
+                mid,
+                order_no,
+            )
+            continue
+        for recipe in recipe_lines:
+            product_name = (recipe.get("product_name") or "").strip()
+            product_unit = (recipe.get("product_unit") or "").strip() or "pcs"
+            if not product_name:
+                skip.append(
+                    {
+                        "reason": "missing_product",
+                        "menu_item_id": mid,
+                        "product_id": recipe.get("product_id"),
+                    }
+                )
+                logger.info(
+                    "POS stock: missing product for recipe on menu_item_id=%s invoice %s",
+                    mid,
+                    order_no,
+                )
+                continue
+            per_portion = _qty_in_product_units(
+                recipe.get("qty"), recipe.get("unit"), product_unit
+            )
+            if per_portion is None:
+                skip.append(
+                    {
+                        "reason": "unit_mismatch",
+                        "menu_item_id": mid,
+                        "product_name": product_name,
+                        "recipe_unit": recipe.get("unit"),
+                        "product_unit": product_unit,
+                    }
+                )
+                logger.info(
+                    "POS stock: unit mismatch %s (%s→%s) invoice %s",
+                    product_name,
+                    recipe.get("unit"),
+                    product_unit,
+                    order_no,
+                )
+                continue
+            need = float(per_portion) * float(sold_qty)
+            if need <= 0:
+                continue
+            stock_outlet = _stock_outlet_for_product(
+                recipe.get("product_outlet"), inv_outlet
+            )
+            key = (stock_outlet, product_name, product_unit)
+            needs[key] = needs.get(key, 0.0) + need
+    return needs
+
+
+def _pos_menu_item_outlets(conn, menu_item_ids: list[int]) -> dict[int, str]:
+    """Map menu_item_id → restaurant|bar from Product/Menu master."""
+    ids = [int(x) for x in menu_item_ids if x is not None]
+    if not ids:
+        return {}
+    placeholders = ",".join("?" for _ in ids)
+    rows = conn.execute(
+        f"""
+        SELECT id, outlet FROM pos_menu_items
+        WHERE id IN ({placeholders})
+        """,
+        ids,
+    ).fetchall()
+    out: dict[int, str] = {}
+    for row in rows:
+        key = _normalize_outlet_key(row["outlet"] or "restaurant")
+        if key not in OUTLET_KEYS:
+            key = "restaurant"
+        out[int(row["id"])] = key
+    return out
+
+
+def _format_bar_stock_shortage_message(shortages: list[dict[str, Any]]) -> str:
+    if not shortages:
+        return "Not enough Bar Counter stock for this drink."
+    parts = []
+    for row in shortages[:4]:
+        name = str(row.get("item_name") or "item").strip() or "item"
+        unit = str(row.get("unit") or "").strip()
+        need = row.get("need")
+        on_hand = row.get("on_hand")
+        try:
+            need_s = f"{float(need):g}"
+        except (TypeError, ValueError):
+            need_s = str(need)
+        try:
+            hand_s = f"{float(on_hand):g}"
+        except (TypeError, ValueError):
+            hand_s = str(on_hand)
+        suffix = f" {unit}" if unit else ""
+        parts.append(f"{name}: need {need_s}{suffix}, on hand {hand_s}{suffix}")
+    extra = len(shortages) - len(parts)
+    msg = "Not enough Bar Counter stock — " + "; ".join(parts)
+    if extra > 0:
+        msg += f" (+{extra} more)"
+    return msg
+
+
+def _shortages_for_needs(
+    conn, needs: dict[tuple[str, str, str], float]
+) -> list[dict[str, Any]]:
+    shortages: list[dict[str, Any]] = []
+    for (outlet, name, unit), need_qty in needs.items():
+        on_hand = _stock_qty_on_hand(conn, outlet, STOCK_PLACE_COUNTER, name, unit)
+        if on_hand + 0.0001 < float(need_qty):
+            shortages.append(
+                {
+                    "outlet": outlet,
+                    "item_name": name,
+                    "unit": unit,
+                    "need": round(float(need_qty), 4),
+                    "on_hand": round(float(on_hand), 4),
+                }
+            )
+    return shortages
+
+
+def check_bar_menu_stock_for_lines(
+    conn, *, invoice_outlet: str, lines: list[dict[str, Any]] | None
+) -> dict[str, Any]:
+    """Preflight Bar menu cart lines against Counter stock (ingredient-based).
+
+    Only menu items with outlet=bar are checked. Restaurant food is ignored.
+    Lines without a menu_item_id or without usable recipes are allowed.
+    """
+    ensure_pos_schema(conn)
+    ensure_stores_schema(conn)
+    inv_outlet = _normalize_outlet_key(invoice_outlet or "restaurant")
+    if inv_outlet not in OUTLET_KEYS:
+        inv_outlet = "restaurant"
+
+    raw_lines = list(lines or [])
+    mid_candidates: list[int] = []
+    parsed: list[tuple[int, float]] = []
+    for raw in raw_lines:
+        if not isinstance(raw, dict):
+            continue
+        mid = raw.get("menuItemId")
+        if mid is None:
+            mid = raw.get("menu_item_id")
+        if mid is None:
+            mid = raw.get("menuId")
+        try:
+            mid_i = int(mid) if mid not in (None, "") else None
+        except (TypeError, ValueError):
+            mid_i = None
+        if mid_i is None:
+            continue
+        try:
+            qty = float(raw.get("qty") or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+        if qty <= 0:
+            continue
+        mid_candidates.append(mid_i)
+        parsed.append((mid_i, qty))
+
+    if not parsed:
+        return {"ok": True, "shortages": []}
+
+    outlets = _pos_menu_item_outlets(conn, mid_candidates)
+    menu_qty: dict[int, float] = {}
+    for mid_i, qty in parsed:
+        # Prefer Product/Menu master outlet; fall back to client hint.
+        menu_outlet = outlets.get(mid_i)
+        if menu_outlet is None:
+            hint = ""
+            for raw in raw_lines:
+                if not isinstance(raw, dict):
+                    continue
+                raw_mid = raw.get("menuItemId", raw.get("menu_item_id", raw.get("menuId")))
+                try:
+                    if int(raw_mid) == mid_i:
+                        hint = str(raw.get("outlet") or "").strip().lower()
+                        break
+                except (TypeError, ValueError):
+                    continue
+            menu_outlet = "bar" if hint == "bar" else "restaurant"
+        if menu_outlet != "bar":
+            continue
+        menu_qty[mid_i] = menu_qty.get(mid_i, 0.0) + qty
+
+    if not menu_qty:
+        return {"ok": True, "shortages": []}
+
+    needs = compute_pos_recipe_needs(conn, menu_qty, inv_outlet)
+    shortages = _shortages_for_needs(conn, needs)
+    return {
+        "ok": not shortages,
+        "shortages": shortages,
+        "error": _format_bar_stock_shortage_message(shortages) if shortages else "",
+    }
+
+
+def preflight_bar_menu_stock_for_invoice(conn, invoice_id) -> dict[str, Any]:
+    """Check Bar menu lines on a saved invoice before close/settle."""
+    ensure_pos_schema(conn)
+    try:
+        invoice_id = int(invoice_id)
+    except (TypeError, ValueError):
+        return {"ok": False, "reason": "invalid_id", "shortages": [], "error": "Invalid invoice id."}
+    inv = conn.execute(
+        """
+        SELECT id, outlet, COALESCE(stock_deducted_at, '') AS stock_deducted_at
+        FROM pos_invoices WHERE id = ?
+        """,
+        (invoice_id,),
+    ).fetchone()
+    if not inv:
+        return {"ok": False, "reason": "not_found", "shortages": [], "error": "Invoice not found."}
+    if (inv["stock_deducted_at"] or "").strip():
+        return {"ok": True, "skipped": True, "reason": "already_deducted", "shortages": []}
+    lines = conn.execute(
+        """
+        SELECT menu_item_id, qty FROM pos_invoice_lines
+        WHERE invoice_id = ?
+        ORDER BY sort_order ASC, id ASC
+        """,
+        (invoice_id,),
+    ).fetchall()
+    payload = [
+        {"menu_item_id": row["menu_item_id"], "qty": row["qty"]}
+        for row in lines
+    ]
+    return check_bar_menu_stock_for_lines(
+        conn,
+        invoice_outlet=inv["outlet"] or "restaurant",
+        lines=payload,
+    )
+
+
+def deduct_stock_for_pos_invoice(
+    conn,
+    invoice_id,
+    *,
+    user_id=None,
+    allow_inactive=False,
+    force_negative=False,
+):
     """Deduct recipe ingredients for a closed POS invoice (idempotent).
 
     Matches ingredients to counter ``store_stock_items`` by **product master
     outlet** (not only the invoice POS): bar-only products always hit Bar
     counter even when sold on Restaurant. Name + product default unit (after
-    converting recipe qty) identify the row. Full recipe qty is always deducted
-    (``allow_negative``) — counter stock may go below zero and missing counter
-    rows are created negative. Menus without recipes, unit mismatches, and
-    missing product names are skipped with logging only — never raises into POS
-    close/settle. Marks ``pos_invoices.stock_deducted_at`` so re-close / reprint
-    does not double-deduct.
+    converting recipe qty) identify the row.
+
+    Bar menu lines refuse shortfalls unless ``force_negative`` (clear-all /
+    rebuild). Restaurant menu lines still deduct with ``allow_negative`` so
+    kitchen counter may go below zero. Menus without recipes, unit mismatches,
+    and missing product names are skipped with logging only. Marks
+    ``pos_invoices.stock_deducted_at`` so re-close / reprint does not
+    double-deduct.
 
     ``allow_inactive``: close / clear-all / rebuild scripts pass True because
     those paths set ``is_active=0`` before deducting. Live callers that leave
@@ -2141,8 +2566,11 @@ def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None, allow_inacti
         (invoice_id,),
     ).fetchall()
 
-    menu_qty: dict[int, float] = {}
+    menu_qty_all: dict[int, float] = {}
+    menu_qty_bar: dict[int, float] = {}
+    menu_qty_other: dict[int, float] = {}
     skipped: list[dict[str, Any]] = []
+    mid_list: list[int] = []
     for line in lines:
         mid = line["menu_item_id"]
         try:
@@ -2160,116 +2588,104 @@ def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None, allow_inacti
             continue
         if qty <= 0:
             continue
-        menu_qty[int(mid)] = menu_qty.get(int(mid), 0.0) + qty
+        mid_i = int(mid)
+        mid_list.append(mid_i)
+        menu_qty_all[mid_i] = menu_qty_all.get(mid_i, 0.0) + qty
 
-    needs: dict[tuple[str, str, str], float] = {}
-    if menu_qty:
-        recipes = list_pos_menu_recipe_lines(conn, list(menu_qty.keys()))
-        recipes_by_menu: dict[int, list] = {}
-        for recipe in recipes:
-            recipes_by_menu.setdefault(int(recipe["menu_item_id"]), []).append(recipe)
+    outlets = _pos_menu_item_outlets(conn, mid_list)
+    for mid_i, qty in menu_qty_all.items():
+        if outlets.get(mid_i) == "bar":
+            menu_qty_bar[mid_i] = qty
+        else:
+            menu_qty_other[mid_i] = qty
 
-        for mid, sold_qty in menu_qty.items():
-            recipe_lines = recipes_by_menu.get(mid) or []
-            if not recipe_lines:
-                skipped.append({"reason": "no_recipe", "menu_item_id": mid, "qty": sold_qty})
+    needs_bar = compute_pos_recipe_needs(
+        conn,
+        menu_qty_bar,
+        invoice_outlet,
+        skipped=skipped,
+        log_order_no=order_no,
+    )
+    needs_other = compute_pos_recipe_needs(
+        conn,
+        menu_qty_other,
+        invoice_outlet,
+        skipped=skipped,
+        log_order_no=order_no,
+    )
+
+    if not force_negative and needs_bar:
+        shortages = _shortages_for_needs(conn, needs_bar)
+        if shortages:
+            return {
+                "ok": False,
+                "reason": "insufficient_stock",
+                "invoice_id": invoice_id,
+                "order_no": order_no,
+                "shortages": shortages,
+                "error": _format_bar_stock_shortage_message(shortages),
+                "skipped": skipped,
+            }
+
+    deducted: list[dict[str, Any]] = []
+
+    def _apply_needs(needs_map: dict[tuple[str, str, str], float], *, allow_neg: bool) -> None:
+        for (outlet, name, unit), need_qty in needs_map.items():
+            applied = _adjust_stock(
+                conn,
+                outlet=outlet,
+                place=STOCK_PLACE_COUNTER,
+                item_name=name,
+                unit=unit,
+                qty_delta=-abs(need_qty),
+                movement_type="sale",
+                ref_type="pos_invoice",
+                ref_id=invoice_id,
+                notes=f"POS sale {order_no}",
+                user_id=user_id,
+                allow_negative=allow_neg,
+            )
+            if abs(applied) < 0.0001:
+                skipped.append(
+                    {
+                        "reason": "no_movement",
+                        "outlet": outlet,
+                        "item_name": name,
+                        "unit": unit,
+                        "needed": round(need_qty, 4),
+                    }
+                )
                 logger.info(
-                    "POS stock deduct: no recipe for menu_item_id=%s on invoice %s",
-                    mid,
+                    "POS stock deduct: no movement for %s (%s) outlet=%s needed=%.4f invoice %s",
+                    name,
+                    unit,
+                    outlet,
+                    need_qty,
                     order_no,
                 )
                 continue
-            for recipe in recipe_lines:
-                product_name = (recipe.get("product_name") or "").strip()
-                product_unit = (recipe.get("product_unit") or "").strip() or "pcs"
-                if not product_name:
-                    skipped.append(
-                        {
-                            "reason": "missing_product",
-                            "menu_item_id": mid,
-                            "product_id": recipe.get("product_id"),
-                        }
-                    )
-                    logger.info(
-                        "POS stock deduct: missing product for recipe on menu_item_id=%s invoice %s",
-                        mid,
-                        order_no,
-                    )
-                    continue
-                per_portion = _qty_in_product_units(
-                    recipe.get("qty"), recipe.get("unit"), product_unit
-                )
-                if per_portion is None:
-                    skipped.append(
-                        {
-                            "reason": "unit_mismatch",
-                            "menu_item_id": mid,
-                            "product_name": product_name,
-                            "recipe_unit": recipe.get("unit"),
-                            "product_unit": product_unit,
-                        }
-                    )
-                    logger.info(
-                        "POS stock deduct: unit mismatch %s (%s→%s) invoice %s",
-                        product_name,
-                        recipe.get("unit"),
-                        product_unit,
-                        order_no,
-                    )
-                    continue
-                need = float(per_portion) * float(sold_qty)
-                if need <= 0:
-                    continue
-                stock_outlet = _stock_outlet_for_product(
-                    recipe.get("product_outlet"), invoice_outlet
-                )
-                key = (stock_outlet, product_name, product_unit)
-                needs[key] = needs.get(key, 0.0) + need
-
-    deducted: list[dict[str, Any]] = []
-    for (outlet, name, unit), need_qty in needs.items():
-        applied = _adjust_stock(
-            conn,
-            outlet=outlet,
-            place=STOCK_PLACE_COUNTER,
-            item_name=name,
-            unit=unit,
-            qty_delta=-abs(need_qty),
-            movement_type="sale",
-            ref_type="pos_invoice",
-            ref_id=invoice_id,
-            notes=f"POS sale {order_no}",
-            user_id=user_id,
-            allow_negative=True,
-        )
-        if abs(applied) < 0.0001:
-            # Unexpected with allow_negative; log and continue without blocking POS.
-            skipped.append(
+            deducted.append(
                 {
-                    "reason": "no_movement",
                     "outlet": outlet,
                     "item_name": name,
                     "unit": unit,
-                    "needed": round(need_qty, 4),
+                    "qty_delta": round(applied, 4),
                 }
             )
-            logger.info(
-                "POS stock deduct: no movement for %s (%s) outlet=%s needed=%.4f invoice %s",
-                name,
-                unit,
-                outlet,
-                need_qty,
-                order_no,
-            )
-            continue
-        deducted.append(
-            {
-                "outlet": outlet,
-                "item_name": name,
-                "unit": unit,
-                "qty_delta": round(applied, 4),
-            }
-        )
+
+    try:
+        _apply_needs(needs_bar, allow_neg=bool(force_negative))
+        _apply_needs(needs_other, allow_neg=True)
+    except ValueError as exc:
+        return {
+            "ok": False,
+            "reason": "insufficient_stock",
+            "invoice_id": invoice_id,
+            "order_no": order_no,
+            "error": str(exc),
+            "shortages": _shortages_for_needs(conn, needs_bar) if needs_bar else [],
+            "skipped": skipped,
+        }
 
     conn.execute(
         """
@@ -2286,6 +2702,7 @@ def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None, allow_inacti
         "deducted": deducted,
         "skipped": skipped,
     }
+
 
 def _load_product_catalog(conn, stores_outlet: str | None = None):
     """Load product master.
@@ -3370,6 +3787,7 @@ def stores_product_master():
                             )
                             _rename_store_item_name_refs(conn, old_name, form["name"])
                             _save_product_variants(conn, product_id, variants)
+                            _repair_stock_units_to_product_master(conn)
                             conn.commit()
                             flash("Product updated.", "ok")
                             return _pm_redirect()
@@ -8907,6 +9325,7 @@ def stores_stock():
     conn = get_db()
     try:
         ensure_stores_schema(conn)
+        _repair_stock_units_to_product_master(conn)
         items = conn.execute(
             f"""
             SELECT * FROM store_stock_items
@@ -8982,6 +9401,7 @@ def stores_stock_export():
     conn = get_db()
     try:
         ensure_stores_schema(conn)
+        _repair_stock_units_to_product_master(conn)
         rows = _load_stock_report_items(
             conn,
             outlet,
@@ -9183,6 +9603,7 @@ def stores_stock_export_bottles():
         conn = get_db()
         try:
             ensure_stores_schema(conn)
+            _repair_stock_units_to_product_master(conn)
             rows = _load_stock_bottle_report_items(
                 conn, place=place, category=category, q=q
             )

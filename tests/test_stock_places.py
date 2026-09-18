@@ -1252,5 +1252,94 @@ class StockPlaceTests(unittest.TestCase):
             self.assertAlmostEqual(by_place["counter"], 35.0)
             self.assertAlmostEqual(by_place["warehouse"], 475.0)
 
+    def test_volume_qty_as_bottles_handles_quirk_and_mixed(self):
+        convert = self.stores_mod._volume_qty_as_bottles
+        self.assertAlmostEqual(convert(6.6, "liter"), 24.0)
+        self.assertAlmostEqual(convert(23.6, "liter"), 41.0)
+        self.assertAlmostEqual(convert(8.0, "liter"), 8.0)
+        self.assertAlmostEqual(convert(2750.0, "ml"), 10.0)
+
+    def test_repair_stock_units_liter_to_bottle_master(self):
+        self._insert_product_with_pack(
+            name="Breezer Cranberry",
+            unit="Bottle",
+            outlet="bar",
+            pack_label="1 Bottle",
+            pack_qty_in_base=1.0,
+        )
+        self._insert_product_with_pack(
+            name="Breezer Jamaican",
+            unit="Bottle",
+            outlet="bar",
+            pack_label="1 Bottle",
+            pack_qty_in_base=1.0,
+        )
+        self._insert_stock(
+            outlet="bar",
+            place="counter",
+            item_name="Breezer Cranberry",
+            unit="liter",
+            qty=23.6,
+        )
+        self._insert_stock(
+            outlet="bar",
+            place="warehouse",
+            item_name="Breezer Cranberry",
+            unit="liter",
+            qty=6.6,
+        )
+        self._insert_stock(
+            outlet="bar",
+            place="counter",
+            item_name="Breezer Jamaican",
+            unit="liter",
+            qty=8.0,
+        )
+        # Empty ml ghost for a bottle master.
+        self._insert_product_with_pack(
+            name="Ghost Btl",
+            unit="Bottle",
+            outlet="bar",
+            pack_label="1 Bottle",
+            pack_qty_in_base=1.0,
+        )
+        self._insert_stock(
+            outlet="bar", place="counter", item_name="Ghost Btl", unit="mL", qty=0.0
+        )
+
+        conn = db_mod.get_db()
+        try:
+            touched = self.stores_mod._repair_stock_units_to_product_master(conn)
+            self.assertGreaterEqual(touched, 4)
+            rows = conn.execute(
+                """
+                SELECT item_name, unit, place, qty_on_hand
+                FROM store_stock_items
+                WHERE lower(item_name) IN (
+                    'breezer cranberry', 'breezer jamaican', 'ghost btl'
+                )
+                ORDER BY item_name, place
+                """
+            ).fetchall()
+        finally:
+            conn.close()
+
+        by_key = {
+            (r["item_name"], r["place"]): (r["unit"], float(r["qty_on_hand"]))
+            for r in rows
+        }
+        self.assertEqual(by_key[("Breezer Cranberry", "counter")], ("Bottle", 41.0))
+        self.assertEqual(by_key[("Breezer Cranberry", "warehouse")], ("Bottle", 24.0))
+        self.assertEqual(by_key[("Breezer Jamaican", "counter")], ("Bottle", 8.0))
+        self.assertNotIn(("Ghost Btl", "counter"), by_key)
+
+        # Idempotent.
+        conn = db_mod.get_db()
+        try:
+            self.assertEqual(self.stores_mod._repair_stock_units_to_product_master(conn), 0)
+        finally:
+            conn.close()
+
+
 if __name__ == "__main__":
     unittest.main()

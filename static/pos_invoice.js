@@ -51,6 +51,7 @@
   var FLOOR_API = '/point-of-sale/api/floor';
   var MENU_ITEMS_API = '/point-of-sale/api/menu/items';
   var MENU_CATEGORIES_API = '/point-of-sale/api/menu/categories';
+  var MENU_STOCK_CHECK_API = '/point-of-sale/api/menu/stock-check';
   var CUSTOMERS_API = '/point-of-sale/api/customers';
   var LEGACY_FLOOR_KEY = 'hbe_pos_floor_demo';
   var INVOICE_API = '/point-of-sale/api/invoices';
@@ -89,6 +90,7 @@
     FLOOR_API = base + '/api/floor';
     MENU_ITEMS_API = base + '/api/menu/items';
     MENU_CATEGORIES_API = base + '/api/menu/categories';
+    MENU_STOCK_CHECK_API = base + '/api/menu/stock-check';
     CUSTOMERS_API = base + '/api/customers';
     INVOICE_API = base + '/api/invoices';
     INVOICE_BY_TABLE_API = base + '/api/invoices/by-table';
@@ -1288,19 +1290,21 @@
       });
   }
 
-  function toast(msg) {
+  function toast(msg, ms) {
     var el = $('#pos-inv-toast');
     if (!el) return;
     el.hidden = false;
     el.textContent = msg;
     el.classList.add('is-visible');
     clearTimeout(toast._t);
+    var hold = Number(ms) || 2200;
+    if (String(msg || '').length > 80 && hold < 4000) hold = 4000;
     toast._t = setTimeout(function () {
       el.classList.remove('is-visible');
       setTimeout(function () {
         el.hidden = true;
       }, 200);
-    }, 2200);
+    }, hold);
   }
 
   /** Fullscreen-safe confirm (prefer deConfirm; never block native confirm alone). */
@@ -2489,6 +2493,90 @@
     return 'restaurant';
   }
 
+  function itemMenuOutlet(item) {
+    return String((item && item.outlet) || '')
+      .trim()
+      .toLowerCase() === 'bar'
+      ? 'bar'
+      : 'restaurant';
+  }
+
+  function stockCheckLinesPayload(qtyByUid, extraLine) {
+    var out = [];
+    state.lines.forEach(function (line) {
+      var qty = Number(line.qty) || 0;
+      if (qtyByUid && Object.prototype.hasOwnProperty.call(qtyByUid, line.uid)) {
+        qty = Number(qtyByUid[line.uid]) || 0;
+      }
+      if (qty <= 0) return;
+      out.push({
+        menuItemId: line.menuId != null ? line.menuId : null,
+        qty: qty,
+        outlet: lineMenuOutlet(line)
+      });
+    });
+    if (extraLine && extraLine.menuItemId && Number(extraLine.qty) > 0) {
+      out.push({
+        menuItemId: extraLine.menuItemId,
+        qty: Number(extraLine.qty) || 0,
+        outlet: String(extraLine.outlet || 'bar').toLowerCase() === 'bar' ? 'bar' : 'restaurant'
+      });
+    }
+    return out;
+  }
+
+  function ensureBarMenuStockOk(proposedLines) {
+    var lines = Array.isArray(proposedLines) ? proposedLines : [];
+    var hasBar = lines.some(function (line) {
+      return (
+        String(line.outlet || '').toLowerCase() === 'bar' &&
+        line.menuItemId != null &&
+        line.menuItemId !== ''
+      );
+    });
+    if (!hasBar) return Promise.resolve(true);
+    if (!isBrowserOnline()) {
+      toast(
+        'Reconnect to add Bar menu items — ingredient stock must be verified online.',
+        4000
+      );
+      return Promise.resolve(false);
+    }
+    syncPosApiPaths();
+    return fetch(MENU_STOCK_CHECK_API, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        outlet: resolvePosOutlet(),
+        lines: lines
+      })
+    })
+      .then(function (res) {
+        return res.json().then(function (data) {
+          return { httpOk: res.ok, data: data || {} };
+        });
+      })
+      .then(function (result) {
+        if (result.data && result.data.ok) return true;
+        var err =
+          (result.data && result.data.error) ||
+          'Not enough Bar Counter stock for this drink.';
+        toast(err, 4500);
+        return false;
+      })
+      .catch(function () {
+        toast(
+          'Could not verify Bar stock. Check your connection and try again.',
+          4000
+        );
+        return false;
+      });
+  }
+
   function printKotTicket(page, pending) {
     try {
       if (!pending || !pending.length) return;
@@ -3591,8 +3679,7 @@
   function addItem(page, item, qty) {
     if (guardInvoiceLocked()) return;
     if (guardDineInNeedsTable(page)) return;
-    var existing = null;
-    var i;
+    var addQty = qty || 1;
     var mergeKey =
       String(item.id != null ? item.id : '') +
       '|' +
@@ -3607,42 +3694,77 @@
         .toLowerCase() +
       '|' +
       (Math.round((Number(item.rate) || 0) * 100) / 100);
-    for (i = 0; i < state.lines.length; i++) {
-      if (lineMergeKey(state.lines[i]) === mergeKey) {
-        existing = state.lines[i];
-        break;
+
+    function applyAdd() {
+      var existing = null;
+      var i;
+      for (i = 0; i < state.lines.length; i++) {
+        if (lineMergeKey(state.lines[i]) === mergeKey) {
+          existing = state.lines[i];
+          break;
+        }
       }
+      if (existing) {
+        existing.qty += addQty;
+        if (!existing.outlet) {
+          existing.outlet = itemMenuOutlet(item);
+        }
+      } else {
+        state.lineSeq += 1;
+        state.lines.push({
+          uid: 'L' + state.lineSeq,
+          menuId: item.id || null,
+          name: item.name,
+          category: item.category || '',
+          /* Keep real menu variants only — never copy category here (it was
+             showing under the item name and on slips as e.g. "DESSERTS"). */
+          variant: item.variant || '',
+          rate: Number(item.rate) || 0,
+          qty: addQty,
+          isLiquor: !!item.isLiquor || item.itemKind === 'liquor' || isLiquorCategory(item.category),
+          itemKind: item.itemKind === 'liquor' || item.isLiquor ? 'liquor' : 'food',
+          outlet: itemMenuOutlet(item),
+          emoji: item.emoji || '🍽️',
+          /* KOT is not fired on add — sentQty tracks how much of this line has
+             already been confirmed to the kitchen so only the delta re-KOTs. */
+          sentQty: 0,
+          notes: ''
+        });
+      }
+      renderLines(page);
+      markOrderDirty(page);
     }
-    if (existing) {
-      existing.qty += qty || 1;
-      if (!existing.outlet) {
-        existing.outlet =
-          String(item.outlet || '').toLowerCase() === 'bar' ? 'bar' : 'restaurant';
+
+    if (itemMenuOutlet(item) !== 'bar' || item.id == null || item.id === '') {
+      applyAdd();
+      return;
+    }
+
+    var proposed = [];
+    var found = false;
+    state.lines.forEach(function (line) {
+      var q = Number(line.qty) || 0;
+      if (lineMergeKey(line) === mergeKey) {
+        q += addQty;
+        found = true;
       }
-    } else {
-      state.lineSeq += 1;
-      state.lines.push({
-        uid: 'L' + state.lineSeq,
-        menuId: item.id || null,
-        name: item.name,
-        category: item.category || '',
-        /* Keep real menu variants only — never copy category here (it was
-           showing under the item name and on slips as e.g. "DESSERTS"). */
-        variant: item.variant || '',
-        rate: Number(item.rate) || 0,
-        qty: qty || 1,
-        isLiquor: !!item.isLiquor || item.itemKind === 'liquor' || isLiquorCategory(item.category),
-        itemKind: item.itemKind === 'liquor' || item.isLiquor ? 'liquor' : 'food',
-        outlet: String(item.outlet || '').toLowerCase() === 'bar' ? 'bar' : 'restaurant',
-        emoji: item.emoji || '🍽️',
-        /* KOT is not fired on add — sentQty tracks how much of this line has
-           already been confirmed to the kitchen so only the delta re-KOTs. */
-        sentQty: 0,
-        notes: ''
+      if (q <= 0) return;
+      proposed.push({
+        menuItemId: line.menuId != null ? line.menuId : null,
+        qty: q,
+        outlet: lineMenuOutlet(line)
+      });
+    });
+    if (!found) {
+      proposed.push({
+        menuItemId: item.id,
+        qty: addQty,
+        outlet: 'bar'
       });
     }
-    renderLines(page);
-    markOrderDirty(page);
+    ensureBarMenuStockOk(proposed).then(function (ok) {
+      if (ok) applyAdd();
+    });
   }
 
   function pendingKotQty(line) {
@@ -6449,9 +6571,29 @@
         var nextQty = curQty + delta;
         if (delta < 0) nextQty = Math.max(minQty, nextQty);
         else nextQty = Math.max(1, nextQty);
-        line.qty = nextQty;
-        renderLines(page);
-        markOrderDirty(page);
+
+        function applyQty() {
+          line.qty = nextQty;
+          renderLines(page);
+          markOrderDirty(page);
+        }
+
+        if (
+          delta > 0 &&
+          lineMenuOutlet(line) === 'bar' &&
+          line.menuId != null &&
+          line.menuId !== ''
+        ) {
+          var overrides = {};
+          overrides[id] = nextQty;
+          ensureBarMenuStockOk(stockCheckLinesPayload(overrides, null)).then(
+            function (ok) {
+              if (ok) applyQty();
+            }
+          );
+          return;
+        }
+        applyQty();
       }
     });
   }

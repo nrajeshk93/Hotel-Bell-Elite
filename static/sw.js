@@ -317,6 +317,9 @@ function responseLooksLikeModernOfflineLogin(res) {
       if (html.indexOf('login-panel') === -1 && html.indexOf('login-shell') === -1) {
         return false;
       }
+      /* Reject bare-input shells — they miss premium .login-field styling. */
+      if (html.indexOf('login-field') === -1) return false;
+      if (html.indexOf('login_premium.css') === -1) return false;
       return true;
     })
     .catch(function () {
@@ -327,25 +330,50 @@ function responseLooksLikeModernOfflineLogin(res) {
 function syntheticOfflineLoginResponse() {
   var html =
     '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
-    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' +
     '<title>Hotel Bell Elite — Sign In</title>' +
+    '<link rel="stylesheet" href="/static/hbe_login_fonts.css">' +
     '<link rel="stylesheet" href="/static/login_premium.css">' +
-    '</head><body class="login-page"><div class="login-shell"><main class="login-panel">' +
-    '<div class="login-panel-card"><div class="login-panel-head">' +
+    '</head><body class="login-page"><div class="login-shell">' +
+    '<aside class="login-brand" aria-hidden="false">' +
+    '<div class="login-brand-media" style="--login-hero:url(\'/static/login_hero.jpg\')"></div>' +
+    '<div class="login-brand-veil" aria-hidden="true"></div>' +
+    '<div class="login-brand-inner"><div class="login-brand-top">' +
+    '<img class="login-mark login-mark--on-dark" src="/static/hbe_mark_sm.png" width="72" height="72" alt="">' +
+    '<h1 class="login-brand-name">Hotel Bell Elite</h1>' +
+    '<p class="login-brand-tag">Experience excellence</p></div>' +
+    '<div class="login-brand-copy"><h2 class="login-welcome">Welcome back</h2>' +
+    '<p class="login-welcome-sub">Sign in to continue to your dashboard</p></div></div></aside>' +
+    '<main class="login-panel"><div class="login-panel-card">' +
+    '<div class="login-panel-head">' +
+    '<img class="login-mark login-mark--badge" src="/static/hbe_mark_form_sm.png" width="88" height="88" alt="Hotel Bell Elite">' +
     '<h2 class="login-panel-title">Hotel Bell Elite</h2>' +
     '<p class="login-panel-sub">Sign in to access your account</p></div>' +
     '<div id="login-offline-notice" class="login-notice">You\'re offline. You can still sign in with your password on this device.</div>' +
-    '<form method="POST" action="/login" class="login-form" id="login-form">' +
+    '<form method="POST" action="/login" class="login-form" id="login-form" autocomplete="on">' +
     '<div class="form-group"><label for="username">Username</label>' +
-    '<input type="text" id="username" name="username" autocomplete="username" required></div>' +
+    '<div class="login-field">' +
+    '<span class="login-field-icon" aria-hidden="true">' +
+    '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.8-3.5 4.4-5.2 7-5.2S17.2 15.5 19 19"/></svg>' +
+    '</span>' +
+    '<input type="text" id="username" name="username" placeholder="Enter your username" autocomplete="username" required>' +
+    '</div></div>' +
     '<div class="form-group"><label for="password">Password</label>' +
-    '<input type="password" id="password" name="password" autocomplete="current-password" required></div>' +
+    '<div class="login-field">' +
+    '<span class="login-field-icon" aria-hidden="true">' +
+    '<svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V8a4 4 0 0 1 8 0v2"/></svg>' +
+    '</span>' +
+    '<input type="password" id="password" name="password" placeholder="Enter your password" autocomplete="current-password" required>' +
+    '<button type="button" class="login-eye" id="login-toggle-password" aria-label="Show password" aria-pressed="false">' +
+    '<svg class="login-eye-show" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>' +
+    '<svg class="login-eye-hide" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/></svg>' +
+    '</button></div></div>' +
     '<button type="submit" class="login-btn">Sign In</button></form></div></main></div>' +
     '<script src="/static/de_pwa.js"><\/script>' +
     '<script src="' +
     OFFLINE_AUTH_URL +
     '"><\/script>' +
-    '<script>(function(){var n=document.getElementById("login-offline-notice");var f=document.getElementById("login-form");if(f&&!f.getAttribute("data-hbe-offline-capture")){f.setAttribute("data-hbe-offline-capture","1");f.addEventListener("submit",function(e){e.preventDefault();e.stopPropagation();if(window.HbeOfflineAuth&&window.HbeOfflineAuth.handleLoginSubmit){window.HbeOfflineAuth.handleLoginSubmit(f,{noticeEl:n});}else if(n){n.hidden=false;n.textContent="Sign-in script didn\'t load. Reconnect once, refresh, then try offline again.";}},true);}if(window.HbeOfflineAuth&&f){window.HbeOfflineAuth.bindLoginForm(f,{noticeEl:n});}})();<\/script>' +
+    '<script>(function(){var n=document.getElementById("login-offline-notice");var f=document.getElementById("login-form");var eye=document.getElementById("login-toggle-password");var pass=document.getElementById("password");if(eye&&pass){eye.addEventListener("click",function(){var show=pass.type==="password";pass.type=show?"text":"password";eye.classList.toggle("is-revealed",show);eye.setAttribute("aria-pressed",show?"true":"false");eye.setAttribute("aria-label",show?"Hide password":"Show password");});}if(f&&!f.getAttribute("data-hbe-offline-capture")){f.setAttribute("data-hbe-offline-capture","1");f.addEventListener("submit",function(e){e.preventDefault();e.stopPropagation();if(window.HbeOfflineAuth&&window.HbeOfflineAuth.handleLoginSubmit){window.HbeOfflineAuth.handleLoginSubmit(f,{noticeEl:n});}else if(n){n.hidden=false;n.textContent="Sign-in script didn\'t load. Reconnect once, refresh, then try offline again.";}},true);}if(window.HbeOfflineAuth&&f){window.HbeOfflineAuth.bindLoginForm(f,{noticeEl:n});}})();<\/script>' +
     '</body></html>';
   return new Response(html, {
     status: 200,

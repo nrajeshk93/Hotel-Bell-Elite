@@ -1017,7 +1017,11 @@ def replay_pos_stock_deductions(
     errors: list[dict[str, Any]] = []
     for invoice_id in invoice_ids:
         result = stores_mod.deduct_stock_for_pos_invoice(
-            conn, invoice_id, user_id=user_id, allow_inactive=True
+            conn,
+            invoice_id,
+            user_id=user_id,
+            allow_inactive=True,
+            force_negative=True,
         )
         # ``skipped`` on success is a list of line-level skips; idempotent skip
         # uses boolean True + reason already_deducted / movements_exist.

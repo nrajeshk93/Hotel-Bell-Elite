@@ -6457,8 +6457,9 @@ def close_pos_invoice_and_free_table(conn, invoice_id, *, user_id=None):
     from real payment for now — this is the 'Close & Free Table' action.
 
     On close, recipe ingredients for sold lines are deducted from store stock
-    once (idempotent via stock_deducted_at / movement ref). Stock shortfalls
-    never block closing the bill.
+    once (idempotent via stock_deducted_at / movement ref). Bar menu ingredient
+    shortfalls block closing; restaurant kitchen shortfalls still allow close
+    with negative counter stock.
     """
     ensure_pos_schema(conn)
     try:
@@ -6472,6 +6473,17 @@ def close_pos_invoice_and_free_table(conn, invoice_id, *, user_id=None):
     ).fetchone()
     if not row:
         raise ValueError("Invoice not found.")
+
+    from stores import (
+        deduct_stock_for_pos_invoice,
+        preflight_bar_menu_stock_for_invoice,
+    )
+
+    preflight = preflight_bar_menu_stock_for_invoice(conn, invoice_id)
+    if not preflight.get("ok"):
+        err = (preflight.get("error") or "").strip()
+        raise ValueError(err or "Not enough Bar Counter stock for bar menu items.")
+
     conn.execute(
         f"""
         UPDATE pos_invoices
@@ -6488,12 +6500,19 @@ def close_pos_invoice_and_free_table(conn, invoice_id, *, user_id=None):
     if table_label and order_type == "dine_in":
         _pos_mark_table_available(conn, table_label, inv_outlet)
     try:
-        from stores import deduct_stock_for_pos_invoice
-
         # Close already sets is_active=0 (ghost-cart contract); still deduct.
-        deduct_stock_for_pos_invoice(
+        result = deduct_stock_for_pos_invoice(
             conn, invoice_id, user_id=user_id, allow_inactive=True
         )
+        if (
+            isinstance(result, dict)
+            and not result.get("ok")
+            and result.get("reason") == "insufficient_stock"
+        ):
+            err = (result.get("error") or "").strip()
+            raise ValueError(err or "Not enough Bar Counter stock for bar menu items.")
+    except ValueError:
+        raise
     except Exception:
         import logging
 
@@ -7363,7 +7382,11 @@ def clear_all_pos_tables(conn, *, user_id=None, outlet=POS_OUTLET_RESTAURANT):
                 try:
                     # Clear-all closes + deactivates first; still deduct stock.
                     deduct_stock_for_pos_invoice(
-                        conn, inv_id, user_id=user_id, allow_inactive=True
+                        conn,
+                        inv_id,
+                        user_id=user_id,
+                        allow_inactive=True,
+                        force_negative=True,
                     )
                 except Exception:
                     import logging
