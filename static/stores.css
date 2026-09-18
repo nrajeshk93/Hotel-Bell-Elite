@@ -1839,6 +1839,193 @@ body.su-module .st-stock-card-actions{
   gap:10px;
   flex-shrink:0;
 }
+body.su-module #st-stock-page .st-stock-list-hdr.card-hdr{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+}
+body.su-module #st-stock-page .st-stock-list-hdr > .card-title{
+  flex:0 0 auto;
+}
+body.su-module #st-stock-page .st-stock-bar-unit-host{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  flex:1 1 auto;
+  min-width:0;
+}
+body.su-module #st-stock-page .st-stock-bar-unit-host .se-filter-chip-label{
+  margin:0;
+  font:700 10px/1 Inter,system-ui,sans-serif;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  color:#64748B;
+}
+body.su-module #st-stock-page .st-stock-bar-unit-tabs.cp-view-tabs{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  height:36px;
+  min-height:36px;
+  margin:0;
+  padding:3px;
+  box-sizing:border-box;
+  background:#F1F5F9;
+  border:1px solid var(--border,#E2E8F0);
+  border-radius:12px;
+}
+body.su-module #st-stock-page .st-stock-bar-unit-tabs .st-stock-bar-unit-tab{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  height:28px;
+  min-height:28px;
+  padding:0 12px;
+  border:0;
+  border-radius:9px;
+  background:transparent;
+  color:#64748B;
+  font:700 12px Inter,system-ui,sans-serif;
+  cursor:pointer;
+  white-space:nowrap;
+}
+body.su-module #st-stock-page .st-stock-bar-unit-tabs .st-stock-bar-unit-tab:hover{
+  color:#0F172A;
+  background:rgba(255,255,255,.65);
+}
+body.su-module #st-stock-page .st-stock-bar-unit-tabs .st-stock-bar-unit-tab.is-active{
+  background:#fff;
+  color:#2563EB;
+  box-shadow:0 1px 2px rgba(15,23,42,.08);
+}
+body.su-module #st-stock-page .st-stock-list-hdr > .st-stock-card-actions{
+  margin-left:auto;
+}
+#st-stock-bar-bottles-modal .st-stock-bar-bottles-box,
+body.su-module .modal-box.st-stock-bar-bottles-box{
+  width:760px;
+  max-width:calc(100vw - 32px);
+  padding:0;
+  overflow:hidden;
+  border:1px solid var(--border,#E2E8F0);
+  border-radius:14px;
+  box-shadow:0 18px 48px rgba(15,23,42,.16);
+  background:#fff;
+}
+/* Modal lives inside .de-main-wrapper — lock page scroll while open. */
+html.st-stock-modal-open,
+html.st-stock-modal-open body,
+body.st-stock-modal-open{
+  overflow:hidden !important;
+}
+html.st-stock-modal-open .de-main-wrapper,
+html.st-stock-modal-open #ep-workspace .de-main-wrapper,
+html.st-stock-modal-open #de-fs-app .de-main-wrapper,
+.de-main-wrapper[data-st-scroll-locked="1"]{
+  overflow:hidden !important;
+  overscroll-behavior:none;
+}
+#st-stock-bar-bottles-modal.modal-overlay{
+  overscroll-behavior:contain;
+  touch-action:none;
+}
+#st-stock-bar-bottles-modal .st-stock-bar-bottles-table-wrap{
+  overscroll-behavior:contain;
+  touch-action:pan-y;
+  -webkit-overflow-scrolling:touch;
+}
+#st-stock-bar-bottles-modal .st-stock-bar-bottles-hdr.card-hdr{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin:0;
+  padding:14px 18px;
+  border-bottom:1px solid var(--border-s,#EEF2F7);
+  flex-wrap:wrap;
+  background:#fff;
+}
+#st-stock-bar-bottles-modal .st-stock-bar-bottles-hdr .card-title{
+  margin:0;
+  font:800 18px Inter,system-ui,sans-serif;
+  color:var(--txt,#0F172A);
+  display:block;
+  line-height:1.25;
+}
+#st-stock-bar-bottles-modal .st-stock-bar-bottles-hdr-actions{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  flex-shrink:0;
+}
+#st-stock-bar-bottles-modal .st-stock-bar-bottles-hdr-actions .pl-count{
+  color:var(--txt3,#94A3B8);
+  font:500 12px Inter,system-ui,sans-serif;
+}
+#st-stock-bar-bottles-modal .st-stock-bar-bottles-body{
+  padding:0;
+}
+#st-stock-bar-bottles-modal .st-stock-bar-bottles-table-wrap.pl-table-wrap{
+  margin:0;
+  border:0;
+  border-radius:0;
+  overflow:auto;
+  max-height:min(56vh, 440px);
+  background:#fff;
+  overscroll-behavior:contain;
+  touch-action:pan-y;
+}
+#st-stock-bar-bottles-modal .st-stock-bar-bottles-table.pl-table{
+  width:100%;
+  border-collapse:collapse;
+  table-layout:auto;
+}
+#st-stock-bar-bottles-modal .st-stock-bar-bottles-table th,
+#st-stock-bar-bottles-modal .st-stock-bar-bottles-table td{
+  padding:10px 14px;
+  vertical-align:middle;
+  box-sizing:border-box;
+  white-space:nowrap;
+}
+#st-stock-bar-bottles-modal .st-stock-bar-bottles-table th{
+  text-align:left;
+  font:700 10px Inter,system-ui,sans-serif;
+  letter-spacing:.5px;
+  text-transform:uppercase;
+  color:#64748B;
+  background:#F8FAFD;
+  border-bottom:1px solid var(--border,#E2E8F0);
+  position:sticky;
+  top:0;
+  z-index:1;
+}
+#st-stock-bar-bottles-modal .st-stock-bar-bottles-table th.pl-col-amount,
+#st-stock-bar-bottles-modal .st-stock-bar-bottles-table td.pl-col-amount{
+  text-align:right;
+}
+#st-stock-bar-bottles-modal .st-stock-bar-bottles-table td{
+  border-bottom:1px solid #EEF2F7;
+  font:500 13px Inter,system-ui,sans-serif;
+  color:var(--txt,#0F172A);
+}
+#st-stock-bar-bottles-modal .st-stock-bar-bottles-table td.pl-name{
+  font-weight:600;
+}
+#st-stock-bar-bottles-modal .st-stock-bar-bottles-table tbody tr:last-child td{
+  border-bottom:0;
+}
+#st-stock-bar-bottles-modal .st-stock-bar-bottles-table tbody tr:hover td{
+  background:#F8FAFC;
+}
+#st-stock-bar-bottles-modal .st-stock-bar-bottles-empty{
+  margin:0;
+  padding:28px 18px;
+  border-top:1px solid var(--border-s,#EEF2F7);
+}
 /* Check stays compact; other cols size to content (no % crush / ellipsis). */
 body.su-module .st-stock-inv-table col.st-stock-col-check-w{width:44px}
 body.su-module .st-stock-inv-table col.st-stock-col-product-w,

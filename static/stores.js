@@ -4799,6 +4799,359 @@
     });
   }
 
+  var BAR_UNIT_STORAGE_KEY = 'hbe.st.barUnit';
+
+  function formatStockBarUnitQty(n) {
+    if (!isFinite(n)) return '0';
+    var rounded = Math.round(n * 100) / 100;
+    if (Math.abs(rounded - Math.round(rounded)) < 0.0001) return String(Math.round(rounded));
+    return String(rounded);
+  }
+
+  function normalizeStockBarUnit(unit) {
+    var s = String(unit || '').trim().toLowerCase();
+    if (!s) return '';
+    if (s === 'ml' || s === 'mls' || s === 'milliliter' || s === 'milliliters' || s === 'millilitre' || s === 'millilitres') {
+      return 'ml';
+    }
+    if (s === 'ltr' || s === 'l' || s === 'litre' || s === 'liter' || s === 'liters' || s === 'litres') {
+      return 'liter';
+    }
+    if (s === 'bottle' || s === 'bottles' || s === 'btl' || s === 'btls') return 'bottle';
+    return s;
+  }
+
+  /** Split on-hand qty into whole bottles + leftover millilitres. */
+  function splitQtyToBottlesAndMl(baseQty, packQty, unit) {
+    var qty = Number(baseQty);
+    var pack = Number(packQty);
+    if (!isFinite(qty)) qty = 0;
+    if (!isFinite(pack) || !(pack > 0)) return { bottles: 0, ml: 0 };
+    var unitNorm = normalizeStockBarUnit(unit);
+    // Work in ml so liter stock remainders show as ml in the ML column.
+    var qtyMl = unitNorm === 'liter' ? qty * 1000 : qty;
+    var packMl = unitNorm === 'liter' ? pack * 1000 : pack;
+    if (!(packMl > 0)) return { bottles: 0, ml: 0 };
+    var bottles = Math.floor((qtyMl + 1e-9) / packMl);
+    var rem = qtyMl - bottles * packMl;
+    // Snap float noise onto whole bottles / zero remainder.
+    if (rem < 1e-6) rem = 0;
+    else if (rem > packMl - 1e-6) {
+      bottles += 1;
+      rem = 0;
+    }
+    rem = Math.round(rem * 1000) / 1000;
+    if (rem < 0) rem = 0;
+    return { bottles: bottles, ml: rem };
+  }
+
+  function barBottlePackQtyForRow(row) {
+    var packQty = parseFloat(row.getAttribute('data-pack-qty-in-base') || '0');
+    if (packQty > 0) return packQty;
+    var label = String(row.getAttribute('data-pack-label') || '').trim();
+    var match = /^([\d.]+)\s+/.exec(label);
+    if (match) {
+      var fromLabel = parseFloat(match[1]);
+      if (fromLabel > 0) return fromLabel;
+    }
+    try {
+      var el = document.getElementById('st-stock-product-packs');
+      if (!el) return 0;
+      var map = JSON.parse(el.textContent || '{}');
+      var name = String(row.getAttribute('data-item-name') || '').trim().toLowerCase();
+      var unit = String(row.getAttribute('data-unit') || '').trim().toLowerCase();
+      var outlet = String(row.getAttribute('data-outlet') || '').trim().toLowerCase();
+      var entry = (name && outlet && unit && map[name + '|' + outlet + '|' + unit])
+        || (name && unit && map[name + '|' + unit])
+        || (name && map[name])
+        || null;
+      if (entry && typeof entry === 'object') {
+        var q = parseFloat(entry.qty_in_base != null ? entry.qty_in_base : entry.qty);
+        if (q > 0) return q;
+      }
+    } catch (err) {}
+    return 0;
+  }
+
+  var _stStockModalScrollLockCount = 0;
+
+  function lockStockModalBackgroundScroll(lock) {
+    var main = document.querySelector('#ep-workspace .de-main-wrapper, #de-fs-app .de-main-wrapper, .de-main-wrapper');
+    if (lock) {
+      _stStockModalScrollLockCount += 1;
+      if (_stStockModalScrollLockCount > 1) return;
+      if (main) {
+        main.setAttribute('data-st-scroll-lock-top', String(main.scrollTop || 0));
+        main.setAttribute('data-st-scroll-locked', '1');
+      }
+      document.documentElement.classList.add('st-stock-modal-open');
+      if (document.body) document.body.classList.add('st-stock-modal-open');
+      return;
+    }
+    _stStockModalScrollLockCount = Math.max(0, _stStockModalScrollLockCount - 1);
+    if (_stStockModalScrollLockCount > 0) return;
+    document.documentElement.classList.remove('st-stock-modal-open');
+    if (document.body) document.body.classList.remove('st-stock-modal-open');
+    if (main && main.getAttribute('data-st-scroll-locked') === '1') {
+      var top = parseFloat(main.getAttribute('data-st-scroll-lock-top') || '0');
+      main.removeAttribute('data-st-scroll-locked');
+      main.removeAttribute('data-st-scroll-lock-top');
+      if (isFinite(top)) main.scrollTop = top;
+    }
+  }
+
+  function syncStockBarUnitTabs(mode) {
+    var next = String(mode || 'ml').toLowerCase();
+    if (next !== 'bottle') next = 'ml';
+    var hidden = document.getElementById('st-stock-bar-unit');
+    if (hidden) hidden.value = next;
+    var host = document.getElementById('st-stock-bar-unit-host');
+    if (host) {
+      host.querySelectorAll('.st-stock-bar-unit-tab').forEach(function (btn) {
+        var on = String(btn.getAttribute('data-value') || '') === next;
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+    try {
+      sessionStorage.setItem(BAR_UNIT_STORAGE_KEY, next);
+    } catch (err) {}
+  }
+
+  function closeStockBarBottlesModal() {
+    var modal = document.getElementById('st-stock-bar-bottles-modal');
+    if (modal && modal.classList.contains('active')) {
+      modal.classList.remove('active');
+      lockStockModalBackgroundScroll(false);
+    } else if (modal) {
+      modal.classList.remove('active');
+    }
+    syncStockBarUnitTabs('ml');
+  }
+
+  function barBottlesExportHref() {
+    var page = document.getElementById('st-stock-page');
+    var base = page ? String(page.getAttribute('data-bottles-export-url') || '').trim() : '';
+    if (!base) base = '/stores/stock/export-bottles';
+    try {
+      var url = new URL(base, window.location.origin);
+      url.searchParams.set('outlet', 'bar');
+      var placeEl = document.getElementById('st-stock-place');
+      var place = placeEl ? String(placeEl.value || 'warehouse').toLowerCase() : 'warehouse';
+      if (place !== 'counter') place = 'warehouse';
+      url.searchParams.set('place', place);
+      var catEl = document.getElementById('st-stock-category');
+      var cat = catEl ? String(catEl.value || 'all').trim() : 'all';
+      if (cat && cat.toLowerCase() !== 'all') url.searchParams.set('category', cat);
+      else url.searchParams.delete('category');
+      var searchEl = document.getElementById('st-stock-search');
+      var q = searchEl ? String(searchEl.value || '').trim() : '';
+      if (q) url.searchParams.set('q', q);
+      else url.searchParams.delete('q');
+      return url.pathname + url.search;
+    } catch (err) {
+      return base;
+    }
+  }
+
+  function collectBarBottleRows() {
+    var table = document.getElementById('st-stock-table');
+    if (!table) return [];
+    var rows = [];
+    Array.from(table.querySelectorAll('tbody tr[data-sort-row]')).forEach(function (row) {
+      // Include filtered/hidden rows so the bottle report matches full bar stock.
+      var outlet = String(row.getAttribute('data-outlet') || '').trim().toLowerCase();
+      if (outlet !== 'bar') return;
+      var nativeBottle = row.getAttribute('data-bar-unit-native-bottle') === '1';
+      var convertible = row.getAttribute('data-bar-unit-convertible') === '1';
+      var unit = String(row.getAttribute('data-unit') || '').trim();
+      var unitNorm = normalizeStockBarUnit(unit);
+      if (!nativeBottle && !convertible) {
+        // Recover convertible rows if pack attrs were missing at render time.
+        if (unitNorm !== 'ml' && unitNorm !== 'liter') return;
+        if (!(barBottlePackQtyForRow(row) > 0)) return;
+      }
+      var name = String(row.getAttribute('data-item-name') || '').trim();
+      var category = String(row.getAttribute('data-category-name') || '').trim();
+      var baseQty = parseFloat(row.getAttribute('data-qty') || '0');
+      if (!isFinite(baseQty)) baseQty = 0;
+      var bottleQty = 0;
+      var mlQty = 0;
+      if (nativeBottle || unitNorm === 'bottle') {
+        bottleQty = baseQty;
+        mlQty = 0;
+      } else {
+        var packQty = barBottlePackQtyForRow(row);
+        if (!(packQty > 0)) return;
+        var split = splitQtyToBottlesAndMl(baseQty, packQty, unit);
+        bottleQty = split.bottles;
+        mlQty = split.ml;
+      }
+      rows.push({
+        name: name,
+        category: category || '—',
+        bottle: formatStockBarUnitQty(bottleQty),
+        ml: formatStockBarUnitQty(mlQty),
+      });
+    });
+    return rows;
+  }
+
+  function downloadBarBottlesExport(rows) {
+    var placeEl = document.getElementById('st-stock-place');
+    var place = placeEl ? String(placeEl.value || 'warehouse').toLowerCase() : 'warehouse';
+    if (place !== 'counter') place = 'warehouse';
+    var url = barBottlesExportHref();
+    var payload = {
+      place: place,
+      rows: (rows || []).map(function (row) {
+        return {
+          name: row.name,
+          category: row.category,
+          bottle: row.bottle,
+          ml: row.ml
+        };
+      })
+    };
+    return fetch(url, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      },
+      body: JSON.stringify(payload)
+    }).then(function (res) {
+      if (!res.ok) throw new Error('export_failed');
+      var disp = res.headers.get('Content-Disposition') || '';
+      var match = /filename\*?=(?:UTF-8''|")?([^\";]+)/i.exec(disp);
+      var filename = match
+        ? decodeURIComponent(String(match[1] || '').replace(/"/g, '').trim())
+        : ('Hotel Bell Elite Bar bottles ' + (place === 'counter' ? 'Counter' : 'Warehouse') + '.xlsx');
+      return res.blob().then(function (blob) {
+        return { blob: blob, filename: filename };
+      });
+    }).then(function (result) {
+      var objectUrl = URL.createObjectURL(result.blob);
+      var a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = result.filename;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(objectUrl); }, 1000);
+    });
+  }
+
+  function openStockBarBottlesModal() {
+    var modal = document.getElementById('st-stock-bar-bottles-modal');
+    if (!modal) return;
+    var body = document.getElementById('st-stock-bar-bottles-body');
+    var empty = document.getElementById('st-stock-bar-bottles-empty');
+    var exportLink = document.getElementById('st-stock-bar-bottles-export');
+    var countEl = document.getElementById('st-stock-bar-bottles-count');
+    var rows = collectBarBottleRows();
+    if (body) {
+      body.innerHTML = rows.map(function (row) {
+        return (
+          '<tr>' +
+          '<td class="pl-name">' + escapeHtml(row.name) + '</td>' +
+          '<td>' + escapeHtml(row.category) + '</td>' +
+          '<td class="pl-col-amount pl-amount">' + escapeHtml(row.bottle) + '</td>' +
+          '<td class="pl-col-amount pl-amount">' + escapeHtml(row.ml) + '</td>' +
+          '</tr>'
+        );
+      }).join('');
+    }
+    if (countEl) {
+      countEl.textContent = rows.length + (rows.length === 1 ? ' item' : ' items');
+    }
+    if (empty) empty.hidden = rows.length > 0;
+    if (exportLink) {
+      exportLink.setAttribute('href', barBottlesExportHref());
+      exportLink.setAttribute('data-st-bar-bottles-rows', '1');
+    }
+    syncStockBarUnitTabs('bottle');
+    if (!modal.classList.contains('active')) {
+      lockStockModalBackgroundScroll(true);
+    }
+    modal.classList.add('active');
+  }
+
+  function setStockBarUnitMode(mode) {
+    var next = String(mode || 'ml').toLowerCase();
+    if (next === 'bottle') {
+      openStockBarBottlesModal();
+      return;
+    }
+    closeStockBarBottlesModal();
+  }
+
+  function initStockBarUnitToggle() {
+    var host = document.getElementById('st-stock-bar-unit-host');
+    var modal = document.getElementById('st-stock-bar-bottles-modal');
+    if (!host && !modal) return;
+    // Main table always stays in ML; never restore Bottle as the active tab on load.
+    syncStockBarUnitTabs('ml');
+    if (host && host.getAttribute('data-st-bar-unit-bound') !== '1') {
+      host.setAttribute('data-st-bar-unit-bound', '1');
+      host.addEventListener('click', function (event) {
+        var tab = event.target && event.target.closest ? event.target.closest('.st-stock-bar-unit-tab') : null;
+        if (!tab || !host.contains(tab)) return;
+        event.preventDefault();
+        setStockBarUnitMode(tab.getAttribute('data-value') || 'ml');
+      });
+    }
+    if (modal && modal.getAttribute('data-st-bar-bottles-bound') !== '1') {
+      modal.setAttribute('data-st-bar-bottles-bound', '1');
+      modal.addEventListener('click', function (e) {
+        if (e.target === modal) closeStockBarBottlesModal();
+      });
+      modal.addEventListener('wheel', function (e) {
+        var wrap = modal.querySelector('.st-stock-bar-bottles-table-wrap');
+        if (wrap && wrap.contains(e.target)) {
+          var canScroll = wrap.scrollHeight > wrap.clientHeight + 1;
+          var delta = e.deltaY || 0;
+          var atTop = wrap.scrollTop <= 0 && delta < 0;
+          var atBottom = wrap.scrollTop + wrap.clientHeight >= wrap.scrollHeight - 1 && delta > 0;
+          if (!canScroll || atTop || atBottom) e.preventDefault();
+          return;
+        }
+        e.preventDefault();
+      }, { passive: false });
+      var closeBtn = document.getElementById('st-stock-bar-bottles-close');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', function (e) {
+          e.preventDefault();
+          closeStockBarBottlesModal();
+        });
+      }
+      var exportLink = document.getElementById('st-stock-bar-bottles-export');
+      if (exportLink) {
+        exportLink.addEventListener('click', function (e) {
+          e.preventDefault();
+          var rows = collectBarBottleRows();
+          var prev = exportLink.textContent;
+          exportLink.setAttribute('aria-busy', 'true');
+          if (prev) exportLink.textContent = 'Exporting…';
+          downloadBarBottlesExport(rows).catch(function () {
+            // Fallback: plain GET with server-side remainder math.
+            window.location.href = barBottlesExportHref();
+          }).finally(function () {
+            exportLink.removeAttribute('aria-busy');
+            if (prev) exportLink.textContent = prev;
+          });
+        });
+      }
+      document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        if (!modal.classList.contains('active')) return;
+        closeStockBarBottlesModal();
+      });
+    }
+  }
+
   function initStockSearch() {
     var searchInput = document.getElementById('st-stock-search');
     var stockPage = document.getElementById('st-stock-page');
@@ -5366,10 +5719,72 @@
       });
     }
 
+    function allTransferableRows() {
+      return Array.from(page.querySelectorAll('#st-stock-table tbody tr[data-sort-row]')).filter(function (row) {
+        var check = row.querySelector('.st-stock-row-check');
+        return !!(check && !check.disabled);
+      });
+    }
+
     function checkedRows() {
-      return selectableRows().filter(function (row) {
+      // Include hidden (search-filtered) rows so multi-select survives search.
+      return allTransferableRows().filter(function (row) {
         var check = row.querySelector('.st-stock-row-check');
         return !!(check && check.checked);
+      });
+    }
+
+    var STOCK_SELECTION_STORAGE_KEY = 'hbe.st.stockTransferSelection';
+
+    function rowSelectionKey(row) {
+      return [
+        String(row.getAttribute('data-place') || pagePlace() || 'warehouse').trim().toLowerCase(),
+        String(row.getAttribute('data-outlet') || '').trim().toLowerCase(),
+        String(row.getAttribute('data-item-name') || '').trim().toLowerCase(),
+        String(row.getAttribute('data-unit') || '').trim().toLowerCase()
+      ].join('|');
+    }
+
+    function loadPersistedSelectionKeys() {
+      try {
+        var raw = sessionStorage.getItem(STOCK_SELECTION_STORAGE_KEY);
+        var data = raw ? JSON.parse(raw) : null;
+        if (!data || typeof data !== 'object' || Array.isArray(data)) return new Set();
+        var keys = data[pagePlace()];
+        return new Set(Array.isArray(keys) ? keys.map(String) : []);
+      } catch (err) {
+        return new Set();
+      }
+    }
+
+    function persistSelection() {
+      var keys = checkedRows().map(rowSelectionKey);
+      try {
+        var raw = sessionStorage.getItem(STOCK_SELECTION_STORAGE_KEY);
+        var data = raw ? JSON.parse(raw) : {};
+        if (!data || typeof data !== 'object' || Array.isArray(data)) data = {};
+        data[pagePlace()] = keys;
+        sessionStorage.setItem(STOCK_SELECTION_STORAGE_KEY, JSON.stringify(data));
+      } catch (err) {}
+    }
+
+    function clearPersistedSelection() {
+      try {
+        var raw = sessionStorage.getItem(STOCK_SELECTION_STORAGE_KEY);
+        var data = raw ? JSON.parse(raw) : {};
+        if (!data || typeof data !== 'object' || Array.isArray(data)) data = {};
+        data[pagePlace()] = [];
+        sessionStorage.setItem(STOCK_SELECTION_STORAGE_KEY, JSON.stringify(data));
+      } catch (err) {}
+    }
+
+    function restorePersistedSelection() {
+      var selected = loadPersistedSelectionKeys();
+      if (!selected.size) return;
+      allTransferableRows().forEach(function (row) {
+        var check = row.querySelector('.st-stock-row-check');
+        if (!check || check.disabled) return;
+        if (selected.has(rowSelectionKey(row))) check.checked = true;
       });
     }
 
@@ -5378,20 +5793,25 @@
       if (table) {
         Array.from(table.querySelectorAll('tbody tr[data-sort-row]')).forEach(function (row) {
           var check = row.querySelector('.st-stock-row-check');
-          if (row.hidden && check && check.checked) check.checked = false;
+          // Keep checks on filtered-out rows; only reflect is-selected on visible ones.
           row.classList.toggle('is-selected', !!(check && check.checked && !row.hidden));
         });
       }
-      var rows = selectableRows();
+      var visible = selectableRows();
+      var visibleChecked = visible.filter(function (row) {
+        var check = row.querySelector('.st-stock-row-check');
+        return !!(check && check.checked);
+      });
       var selected = checkedRows();
       var selectAll = liveSelectAll();
       if (selectAll) {
-        selectAll.disabled = rows.length === 0;
-        selectAll.checked = rows.length > 0 && selected.length === rows.length;
-        selectAll.indeterminate = selected.length > 0 && selected.length < rows.length;
+        selectAll.disabled = visible.length === 0;
+        selectAll.checked = visible.length > 0 && visibleChecked.length === visible.length;
+        selectAll.indeterminate = visibleChecked.length > 0 && visibleChecked.length < visible.length;
       }
       var transferBtn = liveTransferBtn();
       if (transferBtn) transferBtn.disabled = selected.length === 0;
+      persistSelection();
     }
 
     function selectedToOutlet() {
@@ -5612,6 +6032,13 @@
             return;
           }
           closeModal();
+          clearPersistedSelection();
+          allTransferableRows().forEach(function (row) {
+            var check = row.querySelector('.st-stock-row-check');
+            if (check) check.checked = false;
+            row.classList.remove('is-selected');
+          });
+          syncSelection();
           var msg = (result.data && result.data.message)
             || ('Created ' + ((result.data && result.data.transfer_no) || 'transfer') + '. Receive under Stock Inward → Transfers.');
           try { sessionStorage.setItem('hbe.st.flash', JSON.stringify({ message: msg, category: 'ok' })); } catch (eFlash) {}
@@ -5627,6 +6054,7 @@
       });
     }
 
+    restorePersistedSelection();
     syncSelection();
   }
 
@@ -5642,6 +6070,7 @@
     initProductPackRowToggle();
     initIndentListSearch();
     initStockPlaceTabs();
+    initStockBarUnitToggle();
     initStockTransferModal();
     initStockTransferReceive();
     consumeStoresFlash();

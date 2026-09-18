@@ -631,6 +631,7 @@ _STORES_ENDPOINT_GROUPS = {
     "stock": {
         "stores_stock",
         "stores_stock_export",
+        "stores_stock_export_bottles",
         "stores_stock_transfer",
         "stores_stock_transfers",
         "stores_stock_transfer_receive",

@@ -46,15 +46,43 @@ EXCEL_NAME_ALIASES = {
     "sula 150 ml": "Sula Satori",
     "four season (150 ml)": "Four Season Red Wine",
     "four sesson white wine": "Four Sesson White Wine",
+    "four sesson white white wine": "Four Sesson White Wine",
     "becardi breezer cranberry": "Becardi Breezer Cranberry",
     "becardi breezer orange": "Becardi Breezer Orange",
+    "bacardi rum cranberry breezer": "Becardi Breezer Cranberry",
+    "bacardi rum orange breezer": "Becardi Breezer Orange",
+    "cranberry breezer": "Breezer Cranberry",
+    "jamaican passion breezer": "Breezer Jamaican",
+    "blackberry breezer": "Breezer Blackberry",
     "kingfisher  premium": "Kingfisher Premium",
     "absolute madrin": "Absolute Madrin",
+    "absolute plain": "Absolute Plain",
     "morpheus xo": "Morpheus Xo",
     "teachers gold 12y": "Teachers Gold 12y",
+    "teachers gold 12yr.": "Teachers Gold 12y",
+    "teachers gold 12yr": "Teachers Gold 12y",
     "teachers highland": "Teachers Highland",
     "black and white": "Black And Whité",
     "black and whité": "Black And Whité",
+    "budwiser magnum": "Budweiser Magnum",
+    "budweiser magnum": "Budweiser Magnum",
+    "ballantine": "Balentines",
+    "mansion house": "Manson House",
+    "royal palace vsop brandy": "Royal Palace Brandy",
+    "royal salute": "Royal Salute 21 Years",
+    "jonny walker double black": "J W Double Black",
+    "jonny walker red label": "Jonny Walker Red Lable",
+    "jonny walker black label": "Jonny Walker Black Lable",
+    "jemesons irish whisky": "Jemison's",
+    "bomore": "Bomore 12 Years",
+    "warehouse tequila": "Warehouse",
+    "dos flamos tequila": "Dos Flamos",
+    "smirnoof plain": "Smirnoff Plain",
+    "smirnoff plain": "Smirnoff Plain",
+    "gray goose vodka": "Gray Goose",
+    "antiquity": "Antiquity Blue",
+    "jack daniels no 7": "Jack Daniels 7",
+    "jack daniels fire": "Jack Daniels Fire",
 }
 
 
@@ -119,6 +147,135 @@ def parse_bar_counter_opening_xlsx(path: str) -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+def parse_bar_counter_additional_xlsx(path: str) -> list[dict[str, Any]]:
+    """Parse Aug counter sheet: column C = product name, column BO = additional counter qty.
+
+    Values are already in Product Master stock units (bottles / cans / mL) — add them
+    on top of current Bar counter without touching sales or warehouse.
+    """
+    from openpyxl import load_workbook
+
+    wb = load_workbook(path, data_only=True)
+    ws = wb.active
+    rows: list[dict[str, Any]] = []
+    for idx, row in enumerate(ws.iter_rows(values_only=True), start=1):
+        cells = list(row) if row else []
+        if idx == 1:
+            continue
+        name = cells[2] if len(cells) > 2 else None  # C
+        if not isinstance(name, str) or not name.strip():
+            continue
+        excel_name = name.strip()
+        if excel_name.lower() in ("item name",):
+            continue
+        add_qty = _as_float(cells[66] if len(cells) > 66 else None) or 0.0  # BO
+        if add_qty == 0:
+            continue
+        category = cells[1] if len(cells) > 1 else None
+        rows.append(
+            {
+                "excel_row": idx,
+                "section": str(category or "").strip(),
+                "item_type": str(category or "").strip(),
+                "excel_name": excel_name,
+                "opening_qty": round(float(add_qty), 3),
+                "add_qty": round(float(add_qty), 3),
+                "unit_hint": "Bottle",
+            }
+        )
+    return rows
+
+
+def add_bar_counter_from_additional_excel(
+    conn,
+    *,
+    xlsx_path: str,
+    dry_run: bool = False,
+    user_id=None,
+) -> dict[str, Any]:
+    """Add Excel BO quantities onto Bar counter. Does not clear sales or warehouse."""
+    db_mod.ensure_pos_schema(conn)
+    db_mod.ensure_stores_schema(conn)
+    opening_rows = parse_bar_counter_additional_xlsx(xlsx_path)
+    match_info = match_opening_to_products(conn, opening_rows, outlet="bar")
+    report: dict[str, Any] = {
+        "ok": True,
+        "dry_run": bool(dry_run),
+        "mode": "add-counter",
+        "xlsx_path": xlsx_path,
+        "excel_rows": len(opening_rows),
+        "matched": len(match_info["matched"]),
+        "unmatched": match_info["unmatched"],
+    }
+    applied: list[dict[str, Any]] = []
+    skipped_zero = 0
+    for line in match_info["matched"]:
+        add_qty = float(line.get("add_qty") or line.get("opening_qty") or 0)
+        if abs(add_qty) < 0.0001:
+            skipped_zero += 1
+            continue
+        before = float(
+            stores_mod._stock_qty_on_hand(
+                conn,
+                "bar",
+                stores_mod.STOCK_PLACE_COUNTER,
+                line["product_name"],
+                line["unit"],
+            )
+            or 0.0
+        )
+        if dry_run:
+            applied.append(
+                {
+                    "product_name": line["product_name"],
+                    "unit": line["unit"],
+                    "add_qty": add_qty,
+                    "before": before,
+                    "after": round(before + add_qty, 3),
+                    "excel_name": line["excel_name"],
+                }
+            )
+            continue
+        stores_mod._adjust_stock(
+            conn,
+            outlet="bar",
+            place=stores_mod.STOCK_PLACE_COUNTER,
+            item_name=line["product_name"],
+            unit=line["unit"],
+            qty_delta=add_qty,
+            movement_type="adjustment",
+            ref_type="counter_additional_import",
+            ref_id=0,
+            notes=f"Additional Bar counter from Excel col BO ({line['excel_name']})",
+            user_id=user_id,
+            allow_negative=True,
+        )
+        after = float(
+            stores_mod._stock_qty_on_hand(
+                conn,
+                "bar",
+                stores_mod.STOCK_PLACE_COUNTER,
+                line["product_name"],
+                line["unit"],
+            )
+            or 0.0
+        )
+        applied.append(
+            {
+                "product_name": line["product_name"],
+                "unit": line["unit"],
+                "add_qty": add_qty,
+                "before": before,
+                "after": after,
+                "excel_name": line["excel_name"],
+            }
+        )
+    report["skipped_zero"] = skipped_zero
+    report["applied_count"] = len(applied)
+    report["applied"] = applied
+    return report
 
 
 def parse_bar_stock_report_xlsx(path: str) -> list[dict[str, Any]]:
@@ -1026,9 +1183,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--mode",
-        choices=("closing-balance", "stock-report"),
+        choices=("closing-balance", "stock-report", "add-counter"),
         default="closing-balance",
-        help="closing-balance: legacy Sep opening sheet; stock-report: BAR STOCK REPORT (D=counter, E=warehouse)",
+        help=(
+            "closing-balance: legacy Sep opening sheet; "
+            "stock-report: BAR STOCK REPORT (D=counter, E=warehouse); "
+            "add-counter: add Excel col BO onto Bar counter (C=name) without touching sales"
+        ),
     )
     parser.add_argument("--xlsx", default="", help="Path to opening Excel")
     parser.add_argument(
@@ -1062,21 +1223,60 @@ def main() -> int:
     if not os.path.isfile(xlsx_path):
         print(f"Excel not found: {xlsx_path}", file=sys.stderr)
         return 1
-    try:
-        datetime.strptime(args.from_date, "%Y-%m-%d")
-    except ValueError:
-        print(f"Invalid --from-date: {args.from_date}", file=sys.stderr)
-        return 1
-    to_date = (args.to_date or "").strip() or date.today().isoformat()
-    try:
-        datetime.strptime(to_date, "%Y-%m-%d")
-    except ValueError:
-        print(f"Invalid --to-date: {to_date}", file=sys.stderr)
-        return 1
 
     db_mod.DATABASE_PATH = os.path.abspath(os.path.expanduser(args.db))
     conn = db_mod.get_db()
     try:
+        if args.mode == "add-counter":
+            report = add_bar_counter_from_additional_excel(
+                conn,
+                xlsx_path=xlsx_path,
+                dry_run=args.dry_run,
+            )
+            if not args.dry_run:
+                conn.commit()
+            print(
+                f"{'DRY-RUN ' if args.dry_run else ''}"
+                f"add-counter excel_rows={report.get('excel_rows')} "
+                f"matched={report.get('matched')} unmatched={len(report.get('unmatched') or [])} "
+                f"applied={report.get('applied_count')}"
+            )
+            for u in report.get("unmatched") or []:
+                print(
+                    f"  UNMATCH {u.get('excel_name')} "
+                    f"add={u.get('add_qty') or u.get('opening_qty')}"
+                )
+            for line in report.get("applied") or []:
+                print(
+                    f"  {line['product_name']} ({line['unit']}) "
+                    f"{line['before']} + {line['add_qty']} → {line['after']}"
+                )
+            if not args.dry_run:
+                for name in ("Absolute Madrin", "Kingfisher Strong"):
+                    row = conn.execute(
+                        """
+                        SELECT qty_on_hand, unit FROM store_stock_items
+                        WHERE outlet = 'bar' AND place = 'counter'
+                          AND lower(item_name) = lower(?)
+                        """,
+                        (name,),
+                    ).fetchone()
+                    if row:
+                        print(f"check {name}: {row['qty_on_hand']} {row['unit']}")
+            return 0 if report.get("ok") else 1
+
+        try:
+            datetime.strptime(args.from_date, "%Y-%m-%d")
+        except ValueError:
+            print(f"Invalid --from-date: {args.from_date}", file=sys.stderr)
+            return 1
+        to_date = (args.to_date or "").strip() or date.today().isoformat()
+        try:
+            datetime.strptime(to_date, "%Y-%m-%d")
+        except ValueError:
+            print(f"Invalid --to-date: {to_date}", file=sys.stderr)
+            return 1
+
         if args.mode == "stock-report":
             report = rebuild_bar_stock_from_sept_report(
                 conn,
@@ -1126,7 +1326,7 @@ def main() -> int:
             f"bar_counter sum={report.get('bar_counter', {}).get('sum_qty')} | "
             f"bar_warehouse sum={report.get('bar_warehouse', {}).get('sum_qty')}"
         )
-    return 0
+    return 0 if report.get("ok") else 1
 
 
 if __name__ == "__main__":

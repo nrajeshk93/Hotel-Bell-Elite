@@ -580,6 +580,37 @@
     </form>
   </div>
 </div>
+<div class="modal-overlay" id="st-stock-bar-bottles-modal" role="dialog" aria-modal="true" aria-labelledby="st-stock-bar-bottles-title">
+  <div class="modal-box st-stock-bar-bottles-box">
+    <div class="card-hdr st-stock-bar-bottles-hdr">
+      <div class="card-title" id="st-stock-bar-bottles-title">Bar stock (bottles)</div>
+      <div class="st-stock-bar-bottles-hdr-actions">
+        <span class="pl-count" id="st-stock-bar-bottles-count">0 items</span>
+        <a class="btn btn-primary" id="st-stock-bar-bottles-export" href="#" download title="Download bar bottles Excel">Export</a>
+        <button type="button" class="btn" id="st-stock-bar-bottles-close">Close</button>
+      </div>
+    </div>
+    <div class="card-body pl-card-body--flush st-stock-bar-bottles-body">
+      <div class="pl-table-wrap st-stock-bar-bottles-table-wrap">
+        <table class="pl-table st-stock-bar-bottles-table" aria-label="Bar stock in bottles and ML">
+          <thead>
+            <tr>
+              <th scope="col">Product</th>
+              <th scope="col">Category</th>
+              <th class="pl-col-amount" scope="col">Bottle</th>
+              <th class="pl-col-amount" scope="col">ML</th>
+            </tr>
+          </thead>
+          <tbody id="st-stock-bar-bottles-body"></tbody>
+        </table>
+      </div>
+      <div class="pl-empty st-stock-bar-bottles-empty" id="st-stock-bar-bottles-empty" hidden>
+        <strong>No bar bottle stock</strong>
+        <span>Bar products stocked as bottles, or purchased as bottles and sold in ml, will appear here.</span>
+      </div>
+    </div>
+  </div>
+</div>
 {% endif %}
 {# Keep page scripts inside .de-main-wrapper so soft-nav loads them. #}
 <script src="{{ asset('ep_form_listbox.js') }}"></script>

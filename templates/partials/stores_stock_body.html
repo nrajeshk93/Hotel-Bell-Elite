@@ -1,5 +1,7 @@
 {% set low_threshold = 5 %}
-{% set ns = namespace(total_qty=0, low=0, out=0, healthy=0, value=0, value_known=false) %}
+{% set ns = namespace(total_qty=0, low=0, out=0, healthy=0, value=0, value_known=false, bar_unit_rows=0) %}
+{% set _liquid_units = ['ml','mls','milliliter','milliliters','millilitre','millilitres','l','ltr','liter','liters','litre','litres'] %}
+{% set _bottle_units = ['bottle','bottles','btl','btls'] %}
 {% for item in stock_items %}
   {% set qty = item.qty_on_hand|float %}
   {% set ns.total_qty = ns.total_qty + qty %}
@@ -14,14 +16,22 @@
     {% set ns.value_known = true %}
     {% set ns.value = ns.value + (qty * (item.approximate_price|float)) %}
   {% endif %}
+  {% set _unit = (item.unit or '')|lower|trim %}
+  {% set _outlet = (item.outlet or selected_outlet or '')|lower|trim %}
+  {% set _pack = item.pack_qty_in_base %}
+  {% if _outlet == 'bar' and (_unit in _bottle_units or (_unit in _liquid_units and _pack is not none and (_pack|float) > 0)) %}
+    {% set ns.bar_unit_rows = ns.bar_unit_rows + 1 %}
+  {% endif %}
 {% endfor %}
+{% set show_bar_unit_toggle = (outlet|default(selected_outlet)|default('both')) != 'restaurant' and ns.bar_unit_rows > 0 %}
 
 <div class="st-stock-page" id="st-stock-page"
      data-low-threshold="{{ low_threshold }}"
      data-has-prices="{{ '1' if stock_has_prices else '0' }}"
      data-place="{{ stock_place|default('warehouse') }}"
      data-kpi-filter="items"
-     data-transfer-url="{{ stock_transfer_url|default(url_for('stores_stock_transfer')) }}">
+     data-transfer-url="{{ stock_transfer_url|default(url_for('stores_stock_transfer')) }}"
+     data-bottles-export-url="{{ stock_bottles_export_url|default(url_for('stores_stock_export_bottles', outlet='bar', place=stock_place|default('warehouse'))) }}">
 
   {% if verification_due %}
   <div class="st-stock-due st-due-banner" role="status">
@@ -103,11 +113,29 @@
   <div class="st-stock-layout">
     <div class="st-stock-main">
       <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel" aria-label="Current stock">
-        <div class="card-hdr">
+        <div class="card-hdr st-stock-list-hdr">
           <div class="card-title">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9l1-4h16l1 4"/><path d="M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9"/><path d="M10 13h4"/></svg>
             <span>Current stock</span>
           </div>
+          {% if show_bar_unit_toggle %}
+          <div class="st-stock-bar-unit-host" id="st-stock-bar-unit-host">
+            <span class="se-filter-chip-label" id="st-stock-bar-unit-label">Bar unit</span>
+            <input type="hidden" id="st-stock-bar-unit" value="ml" autocomplete="off">
+            <div class="cp-view-tabs st-stock-bar-unit-tabs" role="tablist" aria-labelledby="st-stock-bar-unit-label">
+              <button type="button"
+                      class="cp-view-tab st-stock-bar-unit-tab"
+                      role="tab"
+                      data-value="bottle"
+                      aria-selected="false">Bottle</button>
+              <button type="button"
+                      class="cp-view-tab st-stock-bar-unit-tab is-active"
+                      role="tab"
+                      data-value="ml"
+                      aria-selected="true">ML</button>
+            </div>
+          </div>
+          {% endif %}
           <div class="st-stock-card-actions">
             <span class="pl-count" id="st-stock-count">{{ stock_items|length }} item{% if stock_items|length != 1 %}s{% endif %}</span>
             {% if stock_place|default('warehouse') == 'counter' %}
@@ -165,6 +193,11 @@
                   {% set line_value = qty * (item.approximate_price|float) %}
                 {% endif %}
                 {% set item_place = (item.place or stock_place or 'warehouse') %}
+                {% set _row_unit = (item.unit or '')|lower|trim %}
+                {% set _row_outlet = (item.outlet or selected_outlet or '')|lower|trim %}
+                {% set _row_pack = item.pack_qty_in_base %}
+                {% set _row_convertible = _row_outlet == 'bar' and _row_unit in _liquid_units and _row_pack is not none and (_row_pack|float) > 0 %}
+                {% set _row_native_bottle = _row_outlet == 'bar' and _row_unit in _bottle_units %}
                 <tr
                   data-sort-row
                   data-place="{{ item_place }}"
@@ -174,8 +207,11 @@
                   data-qty="{{ qty }}"
                   data-pack-label="{{ item.pack_label or '' }}"
                   data-pack-qty-in-base="{{ item.pack_qty_in_base if item.pack_qty_in_base is not none else '' }}"
+                  {% if _row_convertible %}data-bar-unit-convertible="1"{% endif %}
+                  {% if _row_native_bottle %}data-bar-unit-native-bottle="1"{% endif %}
                   data-status="{{ status }}"
                   data-category="{{ (item.category_name or '')|lower }}"
+                  data-category-name="{{ item.category_name or '' }}"
                   data-price="{{ item.approximate_price if item.approximate_price is not none else '' }}"
                   data-search="{{ [item.item_name or '', item.unit or '', item.category_name or '', item.qty_on_hand|string, item.updated_at or '', status_label]|join(' ')|lower }}"
                 >
@@ -190,7 +226,7 @@
                     {% if item.category_name %}<span class="st-cat-pill">{{ item.category_name }}</span>{% else %}—{% endif %}
                   </td>
                   <td class="pl-col-amount pl-amount st-stock-qty" data-sort-value="{{ qty }}">{{ item.qty_on_hand }}</td>
-                  <td data-sort-value="{{ item.unit or '' }}">{{ item.unit }}</td>
+                  <td class="st-stock-unit" data-sort-value="{{ item.unit or '' }}">{{ item.unit }}</td>
                   <td data-sort-value="{{ status_label }}">
                     <span class="st-stock-badge st-stock-badge--{{ status }}">{{ status_label }}</span>
                   </td>

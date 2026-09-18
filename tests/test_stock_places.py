@@ -772,6 +772,263 @@ class StockPlaceTests(unittest.TestCase):
             self.assertEqual(entry.get("label"), "750 mL")
             self.assertAlmostEqual(float(entry.get("qty_in_base")), 750.0)
 
+    def test_stock_page_bar_unit_toggle_for_ml_pack_products(self):
+        """Bar ml+pack / native Bottle rows expose attrs; Bottle opens modal markup exists."""
+        self._insert_product_with_pack(
+            name="100 Pipers",
+            unit="ml",
+            outlet="bar",
+            pack_label="750 mL",
+            pack_qty_in_base=750.0,
+        )
+        self._insert_stock(
+            outlet="bar",
+            place="warehouse",
+            item_name="100 Pipers",
+            unit="ml",
+            qty=750.0,
+        )
+        # Already sold/stocked as Bottle — native bottle row for popup (ML = 0).
+        self._insert_stock(
+            outlet="bar",
+            place="warehouse",
+            item_name="Kingfisher Beer",
+            unit="Bottle",
+            qty=12.0,
+        )
+        page = self.client.get("/stores/stock?outlet=bar&place=warehouse")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn('id="st-stock-bar-unit-host"', html)
+        self.assertIn("Bar unit", html)
+        self.assertIn('data-value="bottle"', html)
+        self.assertIn('data-value="ml"', html)
+        self.assertIn('id="st-stock-bar-bottles-modal"', html)
+        self.assertIn('id="st-stock-bar-bottles-export"', html)
+        self.assertIn('id="st-stock-bar-bottles-count"', html)
+        self.assertIn("card-hdr st-stock-bar-bottles-hdr", html)
+        self.assertIn("pl-table st-stock-bar-bottles-table", html)
+        self.assertIn("/stores/stock/export-bottles", html)
+        self.assertRegex(
+            html,
+            r'data-item-name="100 Pipers"[^>]*data-bar-unit-convertible="1"',
+        )
+        self.assertRegex(
+            html,
+            r'data-item-name="100 Pipers"[^>]*data-qty="750',
+        )
+        self.assertRegex(
+            html,
+            r'data-item-name="Kingfisher Beer"[^>]*data-bar-unit-native-bottle="1"',
+        )
+        # Bottle-unit stock is not ml-convertible.
+        self.assertNotRegex(
+            html,
+            r'data-item-name="Kingfisher Beer"[^>]*data-bar-unit-convertible=',
+        )
+        # Exact pack fill → 1 bottle, 0 ml remainder.
+        mapped_exact = self.stores_mod._bar_bottle_export_row(
+            {
+                "outlet": "bar",
+                "item_name": "100 Pipers",
+                "unit": "ml",
+                "qty_on_hand": 750.0,
+                "pack_qty_in_base": 750.0,
+                "category_name": "Whisky",
+            }
+        )
+        self.assertIsNotNone(mapped_exact)
+        self.assertAlmostEqual(float(mapped_exact["bottle"]), 1.0)
+        self.assertAlmostEqual(float(mapped_exact["ml"]), 0.0)
+        # Partial above pack → whole bottles + leftover ml.
+        mapped_rem = self.stores_mod._bar_bottle_export_row(
+            {
+                "outlet": "bar",
+                "item_name": "100 Pipers",
+                "unit": "ml",
+                "qty_on_hand": 800.0,
+                "pack_qty_in_base": 750.0,
+                "category_name": "Whisky",
+            }
+        )
+        self.assertIsNotNone(mapped_rem)
+        self.assertAlmostEqual(float(mapped_rem["bottle"]), 1.0)
+        self.assertAlmostEqual(float(mapped_rem["ml"]), 50.0)
+        mapped_700 = self.stores_mod._bar_bottle_export_row(
+            {
+                "outlet": "bar",
+                "item_name": "100 Pipers",
+                "unit": "ml",
+                "qty_on_hand": 750.0,
+                "pack_qty_in_base": 700.0,
+                "category_name": "Whisky",
+            }
+        )
+        self.assertIsNotNone(mapped_700)
+        self.assertAlmostEqual(float(mapped_700["bottle"]), 1.0)
+        self.assertAlmostEqual(float(mapped_700["ml"]), 50.0)
+        # Liter stock → ML column still in millilitres.
+        mapped_liter = self.stores_mod._bar_bottle_export_row(
+            {
+                "outlet": "bar",
+                "item_name": "House Pour",
+                "unit": "liter",
+                "qty_on_hand": 2.3,
+                "pack_qty_in_base": 0.75,
+                "category_name": "Whisky",
+            }
+        )
+        self.assertIsNotNone(mapped_liter)
+        self.assertAlmostEqual(float(mapped_liter["bottle"]), 3.0)
+        self.assertAlmostEqual(float(mapped_liter["ml"]), 50.0)
+        mapped_btl = self.stores_mod._bar_bottle_export_row(
+            {
+                "outlet": "bar",
+                "item_name": "Kingfisher Beer",
+                "unit": "Bottle",
+                "qty_on_hand": 12.0,
+                "pack_qty_in_base": None,
+                "category_name": "Beer",
+            }
+        )
+        self.assertIsNotNone(mapped_btl)
+        self.assertAlmostEqual(float(mapped_btl["bottle"]), 12.0)
+        self.assertAlmostEqual(float(mapped_btl["ml"]), 0.0)
+
+    def test_stock_page_hides_bar_unit_toggle_for_restaurant(self):
+        self._insert_product_with_pack(
+            name="Amul Cheese",
+            unit="gram",
+            outlet="restaurant",
+            pack_label="500 gram",
+            pack_qty_in_base=500.0,
+        )
+        self._insert_stock(
+            outlet="restaurant",
+            place="warehouse",
+            item_name="Amul Cheese",
+            unit="gram",
+            qty=1000.0,
+        )
+        page = self.client.get("/stores/stock?outlet=restaurant&place=warehouse")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertNotIn('id="st-stock-bar-unit-host"', html)
+        self.assertNotIn("data-bar-unit-convertible=", html)
+
+    def test_stock_export_bottles_xlsx_columns_and_values(self):
+        self._insert_product_with_pack(
+            name="100 Pipers",
+            unit="ml",
+            outlet="bar",
+            pack_label="750 mL",
+            pack_qty_in_base=750.0,
+        )
+        self._insert_stock(
+            outlet="bar",
+            place="warehouse",
+            item_name="100 Pipers",
+            unit="ml",
+            qty=1500.0,
+        )
+        self._insert_product_with_pack(
+            name="Absolute Plain",
+            unit="ml",
+            outlet="bar",
+            pack_label="750 mL",
+            pack_qty_in_base=750.0,
+        )
+        self._insert_stock(
+            outlet="bar",
+            place="warehouse",
+            item_name="Absolute Plain",
+            unit="ml",
+            qty=800.0,
+        )
+        self._insert_stock(
+            outlet="bar",
+            place="warehouse",
+            item_name="Kingfisher Beer",
+            unit="Bottle",
+            qty=6.0,
+        )
+        # Restaurant packed item must not appear in bar bottles export.
+        self._insert_product_with_pack(
+            name="Amul Cheese",
+            unit="gram",
+            outlet="restaurant",
+            pack_label="500 gram",
+            pack_qty_in_base=500.0,
+        )
+        self._insert_stock(
+            outlet="restaurant",
+            place="warehouse",
+            item_name="Amul Cheese",
+            unit="gram",
+            qty=1000.0,
+        )
+        export = self.client.get("/stores/stock/export-bottles?outlet=bar&place=warehouse")
+        self.assertEqual(export.status_code, 200)
+        self.assertIn(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            export.content_type,
+        )
+        from openpyxl import load_workbook
+
+        wb = load_workbook(io.BytesIO(export.data))
+        ws = wb.active
+        headers = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
+        self.assertEqual(headers, ["Product", "Category", "Bottle", "ML"])
+        by_name = {}
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            by_name[str(row[0])] = row
+        self.assertIn("100 Pipers", by_name)
+        self.assertAlmostEqual(float(by_name["100 Pipers"][2]), 2.0)
+        self.assertAlmostEqual(float(by_name["100 Pipers"][3]), 0.0)
+        self.assertIn("Absolute Plain", by_name)
+        self.assertAlmostEqual(float(by_name["Absolute Plain"][2]), 1.0)
+        self.assertAlmostEqual(float(by_name["Absolute Plain"][3]), 50.0)
+        self.assertIn("Kingfisher Beer", by_name)
+        self.assertAlmostEqual(float(by_name["Kingfisher Beer"][2]), 6.0)
+        self.assertAlmostEqual(float(by_name["Kingfisher Beer"][3]), 0.0)
+        self.assertNotIn("Amul Cheese", by_name)
+
+        # POST from modal rows must keep whole bottles + leftover ml (not qty/pack float).
+        post = self.client.post(
+            "/stores/stock/export-bottles",
+            json={
+                "place": "counter",
+                "rows": [
+                    {
+                        "name": "Amrut Fusion",
+                        "category": "Whiskey",
+                        "bottle": "1",
+                        "ml": "550",
+                    },
+                    {
+                        "name": "100 Pipers",
+                        "category": "Whiskey",
+                        "bottle": "0",
+                        "ml": "340",
+                    },
+                ],
+            },
+        )
+        self.assertEqual(post.status_code, 200)
+        post_wb = load_workbook(io.BytesIO(post.data))
+        post_ws = post_wb.active
+        post_by_name = {
+            str(row[0]): row
+            for row in post_ws.iter_rows(min_row=2, values_only=True)
+        }
+        self.assertAlmostEqual(float(post_by_name["Amrut Fusion"][2]), 1.0)
+        self.assertAlmostEqual(float(post_by_name["Amrut Fusion"][3]), 550.0)
+        self.assertAlmostEqual(float(post_by_name["100 Pipers"][2]), 0.0)
+        self.assertAlmostEqual(float(post_by_name["100 Pipers"][3]), 340.0)
+        # Guard against the old float/total-ml export shape.
+        self.assertNotAlmostEqual(float(post_by_name["Amrut Fusion"][2]), 1.733, places=2)
+        self.assertNotAlmostEqual(float(post_by_name["Amrut Fusion"][3]), 1300.0, places=1)
+
     def test_default_pack_parses_qty_from_label_when_missing(self):
         label, qty = self.stores_mod._default_pack_from_product_variants(
             [{"label": "750 mL", "qty_in_base": 0}]

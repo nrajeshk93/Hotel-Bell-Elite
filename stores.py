@@ -8948,6 +8948,10 @@ def stores_stock():
     stock_export_url = url_for(
         "stores_stock_export", **_stock_export_filter_args(outlet, place=place)
     )
+    stock_bottles_export_url = url_for(
+        "stores_stock_export_bottles",
+        **_stock_export_filter_args("bar", place=place),
+    )
     transfer_url = url_for("stores_stock_transfer")
     transfer_ledger_url = url_for("stores_stock_transfers", outlet=outlet)
     return _page_render(
@@ -8959,6 +8963,7 @@ def stores_stock():
         stock_has_prices=has_prices,
         stock_has_inward_prices=has_inward_prices,
         stock_export_url=stock_export_url,
+        stock_bottles_export_url=stock_bottles_export_url,
         stock_transfer_url=transfer_url,
         transfer_ledger_url=transfer_ledger_url,
         stock_product_packs=stock_product_packs,
@@ -8989,6 +8994,202 @@ def stores_stock_export():
         conn.close()
     buf = _build_stock_report_xlsx(rows)
     place_title = f"Store {_stock_place_label(place)}"
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=report_export_filename(place_title),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+def _bar_bottle_export_row(item: dict[str, Any]) -> dict[str, Any] | None:
+    """Map a stock item to Product/Category/Bottle/ML for the bar bottles report."""
+    outlet = str(item.get("outlet") or "").strip().lower()
+    if outlet != "bar":
+        return None
+    unit_norm = _normalize_pos_menu_unit(item.get("unit"))
+    try:
+        qty = float(item.get("qty_on_hand") or 0)
+    except (TypeError, ValueError):
+        qty = 0.0
+    if qty != qty:
+        qty = 0.0
+    pack_raw = item.get("pack_qty_in_base")
+    try:
+        pack_qty = float(pack_raw) if pack_raw is not None and str(pack_raw).strip() != "" else 0.0
+    except (TypeError, ValueError):
+        pack_qty = 0.0
+    if pack_qty != pack_qty or pack_qty < 0:
+        pack_qty = 0.0
+    bottle_qty: float | None = None
+    ml_qty: float | None = None
+    if unit_norm == "bottle":
+        bottle_qty = round(qty, 3)
+        ml_qty = 0.0
+    elif unit_norm in ("ml", "liter") and pack_qty > 0:
+        # Whole bottles + leftover ml (800 / 750 → 1 bottle, 50 ml).
+        # Normalize liter stock/packs into ml so the ML column is always millilitres.
+        qty_ml = qty * 1000.0 if unit_norm == "liter" else qty
+        pack_ml = pack_qty * 1000.0 if unit_norm == "liter" else pack_qty
+        if pack_ml <= 0:
+            return None
+        bottles = int((qty_ml + 1e-9) // pack_ml)
+        rem = qty_ml - bottles * pack_ml
+        if rem < 1e-6:
+            rem = 0.0
+        elif rem > pack_ml - 1e-6:
+            bottles += 1
+            rem = 0.0
+        rem = round(rem, 3)
+        if rem < 0:
+            rem = 0.0
+        bottle_qty = float(bottles)
+        ml_qty = rem
+    else:
+        return None
+    return {
+        "item_name": item.get("item_name") or "",
+        "category_name": (item.get("category_name") or "").strip() or "Uncategorised",
+        "bottle": bottle_qty,
+        "ml": ml_qty,
+    }
+
+
+def _load_stock_bottle_report_items(
+    conn,
+    *,
+    place: str = STOCK_PLACE_WAREHOUSE,
+    category: str = "",
+    q: str = "",
+) -> list[dict[str, Any]]:
+    """Bar-only stock rows for Bottle/ML export (current place)."""
+    place = _parse_stock_place(place)
+    outlet_sql, outlet_params = _outlet_match_sql("outlet", "bar")
+    outlet_sql_m, outlet_params_m = _outlet_match_sql("m.outlet", "bar")
+    items = conn.execute(
+        f"""
+        SELECT * FROM store_stock_items
+        WHERE {outlet_sql} AND place = ?
+        ORDER BY lower(item_name), lower(unit)
+        """,
+        (*outlet_params, place),
+    ).fetchall()
+    inward_costs = _inward_weighted_unit_costs(conn, outlet_sql_m, outlet_params_m)
+    stock_items = _enrich_stock_items(
+        conn,
+        [dict(row) for row in items],
+        inward_costs=inward_costs,
+    )
+    cat_filter = (category or "").strip().lower()
+    if cat_filter in ("", "all"):
+        cat_filter = ""
+    needle = (q or "").strip().lower()
+    out: list[dict[str, Any]] = []
+    for item in stock_items:
+        category_name = (item.get("category_name") or "").strip()
+        if cat_filter and category_name.lower() != cat_filter:
+            continue
+        if needle:
+            score = hbe_best_search_score(
+                [item.get("item_name"), item.get("unit"), category_name],
+                needle,
+            )
+            if score < 0:
+                continue
+        mapped = _bar_bottle_export_row(item)
+        if mapped:
+            out.append(mapped)
+    return out
+
+
+def _build_stock_bottles_report_xlsx(rows: list[dict[str, Any]]) -> io.BytesIO:
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Bar Bottles"
+    header_font = Font(name="Calibri", size=12, bold=True, color="000000")
+    body_font = Font(name="Calibri", size=12, color="000000")
+    header_fill = PatternFill("solid", fgColor="DDEBF7")
+    center = Alignment(horizontal="center", vertical="center", wrap_text=False)
+    left = Alignment(horizontal="left", vertical="center", wrap_text=False)
+    thin = Side(style="thin", color="000000")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    headers = ["Product", "Category", "Bottle", "ML"]
+    widths = (28, 18, 12, 12)
+    for col, title in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=col, value=title)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center
+        cell.border = border
+        ws.column_dimensions[get_column_letter(col)].width = widths[col - 1]
+    for idx, row in enumerate(rows, start=2):
+        values = [
+            row.get("item_name") or "",
+            row.get("category_name") or "",
+            _excel_number(row.get("bottle")),
+            _excel_number(row.get("ml")),
+        ]
+        for col, value in enumerate(values, start=1):
+            cell = ws.cell(row=idx, column=col, value=value)
+            cell.font = body_font
+            cell.alignment = left if col <= 2 else center
+            cell.border = border
+    ws.freeze_panes = "A2"
+    if rows:
+        ws.auto_filter.ref = f"A1:D{len(rows) + 1}"
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+@stores_bp.route("/stores/stock/export-bottles", methods=["GET", "POST"])
+def stores_stock_export_bottles():
+    """Excel of bar stock as Bottle + ML (popup export).
+
+    POST may send the exact modal rows so the file matches the on-screen table
+    (whole bottles + leftover ml). GET rebuilds from the ledger with the same rules.
+    """
+    place = _parse_stock_place(request.args.get("place"))
+    category = str(request.args.get("category") or "").strip()
+    q = str(request.args.get("q") or "").strip()
+    rows: list[dict[str, Any]] = []
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        place = _parse_stock_place(data.get("place") or place)
+        raw_rows = data.get("rows") if isinstance(data.get("rows"), list) else []
+        for raw in raw_rows:
+            if not isinstance(raw, dict):
+                continue
+            name = str(raw.get("name") or raw.get("item_name") or "").strip()
+            if not name:
+                continue
+            rows.append(
+                {
+                    "item_name": name,
+                    "category_name": str(
+                        raw.get("category") or raw.get("category_name") or ""
+                    ).strip()
+                    or "Uncategorised",
+                    "bottle": _excel_number(raw.get("bottle")),
+                    "ml": _excel_number(raw.get("ml")),
+                }
+            )
+    if not rows:
+        conn = get_db()
+        try:
+            ensure_stores_schema(conn)
+            rows = _load_stock_bottle_report_items(
+                conn, place=place, category=category, q=q
+            )
+        finally:
+            conn.close()
+    buf = _build_stock_bottles_report_xlsx(rows)
+    place_title = f"Bar bottles {_stock_place_label(place)}"
     return send_file(
         buf,
         as_attachment=True,
